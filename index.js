@@ -731,6 +731,7 @@ let busy = false;
 const _telegramQueue = []; // queued messages received while agent was busy
 const sessionHistory = []; // persists conversation across REPL turns
 const MAX_HISTORY = 20;    // keep last 20 messages (10 exchanges)
+let _ttyInterface = null;
 
 function appendHistory(userMsg, assistantMsg) {
   sessionHistory.push({ role: "user", content: userMsg });
@@ -738,6 +739,120 @@ function appendHistory(userMsg, assistantMsg) {
   // Trim to last MAX_HISTORY messages
   if (sessionHistory.length > MAX_HISTORY) {
     sessionHistory.splice(0, sessionHistory.length - MAX_HISTORY);
+  }
+}
+
+function refreshPrompt() {
+  if (!_ttyInterface) return;
+  _ttyInterface.setPrompt(buildPrompt());
+  _ttyInterface.prompt(true);
+}
+
+async function drainTelegramQueue() {
+  while (_telegramQueue.length > 0 && !_managementBusy && !_screeningBusy && !busy) {
+    const queued = _telegramQueue.shift();
+    await telegramHandler(queued);
+  }
+}
+
+async function telegramHandler(msg) {
+  const text = msg?.text?.trim();
+  if (!text) return;
+  if (_managementBusy || _screeningBusy || busy) {
+    if (_telegramQueue.length < 5) {
+      _telegramQueue.push(msg);
+      sendMessage(`⏳ Queued (${_telegramQueue.length} in queue): "${text.slice(0, 60)}"`).catch(() => {});
+    } else {
+      sendMessage("Queue is full (5 messages). Wait for the agent to finish.").catch(() => {});
+    }
+    return;
+  }
+
+  if (text === "/briefing") {
+    try {
+      const briefing = await generateBriefing();
+      await sendHTML(briefing);
+    } catch (e) {
+      await sendMessage(`Error: ${e.message}`).catch(() => {});
+    }
+    return;
+  }
+
+  if (text === "/positions") {
+    try {
+      const { positions, total_positions } = await getMyPositions({ force: true });
+      if (total_positions === 0) { await sendMessage("No open positions."); return; }
+      const cur = config.management.solMode ? "◎" : "$";
+      const lines = positions.map((p, i) => {
+        const pnl = p.pnl_usd >= 0 ? `+${cur}${p.pnl_usd}` : `-${cur}${Math.abs(p.pnl_usd)}`;
+        const age = p.age_minutes != null ? `${p.age_minutes}m` : "?";
+        const oor = !p.in_range ? " ⚠️OOR" : "";
+        return `${i + 1}. ${p.pair} | ${cur}${p.total_value_usd} | PnL: ${pnl} | fees: ${cur}${p.unclaimed_fees_usd} | ${age}${oor}`;
+      });
+      await sendMessage(`📊 Open Positions (${total_positions}):\n\n${lines.join("\n")}\n\n/close <n> to close | /set <n> <note> to set instruction`);
+    } catch (e) { await sendMessage(`Error: ${e.message}`).catch(() => {}); }
+    return;
+  }
+
+  const closeMatch = text.match(/^\/close\s+(\d+)$/i);
+  if (closeMatch) {
+    try {
+      const idx = parseInt(closeMatch[1]) - 1;
+      const { positions } = await getMyPositions({ force: true });
+      if (idx < 0 || idx >= positions.length) { await sendMessage("Invalid number. Use /positions first."); return; }
+      const pos = positions[idx];
+      await sendMessage(`Closing ${pos.pair}...`);
+      const result = await closePosition({ position_address: pos.position });
+      if (result.success) {
+        const closeTxs = result.close_txs?.length ? result.close_txs : result.txs;
+        const claimNote = result.claim_txs?.length ? `\nClaim txs: ${result.claim_txs.join(", ")}` : "";
+        await sendMessage(`✅ Closed ${pos.pair}\nPnL: ${config.management.solMode ? "◎" : "$"}${result.pnl_usd ?? "?"} | close txs: ${closeTxs?.join(", ") || "n/a"}${claimNote}`);
+      } else {
+        await sendMessage(`❌ Close failed: ${JSON.stringify(result)}`);
+      }
+    } catch (e) { await sendMessage(`Error: ${e.message}`).catch(() => {}); }
+    return;
+  }
+
+  const setMatch = text.match(/^\/set\s+(\d+)\s+(.+)$/i);
+  if (setMatch) {
+    try {
+      const idx = parseInt(setMatch[1]) - 1;
+      const note = setMatch[2].trim();
+      const { positions } = await getMyPositions({ force: true });
+      if (idx < 0 || idx >= positions.length) { await sendMessage("Invalid number. Use /positions first."); return; }
+      const pos = positions[idx];
+      setPositionInstruction(pos.position, note);
+      await sendMessage(`✅ Note set for ${pos.pair}:\n"${note}"`);
+    } catch (e) { await sendMessage(`Error: ${e.message}`).catch(() => {}); }
+    return;
+  }
+
+  busy = true;
+  let liveMessage = null;
+  try {
+    log("telegram", `Incoming: ${text}`);
+    const hasCloseIntent = /\bclose\b|\bsell\b|\bexit\b|\bwithdraw\b/i.test(text);
+    const isDeployRequest = !hasCloseIntent && /\bdeploy\b|\bopen position\b|\blp into\b|\badd liquidity\b/i.test(text);
+    const agentRole = isDeployRequest ? "SCREENER" : "GENERAL";
+    const agentModel = agentRole === "SCREENER" ? config.llm.screeningModel : config.llm.generalModel;
+    liveMessage = await createLiveMessage("🤖 Live Update", `Request: ${text.slice(0, 240)}`);
+    const { content } = await agentLoop(text, config.llm.maxSteps, sessionHistory, agentRole, agentModel, null, {
+      requireTool: true,
+      interactive: true,
+      onToolStart: async ({ name }) => { await liveMessage?.toolStart(name); },
+      onToolFinish: async ({ name, result, success }) => { await liveMessage?.toolFinish(name, result, success); },
+    });
+    appendHistory(text, content);
+    if (liveMessage) await liveMessage.finalize(stripThink(content));
+    else await sendMessage(stripThink(content));
+  } catch (e) {
+    if (liveMessage) await liveMessage.fail(e.message).catch(() => {});
+    else await sendMessage(`Error: ${e.message}`).catch(() => {});
+  } finally {
+    busy = false;
+    refreshPrompt();
+    drainTelegramQueue().catch(() => {});
   }
 }
 
@@ -750,6 +865,7 @@ if (isTTY) {
     output: process.stdout,
     prompt: buildPrompt(),
   });
+  _ttyInterface = rl;
 
   // Update prompt countdown every 10 seconds
   setInterval(() => {
@@ -825,116 +941,6 @@ if (isTTY) {
   // Always start autonomous cycles on launch
   launchCron();
   maybeRunMissedBriefing().catch(() => { });
-
-  // Telegram bot — queue messages received while busy, drain after each task
-  async function drainTelegramQueue() {
-    while (_telegramQueue.length > 0 && !_managementBusy && !_screeningBusy && !busy) {
-      const queued = _telegramQueue.shift();
-      await telegramHandler(queued);
-    }
-  }
-
-  async function telegramHandler(msg) {
-    const text = msg?.text?.trim();
-    if (!text) return;
-    if (_managementBusy || _screeningBusy || busy) {
-      if (_telegramQueue.length < 5) {
-        _telegramQueue.push(msg);
-        sendMessage(`⏳ Queued (${_telegramQueue.length} in queue): "${text.slice(0, 60)}"`).catch(() => {});
-      } else {
-        sendMessage("Queue is full (5 messages). Wait for the agent to finish.").catch(() => {});
-      }
-      return;
-    }
-
-    if (text === "/briefing") {
-      try {
-        const briefing = await generateBriefing();
-        await sendHTML(briefing);
-      } catch (e) {
-        await sendMessage(`Error: ${e.message}`).catch(() => { });
-      }
-      return;
-    }
-
-    if (text === "/positions") {
-      try {
-        const { positions, total_positions } = await getMyPositions({ force: true });
-        if (total_positions === 0) { await sendMessage("No open positions."); return; }
-        const cur = config.management.solMode ? "◎" : "$";
-        const lines = positions.map((p, i) => {
-          const pnl = p.pnl_usd >= 0 ? `+${cur}${p.pnl_usd}` : `-${cur}${Math.abs(p.pnl_usd)}`;
-          const age = p.age_minutes != null ? `${p.age_minutes}m` : "?";
-          const oor = !p.in_range ? " ⚠️OOR" : "";
-          return `${i + 1}. ${p.pair} | ${cur}${p.total_value_usd} | PnL: ${pnl} | fees: ${cur}${p.unclaimed_fees_usd} | ${age}${oor}`;
-        });
-        await sendMessage(`📊 Open Positions (${total_positions}):\n\n${lines.join("\n")}\n\n/close <n> to close | /set <n> <note> to set instruction`);
-      } catch (e) { await sendMessage(`Error: ${e.message}`).catch(() => { }); }
-      return;
-    }
-
-    const closeMatch = text.match(/^\/close\s+(\d+)$/i);
-    if (closeMatch) {
-      try {
-        const idx = parseInt(closeMatch[1]) - 1;
-        const { positions } = await getMyPositions({ force: true });
-        if (idx < 0 || idx >= positions.length) { await sendMessage(`Invalid number. Use /positions first.`); return; }
-        const pos = positions[idx];
-        await sendMessage(`Closing ${pos.pair}...`);
-        const result = await closePosition({ position_address: pos.position });
-        if (result.success) {
-          const closeTxs = result.close_txs?.length ? result.close_txs : result.txs;
-          const claimNote = result.claim_txs?.length ? `\nClaim txs: ${result.claim_txs.join(", ")}` : "";
-          await sendMessage(`✅ Closed ${pos.pair}\nPnL: ${config.management.solMode ? "◎" : "$"}${result.pnl_usd ?? "?"} | close txs: ${closeTxs?.join(", ") || "n/a"}${claimNote}`);
-        } else {
-          await sendMessage(`❌ Close failed: ${JSON.stringify(result)}`);
-        }
-      } catch (e) { await sendMessage(`Error: ${e.message}`).catch(() => { }); }
-      return;
-    }
-
-    const setMatch = text.match(/^\/set\s+(\d+)\s+(.+)$/i);
-    if (setMatch) {
-      try {
-        const idx = parseInt(setMatch[1]) - 1;
-        const note = setMatch[2].trim();
-        const { positions } = await getMyPositions({ force: true });
-        if (idx < 0 || idx >= positions.length) { await sendMessage(`Invalid number. Use /positions first.`); return; }
-        const pos = positions[idx];
-        setPositionInstruction(pos.position, note);
-        await sendMessage(`✅ Note set for ${pos.pair}:\n"${note}"`);
-      } catch (e) { await sendMessage(`Error: ${e.message}`).catch(() => { }); }
-      return;
-    }
-
-    busy = true;
-    let liveMessage = null;
-    try {
-      log("telegram", `Incoming: ${text}`);
-      const hasCloseIntent = /\bclose\b|\bsell\b|\bexit\b|\bwithdraw\b/i.test(text);
-      const isDeployRequest = !hasCloseIntent && /\bdeploy\b|\bopen position\b|\blp into\b|\badd liquidity\b/i.test(text);
-      const agentRole = isDeployRequest ? "SCREENER" : "GENERAL";
-      const agentModel = agentRole === "SCREENER" ? config.llm.screeningModel : config.llm.generalModel;
-      liveMessage = await createLiveMessage("🤖 Live Update", `Request: ${text.slice(0, 240)}`);
-      const { content } = await agentLoop(text, config.llm.maxSteps, sessionHistory, agentRole, agentModel, null, {
-        requireTool: true,
-        interactive: true,
-        onToolStart: async ({ name }) => { await liveMessage?.toolStart(name); },
-        onToolFinish: async ({ name, result, success }) => { await liveMessage?.toolFinish(name, result, success); },
-      });
-      appendHistory(text, content);
-      if (liveMessage) await liveMessage.finalize(stripThink(content));
-      else await sendMessage(stripThink(content));
-    } catch (e) {
-      if (liveMessage) await liveMessage.fail(e.message).catch(() => {});
-      else await sendMessage(`Error: ${e.message}`).catch(() => { });
-    } finally {
-      busy = false;
-      rl.setPrompt(buildPrompt());
-      rl.prompt(true);
-      drainTelegramQueue().catch(() => {});
-    }
-  }
 
   startPolling(telegramHandler);
 
@@ -1151,6 +1157,7 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
   log("startup", "Non-TTY mode — starting cron cycles immediately.");
   startCronJobs();
   maybeRunMissedBriefing().catch(() => { });
+  startPolling(telegramHandler);
   (async () => {
     try {
       const startupStep3 = process.env.DRY_RUN === "true"
