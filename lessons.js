@@ -96,6 +96,18 @@ export async function recordPerformance(perf) {
     ? (perf.minutes_in_range / perf.minutes_held) * 100
     : 0;
 
+  const closeReasonText = String(perf.close_reason || "").toLowerCase();
+  const suspiciousAbsurdClosedPnl =
+    Number.isFinite(pnl_pct) &&
+    perf.initial_value_usd >= 20 &&
+    pnl_pct <= -90 &&
+    !closeReasonText.includes("stop loss");
+
+  if (suspiciousAbsurdClosedPnl) {
+    log("lessons_warn", `Skipped absurd closed PnL record for ${perf.pool_name || perf.pool}: pnl_pct=${pnl_pct.toFixed(2)} reason=${perf.close_reason}`);
+    return;
+  }
+
   const entry = {
     ...perf,
     pnl_usd: Math.round(pnl_usd * 100) / 100,

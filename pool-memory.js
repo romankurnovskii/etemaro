@@ -41,6 +41,14 @@ function isOorCloseReason(reason) {
   return text === "oor" || text.includes("out of range") || text.includes("oor");
 }
 
+function isAdjustedWinRateExcludedReason(reason) {
+  const text = String(reason || "").trim().toLowerCase();
+  return text.includes("out of range") ||
+    text.includes("pumped far above range") ||
+    text === "oor" ||
+    text.includes("oor");
+}
+
 function setPoolCooldown(entry, hours, reason) {
   const cooldownUntil = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
   entry.cooldown_until = cooldownUntil;
@@ -93,6 +101,8 @@ export function recordPoolDeploy(poolAddress, deployData) {
       total_deploys: 0,
       avg_pnl_pct: 0,
       win_rate: 0,
+      adjusted_win_rate: 0,
+      adjusted_win_rate_sample_count: 0,
       last_deployed_at: null,
       last_outcome: null,
       notes: [],
@@ -128,6 +138,11 @@ export function recordPoolDeploy(poolAddress, deployData) {
       (withPnl.filter((d) => d.pnl_pct >= 0).length / withPnl.length) * 100
     ) / 100;
   }
+  const adjusted = withPnl.filter((d) => !isAdjustedWinRateExcludedReason(d.close_reason));
+  entry.adjusted_win_rate_sample_count = adjusted.length;
+  entry.adjusted_win_rate = adjusted.length > 0
+    ? Math.round((adjusted.filter((d) => d.pnl_pct >= 0).length / adjusted.length) * 10000) / 100
+    : 0;
 
   if (deployData.base_mint && !entry.base_mint) {
     entry.base_mint = deployData.base_mint;
@@ -208,6 +223,8 @@ export function getPoolMemory({ pool_address }) {
     total_deploys: entry.total_deploys,
     avg_pnl_pct: entry.avg_pnl_pct,
     win_rate: entry.win_rate,
+    adjusted_win_rate: entry.adjusted_win_rate ?? 0,
+    adjusted_win_rate_sample_count: entry.adjusted_win_rate_sample_count ?? 0,
     last_deployed_at: entry.last_deployed_at,
     last_outcome: entry.last_outcome,
     cooldown_until: entry.cooldown_until || null,
@@ -236,6 +253,8 @@ export function recordPositionSnapshot(poolAddress, snapshot) {
       total_deploys: 0,
       avg_pnl_pct: 0,
       win_rate: 0,
+      adjusted_win_rate: 0,
+      adjusted_win_rate_sample_count: 0,
       last_deployed_at: null,
       last_outcome: null,
       notes: [],
