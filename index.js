@@ -11,7 +11,7 @@ import { evolveThresholds, getPerformanceSummary } from "./lessons.js";
 import { registerCronRestarter } from "./tools/executor.js";
 import { startPolling, stopPolling, sendMessage, sendHTML, notifyOutOfRange, isEnabled as telegramEnabled, createLiveMessage } from "./telegram.js";
 import { generateBriefing } from "./briefing.js";
-import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak } from "./state.js";
+import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
 import { recordPositionSnapshot, recallForPool, addPoolNote } from "./pool-memory.js";
 import { checkSmartWalletsOnPool } from "./smart-wallets.js";
@@ -60,8 +60,11 @@ let _screeningBusy = false;  // prevents overlapping screening cycles
 let _screeningLastTriggered = 0; // epoch ms — prevents management from spamming screening
 let _pollTriggeredAt = 0; // epoch ms — cooldown for poller-triggered management
 const _peakConfirmTimers = new Map();
+const _trailingDropConfirmTimers = new Map();
 const TRAILING_PEAK_CONFIRM_DELAY_MS = 15_000;
 const TRAILING_PEAK_CONFIRM_TOLERANCE = 0.85;
+const TRAILING_DROP_CONFIRM_DELAY_MS = 15_000;
+const TRAILING_DROP_CONFIRM_TOLERANCE_PCT = 1.0;
 
 /** Strip <think>...</think> reasoning blocks that some models leak into output */
 function stripThink(text) {
@@ -95,6 +98,32 @@ function schedulePeakConfirmation(positionAddress) {
   }, TRAILING_PEAK_CONFIRM_DELAY_MS);
 
   _peakConfirmTimers.set(positionAddress, timer);
+}
+
+function scheduleTrailingDropConfirmation(positionAddress) {
+  if (!positionAddress || _trailingDropConfirmTimers.has(positionAddress)) return;
+
+  const timer = setTimeout(async () => {
+    _trailingDropConfirmTimers.delete(positionAddress);
+    try {
+      const result = await getMyPositions({ force: true, silent: true }).catch(() => null);
+      const position = result?.positions?.find((p) => p.position === positionAddress);
+      const resolved = resolvePendingTrailingDrop(
+        positionAddress,
+        position?.pnl_pct ?? null,
+        config.management.trailingDropPct,
+        TRAILING_DROP_CONFIRM_TOLERANCE_PCT,
+      );
+      if (resolved?.confirmed) {
+        log("state", `[Trailing recheck] Confirmed trailing exit for ${positionAddress} — triggering management`);
+        runManagementCycle({ silent: true }).catch((e) => log("cron_error", `Trailing recheck management failed: ${e.message}`));
+      }
+    } catch (error) {
+      log("state_warn", `Trailing drop confirmation failed for ${positionAddress}: ${error.message}`);
+    }
+  }, TRAILING_DROP_CONFIRM_DELAY_MS);
+
+  _trailingDropConfirmTimers.set(positionAddress, timer);
 }
 
 async function runBriefing() {
@@ -173,6 +202,12 @@ export async function runManagementCycle({ silent = false } = {}) {
       }
       const exit = updatePnlAndCheckExits(p.position, p, config.management);
       if (exit) {
+        if (exit.action === "TRAILING_TP" && exit.needs_confirmation) {
+          if (queueTrailingDropConfirmation(p.position, exit.peak_pnl_pct, exit.current_pnl_pct, config.management.trailingDropPct)) {
+            scheduleTrailingDropConfirmation(p.position);
+          }
+          continue;
+        }
         exitMap.set(p.position, exit.reason);
         log("state", `Exit alert for ${p.pair}: ${exit.reason}`);
       }
@@ -622,6 +657,12 @@ Summarize the current portfolio health, total fees earned, and performance of al
         }
         const exit = updatePnlAndCheckExits(p.position, p, config.management);
         if (exit) {
+          if (exit.action === "TRAILING_TP" && exit.needs_confirmation) {
+            if (queueTrailingDropConfirmation(p.position, exit.peak_pnl_pct, exit.current_pnl_pct, config.management.trailingDropPct)) {
+              scheduleTrailingDropConfirmation(p.position);
+            }
+            continue;
+          }
           const cooldownMs = config.schedule.managementIntervalMin * 60 * 1000;
           const sinceLastTrigger = Date.now() - _pollTriggeredAt;
           if (sinceLastTrigger >= cooldownMs) {

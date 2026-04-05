@@ -97,6 +97,12 @@ export function trackPosition({
     peak_pnl_pct: 0,
     pending_peak_pnl_pct: null,
     pending_peak_started_at: null,
+    pending_trailing_current_pnl_pct: null,
+    pending_trailing_peak_pnl_pct: null,
+    pending_trailing_drop_pct: null,
+    pending_trailing_started_at: null,
+    confirmed_trailing_exit_reason: null,
+    confirmed_trailing_exit_until: null,
     trailing_active: false,
   };
   pushEvent(state, { action: "deploy", position, pool_name: pool_name || pool });
@@ -259,6 +265,64 @@ export function resolvePendingPeak(position_address, currentPnlPct, toleranceRat
   return { confirmed: false, rejected: true, pendingPeak };
 }
 
+export function queueTrailingDropConfirmation(position_address, peakPnlPct, currentPnlPct, trailingDropPct) {
+  if (peakPnlPct == null || currentPnlPct == null || trailingDropPct == null) return false;
+  const dropFromPeak = peakPnlPct - currentPnlPct;
+  if (dropFromPeak < trailingDropPct) return false;
+
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed) return false;
+
+  const changed =
+    pos.pending_trailing_current_pnl_pct == null ||
+    currentPnlPct < pos.pending_trailing_current_pnl_pct ||
+    dropFromPeak > (pos.pending_trailing_drop_pct ?? -Infinity);
+
+  if (!changed) return false;
+
+  pos.pending_trailing_peak_pnl_pct = peakPnlPct;
+  pos.pending_trailing_current_pnl_pct = currentPnlPct;
+  pos.pending_trailing_drop_pct = dropFromPeak;
+  pos.pending_trailing_started_at = new Date().toISOString();
+  save(state);
+  log("state", `Position ${position_address} trailing drop candidate queued: peak ${peakPnlPct.toFixed(2)}% -> current ${currentPnlPct.toFixed(2)}%`);
+  return true;
+}
+
+export function resolvePendingTrailingDrop(position_address, currentPnlPct, trailingDropPct, tolerancePct = 1.0) {
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed || pos.pending_trailing_current_pnl_pct == null || pos.pending_trailing_peak_pnl_pct == null) {
+    return { confirmed: false, pending: false };
+  }
+
+  const pendingCurrent = pos.pending_trailing_current_pnl_pct;
+  const pendingPeak = pos.pending_trailing_peak_pnl_pct;
+  const pendingDrop = pos.pending_trailing_drop_pct ?? (pendingPeak - pendingCurrent);
+
+  pos.pending_trailing_current_pnl_pct = null;
+  pos.pending_trailing_peak_pnl_pct = null;
+  pos.pending_trailing_drop_pct = null;
+  pos.pending_trailing_started_at = null;
+
+  const stillNearCrash = currentPnlPct != null && currentPnlPct <= pendingCurrent + tolerancePct;
+  const stillDroppedEnough = currentPnlPct != null && (pendingPeak - currentPnlPct) >= trailingDropPct;
+
+  if (stillNearCrash && stillDroppedEnough) {
+    const reason = `Trailing TP: peak ${pendingPeak.toFixed(2)}% → current ${currentPnlPct.toFixed(2)}% (dropped ${(pendingPeak - currentPnlPct).toFixed(2)}% >= ${trailingDropPct}%)`;
+    pos.confirmed_trailing_exit_reason = reason;
+    pos.confirmed_trailing_exit_until = new Date(Date.now() + 30_000).toISOString();
+    save(state);
+    log("state", `Position ${position_address} trailing drop confirmed after recheck: pending drop ${pendingDrop.toFixed(2)}%, current ${currentPnlPct.toFixed(2)}%`);
+    return { confirmed: true, reason };
+  }
+
+  save(state);
+  log("state", `Position ${position_address} rejected trailing drop after 15s recheck (pending current: ${pendingCurrent.toFixed(2)}%, current: ${currentPnlPct ?? "?"}%)`);
+  return { confirmed: false, rejected: true };
+}
+
 /**
  * Get all tracked positions (optionally filter open-only).
  */
@@ -321,6 +385,18 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   const pos = state.positions[position_address];
   if (!pos || pos.closed) return null;
 
+  if (pos.confirmed_trailing_exit_until) {
+    if (new Date(pos.confirmed_trailing_exit_until).getTime() > Date.now() && pos.confirmed_trailing_exit_reason) {
+      const reason = pos.confirmed_trailing_exit_reason;
+      pos.confirmed_trailing_exit_reason = null;
+      pos.confirmed_trailing_exit_until = null;
+      save(state);
+      return { action: "TRAILING_TP", reason, confirmed_recheck: true };
+    }
+    pos.confirmed_trailing_exit_reason = null;
+    pos.confirmed_trailing_exit_until = null;
+  }
+
   let changed = false;
 
   // Activate trailing TP once trigger threshold is reached
@@ -358,6 +434,10 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
       return {
         action: "TRAILING_TP",
         reason: `Trailing TP: peak ${pos.peak_pnl_pct.toFixed(2)}% → current ${currentPnlPct.toFixed(2)}% (dropped ${dropFromPeak.toFixed(2)}% >= ${mgmtConfig.trailingDropPct}%)`,
+        needs_confirmation: true,
+        peak_pnl_pct: pos.peak_pnl_pct,
+        current_pnl_pct: currentPnlPct,
+        drop_from_peak_pct: dropFromPeak,
       };
     }
   }
