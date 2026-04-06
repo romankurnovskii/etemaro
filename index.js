@@ -453,23 +453,36 @@ export async function runScreeningCycle({ silent = false } = {}) {
     }
 
     // Hard filters after token recon — block launchpads and excessive Jupiter bot holders
+    const filteredOut = [];
     const passing = allCandidates.filter(({ pool, ti }) => {
       const launchpad = ti?.launchpad ?? null;
+      if (launchpad && config.screening.allowedLaunchpads?.length > 0 && !config.screening.allowedLaunchpads.includes(launchpad)) {
+        log("screening", `Skipping ${pool.name} — launchpad ${launchpad} not in allow-list`);
+        filteredOut.push({ name: pool.name, reason: `launchpad ${launchpad} not in allow-list` });
+        return false;
+      }
       if (launchpad && config.screening.blockedLaunchpads.includes(launchpad)) {
         log("screening", `Skipping ${pool.name} — blocked launchpad (${launchpad})`);
+        filteredOut.push({ name: pool.name, reason: `blocked launchpad (${launchpad})` });
         return false;
       }
       const botPct = ti?.audit?.bot_holders_pct;
       const maxBotHoldersPct = config.screening.maxBotHoldersPct;
       if (botPct != null && maxBotHoldersPct != null && botPct > maxBotHoldersPct) {
         log("screening", `Bot-holder filter: dropped ${pool.name} — bots ${botPct}% > ${maxBotHoldersPct}%`);
+        filteredOut.push({ name: pool.name, reason: `bot holders ${botPct}% > ${maxBotHoldersPct}%` });
         return false;
       }
       return true;
     });
 
     if (passing.length === 0) {
-      screenReport = `No candidates available (all blocked by launchpad filter).`;
+      const examples = filteredOut.slice(0, 3)
+        .map((entry) => `- ${entry.name}: ${entry.reason}`)
+        .join("\n");
+      screenReport = examples
+        ? `No candidates available.\nFiltered examples:\n${examples}`
+        : `No candidates available (all filtered by launchpad / holder-quality rules).`;
       return screenReport;
     }
 
