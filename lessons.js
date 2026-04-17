@@ -539,17 +539,6 @@ export function listLessons({ role = null, pinned = null, tag = null, limit = 30
 }
 
 /**
- * Remove a lesson by ID.
- */
-export function removeLesson(id) {
-  const data = load();
-  const before = data.lessons.length;
-  data.lessons = data.lessons.filter((l) => l.id !== id);
-  save(data);
-  return before - data.lessons.length;
-}
-
-/**
  * Remove lessons matching a keyword in their rule text (case-insensitive).
  */
 export function removeLessonsByKeyword(keyword) {

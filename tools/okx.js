@@ -190,19 +190,3 @@ export async function getPriceInfo(tokenAddress, chainIndex = CHAIN_SOLANA) {
     liquidity:        pct(d.liquidity),
   };
 }
-
-/**
- * Fetch all three in parallel — use this during screening enrichment.
- */
-export async function getFullTokenAnalysis(tokenAddress, chainIndex = CHAIN_SOLANA) {
-  const [advanced, clusters, price] = await Promise.allSettled([
-    getAdvancedInfo(tokenAddress, chainIndex),
-    getClusterList(tokenAddress, chainIndex),
-    getPriceInfo(tokenAddress, chainIndex),
-  ]);
-  return {
-    advanced: advanced.status === "fulfilled" ? advanced.value : null,
-    clusters: clusters.status === "fulfilled" ? clusters.value : [],
-    price:    price.status    === "fulfilled" ? price.value    : null,
-  };
-}

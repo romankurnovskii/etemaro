@@ -1,4 +1,4 @@
-export const tools = [
+const toolDefinitions = [
   // ═══════════════════════════════════════════
   //  SCREENING TOOLS
   // ═══════════════════════════════════════════
@@ -1109,3 +1109,13 @@ Blacklisted tokens are filtered BEFORE the LLM even sees pool candidates.`,
     }
   },
 ];
+
+export const tools = toolDefinitions.map((tool) => ({
+  ...tool,
+  function: {
+    ...tool.function,
+    parameters: tool.function.parameters?.type === "object"
+      ? { additionalProperties: false, ...tool.function.parameters }
+      : tool.function.parameters,
+  },
+}));

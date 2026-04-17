@@ -24,6 +24,7 @@ import { recordPerformance } from "../lessons.js";
 import { isBaseMintOnCooldown, isPoolOnCooldown } from "../pool-memory.js";
 import { normalizeMint } from "./wallet.js";
 import { appendDecision } from "../decision-log.js";
+import { agentMeridianJson, getAgentIdForRequests, getAgentMeridianHeaders } from "./agent-meridian.js";
 
 // ─── Lazy SDK loader ───────────────────────────────────────────
 // @meteora-ag/dlmm → @coral-xyz/anchor uses CJS directory imports
@@ -74,39 +75,13 @@ function getWallet() {
   return _wallet;
 }
 
-function getMeridianApiBase() {
-  return String(config.api.url || "https://api.agentmeridian.xyz/api").replace(/\/+$/, "");
-}
-
-function getMeridianHeaders() {
-  const headers = { "Content-Type": "application/json" };
-  if (config.api.publicApiKey) {
-    headers["x-api-key"] = config.api.publicApiKey;
-  }
-  return headers;
-}
-
 function shouldUseLpAgentRelay() {
   return !!config.api.lpAgentRelayEnabled;
 }
 
 function shouldUseLpAgentRelayForDeploy() {
+  // Zap-in relay is intentionally disabled; deploys use the local Meteora SDK path.
   return false;
-}
-
-async function meridianJson(pathname, options = {}) {
-  const res = await fetch(`${getMeridianApiBase()}${pathname}`, options);
-  const text = await res.text().catch(() => "");
-  let payload = {};
-  try {
-    payload = text ? JSON.parse(text) : {};
-  } catch {
-    payload = { raw: text };
-  }
-  if (!res.ok) {
-    throw new Error(payload?.error || `${pathname} ${res.status}`);
-  }
-  return payload;
 }
 
 function signSerializedTransaction(serialized, wallet) {
@@ -341,8 +316,7 @@ export async function deployPosition({
   const actualBaseFee = base_fee ?? (baseFactor > 0 ? parseFloat((baseFactor * actualBinStep / 1e6 * 100).toFixed(4)) : null);
 
   const totalYLamports = new BN(Math.floor(finalAmountY * 1e9));
-  // For X, we assume it's also 9 decimals for now, or we'd need to fetch mint decimals.
-  // Most Meteora pools base tokens are 6 or 9. To be safe, we should fetch.
+  // Token X amount uses mint decimals when available, falling back to 9.
   let totalXLamports = new BN(0);
   if (finalAmountX > 0) {
     const mintInfo = await getConnection().getParsedAccountInfo(new PublicKey(pool.lbPair.tokenXMint));
@@ -357,11 +331,11 @@ export async function deployPosition({
         "deploy",
         `Relay deploy via Agent Meridian: ${pool_address} activeBin ${activeBin.binId} bins ${minBinId}->${maxBinId} amountY=${finalAmountY}`,
       );
-      const order = await meridianJson("/execution/zap-in/order", {
+      const order = await agentMeridianJson("/execution/zap-in/order", {
         method: "POST",
-        headers: getMeridianHeaders(),
+        headers: getAgentMeridianHeaders({ json: true }),
         body: JSON.stringify({
-          agentId: config.hiveMind.agentId || "agent-local",
+          agentId: getAgentIdForRequests(),
           idempotencyKey: `deploy:${pool_address}:${minBinId}:${maxBinId}:${finalAmountY}:${finalAmountX}`,
           poolId: pool_address,
           owner: wallet.publicKey.toString(),
@@ -385,9 +359,9 @@ export async function deployPosition({
 
       const addLiquidity = signSerializedTransactions(addLiquidityUnsigned, wallet);
       const swap = signSerializedTransactions(swapUnsigned, wallet);
-      const submit = await meridianJson("/execution/zap-in/submit", {
+      const submit = await agentMeridianJson("/execution/zap-in/submit", {
         method: "POST",
-        headers: getMeridianHeaders(),
+        headers: getAgentMeridianHeaders({ json: true }),
         body: JSON.stringify({
           requestId: order.requestId,
           lastValidBlockHeight: order?.order?.lastValidBlockHeight,
@@ -683,7 +657,7 @@ export async function getPositionPnl({ pool_address, position_address }) {
     try {
       const payload = await fetchOpenPositionsFromMeridian({
         walletAddress,
-        agentId: config.hiveMind.agentId || "agent-local",
+        agentId: getAgentIdForRequests(),
       });
       const p = payload?.positions?.find((position) => position.position === position_address);
       if (p) {
@@ -799,8 +773,8 @@ async function fetchOpenPositionsFromMeridian({ walletAddress, agentId }) {
     owner: walletAddress,
     agentId: agentId || "agent-local",
   });
-  const payload = await meridianJson(`/positions/open?${search.toString()}`, {
-    headers: config.api.publicApiKey ? { "x-api-key": config.api.publicApiKey } : {},
+  const payload = await agentMeridianJson(`/positions/open?${search.toString()}`, {
+    headers: getAgentMeridianHeaders(),
   });
   return {
     ...payload,
@@ -830,7 +804,7 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
         if (!silent) log("positions", "Fetching open positions via Agent Meridian relay...");
         const result = await fetchOpenPositionsFromMeridian({
           walletAddress,
-          agentId: config.hiveMind.agentId || "agent-local",
+          agentId: getAgentIdForRequests(),
         });
         const normalizedPositions = Array.isArray(result.positions) ? result.positions : [];
         syncOpenPositions(normalizedPositions.map((p) => p.position));
@@ -1149,21 +1123,21 @@ export async function closePosition({ position_address, reason }) {
       const closeToBinId = livePosition?.upper_bin ?? tracked?.bin_range?.max ?? 887272;
       const closeOutput = "allToken1";
 
-      const quotes = await meridianJson("/execution/zap-out/quotes", {
+      const quotes = await agentMeridianJson("/execution/zap-out/quotes", {
         method: "POST",
-        headers: getMeridianHeaders(),
+        headers: getAgentMeridianHeaders({ json: true }),
         body: JSON.stringify({
-          agentId: config.hiveMind.agentId || "agent-local",
+          agentId: getAgentIdForRequests(),
           positionId: position_address,
           bps: 10000,
         }),
       });
 
-      const order = await meridianJson("/execution/zap-out/order", {
+      const order = await agentMeridianJson("/execution/zap-out/order", {
         method: "POST",
-        headers: getMeridianHeaders(),
+        headers: getAgentMeridianHeaders({ json: true }),
         body: JSON.stringify({
-          agentId: config.hiveMind.agentId || "agent-local",
+          agentId: getAgentIdForRequests(),
           idempotencyKey: `close:${position_address}:10000`,
           positionId: position_address,
           owner: wallet.publicKey.toString(),
@@ -1184,9 +1158,9 @@ export async function closePosition({ position_address, reason }) {
         throw new Error("LPAgent close order returned no transactions. Check the position, quote response, and selected output.");
       }
 
-      const submit = await meridianJson("/execution/zap-out/submit", {
+      const submit = await agentMeridianJson("/execution/zap-out/submit", {
         method: "POST",
-        headers: getMeridianHeaders(),
+        headers: getAgentMeridianHeaders({ json: true }),
         body: JSON.stringify({
           requestId: order.requestId,
           lastValidBlockHeight: order?.order?.lastValidBlockHeight,

@@ -15,8 +15,9 @@ function load() {
   if (!fs.existsSync(BLOCKLIST_FILE)) return {};
   try {
     return JSON.parse(fs.readFileSync(BLOCKLIST_FILE, "utf8"));
-  } catch {
-    return {};
+  } catch (error) {
+    log("dev_blocklist_error", `Invalid ${BLOCKLIST_FILE}: ${error.message}`);
+    throw new Error(`Safety blocklist is unreadable: ${BLOCKLIST_FILE}`);
   }
 }
 

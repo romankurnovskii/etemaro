@@ -15,9 +15,13 @@
     "test:agent": "DRY_RUN=true node test/test-agent.js",
     "postinstall": "node scripts/patch-anchor.js"
   },
+  "knip": {
+    "ignore": [
+      "discord-listener/**"
+    ]
+  },
   "dependencies": {
     "@meteora-ag/dlmm": "1.9.4",
-    "@solana/spl-token": "^0.3.11",
     "@solana/web3.js": "^1.95.0",
     "bn.js": "^5.2.1",
     "bs58": "^5.0.0",

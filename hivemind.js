@@ -304,7 +304,7 @@ export async function pushHiveLesson(lesson) {
   }
 }
 
-export function shouldCountInAdjustedWinRate(closeReason) {
+function shouldCountInAdjustedWinRate(closeReason) {
   const text = String(closeReason || "").toLowerCase();
   return !(
     text.includes("out of range") ||

@@ -1,4 +1,5 @@
 import fs from "fs";
+import { log } from "./logger.js";
 
 const DECISION_LOG_FILE = "./decision-log.json";
 const MAX_DECISIONS = 100;
@@ -9,7 +10,8 @@ function load() {
   }
   try {
     return JSON.parse(fs.readFileSync(DECISION_LOG_FILE, "utf8"));
-  } catch {
+  } catch (error) {
+    log("decision_log_warn", `Invalid ${DECISION_LOG_FILE}: ${error.message}`);
     return { decisions: [] };
   }
 }

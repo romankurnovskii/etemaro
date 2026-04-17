@@ -17,7 +17,7 @@ pool-memory.js      Per-pool deploy history + snapshots (pool-memory.json)
 strategy-library.js Saved LP strategies (strategy-library.json)
 briefing.js         Daily Telegram briefing (HTML)
 telegram.js         Telegram bot: polling, notifications (deploy/close/swap/OOR)
-hive-mind.js        Optional collective intelligence server sync
+hivemind.js         Agent Meridian HiveMind sync
 smart-wallets.js    KOL/alpha wallet tracker (smart-wallets.json)
 token-blacklist.js  Permanent token blacklist (token-blacklist.json)
 logger.js           Daily-rotating log files + action audit trail
@@ -195,11 +195,9 @@ const actualBaseFee = baseFactor > 0
 
 ---
 
-## Hive Mind (hive-mind.js)
+## HiveMind
 
-Optional feature. Enabled by setting `HIVE_MIND_URL` and `HIVE_MIND_API_KEY` in `.env`.
-Syncs lessons/deploys to a shared server, queries consensus patterns.
-Not required for normal operation.
+Agent Meridian HiveMind sync is handled by `hivemind.js`. It uses built-in Agent Meridian defaults unless overridden by config or env.
 
 ---
 

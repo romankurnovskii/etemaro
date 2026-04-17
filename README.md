@@ -482,30 +482,21 @@ This analyzes closed position performance (win rate, avg PnL, fee yields) and au
 
 ---
 
-## Hive Mind (optional)
+## HiveMind
 
-Opt-in collective intelligence — share lessons and pool outcomes, receive crowd wisdom from other Meridian agents.
+HiveMind sync uses Agent Meridian by default. Shared lessons, presets, and performance summaries are routed through the configured Agent Meridian API.
 
-**What you get:** Pool consensus ("8 agents deployed here, 72% win rate"), strategy rankings, threshold medians.
+**What you get:** shared lessons, strategy presets, and crowd performance context from other Meridian agents.
 
-**What you share:** Lessons, deploy outcomes, screening thresholds. No wallet addresses, private keys, or balances are ever sent.
+**What you share:** lessons and closed-position performance. Wallet private keys and balances are never sent.
 
 ### Setup
 
-```bash
-node -e "import('./hive-mind.js').then(m => m.register('https://meridian-hive-api-production.up.railway.app', 'YOUR_TOKEN'))"
-```
-
-Get `YOUR_TOKEN` from the private Telegram discussion. This saves your credentials to `user-config.json` automatically.
+No manual HiveMind registration is required for the shared Agent Meridian setup. `hiveMindUrl`, `hiveMindApiKey`, and `publicApiKey` have built-in Agent Meridian defaults.
 
 ### Disable
 
-```json
-{
-  "hiveMindUrl": "",
-  "hiveMindApiKey": ""
-}
-```
+HiveMind disable behavior needs an explicit config flag before empty strings can be used as a disable mechanism. Empty strings currently fall back to Agent Meridian defaults.
 
 ### Self-hosting
 
@@ -537,7 +528,7 @@ lessons.js          Learning engine: records performance, derives lessons, evolv
 pool-memory.js      Per-pool deploy history + snapshots
 strategy-library.js Saved LP strategies
 telegram.js         Telegram bot: polling + notifications
-hive-mind.js        Optional collective intelligence server sync
+hivemind.js         Agent Meridian HiveMind sync
 smart-wallets.js    KOL/alpha wallet tracker
 token-blacklist.js  Permanent token blacklist
 cli.js              Direct CLI — every tool as a subcommand with JSON output

@@ -4,6 +4,7 @@ import { isDevBlocked, getBlockedDevs } from "../dev-blocklist.js";
 import { log } from "../logger.js";
 import { isBaseMintOnCooldown, isPoolOnCooldown } from "../pool-memory.js";
 import { confirmIndicatorPreset } from "./chart-indicators.js";
+import { getAgentMeridianBase, getAgentMeridianHeaders } from "./agent-meridian.js";
 
 const DATAPI_JUP = "https://datapi.jup.ag/v1";
 
@@ -27,8 +28,8 @@ function scoreCandidate(pool) {
 }
 
 async function fetchDiscordSignalCandidates() {
-  const res = await fetch(`${config.api.url}/signals/discord/candidates`, {
-    headers: config.api.publicApiKey ? { "x-api-key": config.api.publicApiKey } : {},
+  const res = await fetch(`${getAgentMeridianBase()}/signals/discord/candidates`, {
+    headers: getAgentMeridianHeaders(),
   });
   if (!res.ok) throw new Error(`discord signal candidates ${res.status}`);
   const data = await res.json();
@@ -135,7 +136,7 @@ export async function discoverPools({
 
   const useServerDiscovery = !!config.api.publicApiKey;
   const url = useServerDiscovery
-    ? `${config.api.url}/discovery/pools?` +
+    ? `${getAgentMeridianBase()}/discovery/pools?` +
       `page_size=${page_size}` +
       `&filter_by=${encodeURIComponent(filters)}` +
       `&timeframe=${s.timeframe}` +
@@ -147,9 +148,7 @@ export async function discoverPools({
       `&category=${s.category}`;
 
   const res = await fetch(url, {
-    headers: useServerDiscovery && config.api.publicApiKey
-      ? { "x-api-key": config.api.publicApiKey }
-      : {},
+    headers: useServerDiscovery ? getAgentMeridianHeaders() : {},
   });
 
   if (!res.ok) {
@@ -464,16 +463,14 @@ export async function getTopCandidates({ limit = 10 } = {}) {
 export async function getPoolDetail({ pool_address, timeframe = "5m" }) {
   const useServerDiscovery = !!config.api.publicApiKey;
   const url = useServerDiscovery
-    ? `${config.api.url}/discovery/pools/${pool_address}?timeframe=${encodeURIComponent(timeframe)}`
+    ? `${getAgentMeridianBase()}/discovery/pools/${pool_address}?timeframe=${encodeURIComponent(timeframe)}`
     : `${POOL_DISCOVERY_BASE}/pools?` +
       `page_size=1` +
       `&filter_by=${encodeURIComponent(`pool_address=${pool_address}`)}` +
       `&timeframe=${timeframe}`;
 
   const res = await fetch(url, {
-    headers: useServerDiscovery && config.api.publicApiKey
-      ? { "x-api-key": config.api.publicApiKey }
-      : {},
+    headers: useServerDiscovery ? getAgentMeridianHeaders() : {},
   });
 
   if (!res.ok) {

@@ -1,15 +1,9 @@
 /**
- * signal-tracker.js — Captures screening signals at deploy time for Darwinian weighting.
+ * signal-tracker.js — Stages screening signals for later attribution.
  *
- * During screening, signals are "staged" for each candidate pool.
- * When deploy_position fires, the staged signals are retrieved and stored
- * in state.json alongside the position, so we know exactly what signals
- * were present when the decision was made.
- *
- * This enables post-hoc analysis: which signals actually predicted wins?
+ * Deploy-time persistence is not currently wired, so staged signals are
+ * short-lived context rather than durable performance data.
  */
-
-import { log } from "./logger.js";
 
 // In-memory staging area — cleared after retrieval or after 10 minutes
 const _staged = new Map();
@@ -32,26 +26,4 @@ export function stageSignals(poolAddress, signals) {
       _staged.delete(addr);
     }
   }
-}
-
-/**
- * Retrieve and clear staged signals for a pool.
- * Called from deployPosition after the position is created.
- * @param {string} poolAddress
- * @returns {object|null} Signal snapshot or null if not staged
- */
-export function getAndClearStagedSignals(poolAddress) {
-  const data = _staged.get(poolAddress);
-  if (!data) return null;
-  _staged.delete(poolAddress);
-  const { staged_at, ...signals } = data;
-  log("signals", `Retrieved staged signals for ${poolAddress.slice(0, 8)}: ${Object.keys(signals).filter(k => signals[k] != null).length} signals`);
-  return signals;
-}
-
-/**
- * Get all currently staged pool addresses (for debugging).
- */
-export function getStagedPools() {
-  return [..._staged.keys()];
 }
