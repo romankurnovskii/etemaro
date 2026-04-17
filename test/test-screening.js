@@ -18,8 +18,8 @@ async function main() {
     console.log("\nTop pool:");
     console.log(`  Name: ${best.name}`);
     console.log(`  Pool: ${best.pool}`);
-    console.log(`  Fee/TVL ratio: ${best.fee_tvl_ratio}`);
-    console.log(`  Volume 24h: $${best.volume_24h?.toLocaleString()}`);
+    console.log(`  Fee/active TVL ratio: ${best.fee_active_tvl_ratio ?? best.fee_tvl_ratio}`);
+    console.log(`  Volume window: $${best.volume_window?.toLocaleString()}`);
     console.log(`  Active TVL: $${best.active_tvl?.toLocaleString()}`);
     console.log(`  Organic score: ${best.organic_score}`);
     console.log(`  Volatility: ${best.volatility}`);

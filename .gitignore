@@ -16,6 +16,9 @@ smart-wallets.json
 pool-memory.json
 token-blacklist.json
 strategy-library.json
+decision-log.json
+hivemind-cache.json
+signal-weights.json
 
 # Logs
 logs/
@@ -25,6 +28,9 @@ logs/
 
 # Dev context
 context.md
+CONTEXT.md
+dev-blocklist.json
+docs/
 
 # Discord listener queue
 discord-signals.json

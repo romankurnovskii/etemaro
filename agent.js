@@ -28,6 +28,7 @@ const GENERAL_INTENT_ONLY_TOOLS = new Set([
 
 // Intent → tool subsets for GENERAL role
 const INTENT_TOOLS = {
+  decisions:   new Set(["get_recent_decisions"]),
   deploy:      new Set(["deploy_position", "get_top_candidates", "get_active_bin", "get_pool_memory", "check_smart_wallets_on_pool", "get_token_holders", "get_token_narrative", "get_token_info", "search_pools", "get_wallet_balance", "get_my_positions", "add_pool_note"]),
   close:       new Set(["close_position", "get_my_positions", "get_position_pnl", "get_wallet_balance", "swap_token"]),
   claim:       new Set(["claim_fees", "get_my_positions", "get_position_pnl", "get_wallet_balance"]),
@@ -37,7 +38,7 @@ const INTENT_TOOLS = {
   selfupdate:  new Set(["self_update"]),
   balance:     new Set(["get_wallet_balance", "get_my_positions", "get_wallet_positions"]),
   positions:   new Set(["get_my_positions", "get_position_pnl", "get_wallet_balance", "set_position_note", "get_wallet_positions"]),
-  strategy:    new Set(["list_strategies", "get_strategy", "add_strategy", "remove_strategy", "set_active_strategy"]),
+  strategy:    new Set(["list_strategies", "get_strategy", "add_strategy", "update_strategy", "delete_strategy", "remove_strategy", "set_active_strategy"]),
   screen:      new Set(["get_top_candidates", "get_token_holders", "get_token_narrative", "get_token_info", "search_pools", "check_smart_wallets_on_pool", "get_pool_detail", "get_my_positions", "discover_pools"]),
   memory:      new Set(["get_pool_memory", "add_pool_note", "list_blacklist", "add_to_blacklist", "remove_from_blacklist"]),
   smartwallet: new Set(["add_smart_wallet", "remove_smart_wallet", "list_smart_wallets", "check_smart_wallets_on_pool"]),
@@ -47,6 +48,7 @@ const INTENT_TOOLS = {
 };
 
 const INTENT_PATTERNS = [
+  { intent: "decisions",   re: /\b(why did you|why'd you|why was (?:this|that|it)|what made you|what was the reason|why no deploy|why didn't you deploy|why did you close|why did you deploy|why did you skip)\b/i },
   { intent: "deploy",      re: /\b(deploy|open|add liquidity|lp into|invest in)\b/i },
   { intent: "close",       re: /\b(close|exit|withdraw|remove liquidity|shut down)\b/i },
   { intent: "claim",       re: /\b(claim|harvest|collect)\b.*\bfee/i },
@@ -87,6 +89,7 @@ import { log } from "./logger.js";
 import { config } from "./config.js";
 import { getStateSummary } from "./state.js";
 import { getLessonsForPrompt, getPerformanceSummary } from "./lessons.js";
+import { getDecisionSummary } from "./decision-log.js";
 
 // Supports OpenRouter (default) or any OpenAI-compatible local server (e.g. LM Studio)
 // To use LM Studio: set LLM_BASE_URL=http://localhost:1234/v1 and LLM_API_KEY=lm-studio in .env
@@ -98,12 +101,17 @@ const client = new OpenAI({
 
 const DEFAULT_MODEL = process.env.LLM_MODEL || "openrouter/healer-alpha";
 
-const TOOL_REQUIRED_INTENTS = /\b(deploy|open position|open|add liquidity|lp into|invest in|close|exit|withdraw|remove liquidity|claim|harvest|collect|swap|convert|sell|exchange|block|unblock|blacklist|self.?update|pull latest|git pull|update yourself|config|setting|threshold|set |change|update |balance|wallet|position|portfolio|pnl|yield|range|screen|candidate|find pool|search|research|token|smart wallet|whale|watch.?list|tracked wallet|study top|top lpers?|lp behavior|who.?s lping|performance|history|stats|report|lesson|learned|teach|pin|unpin)\b/i;
+const MUTATING_TOOL_INTENTS = /\b(deploy|open position|add liquidity|lp into|invest in|close|exit|withdraw|remove liquidity|claim|harvest|collect|swap|convert|sell|exchange|block|unblock|blacklist|add smart wallet|remove smart wallet|add wallet|remove wallet|pin|unpin|clear lesson|add lesson|set active strategy|remove strategy|add strategy|set |change |update |self.?update|pull latest|git pull|update yourself)\b/i;
+const LIVE_DATA_TOOL_INTENTS = /\b(balance|wallet|position|portfolio|pnl|yield|range|show positions|open positions|screen|candidate|find pool|search|research|analyze|check pool|token holders|narrative|study top|top lpers?|lp behavior|who.?s lping|performance|history|stats|report|list smart wallets|list blacklist|list blocked deployers|list lessons)\b/i;
+const CONFIG_READ_ONLY_INTENTS = /\b(check|show|what(?:'s| is)?|review|inspect|see)\b.*\b(config|settings?|thresholds?)\b/i;
+const DECISION_EXPLANATION_INTENTS = /\b(why did you|why'd you|why was (?:this|that|it)|what made you|what was the reason|why no deploy|why didn't you deploy|why did you close|why did you deploy|why did you skip)\b/i;
 
-function shouldRequireRealToolUse(goal, agentType, requireTool) {
-  if (requireTool) return true;
+function shouldRequireRealToolUse(goal, agentType, interactive = false) {
   if (agentType === "MANAGER") return false;
-  return TOOL_REQUIRED_INTENTS.test(goal);
+  if (DECISION_EXPLANATION_INTENTS.test(goal)) return false;
+  if (CONFIG_READ_ONLY_INTENTS.test(goal)) return false;
+  if (MUTATING_TOOL_INTENTS.test(goal)) return true;
+  return interactive && LIVE_DATA_TOOL_INTENTS.test(goal);
 }
 
 function buildMessages(systemPrompt, sessionHistory, goal, providerMode = "system") {
@@ -142,13 +150,22 @@ function isToolChoiceRequiredError(error) {
  * @returns {string} - The agent's final text response
  */
 export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHistory = [], agentType = "GENERAL", model = null, maxOutputTokens = null, options = {}) {
-  const { requireTool = false, interactive = false, onToolStart = null, onToolFinish = null } = options;
+  const { interactive = false, onToolStart = null, onToolFinish = null } = options;
   // Build dynamic system prompt with current portfolio state
   const [portfolio, positions] = await Promise.all([getWalletBalances(), getMyPositions()]);
   const stateSummary = getStateSummary();
   const lessons = getLessonsForPrompt({ agentType });
   const perfSummary = getPerformanceSummary();
-  const systemPrompt = buildSystemPrompt(agentType, portfolio, positions, stateSummary, lessons, perfSummary);
+  const decisionSummary = getDecisionSummary();
+  let weightsSummary = null;
+  if (agentType === "SCREENER") {
+    try {
+      const { getWeightsSummary } = await import("./signal-weights.js");
+      const { config } = await import("./config.js");
+      if (config.darwin?.enabled) weightsSummary = getWeightsSummary();
+    } catch { /* signal-weights not critical */ }
+  }
+  const systemPrompt = buildSystemPrompt(agentType, portfolio, positions, stateSummary, lessons, perfSummary, weightsSummary, decisionSummary);
 
   let providerMode = "system";
   let messages = buildMessages(systemPrompt, sessionHistory, goal, providerMode);
@@ -159,7 +176,7 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
   // These lock after first attempt regardless of success — retrying them is always wrong
   const NO_RETRY_TOOLS = new Set(["deploy_position"]);
   const firedOnce = new Set();
-  const mustUseRealTool = shouldRequireRealToolUse(goal, agentType, requireTool);
+  const mustUseRealTool = shouldRequireRealToolUse(goal, agentType, interactive);
   let sawToolCall = false;
   let noToolRetryCount = 0;
 

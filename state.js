@@ -222,7 +222,7 @@ export function setPositionInstruction(position_address, instruction) {
   return true;
 }
 
-export function queuePeakConfirmation(position_address, candidatePnlPct) {
+export function queuePeakConfirmation(position_address, candidatePnlPct, options = {}) {
   if (candidatePnlPct == null) return false;
   const state = load();
   const pos = state.positions[position_address];
@@ -230,6 +230,15 @@ export function queuePeakConfirmation(position_address, candidatePnlPct) {
 
   const currentPeak = pos.peak_pnl_pct ?? 0;
   if (candidatePnlPct <= currentPeak) return false;
+
+  if (options.immediate) {
+    pos.peak_pnl_pct = candidatePnlPct;
+    pos.pending_peak_pnl_pct = null;
+    pos.pending_peak_started_at = null;
+    save(state);
+    log("state", `Position ${position_address} peak PnL accepted at ${candidatePnlPct.toFixed(2)}% from relay poll`);
+    return true;
+  }
 
   const changed =
     pos.pending_peak_pnl_pct == null ||
