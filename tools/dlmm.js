@@ -34,6 +34,12 @@ let _DLMM = null;
 let _StrategyType = null;
 let _getBinIdFromPrice = null;
 let _getPriceOfBinByBinId = null;
+let _getBinArrayKeysCoverage = null;
+let _getBinArrayIndexesCoverage = null;
+let _deriveBinArrayBitmapExtension = null;
+let _isOverflowDefaultBinArrayBitmap = null;
+let _BIN_ARRAY_FEE = null;
+let _BIN_ARRAY_BITMAP_FEE = null;
 
 async function getDLMM() {
   if (!_DLMM) {
@@ -42,12 +48,24 @@ async function getDLMM() {
     _StrategyType = mod.StrategyType;
     _getBinIdFromPrice = mod.default?.getBinIdFromPrice;
     _getPriceOfBinByBinId = mod.getPriceOfBinByBinId;
+    _getBinArrayKeysCoverage = mod.getBinArrayKeysCoverage;
+    _getBinArrayIndexesCoverage = mod.getBinArrayIndexesCoverage;
+    _deriveBinArrayBitmapExtension = mod.deriveBinArrayBitmapExtension;
+    _isOverflowDefaultBinArrayBitmap = mod.isOverflowDefaultBinArrayBitmap;
+    _BIN_ARRAY_FEE = mod.BIN_ARRAY_FEE;
+    _BIN_ARRAY_BITMAP_FEE = mod.BIN_ARRAY_BITMAP_FEE;
   }
   return {
     DLMM: _DLMM,
     StrategyType: _StrategyType,
     getBinIdFromPrice: _getBinIdFromPrice,
     getPriceOfBinByBinId: _getPriceOfBinByBinId,
+    getBinArrayKeysCoverage: _getBinArrayKeysCoverage,
+    getBinArrayIndexesCoverage: _getBinArrayIndexesCoverage,
+    deriveBinArrayBitmapExtension: _deriveBinArrayBitmapExtension,
+    isOverflowDefaultBinArrayBitmap: _isOverflowDefaultBinArrayBitmap,
+    BIN_ARRAY_FEE: _BIN_ARRAY_FEE,
+    BIN_ARRAY_BITMAP_FEE: _BIN_ARRAY_BITMAP_FEE,
   };
 }
 
@@ -119,6 +137,111 @@ function normalizeExecutionSignatures(result) {
     signatures.push(value);
   }
   return signatures;
+}
+
+const METEORA_INIT_BIN_ARRAY_DISCRIMINATOR = Buffer.from([35, 86, 19, 185, 78, 212, 75, 211]).toString("hex");
+const METEORA_INIT_BITMAP_EXTENSION_DISCRIMINATOR = Buffer.from([47, 157, 226, 180, 12, 240, 33, 71]).toString("hex");
+
+function getDlmmProgramId() {
+  return new PublicKey("LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo");
+}
+
+function formatSolFee(value) {
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? number.toFixed(8).replace(/0+$/, "").replace(/\.$/, "") : "unknown";
+}
+
+async function assertRangeDoesNotRequireBinArrayInitialization(pool, minBinId, maxBinId) {
+  const {
+    getBinArrayKeysCoverage,
+    getBinArrayIndexesCoverage,
+    deriveBinArrayBitmapExtension,
+    isOverflowDefaultBinArrayBitmap,
+    BIN_ARRAY_FEE,
+    BIN_ARRAY_BITMAP_FEE,
+  } = await getDLMM();
+
+  if (!getBinArrayKeysCoverage || !getBinArrayIndexesCoverage) {
+    throw new Error("Cannot verify Meteora bin-array initialization risk; refusing deploy.");
+  }
+
+  const programId = getDlmmProgramId();
+  const poolPubkey = new PublicKey(pool.pubkey?.toString?.() || pool.lbPair?.publicKey?.toString?.() || pool.lbPair?.pubkey?.toString?.());
+  const lower = new BN(Math.min(minBinId, maxBinId));
+  const upper = new BN(Math.max(minBinId, maxBinId));
+  const indexes = getBinArrayIndexesCoverage(lower, upper);
+  const keys = getBinArrayKeysCoverage(lower, upper, poolPubkey, programId);
+  const accounts = await getConnection().getMultipleAccountsInfo(keys, "confirmed");
+  const missing = accounts
+    .map((account, index) => account ? null : {
+      index: indexes[index]?.toString?.() ?? String(index),
+      address: keys[index].toString(),
+    })
+    .filter(Boolean);
+
+  if (missing.length > 0) {
+    const totalFee = missing.length * Number(BIN_ARRAY_FEE ?? 0.07143744);
+    const sample = missing.slice(0, 3).map((entry) => `${entry.index}:${entry.address.slice(0, 8)}`).join(", ");
+    throw new Error(
+      `Deploy skipped: selected range requires ${missing.length} missing Meteora bin-array initialization(s) ` +
+      `(~${formatSolFee(totalFee)} SOL non-refundable pool rent; ${formatSolFee(BIN_ARRAY_FEE ?? 0.07143744)} SOL each). ` +
+      `Missing indexes: ${sample}${missing.length > 3 ? ", ..." : ""}. Pick an already-initialized range/pool.`,
+    );
+  }
+
+  if (deriveBinArrayBitmapExtension && isOverflowDefaultBinArrayBitmap) {
+    const needsBitmapExtension = indexes.some((index) => isOverflowDefaultBinArrayBitmap(index));
+    if (needsBitmapExtension) {
+      const [bitmapExtension] = deriveBinArrayBitmapExtension(poolPubkey, programId);
+      const account = await getConnection().getAccountInfo(bitmapExtension, "confirmed");
+      if (!account) {
+        throw new Error(
+          `Deploy skipped: selected range requires Meteora bin-array bitmap extension initialization ` +
+          `(~${formatSolFee(BIN_ARRAY_BITMAP_FEE ?? 0.01180416)} SOL non-refundable pool rent). Pick a closer initialized range/pool.`,
+        );
+      }
+    }
+  }
+}
+
+function assertNoInitializeBinArrayInstructions(serializedTxs) {
+  const offenders = [];
+  for (const serialized of serializedTxs || []) {
+    if (typeof serialized !== "string" || serialized.length === 0) continue;
+    for (const discriminator of getDlmmInstructionDiscriminators(serialized)) {
+      if (discriminator === METEORA_INIT_BIN_ARRAY_DISCRIMINATOR) {
+        offenders.push("initializeBinArray");
+      } else if (discriminator === METEORA_INIT_BITMAP_EXTENSION_DISCRIMINATOR) {
+        offenders.push("initializeBinArrayBitmapExtension");
+      }
+    }
+  }
+  if (offenders.length > 0) {
+    throw new Error(
+      `Deploy skipped: generated transaction includes Meteora ${[...new Set(offenders)].join(" / ")} ` +
+      "instruction(s), which would charge non-refundable pool initialization rent.",
+    );
+  }
+}
+
+function getDlmmInstructionDiscriminators(serialized) {
+  const bytes = Buffer.from(serialized, "base64");
+  const dlmmProgramId = getDlmmProgramId().toString();
+  try {
+    const versioned = VersionedTransaction.deserialize(bytes);
+    return versioned.message.compiledInstructions
+      .map((ix) => {
+        const programId = versioned.message.staticAccountKeys[ix.programIdIndex]?.toString();
+        if (programId !== dlmmProgramId) return null;
+        return Buffer.from(ix.data || []).subarray(0, 8).toString("hex");
+      })
+      .filter(Boolean);
+  } catch {
+    const legacy = Transaction.from(bytes);
+    return legacy.instructions
+      .map((ix) => ix.programId.toString() === dlmmProgramId ? Buffer.from(ix.data || []).subarray(0, 8).toString("hex") : null)
+      .filter(Boolean);
+  }
 }
 
 // ─── Pool Cache ────────────────────────────────────────────────
@@ -305,6 +428,8 @@ export async function deployPosition({
     );
   }
 
+  await assertRangeDoesNotRequireBinArrayInitialization(pool, minBinId, maxBinId);
+
   const minPrice = Number(getPriceOfBinByBinId(minBinId, actualBinStep).toString());
   const maxPrice = Number(getPriceOfBinByBinId(maxBinId, actualBinStep).toString());
   const downsideCoveragePct = activePrice > 0 ? ((activePrice - minPrice) / activePrice) * 100 : null;
@@ -356,6 +481,7 @@ export async function deployPosition({
       if (addLiquidityUnsigned.length + swapUnsigned.length === 0) {
         throw new Error("LPAgent order returned no transactions. Check the pool address, deploy amount, and selected range.");
       }
+      assertNoInitializeBinArrayInstructions(addLiquidityUnsigned);
 
       const addLiquidity = signSerializedTransactions(addLiquidityUnsigned, wallet);
       const swap = signSerializedTransactions(swapUnsigned, wallet);

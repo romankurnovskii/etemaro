@@ -273,6 +273,34 @@ const outOfRangeWaitMinutes = await askNum(
   { min: 1 }
 );
 
+const repeatDeployCooldownEnabled = await askBool(
+  "Cooldown token/pool after repeated fee-generating deploys?",
+  p("repeatDeployCooldownEnabled", true)
+);
+
+const repeatDeployCooldownTriggerCount = await askNum(
+  "Repeat deploy cooldown trigger count",
+  p("repeatDeployCooldownTriggerCount", 3),
+  { min: 1 }
+);
+
+const repeatDeployCooldownHours = await askNum(
+  "Repeat deploy cooldown hours",
+  p("repeatDeployCooldownHours", 12),
+  { min: 0 }
+);
+
+const repeatDeployCooldownScope = await ask(
+  "Repeat deploy cooldown scope (pool/token/both)",
+  p("repeatDeployCooldownScope", "token")
+);
+
+const repeatDeployCooldownMinFeeEarnedPct = await askNum(
+  "Repeat deploy min fee earned %",
+  p("repeatDeployCooldownMinFeeEarnedPct", 0),
+  { min: 0 }
+);
+
 // ─── Section 7: Scheduling ────────────────────────────────────────────────────
 console.log("\n── Scheduling ────────────────────────────────────────────────");
 
@@ -378,6 +406,11 @@ const userConfig = {
   takeProfitFeePct,
   stopLossPct,
   outOfRangeWaitMinutes,
+  repeatDeployCooldownEnabled,
+  repeatDeployCooldownTriggerCount,
+  repeatDeployCooldownHours,
+  repeatDeployCooldownScope,
+  repeatDeployCooldownMinFeeEarnedPct,
   managementIntervalMin,
   screeningIntervalMin,
   llmProvider: provider.key,
@@ -410,6 +443,7 @@ console.log(`
   Take profit:  fees ≥ ${takeProfitFeePct}%
   Stop loss:    ${stopLossPct}% price drop
   OOR close:    after ${outOfRangeWaitMinutes} min
+  Repeat CD:    ${repeatDeployCooldownEnabled ? `${repeatDeployCooldownTriggerCount}x / ${repeatDeployCooldownHours}h / ${repeatDeployCooldownScope}` : "disabled"}
 
   Cycles:       management every ${managementIntervalMin}m  ·  screening every ${screeningIntervalMin}m
   Provider:     ${provider.label.split("(")[0].trim()}
