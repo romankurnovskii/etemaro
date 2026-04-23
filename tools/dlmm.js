@@ -1253,16 +1253,6 @@ export async function closePosition({ position_address, reason }) {
       const closeToBinId = livePosition?.upper_bin ?? tracked?.bin_range?.max ?? 887272;
       const closeOutput = "allToken1";
 
-      const quotes = await agentMeridianJson("/execution/zap-out/quotes", {
-        method: "POST",
-        headers: getAgentMeridianHeaders({ json: true }),
-        body: JSON.stringify({
-          agentId: getAgentIdForRequests(),
-          positionId: position_address,
-          bps: 10000,
-        }),
-      });
-
       const order = await agentMeridianJson("/execution/zap-out/order", {
         method: "POST",
         headers: getAgentMeridianHeaders({ json: true }),
@@ -1278,14 +1268,13 @@ export async function closePosition({ position_address, reason }) {
           type: "meteora",
           fromBinId: closeFromBinId,
           toBinId: closeToBinId,
-          quoteRequestId: quotes.requestId,
         }),
       });
 
       const closeUnsigned = order?.order?.transactions?.close || [];
       const swapUnsigned = order?.order?.transactions?.swap || [];
       if (closeUnsigned.length + swapUnsigned.length === 0) {
-        throw new Error("LPAgent close order returned no transactions. Check the position, quote response, and selected output.");
+        throw new Error("LPAgent close order returned no transactions. Check the position, selected output, and relay order response.");
       }
 
       const submit = await agentMeridianJson("/execution/zap-out/submit", {
