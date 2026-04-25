@@ -5,6 +5,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+.envrypt
 
 # User config (contains RPC URL, wallet key, API keys)
 user-config.json

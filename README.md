@@ -82,6 +82,16 @@ DRY_RUN=true                            # set false for live trading
 
 > Never put your private key or API keys in `user-config.json` — use `.env` only. Both files are gitignored.
 
+Optional encrypted `.env` flow:
+
+```bash
+cp .env .env.raw
+printf "replace-with-a-long-local-key\n" > .envrypt
+npm run env:encrypt
+```
+
+Meridian loads envrypt-style encrypted values automatically. Keep `.env.raw` and `.envrypt` local; both are gitignored.
+
 Copy config and edit as needed:
 
 ```bash

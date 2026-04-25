@@ -9,6 +9,7 @@
   },
   "scripts": {
     "setup": "node setup.js",
+    "env:encrypt": "node scripts/envrypt.js encrypt",
     "start": "node index.js",
     "dev": "DRY_RUN=true node index.js",
     "test:screen": "node test/test-screening.js",

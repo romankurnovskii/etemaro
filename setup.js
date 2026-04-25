@@ -4,6 +4,7 @@
  * Run: npm run setup
  */
 
+import "./envcrypt.js";
 import readline from "readline";
 import fs from "fs";
 import path from "path";

@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./envcrypt.js";
 import cron from "node-cron";
 import readline from "readline";
 import { agentLoop } from "./agent.js";

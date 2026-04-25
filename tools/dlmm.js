@@ -2,7 +2,10 @@ import {
   Connection,
   Keypair,
   PublicKey,
+  SystemInstruction,
+  SystemProgram,
   Transaction,
+  TransactionInstruction,
   VersionedTransaction,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
@@ -117,10 +120,147 @@ function signSerializedTransaction(serialized, wallet) {
   }
 }
 
+function deserializeSignedTransaction(signedBase64) {
+  const bytes = Buffer.from(signedBase64, "base64");
+  try {
+    return VersionedTransaction.deserialize(bytes);
+  } catch {
+    return Transaction.from(bytes);
+  }
+}
+
+function getStaticAccountKeyStrings(tx) {
+  if (tx instanceof VersionedTransaction) {
+    return tx.message.staticAccountKeys.map((key) => key.toString());
+  }
+  return tx.compileMessage().accountKeys.map((key) => key.toString());
+}
+
+function getTransactionInstructions(tx) {
+  if (!(tx instanceof VersionedTransaction)) return tx.instructions;
+
+  const keys = tx.message.staticAccountKeys;
+  return tx.message.compiledInstructions
+    .map((ix) => {
+      const programId = keys[ix.programIdIndex];
+      if (!programId) return null;
+      const indexes = ix.accountKeyIndexes || ix.accounts || [];
+      const accounts = indexes
+        .map((accountIndex) => keys[accountIndex])
+        .filter(Boolean);
+      return new TransactionInstruction({
+        programId,
+        keys: accounts.map((pubkey) => ({ pubkey, isSigner: false, isWritable: false })),
+        data: Buffer.from(ix.data),
+      });
+    })
+    .filter(Boolean);
+}
+
+function assertNoUnsafeSystemTransfer(tx, wallet, allowedDestinations = []) {
+  const owner = wallet.publicKey.toString();
+  const allowed = new Set(allowedDestinations.filter(Boolean).map(String));
+
+  for (const ix of getTransactionInstructions(tx)) {
+    if (!ix.programId.equals(SystemProgram.programId)) continue;
+
+    let type = null;
+    try {
+      type = SystemInstruction.decodeInstructionType(ix);
+    } catch {
+      continue;
+    }
+    if (type !== "Transfer" && type !== "TransferWithSeed") continue;
+
+    const decoded = type === "Transfer"
+      ? SystemInstruction.decodeTransfer(ix)
+      : SystemInstruction.decodeTransferWithSeed(ix);
+    const source = decoded.fromPubkey?.toString();
+    const destination = decoded.toPubkey?.toString();
+    if (source === owner && !allowed.has(destination)) {
+      throw new Error(
+        `Relay transaction contains direct SOL transfer from owner to ${destination?.slice(0, 8) || "unknown"}.`,
+      );
+    }
+  }
+}
+
 function signSerializedTransactions(serializedTxs, wallet) {
   return (serializedTxs || [])
     .filter((entry) => typeof entry === "string" && entry.length > 0)
     .map((entry) => signSerializedTransaction(entry, wallet));
+}
+
+async function signAndSimulateRelayTransactions(serializedTxs, wallet, {
+  label,
+  allowedDebitMints = [],
+  allowedSystemTransferDestinations = [],
+  maxSolLoss = 0.05,
+  requiredStaticAccounts = [],
+} = {}) {
+  const signed = [];
+  const owner = wallet.publicKey.toString();
+  const allowedMints = new Set(allowedDebitMints.filter(Boolean).map(String));
+  const maxLamportLoss = Math.floor(Number(maxSolLoss) * 1e9);
+
+  for (const [index, serialized] of (serializedTxs || []).entries()) {
+    if (typeof serialized !== "string" || serialized.length === 0) continue;
+
+    const signedBase64 = signSerializedTransaction(serialized, wallet);
+    const tx = deserializeSignedTransaction(signedBase64);
+    assertNoUnsafeSystemTransfer(tx, wallet, allowedSystemTransferDestinations);
+    const staticKeys = getStaticAccountKeyStrings(tx);
+    for (const account of requiredStaticAccounts.filter(Boolean)) {
+      if (!staticKeys.includes(String(account))) {
+        throw new Error(`Relay ${label || "transaction"} ${index + 1} missing required account ${String(account).slice(0, 8)}.`);
+      }
+    }
+
+    const ownerIndex = staticKeys.indexOf(owner);
+    const simulation = await getConnection().simulateTransaction(tx, {
+      sigVerify: false,
+      replaceRecentBlockhash: false,
+    });
+    const value = simulation.value;
+    if (value.err) {
+      throw new Error(`Relay ${label || "transaction"} ${index + 1} simulation failed: ${JSON.stringify(value.err)}`);
+    }
+
+    if (ownerIndex >= 0 && value.preBalances?.[ownerIndex] != null && value.postBalances?.[ownerIndex] != null) {
+      const lamportDelta = value.postBalances[ownerIndex] - value.preBalances[ownerIndex];
+      if (lamportDelta < -maxLamportLoss) {
+        throw new Error(
+          `Relay ${label || "transaction"} ${index + 1} would debit ${(Math.abs(lamportDelta) / 1e9).toFixed(6)} SOL from owner.`,
+        );
+      }
+    }
+
+    const preByMint = new Map();
+    for (const balance of value.preTokenBalances || []) {
+      if (balance.owner !== owner) continue;
+      preByMint.set(balance.mint, BigInt(balance.uiTokenAmount?.amount || "0"));
+    }
+    for (const balance of value.postTokenBalances || []) {
+      if (balance.owner !== owner) continue;
+      const preAmount = preByMint.get(balance.mint) ?? 0n;
+      const postAmount = BigInt(balance.uiTokenAmount?.amount || "0");
+      if (postAmount < preAmount && !allowedMints.has(balance.mint)) {
+        throw new Error(
+          `Relay ${label || "transaction"} ${index + 1} would debit unrelated token mint ${balance.mint}.`,
+        );
+      }
+      preByMint.delete(balance.mint);
+    }
+    for (const [mint, preAmount] of preByMint) {
+      if (preAmount > 0n && !allowedMints.has(mint)) {
+        throw new Error(`Relay ${label || "transaction"} ${index + 1} would close/debit unrelated token mint ${mint}.`);
+      }
+    }
+
+    signed.push(signedBase64);
+  }
+
+  return signed;
 }
 
 function normalizeExecutionSignatures(result) {
@@ -1247,6 +1387,14 @@ export async function closePosition({ position_address, reason }) {
     const poolAddress = await lookupPoolForPosition(position_address, wallet.publicKey.toString());
     const poolMeta = await getPoolMetadata(poolAddress);
     if (shouldUseLpAgentRelay()) {
+      let relaySubmitted = false;
+      try {
+      const pool = await getPool(poolAddress);
+      const relayAllowedDebitMints = [
+        pool.lbPair.tokenXMint.toString(),
+        pool.lbPair.tokenYMint.toString(),
+        config.tokens.SOL,
+      ];
       const livePositions = await getMyPositions({ force: true, silent: true });
       const livePosition = livePositions?.positions?.find((position) => position.position === position_address);
       const closeFromBinId = livePosition?.lower_bin ?? tracked?.bin_range?.min ?? -887272;
@@ -1277,6 +1425,20 @@ export async function closePosition({ position_address, reason }) {
         throw new Error("LPAgent close order returned no transactions. Check the position, selected output, and relay order response.");
       }
 
+      const closeSigned = await signAndSimulateRelayTransactions(closeUnsigned, wallet, {
+        label: "zap-out close",
+        allowedDebitMints: relayAllowedDebitMints,
+        maxSolLoss: 0.05,
+        requiredStaticAccounts: [wallet.publicKey.toString(), position_address],
+      });
+      const swapSigned = await signAndSimulateRelayTransactions(swapUnsigned, wallet, {
+        label: "zap-out swap",
+        allowedDebitMints: relayAllowedDebitMints,
+        maxSolLoss: 0.05,
+        requiredStaticAccounts: [wallet.publicKey.toString()],
+      });
+
+      relaySubmitted = true;
       const submit = await agentMeridianJson("/execution/zap-out/submit", {
         method: "POST",
         headers: getAgentMeridianHeaders({ json: true }),
@@ -1284,8 +1446,8 @@ export async function closePosition({ position_address, reason }) {
           requestId: order.requestId,
           lastValidBlockHeight: order?.order?.lastValidBlockHeight,
           transactions: {
-            close: signSerializedTransactions(closeUnsigned, wallet),
-            swap: signSerializedTransactions(swapUnsigned, wallet),
+            close: closeSigned,
+            swap: swapSigned,
           },
         }),
       });
@@ -1440,6 +1602,10 @@ export async function closePosition({ position_address, reason }) {
         txs: txHashes,
         base_mint: livePosition?.base_mint || null,
       };
+      } catch (relayError) {
+        if (relaySubmitted) throw relayError;
+        log("close_warn", `Relay zap-out failed before submit; falling back to local close + Jupiter autoswap: ${relayError.message}`);
+      }
     }
 
     // Clear cached pool so SDK loads fresh position fee state
