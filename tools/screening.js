@@ -27,6 +27,73 @@ function scoreCandidate(pool) {
   return feeTvl * 1000 + organic * 10 + volume / 100 + holders / 100;
 }
 
+function numeric(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function includesCaseInsensitive(values, value) {
+  if (!Array.isArray(values) || values.length === 0 || !value) return false;
+  const needle = String(value).toLowerCase();
+  return values.some((entry) => String(entry).toLowerCase() === needle);
+}
+
+function getRawPoolScreeningRejectReason(pool, s) {
+  const base = pool?.token_x || {};
+  const quote = pool?.token_y || {};
+  const binStep = numeric(pool?.dlmm_params?.bin_step);
+  const tvl = numeric(pool?.tvl ?? pool?.active_tvl);
+  const feeActiveTvlRatio = numeric(pool?.fee_active_tvl_ratio);
+  const volume = numeric(pool?.volume);
+  const holders = numeric(pool?.base_token_holders);
+  const mcap = numeric(base?.market_cap);
+  const baseOrganic = numeric(base?.organic_score);
+  const quoteOrganic = numeric(quote?.organic_score);
+  const launchpad = base?.launchpad || pool?.base_token_launchpad || null;
+  const createdAt = numeric(base?.created_at);
+
+  if (s.excludeHighSupplyConcentration && pool?.base_token_has_high_supply_concentration === true) {
+    return "base token has high supply concentration";
+  }
+  if (pool?.base_token_has_critical_warnings === true) return "base token has critical warnings";
+  if (pool?.quote_token_has_critical_warnings === true) return "quote token has critical warnings";
+  if (pool?.base_token_has_high_single_ownership === true) return "base token has high single ownership";
+  if (pool?.pool_type && pool.pool_type !== "dlmm") return `pool_type ${pool.pool_type} is not dlmm`;
+
+  if (mcap == null || mcap < s.minMcap) return `mcap ${mcap ?? "unknown"} below minMcap ${s.minMcap}`;
+  if (mcap > s.maxMcap) return `mcap ${mcap} above maxMcap ${s.maxMcap}`;
+  if (holders == null || holders < s.minHolders) return `holders ${holders ?? "unknown"} below minHolders ${s.minHolders}`;
+  if (volume == null || volume < s.minVolume) return `volume ${volume ?? "unknown"} below minVolume ${s.minVolume}`;
+  if (tvl == null || tvl < s.minTvl) return `TVL ${tvl ?? "unknown"} below minTvl ${s.minTvl}`;
+  if (s.maxTvl != null && tvl > s.maxTvl) return `TVL ${tvl} above maxTvl ${s.maxTvl}`;
+  if (binStep == null || binStep < s.minBinStep) return `bin_step ${binStep ?? "unknown"} below minBinStep ${s.minBinStep}`;
+  if (binStep > s.maxBinStep) return `bin_step ${binStep} above maxBinStep ${s.maxBinStep}`;
+  if (feeActiveTvlRatio == null || feeActiveTvlRatio < s.minFeeActiveTvlRatio) {
+    return `fee/active-TVL ${feeActiveTvlRatio ?? "unknown"} below minFeeActiveTvlRatio ${s.minFeeActiveTvlRatio}`;
+  }
+  if (baseOrganic == null || baseOrganic < s.minOrganic) {
+    return `base organic ${baseOrganic ?? "unknown"} below minOrganic ${s.minOrganic}`;
+  }
+  if (quoteOrganic == null || quoteOrganic < s.minQuoteOrganic) {
+    return `quote organic ${quoteOrganic ?? "unknown"} below minQuoteOrganic ${s.minQuoteOrganic}`;
+  }
+  if (Array.isArray(s.allowedLaunchpads) && s.allowedLaunchpads.length > 0 && !includesCaseInsensitive(s.allowedLaunchpads, launchpad)) {
+    return `launchpad ${launchpad || "unknown"} not in allow-list`;
+  }
+  if (includesCaseInsensitive(s.blockedLaunchpads, launchpad)) {
+    return `blocked launchpad (${launchpad})`;
+  }
+  if (s.minTokenAgeHours != null) {
+    const maxCreatedAt = Date.now() - s.minTokenAgeHours * 3_600_000;
+    if (createdAt == null || createdAt > maxCreatedAt) return `token age below minTokenAgeHours ${s.minTokenAgeHours}`;
+  }
+  if (s.maxTokenAgeHours != null) {
+    const minCreatedAt = Date.now() - s.maxTokenAgeHours * 3_600_000;
+    if (createdAt == null || createdAt < minCreatedAt) return `token age above maxTokenAgeHours ${s.maxTokenAgeHours}`;
+  }
+  return null;
+}
+
 async function fetchDiscordSignalCandidates() {
   const res = await fetch(`${getAgentMeridianBase()}/signals/discord/candidates`, {
     headers: getAgentMeridianHeaders(),
@@ -201,7 +268,16 @@ export async function discoverPools({
     }
   }
 
-  const condensed = rawPools.map(condensePool);
+  const filteredExamples = [];
+  const thresholdedRawPools = rawPools.filter((pool) => {
+    const reason = getRawPoolScreeningRejectReason(pool, s);
+    if (!reason) return true;
+    filteredExamples.push({ name: pool.name || pool.pool_address || "unknown pool", reason });
+    if (pool.discord_signal) log("screening", `Discord signal filtered: ${pool.name || pool.pool_address} — ${reason}`);
+    return false;
+  });
+
+  const condensed = thresholdedRawPools.map(condensePool);
 
   // Hard-filter blacklisted tokens and blocked deployers (what pool discovery already gave us)
   let pools = condensed.filter((p) => {
@@ -255,6 +331,7 @@ export async function discoverPools({
   return {
     total: data.total,
     pools,
+    filtered_examples: filteredExamples,
   };
 }
 
@@ -264,17 +341,35 @@ export async function discoverPools({
  */
 export async function getTopCandidates({ limit = 10 } = {}) {
   const { config } = await import("../config.js");
-  const { pools } = await discoverPools({ page_size: 50 });
-  const filteredOut = [];
+  const discovery = await discoverPools({ page_size: 50 });
+  const { pools } = discovery;
+  const filteredOut = Array.isArray(discovery.filtered_examples) ? [...discovery.filtered_examples] : [];
 
   // Exclude pools where the wallet already has an open position
   const { getMyPositions } = await import("./dlmm.js");
   const { positions } = await getMyPositions();
   const occupiedPools = new Set(positions.map((p) => p.pool));
   const occupiedMints = new Set(positions.map((p) => p.base_mint).filter(Boolean));
+  const minTvl = Number(config.screening.minTvl ?? 0);
+  const maxTvl = config.screening.maxTvl == null ? null : Number(config.screening.maxTvl);
+  const minFeeActiveTvlRatio = Number(config.screening.minFeeActiveTvlRatio ?? 0);
 
   const eligible = pools
     .filter((p) => {
+      const tvl = Number(p.tvl ?? p.active_tvl ?? 0);
+      if (Number.isFinite(minTvl) && minTvl > 0 && tvl < minTvl) {
+        pushFilteredReason(filteredOut, p, `TVL $${tvl} below minTvl $${minTvl}`);
+        return false;
+      }
+      if (Number.isFinite(maxTvl) && maxTvl > 0 && tvl > maxTvl) {
+        pushFilteredReason(filteredOut, p, `TVL $${tvl} above maxTvl $${maxTvl}`);
+        return false;
+      }
+      const feeActiveTvlRatio = Number(p.fee_active_tvl_ratio);
+      if (Number.isFinite(minFeeActiveTvlRatio) && minFeeActiveTvlRatio > 0 && (!Number.isFinite(feeActiveTvlRatio) || feeActiveTvlRatio < minFeeActiveTvlRatio)) {
+        pushFilteredReason(filteredOut, p, `fee/active-TVL ${Number.isFinite(feeActiveTvlRatio) ? feeActiveTvlRatio : "unknown"} below minFeeActiveTvlRatio ${minFeeActiveTvlRatio}`);
+        return false;
+      }
       if (occupiedPools.has(p.pool)) {
         pushFilteredReason(filteredOut, p, "already have an open position in this pool");
         return false;
@@ -510,13 +605,11 @@ function condensePool(p) {
     fee_pct: p.fee_pct,
 
     // Core metrics (the numbers that matter)
+    tvl: round(p.tvl),
     active_tvl: round(p.active_tvl),
     fee_window: round(p.fee),
     volume_window: round(p.volume),
-    // API sometimes returns 0 for fee_active_tvl_ratio on short timeframes — compute from raw values as fallback
-    fee_active_tvl_ratio: p.fee_active_tvl_ratio > 0
-      ? fix(p.fee_active_tvl_ratio, 4)
-      : (p.active_tvl > 0 ? fix((p.fee / p.active_tvl) * 100, 4) : 0),
+    fee_active_tvl_ratio: p.fee_active_tvl_ratio != null ? fix(p.fee_active_tvl_ratio, 4) : null,
     volatility: fix(p.volatility, 2),
 
 

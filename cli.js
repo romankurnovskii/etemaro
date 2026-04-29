@@ -334,7 +334,7 @@ switch (subcommand) {
         fee_pct: pool.fee_pct,
         fee_active_tvl_ratio: pool.fee_active_tvl_ratio,
         volume: pool.volume_window,
-        tvl: pool.active_tvl,
+        tvl: pool.tvl ?? pool.active_tvl,
         volatility: pool.volatility,
         mcap: pool.mcap,
         organic_score: pool.organic_score,

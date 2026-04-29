@@ -29,8 +29,102 @@ import { execSync, spawn } from "child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const USER_CONFIG_PATH = path.join(__dirname, "../user-config.json");
+const POOL_DISCOVERY_BASE = "https://pool-discovery-api.datapi.meteora.ag";
 import { log, logAction } from "../logger.js";
 import { notifyDeploy, notifyClose, notifySwap } from "../telegram.js";
+
+function numberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function poolDetailTvl(pool) {
+  return numberOrNull(pool?.tvl ?? pool?.active_tvl ?? pool?.liquidity);
+}
+
+function poolDetailBinStep(pool) {
+  return numberOrNull(pool?.dlmm_params?.bin_step ?? pool?.pool_config?.bin_step);
+}
+
+function poolDetailFeeActiveTvlRatio(pool) {
+  return numberOrNull(pool?.fee_active_tvl_ratio);
+}
+
+async function fetchFreshPoolDetail(poolAddress) {
+  const timeframe = encodeURIComponent(config.screening.timeframe || "5m");
+  const filter = encodeURIComponent(`pool_address=${poolAddress}`);
+  const url = `${POOL_DISCOVERY_BASE}/pools?page_size=1&filter_by=${filter}&timeframe=${timeframe}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Pool Discovery API error: ${res.status} ${res.statusText}`);
+  const data = await res.json();
+  return (data?.data || [])[0] ?? null;
+}
+
+async function validateDeployPoolThresholds(args) {
+  let detail;
+  try {
+    detail = await fetchFreshPoolDetail(args.pool_address);
+    if (!detail) throw new Error(`Pool ${args.pool_address} not found`);
+  } catch (error) {
+    return {
+      pass: false,
+      reason: `Could not verify pool screening thresholds before deploy: ${error.message}`,
+    };
+  }
+
+  const tvl = poolDetailTvl(detail);
+  const minTvl = numberOrNull(config.screening.minTvl);
+  const maxTvl = numberOrNull(config.screening.maxTvl);
+  if (tvl == null) {
+    return {
+      pass: false,
+      reason: "Could not verify pool TVL before deploy.",
+    };
+  }
+  if (minTvl != null && minTvl > 0 && tvl < minTvl) {
+    return {
+      pass: false,
+      reason: `Pool TVL $${tvl} is below configured minTvl $${minTvl}.`,
+    };
+  }
+  if (maxTvl != null && maxTvl > 0 && tvl > maxTvl) {
+    return {
+      pass: false,
+      reason: `Pool TVL $${tvl} is above configured maxTvl $${maxTvl}.`,
+    };
+  }
+
+  const feeActiveTvlRatio = poolDetailFeeActiveTvlRatio(detail);
+  const minFeeActiveTvlRatio = numberOrNull(config.screening.minFeeActiveTvlRatio);
+  if (
+    minFeeActiveTvlRatio != null &&
+    minFeeActiveTvlRatio > 0 &&
+    (feeActiveTvlRatio == null || feeActiveTvlRatio < minFeeActiveTvlRatio)
+  ) {
+    return {
+      pass: false,
+      reason: `Pool fee/active-TVL ${feeActiveTvlRatio ?? "unknown"}% is below configured minFeeActiveTvlRatio ${minFeeActiveTvlRatio}%.`,
+    };
+  }
+
+  const actualBinStep = poolDetailBinStep(detail);
+  const minStep = numberOrNull(config.screening.minBinStep);
+  const maxStep = numberOrNull(config.screening.maxBinStep);
+  if (actualBinStep != null && minStep != null && actualBinStep < minStep) {
+    return {
+      pass: false,
+      reason: `Pool bin_step ${actualBinStep} is below configured minBinStep ${minStep}.`,
+    };
+  }
+  if (actualBinStep != null && maxStep != null && actualBinStep > maxStep) {
+    return {
+      pass: false,
+      reason: `Pool bin_step ${actualBinStep} is above configured maxBinStep ${maxStep}.`,
+    };
+  }
+
+  return { pass: true };
+}
 
 // Registered by index.js so update_config can restart cron jobs when intervals change
 let _cronRestarter = null;
@@ -491,6 +585,9 @@ export async function executeTool(name, args) {
 async function runSafetyChecks(name, args) {
   switch (name) {
     case "deploy_position": {
+      const poolThresholds = await validateDeployPoolThresholds(args);
+      if (!poolThresholds.pass) return poolThresholds;
+
       // Reject pools with bin_step out of configured range
       const minStep = config.screening.minBinStep;
       const maxStep = config.screening.maxBinStep;
