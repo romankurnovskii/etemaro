@@ -501,23 +501,43 @@ This analyzes closed position performance (win rate, avg PnL, fee yields) and au
 
 ## HiveMind
 
-HiveMind sync uses Agent Meridian by default. Shared lessons, presets, and performance summaries are routed through the configured Agent Meridian API.
+HiveMind sync uses Agent Meridian at `https://api.agentmeridian.xyz` by default with the built-in public key. Agents can register, pull shared lessons/presets, and push learning events without a separate registration flow.
 
-**What you get:** shared lessons, strategy presets, and crowd performance context from other Meridian agents.
+**What you get:**
+- Shared lessons from other Meridian agents
+- Strategy presets and crowd performance context
+- Role-aware lessons injected into future screener/manager prompts when `hiveMindPullMode` is `auto`
 
-**What you share:** lessons and closed-position performance. Wallet private keys and balances are never sent.
+**What you share:**
+- Lessons from `lessons.json`
+- Closed-position performance events: pool, pool name, base mint, strategy, close reason, PnL, fees, and hold time
+- Agent heartbeat metadata: agent ID, version, timestamp, and basic capability flags
+- **Private keys and wallet balances are never sent**
+
+HiveMind failures are non-blocking. If Agent Meridian is unavailable, the agent logs a warning and keeps running.
 
 ### Setup
 
-No manual HiveMind registration is required for the shared Agent Meridian setup. `hiveMindUrl`, `hiveMindApiKey`, and `publicApiKey` have built-in Agent Meridian defaults.
+No manual HiveMind registration command is required for the shared Agent Meridian setup. `agentId` is generated automatically on startup if it is missing.
+
+To use a private HiveMind API key, check the Telegram announcement channel and set it as `hiveMindApiKey`.
+
+Relevant config fields:
+
+```json
+{
+  "agentId": "",
+  "hiveMindUrl": "",
+  "hiveMindApiKey": "",
+  "hiveMindPullMode": "auto"
+}
+```
+
+Blank `hiveMindUrl` and `hiveMindApiKey` values intentionally fall back to the Agent Meridian defaults. Set `hiveMindPullMode` to `manual` if you do not want shared lessons and presets pulled automatically.
 
 ### Disable
 
-HiveMind disable behavior needs an explicit config flag before empty strings can be used as a disable mechanism. Empty strings currently fall back to Agent Meridian defaults.
-
-### Self-hosting
-
-See [meridian-hive](https://github.com/fciaf420/meridian-hive) for the server source.
+There is currently no empty-string disable path for HiveMind; blank values fall back to the built-in Agent Meridian defaults. A true off switch should be implemented as an explicit config flag before documenting HiveMind as disabled by clearing fields.
 
 ---
 
