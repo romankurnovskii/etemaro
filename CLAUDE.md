@@ -109,25 +109,28 @@ Sets defined in `agent.js:6-7`. If you add a tool, also add it to the relevant s
 
 Before `deploy_position` executes:
 - `bin_step` must be within `[minBinStep, maxBinStep]`
+- `volatility` must be a positive finite number when provided; fresh pool detail with volatility 0/null is rejected
+- Total range must be at least `max(35, minBinsBelow)` bins; 1-bin/tiny deploys are refused
 - Position count must be below `maxPositions` (force-fresh scan, no cache)
 - No duplicate pool allowed (same pool_address)
 - No duplicate base token allowed (same base_mint in another pool)
-- If `amount_x > 0`: strip `amount_y` and `amount_sol` (tokenX-only deploy — no SOL needed)
-- SOL balance must cover `amount_y + gasReserve` (skipped for tokenX-only)
+- `amount_x > 0` is rejected. Deploys are single-side SOL only (`amount_y` / `amount_sol`)
+- SOL balance must cover `amount_y + gasReserve`
 - `blockedLaunchpads` enforced in `getTopCandidates()` before LLM sees candidates
 
 ---
 
 ## bins_below Calculation (SCREENER)
 
-Linear formula based on pool volatility (set in screener prompt, `index.js`):
+Linear formula based on positive pool volatility (set in screener prompt, `index.js`):
 
 ```
-bins_below = round(35 + (volatility / 5) * 34), clamped to [35, 69]
+bins_below = round(minBinsBelow + (volatility / 5) * (maxBinsBelow - minBinsBelow)), clamped to [minBinsBelow, maxBinsBelow]
 ```
 
-- Low volatility (0) → 35 bins
-- High volatility (5+) → 69 bins
+- Default clamp is `[35, 69]`
+- `volatility <= 0`, null, or non-finite → skip/refuse deploy
+- High volatility (5+) → maxBinsBelow
 - Any value in between is valid (continuous, not tiered)
 
 ---

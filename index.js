@@ -1,6 +1,8 @@
 import "./envcrypt.js";
 import cron from "node-cron";
 import readline from "readline";
+import path from "path";
+import { fileURLToPath } from "url";
 import { agentLoop } from "./agent.js";
 import { log } from "./logger.js";
 import { getMyPositions, closePosition, getActiveBin } from "./tools/dlmm.js";
@@ -33,12 +35,18 @@ import { getWeightsSummary } from "./signal-weights.js";
 import { bootstrapHiveMind, ensureAgentId, getHiveMindPullMode, isHiveMindEnabled, pullHiveMindLessons, pullHiveMindPresets, registerHiveMindAgent, startHiveMindBackgroundSync } from "./hivemind.js";
 import { appendDecision } from "./decision-log.js";
 
-log("startup", "DLMM LP Agent starting...");
-log("startup", `Mode: ${process.env.DRY_RUN === "true" ? "DRY RUN" : "LIVE"}`);
-log("startup", `Model: ${process.env.LLM_MODEL || "hermes-3-405b"}`);
-ensureAgentId();
-bootstrapHiveMind().catch((error) => log("hivemind_warn", `Bootstrap failed: ${error.message}`));
-startHiveMindBackgroundSync();
+const isMain = process.argv[1]
+  ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  : false;
+
+if (isMain) {
+  log("startup", "DLMM LP Agent starting...");
+  log("startup", `Mode: ${process.env.DRY_RUN === "true" ? "DRY RUN" : "LIVE"}`);
+  log("startup", `Model: ${process.env.LLM_MODEL || "hermes-3-405b"}`);
+  ensureAgentId();
+  bootstrapHiveMind().catch((error) => log("hivemind_warn", `Bootstrap failed: ${error.message}`));
+  startHiveMindBackgroundSync();
+}
 
 const TP_PCT = config.management.takeProfitPct;
 const DEPLOY = config.management.deployAmountSol;
@@ -495,6 +503,36 @@ export async function runScreeningCycle({ silent = false } = {}) {
       return screenReport;
     }
 
+    if (passing.length === 1) {
+      const skipReason = getLoneCandidateSkipReason(passing[0]);
+      if (skipReason) {
+        const candidateName = passing[0].pool?.name || "unknown";
+        screenReport = [
+          "⛔ NO DEPLOY",
+          "",
+          "Cycle finished with no valid entry.",
+          "",
+          "BEST LOOKING CANDIDATE",
+          candidateName,
+          "",
+          "WHY SKIPPED",
+          `Only one candidate survived filtering, but it was not worth deploying: ${skipReason}.`,
+          "",
+          "REJECTED",
+          `- ${candidateName}: ${skipReason}`,
+        ].join("\n");
+        appendDecision({
+          type: "no_deploy",
+          actor: "SCREENER",
+          summary: "Single candidate skipped",
+          reason: skipReason,
+          pool: passing[0].pool?.pool,
+          pool_name: candidateName,
+        });
+        return screenReport;
+      }
+    }
+
     // Pre-fetch active_bin for all passing candidates in parallel
     const activeBinResults = await Promise.allSettled(
       passing.map(({ pool }) => getActiveBin({ pool_address: pool.pool }))
@@ -567,6 +605,8 @@ export async function runScreeningCycle({ silent = false } = {}) {
 
     const weightsSummary = config.darwin?.enabled ? getWeightsSummary() : null;
 
+    let deployAttempted = false;
+    let deploySucceeded = false;
     const { content } = await agentLoop(`
 SCREENING CYCLE
 ${strategyBlock}
@@ -576,12 +616,13 @@ PRE-LOADED CANDIDATES (${passing.length} pools):
 ${candidateBlocks.join("\n\n")}
 
 STEPS:
-1. Pick the best candidate based on narrative quality, smart wallets, and pool metrics.
-2. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
-   bins_below = round(35 + (volatility/5)*55) clamped to [35,90].
+1. Decide if any candidate is actually worth deploying. One surviving candidate is not automatically good enough.
+2. Pick the best candidate based on narrative quality, smart wallets, and pool metrics.
+3. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
+   bins_below = round(${config.strategy.minBinsBelow} + (volatility/5)*(${config.strategy.maxBinsBelow - config.strategy.minBinsBelow})) clamped to [${config.strategy.minBinsBelow},${config.strategy.maxBinsBelow}].
    For single-side SOL deploys, do not invent upside:
    set amount_y only, keep amount_x = 0, keep bins_above = 0, and let the upper bin stay at the active bin.
-3. Report in this exact format (no tables, no extra sections):
+4. Report in this exact format (no tables, no extra sections):
    🚀 DEPLOYED
 
    <pool name>
@@ -620,7 +661,7 @@ STEPS:
 
    WHY THIS WON
    <2-4 concise sentences on why this pool won, key risks, and why it still beat the alternatives>
-4. If no pool qualifies, report in this exact format instead:
+5. If no pool qualifies, report in this exact format instead:
    ⛔ NO DEPLOY
 
    Cycle finished with no valid entry.
@@ -637,8 +678,17 @@ IMPORTANT:
 - Never write "unknown" for OKX. Use real values, omit missing fields, or write exactly "OKX: unavailable".
 - Keep the whole report compact and highly scannable for Telegram.
       `, config.llm.maxSteps, [], "SCREENER", config.llm.screeningModel, 2048, {
-        onToolStart: async ({ name }) => { await liveMessage?.toolStart(name); },
-        onToolFinish: async ({ name, result, success }) => { await liveMessage?.toolFinish(name, result, success); },
+        onToolStart: async ({ name }) => {
+          if (name === "deploy_position") deployAttempted = true;
+          await liveMessage?.toolStart(name);
+        },
+        onToolFinish: async ({ name, result, success }) => {
+          if (name === "deploy_position") {
+            deployAttempted = true;
+            deploySucceeded = Boolean(success && result?.success !== false && !result?.error && !result?.blocked);
+          }
+          await liveMessage?.toolFinish(name, result, success);
+        },
       });
     screenReport = content;
     if (/⛔\s*NO DEPLOY/i.test(content)) {
@@ -646,6 +696,13 @@ IMPORTANT:
         type: "no_deploy",
         actor: "SCREENER",
         summary: "LLM chose no deploy",
+        reason: stripThink(content).slice(0, 500),
+      });
+    } else if (!deploySucceeded) {
+      appendDecision({
+        type: "no_deploy",
+        actor: "SCREENER",
+        summary: deployAttempted ? "Deploy attempt did not succeed" : "No successful deploy in screening cycle",
         reason: stripThink(content).slice(0, 500),
       });
     }
@@ -897,7 +954,7 @@ function formatConfigSnapshot() {
   return [
     "Config snapshot",
     "",
-    `Strategy: ${config.strategy.strategy} | binsBelow: ${config.strategy.binsBelow}`,
+    `Strategy: ${config.strategy.strategy} | binsBelow: ${config.strategy.minBinsBelow}-${config.strategy.maxBinsBelow} | default ${config.strategy.defaultBinsBelow}`,
     `Deploy: ${config.management.deployAmountSol} SOL | gasReserve: ${config.management.gasReserve} | maxPositions: ${config.risk.maxPositions}`,
     `Stop loss: ${config.management.stopLossPct}% | take profit: ${config.management.takeProfitPct}%`,
     `Trailing: ${config.management.trailingTakeProfit ? "on" : "off"} | trigger ${config.management.trailingTriggerPct}% | drop ${config.management.trailingDropPct}%`,
@@ -931,6 +988,9 @@ function settingValue(key) {
     useDiscordSignals: config.screening.useDiscordSignals,
     blockPvpSymbols: config.screening.blockPvpSymbols,
     strategy: config.strategy.strategy,
+    minBinsBelow: config.strategy.minBinsBelow,
+    maxBinsBelow: config.strategy.maxBinsBelow,
+    defaultBinsBelow: config.strategy.defaultBinsBelow,
     deployAmountSol: config.management.deployAmountSol,
     gasReserve: config.management.gasReserve,
     maxPositions: config.risk.maxPositions,
@@ -984,7 +1044,7 @@ function renderSettingsMenu(page = "main") {
     title,
     "",
     `Mode: ${config.management.solMode ? "SOL" : "USD"} | Relay: ${config.api.lpAgentRelayEnabled ? "on" : "off"}`,
-    `Strategy: ${config.strategy.strategy} | deploy ${config.management.deployAmountSol} SOL | max pos ${config.risk.maxPositions}`,
+    `Strategy: ${config.strategy.strategy} | bins ${config.strategy.minBinsBelow}-${config.strategy.maxBinsBelow} | deploy ${config.management.deployAmountSol} SOL`,
     `TP/SL: ${config.management.takeProfitPct}% / ${config.management.stopLossPct}% | trailing ${config.management.trailingTakeProfit ? "on" : "off"}`,
     `Indicators: ${config.indicators.enabled ? "on" : "off"} | entry ${config.indicators.entryPreset} | ${fmtSettingValue(config.indicators.intervals)}`,
   ].join("\n");
@@ -1029,6 +1089,9 @@ function renderSettingsMenu(page = "main") {
         settingButton(`Strategy: spot`, "cfg:set:strategy:spot"),
         settingButton(`Strategy: bid_ask`, "cfg:set:strategy:bid_ask"),
       ],
+      stepButtons("minBinsBelow", "Min bins", 1, { digits: 0 }),
+      stepButtons("maxBinsBelow", "Max bins", 1, { digits: 0 }),
+      stepButtons("defaultBinsBelow", "Default bins", 1, { digits: 0 }),
       stepButtons("managementIntervalMin", "Manage min", 1, { digits: 0 }),
       stepButtons("screeningIntervalMin", "Screen min", 5, { digits: 0 }),
     ];
@@ -1131,6 +1194,7 @@ async function applySettingsMenuCallback(msg) {
     if (key === "repeatDeployCooldownTriggerCount") value = Math.max(1, Math.round(value));
     if (key === "repeatDeployCooldownHours") value = Math.max(0, Math.round(value));
     if (key === "repeatDeployCooldownMinFeeEarnedPct") value = Math.max(0, value);
+    if (["minBinsBelow", "maxBinsBelow", "defaultBinsBelow"].includes(key)) value = Math.max(35, Math.round(value));
     if (["deployAmountSol", "gasReserve", "maxDeployAmount"].includes(key)) value = Math.max(0, value);
   } else if (action === "set") {
     value = normalizeMenuValue(key, parts.slice(3).join(":"));
@@ -1149,7 +1213,7 @@ async function applySettingsMenuCallback(msg) {
   }
   page = key.startsWith("indicator") || key === "chartIndicatorsEnabled" || key === "rsiLength" || key === "requireAllIntervals"
     ? "indicators"
-    : ["useDiscordSignals", "blockPvpSymbols", "strategy", "managementIntervalMin", "screeningIntervalMin"].includes(key)
+    : ["useDiscordSignals", "blockPvpSymbols", "strategy", "minBinsBelow", "maxBinsBelow", "defaultBinsBelow", "managementIntervalMin", "screeningIntervalMin"].includes(key)
       ? "screen"
       : "risk";
   await answerCallbackQuery(msg.callbackQueryId, `Updated ${key}`);
@@ -1208,8 +1272,34 @@ async function deployLatestCandidate(index) {
   if (!candidate) {
     throw new Error("Invalid candidate index. Run /screen first.");
   }
+  if (_latestCandidates.length === 1) {
+    const mint = candidate.base?.mint || candidate.base_mint || null;
+    const [smartWallets, narrative, tokenInfo] = await Promise.allSettled([
+      checkSmartWalletsOnPool({ pool_address: candidate.pool }),
+      mint ? getTokenNarrative({ mint }) : Promise.resolve(null),
+      mint ? getTokenInfo({ query: mint }) : Promise.resolve(null),
+    ]);
+    const context = {
+      pool: candidate,
+      sw: smartWallets.status === "fulfilled" ? smartWallets.value : null,
+      n: narrative.status === "fulfilled" ? narrative.value : null,
+      ti: tokenInfo.status === "fulfilled" ? tokenInfo.value?.results?.[0] : null,
+    };
+    const skipReason = getLoneCandidateSkipReason(context);
+    if (skipReason) {
+      appendDecision({
+        type: "no_deploy",
+        actor: "SCREENER",
+        summary: "Single cached candidate skipped",
+        reason: skipReason,
+        pool: candidate.pool,
+        pool_name: candidate.name,
+      });
+      throw new Error(`NO DEPLOY: only cached candidate ${candidate.name} is not worth deploying — ${skipReason}`);
+    }
+  }
   const deployAmount = computeDeployAmount((await getWalletBalances()).sol);
-  const binsBelow = Math.max(35, Math.min(90, Math.round(35 + ((Number(candidate.volatility) || 0) / 5) * 55)));
+  const binsBelow = computeBinsBelow(candidate.volatility);
   const result = await executeTool("deploy_position", {
     pool_address: candidate.pool,
     amount_y: deployAmount,
@@ -1544,10 +1634,44 @@ function fmtPct(value) {
   return Number.isFinite(n) ? `${n.toFixed(2)}%` : "?";
 }
 
+function getLoneCandidateSkipReason({ pool, sw, n, ti } = {}) {
+  if (!pool) return "missing candidate data";
+  const smartWalletCount = Math.max(sw?.in_pool?.length ?? 0, Number(pool.gmgn_smart_wallets ?? 0) || 0);
+  const tokenInfo = ti || {};
+  const hasNarrative = !!n?.narrative;
+  const globalFeesSol = Number(tokenInfo.global_fees_sol ?? pool.gmgn_total_fee_sol);
+  const top10Pct = Number(tokenInfo.audit?.top_holders_pct ?? pool.gmgn_token_info_top10_pct ?? pool.gmgn_top10_holder_pct);
+  const botPct = Number(tokenInfo.audit?.bot_holders_pct ?? pool.gmgn_bot_degen_pct);
+  if (pool.is_wash) return "wash trading was flagged";
+  if (pool.is_rugpull && smartWalletCount === 0) return "rugpull risk was flagged and no smart wallets offset it";
+  if (pool.is_pvp && smartWalletCount === 0) return "PVP symbol conflict and no smart-wallet confirmation";
+  if (Number.isFinite(globalFeesSol) && globalFeesSol < config.screening.minTokenFeesSol) {
+    return `token fees ${globalFeesSol} SOL below minimum ${config.screening.minTokenFeesSol} SOL`;
+  }
+  if (Number.isFinite(top10Pct) && top10Pct > config.screening.maxTop10Pct) {
+    return `top10 concentration ${top10Pct}% above maximum ${config.screening.maxTop10Pct}%`;
+  }
+  if (Number.isFinite(botPct) && botPct > config.screening.maxBotHoldersPct) {
+    return `bot holders ${botPct}% above maximum ${config.screening.maxBotHoldersPct}%`;
+  }
+  if (!hasNarrative && smartWalletCount === 0) return "only candidate has no narrative and no smart-wallet confirmation";
+  return null;
+}
+
+function computeBinsBelow(volatility) {
+  const parsedVolatility = Number(volatility);
+  if (!Number.isFinite(parsedVolatility) || parsedVolatility <= 0) {
+    throw new Error(`Invalid volatility ${volatility ?? "unknown"} — refusing volatility-scaled deploy.`);
+  }
+  const lo = config.strategy.minBinsBelow;
+  const hi = config.strategy.maxBinsBelow;
+  return Math.max(lo, Math.min(hi, Math.round(lo + (parsedVolatility / 5) * (hi - lo))));
+}
+
 // Register restarter — when update_config changes intervals, running cron jobs get replaced
 registerCronRestarter(() => { if (cronStarted) startCronJobs(); });
 
-if (isTTY) {
+if (isMain && isTTY) {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -1674,7 +1798,7 @@ Commands:
       await runBusy(async () => {
         console.log("\nAgent is picking and deploying...\n");
         const { content: reply } = await agentLoop(
-          `get_top_candidates, pick the best one, get_active_bin, deploy_position with ${DEPLOY} SOL. Execute now, don't ask.`,
+          `get_top_candidates and deploy only if a candidate is clearly worth it. If there is only one weak candidate, report NO DEPLOY. For a valid deploy, use amount_y=${DEPLOY}, amount_x=0, bins_above=0, and bins_below from positive volatility. Execute now, don't ask.`,
           config.llm.maxSteps,
           [],
           "SCREENER"
@@ -1839,7 +1963,7 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
 
   rl.on("close", () => shutdown("stdin closed"));
 
-} else {
+} else if (isMain) {
   // Non-TTY: start immediately
   log("startup", "Non-TTY mode — starting cron cycles immediately.");
   startCronJobs();
@@ -1847,13 +1971,7 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
   startPolling(telegramHandler);
   (async () => {
     try {
-      const startupStep3 = process.env.DRY_RUN === "true"
-        ? `3. Ignore wallet SOL threshold in dry run: get_top_candidates then simulate deploy ${DEPLOY} SOL.`
-        : `3. If SOL >= ${config.management.minSolToOpen}: get_top_candidates then deploy ${DEPLOY} SOL.`;
-      await agentLoop(`
-STARTUP CHECK
-1. get_wallet_balance. 2. get_my_positions. ${startupStep3} 4. Report.
-      `, config.llm.maxSteps, [], "SCREENER");
+      await runScreeningCycle({ silent: false });
     } catch (e) {
       log("startup_error", e.message);
     }

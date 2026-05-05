@@ -227,6 +227,24 @@ const dryRun = await askBool(
   e("dryRun", true)
 );
 
+const minBinsBelow = await askNum(
+  "Minimum bins below active bin",
+  e("minBinsBelow", 35),
+  { min: 35, max: 1400 }
+);
+
+const maxBinsBelow = await askNum(
+  "Maximum bins below active bin",
+  e("maxBinsBelow", e("binsBelow", 69)),
+  { min: minBinsBelow, max: 1400 }
+);
+
+const defaultBinsBelow = await askNum(
+  "Default bins below active bin",
+  e("defaultBinsBelow", e("binsBelow", maxBinsBelow)),
+  { min: minBinsBelow, max: maxBinsBelow }
+);
+
 // ─── Section 5: Risk & Filters ────────────────────────────────────────────────
 console.log("\n── Risk & Filters ────────────────────────────────────────────");
 
@@ -400,6 +418,9 @@ const userConfig = {
   deployAmountSol,
   maxPositions,
   minSolToOpen,
+  minBinsBelow,
+  maxBinsBelow,
+  defaultBinsBelow,
   timeframe,
   minOrganic,
   minHolders,

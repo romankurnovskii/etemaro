@@ -32,6 +32,11 @@ function numeric(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function isUsableVolatility(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0;
+}
+
 function includesCaseInsensitive(values, value) {
   if (!Array.isArray(values) || values.length === 0 || !value) return false;
   const needle = String(value).toLowerCase();
@@ -44,6 +49,7 @@ function getRawPoolScreeningRejectReason(pool, s) {
   const binStep = numeric(pool?.dlmm_params?.bin_step);
   const tvl = numeric(pool?.tvl ?? pool?.active_tvl);
   const feeActiveTvlRatio = numeric(pool?.fee_active_tvl_ratio);
+  const volatility = numeric(pool?.volatility);
   const volume = numeric(pool?.volume);
   const holders = numeric(pool?.base_token_holders);
   const mcap = numeric(base?.market_cap);
@@ -70,6 +76,9 @@ function getRawPoolScreeningRejectReason(pool, s) {
   if (binStep > s.maxBinStep) return `bin_step ${binStep} above maxBinStep ${s.maxBinStep}`;
   if (feeActiveTvlRatio == null || feeActiveTvlRatio < s.minFeeActiveTvlRatio) {
     return `fee/active-TVL ${feeActiveTvlRatio ?? "unknown"} below minFeeActiveTvlRatio ${s.minFeeActiveTvlRatio}`;
+  }
+  if (!isUsableVolatility(volatility)) {
+    return `volatility ${volatility ?? "unknown"} is unusable`;
   }
   if (baseOrganic == null || baseOrganic < s.minOrganic) {
     return `base organic ${baseOrganic ?? "unknown"} below minOrganic ${s.minOrganic}`;
@@ -370,6 +379,10 @@ export async function getTopCandidates({ limit = 10 } = {}) {
         pushFilteredReason(filteredOut, p, `fee/active-TVL ${Number.isFinite(feeActiveTvlRatio) ? feeActiveTvlRatio : "unknown"} below minFeeActiveTvlRatio ${minFeeActiveTvlRatio}`);
         return false;
       }
+      if (!isUsableVolatility(p.volatility)) {
+        pushFilteredReason(filteredOut, p, `volatility ${p.volatility ?? "unknown"} is unusable`);
+        return false;
+      }
       if (occupiedPools.has(p.pool)) {
         pushFilteredReason(filteredOut, p, "already have an open position in this pool");
         return false;
@@ -651,7 +664,8 @@ function round(n) {
 }
 
 function fix(n, decimals) {
-  return n != null ? Number(n.toFixed(decimals)) : null;
+  const value = Number(n);
+  return Number.isFinite(value) ? Number(value.toFixed(decimals)) : null;
 }
 
 function pushFilteredReason(list, pool, reason) {

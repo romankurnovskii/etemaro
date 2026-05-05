@@ -12,6 +12,8 @@
     "env:encrypt": "node scripts/envrypt.js encrypt",
     "start": "node index.js",
     "dev": "DRY_RUN=true node index.js",
+    "test": "npm run test:syntax",
+    "test:syntax": "find . -path ./node_modules -prune -o -name '*.js' -exec node --check {} \\;",
     "test:screen": "node test/test-screening.js",
     "test:agent": "DRY_RUN=true node test/test-agent.js",
     "postinstall": "node scripts/patch-anchor.js"

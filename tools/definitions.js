@@ -48,11 +48,12 @@ Use this as the primary tool for finding new LP opportunities.`,
     type: "function",
     function: {
       name: "get_top_candidates",
-      description: `Get the top pre-scored pool candidates ready for deployment.
+      description: `Get the top pre-scored pool candidates for deployment review.
 All filtering, scoring, and rule-checking is done in code — no analysis needed.
 Returns the top N eligible pools ranked by score (fee/TVL, organic, stability, volume).
 Each pool includes a score (0-100) and has already passed all hard disqualifiers.
-Use this instead of discover_pools for screening cycles.`,
+Use this instead of discover_pools for screening cycles.
+If this returns one candidate, still judge whether it is actually worth deploying; one weak candidate should be skipped.`,
       parameters: {
         type: "object",
         properties: {
@@ -133,13 +134,15 @@ PRIORITY ORDER for strategy and bins:
 HARD RULES:
 - Never use 'curve'.
 - Bin Step: Only deploy in pools with bin_step between 80 and 125.
+- Volatility must be positive. If volatility is 0, null, or missing, do not deploy.
+- Range must cover at least 35 total bins. Never deploy 1-bin/tiny ranges.
 - For single-side SOL deploys (amount_y only, amount_x=0), do not request upside exposure:
   use bins_below only, keep bins_above=0, and the upper bin will be pinned to the current active bin.
 
 Guidelines (only when user hasn't specified):
 - Strategy: use the active strategy's lp_strategy field (bid_ask or spot)
-- Bins: choose 35–69 for standard volatility; up to 350 for wide-range strategies. Max 1400 total.
-- Deposit: Can be single-sided (SOL only or Base only) or dual-sided.
+- Bins: choose from configured minBinsBelow/maxBinsBelow by positive volatility. The hard lower floor is 35 bins.
+- Deposit: single-sided SOL only: set amount_y/amount_sol, keep amount_x=0.
 
 WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
       parameters: {
@@ -155,7 +158,7 @@ WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
           },
           amount_x: {
             type: "number",
-            description: "Amount of base token to deposit (if doing dual-sided)."
+            description: "Unsupported for this agent. Keep at 0; deploys are single-side SOL via amount_y."
           },
           amount_sol: {
             type: "number",
@@ -387,7 +390,7 @@ Management: minClaimAmount, outOfRangeBinsToClose, outOfRangeWaitMinutes, oorCoo
 Risk: maxPositions, maxDeployAmount
 Schedule: managementIntervalMin, screeningIntervalMin
 Models: managementModel, screeningModel, generalModel
-Strategy: binsBelow
+Strategy: minBinsBelow, maxBinsBelow, defaultBinsBelow (legacy binsBelow maps to maxBinsBelow)
 
 Reason is optional but helpful — logged as a lesson when provided.`,
       parameters: {

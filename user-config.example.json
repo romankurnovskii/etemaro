@@ -14,7 +14,9 @@
   "positionSizePct": 0.35,
 
   "strategy": "bid_ask",
-  "binsBelow": 69,
+  "minBinsBelow": 35,
+  "maxBinsBelow": 69,
+  "defaultBinsBelow": 69,
 
   "timeframe": "5m",
   "category": "trending",
