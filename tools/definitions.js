@@ -18,7 +18,7 @@ Pools are pre-filtered for safety:
 - Both tokens organic score >= 60
 
 Returns condensed pool data: address, name, tokens, bin_step, fee_pct,
-active_tvl, fee_window, volume_window, fee_tvl_ratio, 30m volatility, organic_score,
+active_tvl, fee_window, volume_window, fee_tvl_ratio, volatility from max(timeframe, 30m), organic_score,
 holders, mcap, active_positions, price_change_pct, warning count.
 
 Use this as the primary tool for finding new LP opportunities.`,
@@ -189,7 +189,7 @@ WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
           base_mint: { type: "string", description: "Base token mint address — used to prevent duplicate token exposure across pools" },
           bin_step: { type: "number", description: "Pool bin step (from discover_pools)" },
           base_fee: { type: "number", description: "Pool base fee percentage (from discover_pools)" },
-          volatility: { type: "number", description: "Pool 30m volatility at deploy time" },
+          volatility: { type: "number", description: "Pool volatility at deploy time, sourced from max(screening timeframe, 30m)" },
           fee_tvl_ratio: { type: "number", description: "fee/TVL ratio at deploy time" },
           organic_score: { type: "number", description: "Base token organic score at deploy time" },
           initial_value_usd: { type: "number", description: "Estimated USD value being deployed" }

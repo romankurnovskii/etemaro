@@ -9,7 +9,17 @@ import { getAgentMeridianBase, getAgentMeridianHeaders } from "./agent-meridian.
 const DATAPI_JUP = "https://datapi.jup.ag/v1";
 
 const POOL_DISCOVERY_BASE = "https://pool-discovery-api.datapi.meteora.ag";
-const VOLATILITY_TIMEFRAME = "30m";
+const MIN_VOLATILITY_TIMEFRAME = "30m";
+const TIMEFRAME_MINUTES = {
+  "5m": 5,
+  "15m": 15,
+  "30m": 30,
+  "1h": 60,
+  "2h": 120,
+  "4h": 240,
+  "12h": 720,
+  "24h": 1440,
+};
 const PVP_SHORTLIST_LIMIT = 2;
 const PVP_RIVAL_LIMIT = 2;
 const PVP_MIN_ACTIVE_TVL = 5_000;
@@ -42,6 +52,13 @@ function includesCaseInsensitive(values, value) {
   if (!Array.isArray(values) || values.length === 0 || !value) return false;
   const needle = String(value).toLowerCase();
   return values.some((entry) => String(entry).toLowerCase() === needle);
+}
+
+function getVolatilityTimeframe(sourceTimeframe) {
+  const source = String(sourceTimeframe || "").trim();
+  const sourceMinutes = TIMEFRAME_MINUTES[source];
+  const minMinutes = TIMEFRAME_MINUTES[MIN_VOLATILITY_TIMEFRAME];
+  return sourceMinutes != null && sourceMinutes >= minMinutes ? source : MIN_VOLATILITY_TIMEFRAME;
 }
 
 function getRawPoolScreeningRejectReason(pool, s) {
@@ -152,9 +169,10 @@ async function fetchPoolDiscoveryDetail({ poolAddress, timeframe }) {
 
 async function applyVolatilityTimeframe(rawPools, sourceTimeframe) {
   if (!Array.isArray(rawPools) || rawPools.length === 0) return rawPools;
-  if (sourceTimeframe === VOLATILITY_TIMEFRAME) {
+  const volatilityTimeframe = getVolatilityTimeframe(sourceTimeframe);
+  if (sourceTimeframe === volatilityTimeframe) {
     for (const pool of rawPools) {
-      if (pool) pool.volatility_timeframe = VOLATILITY_TIMEFRAME;
+      if (pool) pool.volatility_timeframe = volatilityTimeframe;
     }
     return rawPools;
   }
@@ -162,7 +180,7 @@ async function applyVolatilityTimeframe(rawPools, sourceTimeframe) {
   const uniquePoolAddresses = [...new Set(rawPools.map((pool) => pool?.pool_address).filter(Boolean))];
   const volatilityResults = await Promise.allSettled(
     uniquePoolAddresses.map((poolAddress) =>
-      fetchPoolDiscoveryDetail({ poolAddress, timeframe: VOLATILITY_TIMEFRAME })
+      fetchPoolDiscoveryDetail({ poolAddress, timeframe: volatilityTimeframe })
         .then((pool) => ({ poolAddress, volatility: numeric(pool?.volatility) }))
     )
   );
@@ -177,7 +195,7 @@ async function applyVolatilityTimeframe(rawPools, sourceTimeframe) {
   for (const pool of rawPools) {
     if (!pool?.pool_address || !volatilityByPool.has(pool.pool_address)) continue;
     pool.volatility = volatilityByPool.get(pool.pool_address);
-    pool.volatility_timeframe = VOLATILITY_TIMEFRAME;
+    pool.volatility_timeframe = volatilityTimeframe;
   }
 
   return rawPools;
@@ -664,7 +682,7 @@ function condensePool(p) {
     volume_window: round(p.volume),
     fee_active_tvl_ratio: p.fee_active_tvl_ratio != null ? fix(p.fee_active_tvl_ratio, 4) : null,
     volatility: fix(p.volatility, 4),
-    volatility_timeframe: p.volatility_timeframe || VOLATILITY_TIMEFRAME,
+    volatility_timeframe: p.volatility_timeframe || getVolatilityTimeframe(config.screening.timeframe),
 
 
     // Token health
