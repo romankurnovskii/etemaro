@@ -86,7 +86,12 @@ function getRawPoolScreeningRejectReason(pool, s) {
   if (quoteOrganic == null || quoteOrganic < s.minQuoteOrganic) {
     return `quote organic ${quoteOrganic ?? "unknown"} below minQuoteOrganic ${s.minQuoteOrganic}`;
   }
-  if (Array.isArray(s.allowedLaunchpads) && s.allowedLaunchpads.length > 0 && !includesCaseInsensitive(s.allowedLaunchpads, launchpad)) {
+  if (
+    pool?.discord_signal &&
+    Array.isArray(s.allowedLaunchpads) &&
+    s.allowedLaunchpads.length > 0 &&
+    !includesCaseInsensitive(s.allowedLaunchpads, launchpad)
+  ) {
     return `launchpad ${launchpad || "unknown"} not in allow-list`;
   }
   if (includesCaseInsensitive(s.blockedLaunchpads, launchpad)) {
@@ -210,22 +215,13 @@ export async function discoverPools({
       : null,
   ].filter(Boolean).join("&&");
 
-  const useServerDiscovery = !!config.api.publicApiKey;
-  const url = useServerDiscovery
-    ? `${getAgentMeridianBase()}/discovery/pools?` +
-      `page_size=${page_size}` +
-      `&filter_by=${encodeURIComponent(filters)}` +
-      `&timeframe=${s.timeframe}` +
-      `&category=${s.category}`
-    : `${POOL_DISCOVERY_BASE}/pools?` +
-      `page_size=${page_size}` +
-      `&filter_by=${encodeURIComponent(filters)}` +
-      `&timeframe=${s.timeframe}` +
-      `&category=${s.category}`;
+  const url = `${POOL_DISCOVERY_BASE}/pools?` +
+    `page_size=${page_size}` +
+    `&filter_by=${encodeURIComponent(filters)}` +
+    `&timeframe=${s.timeframe}` +
+    `&category=${s.category}`;
 
-  const res = await fetch(url, {
-    headers: useServerDiscovery ? getAgentMeridianHeaders() : {},
-  });
+  const res = await fetch(url);
 
   if (!res.ok) {
     throw new Error(`Pool Discovery API error: ${res.status} ${res.statusText}`);
@@ -569,24 +565,19 @@ export async function getTopCandidates({ limit = 10 } = {}) {
  * Returns the full unfiltered API object (all fields, not condensed).
  */
 export async function getPoolDetail({ pool_address, timeframe = "5m" }) {
-  const useServerDiscovery = !!config.api.publicApiKey;
-  const url = useServerDiscovery
-    ? `${getAgentMeridianBase()}/discovery/pools/${pool_address}?timeframe=${encodeURIComponent(timeframe)}`
-    : `${POOL_DISCOVERY_BASE}/pools?` +
-      `page_size=1` +
-      `&filter_by=${encodeURIComponent(`pool_address=${pool_address}`)}` +
-      `&timeframe=${timeframe}`;
+  const url = `${POOL_DISCOVERY_BASE}/pools?` +
+    `page_size=1` +
+    `&filter_by=${encodeURIComponent(`pool_address=${pool_address}`)}` +
+    `&timeframe=${timeframe}`;
 
-  const res = await fetch(url, {
-    headers: useServerDiscovery ? getAgentMeridianHeaders() : {},
-  });
+  const res = await fetch(url);
 
   if (!res.ok) {
     throw new Error(`Pool detail API error: ${res.status} ${res.statusText}`);
   }
 
   const data = await res.json();
-  const pool = useServerDiscovery ? data : (data.data || [])[0];
+  const pool = (data.data || [])[0];
 
   if (!pool) {
     throw new Error(`Pool ${pool_address} not found`);
