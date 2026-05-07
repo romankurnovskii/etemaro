@@ -30,6 +30,7 @@ import { execSync, spawn } from "child_process";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const USER_CONFIG_PATH = path.join(__dirname, "../user-config.json");
 const POOL_DISCOVERY_BASE = "https://pool-discovery-api.datapi.meteora.ag";
+const VOLATILITY_TIMEFRAME = "30m";
 import { log, logAction } from "../logger.js";
 import { notifyDeploy, notifyClose, notifySwap } from "../telegram.js";
 
@@ -54,10 +55,10 @@ function poolDetailVolatility(pool) {
   return numberOrNull(pool?.volatility);
 }
 
-async function fetchFreshPoolDetail(poolAddress) {
-  const timeframe = encodeURIComponent(config.screening.timeframe || "5m");
+async function fetchFreshPoolDetail(poolAddress, timeframe = config.screening.timeframe || "5m") {
+  const encodedTimeframe = encodeURIComponent(timeframe);
   const filter = encodeURIComponent(`pool_address=${poolAddress}`);
-  const url = `${POOL_DISCOVERY_BASE}/pools?page_size=1&filter_by=${filter}&timeframe=${timeframe}`;
+  const url = `${POOL_DISCOVERY_BASE}/pools?page_size=1&filter_by=${filter}&timeframe=${encodedTimeframe}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Pool Discovery API error: ${res.status} ${res.statusText}`);
   const data = await res.json();
@@ -111,11 +112,23 @@ async function validateDeployPoolThresholds(args) {
     };
   }
 
-  const volatility = poolDetailVolatility(detail);
+  let volatilityDetail = detail;
+  if ((config.screening.timeframe || "5m") !== VOLATILITY_TIMEFRAME) {
+    try {
+      volatilityDetail = await fetchFreshPoolDetail(args.pool_address, VOLATILITY_TIMEFRAME);
+    } catch (error) {
+      return {
+        pass: false,
+        reason: `Could not verify pool ${VOLATILITY_TIMEFRAME} volatility before deploy: ${error.message}`,
+      };
+    }
+  }
+
+  const volatility = poolDetailVolatility(volatilityDetail);
   if (volatility == null || volatility <= 0) {
     return {
       pass: false,
-      reason: `Pool volatility ${volatility ?? "unknown"} is unusable. Refusing deploy.`,
+      reason: `Pool ${VOLATILITY_TIMEFRAME} volatility ${volatility ?? "unknown"} is unusable. Refusing deploy.`,
     };
   }
 

@@ -9,6 +9,7 @@ import { getAgentMeridianBase, getAgentMeridianHeaders } from "./agent-meridian.
 const DATAPI_JUP = "https://datapi.jup.ag/v1";
 
 const POOL_DISCOVERY_BASE = "https://pool-discovery-api.datapi.meteora.ag";
+const VOLATILITY_TIMEFRAME = "30m";
 const PVP_SHORTLIST_LIMIT = 2;
 const PVP_RIVAL_LIMIT = 2;
 const PVP_MIN_ACTIVE_TVL = 5_000;
@@ -117,6 +118,71 @@ async function fetchDiscordSignalCandidates() {
   return Array.isArray(data?.candidates) ? data.candidates : [];
 }
 
+async function fetchPoolDiscoveryPage({ page_size, filters, timeframe, category }) {
+  const url = `${POOL_DISCOVERY_BASE}/pools?` +
+    `page_size=${page_size}` +
+    `&filter_by=${encodeURIComponent(filters)}` +
+    `&timeframe=${timeframe}` +
+    `&category=${category}`;
+
+  const res = await fetch(url);
+
+  if (!res.ok) {
+    throw new Error(`Pool Discovery API error: ${res.status} ${res.statusText}`);
+  }
+
+  return res.json();
+}
+
+async function fetchPoolDiscoveryDetail({ poolAddress, timeframe }) {
+  const url = `${POOL_DISCOVERY_BASE}/pools?` +
+    `page_size=1` +
+    `&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}` +
+    `&timeframe=${timeframe}`;
+
+  const res = await fetch(url);
+
+  if (!res.ok) {
+    throw new Error(`Pool detail API error: ${res.status} ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  return (data.data || [])[0] ?? null;
+}
+
+async function applyVolatilityTimeframe(rawPools, sourceTimeframe) {
+  if (!Array.isArray(rawPools) || rawPools.length === 0) return rawPools;
+  if (sourceTimeframe === VOLATILITY_TIMEFRAME) {
+    for (const pool of rawPools) {
+      if (pool) pool.volatility_timeframe = VOLATILITY_TIMEFRAME;
+    }
+    return rawPools;
+  }
+
+  const uniquePoolAddresses = [...new Set(rawPools.map((pool) => pool?.pool_address).filter(Boolean))];
+  const volatilityResults = await Promise.allSettled(
+    uniquePoolAddresses.map((poolAddress) =>
+      fetchPoolDiscoveryDetail({ poolAddress, timeframe: VOLATILITY_TIMEFRAME })
+        .then((pool) => ({ poolAddress, volatility: numeric(pool?.volatility) }))
+    )
+  );
+
+  const volatilityByPool = new Map();
+  for (const result of volatilityResults) {
+    if (result.status !== "fulfilled") continue;
+    if (result.value.volatility == null) continue;
+    volatilityByPool.set(result.value.poolAddress, result.value.volatility);
+  }
+
+  for (const pool of rawPools) {
+    if (!pool?.pool_address || !volatilityByPool.has(pool.pool_address)) continue;
+    pool.volatility = volatilityByPool.get(pool.pool_address);
+    pool.volatility_timeframe = VOLATILITY_TIMEFRAME;
+  }
+
+  return rawPools;
+}
+
 async function searchAssetsBySymbol(symbol) {
   const res = await fetch(`${DATAPI_JUP}/assets/search?query=${encodeURIComponent(symbol)}`);
   if (!res.ok) throw new Error(`assets/search ${res.status}`);
@@ -215,19 +281,12 @@ export async function discoverPools({
       : null,
   ].filter(Boolean).join("&&");
 
-  const url = `${POOL_DISCOVERY_BASE}/pools?` +
-    `page_size=${page_size}` +
-    `&filter_by=${encodeURIComponent(filters)}` +
-    `&timeframe=${s.timeframe}` +
-    `&category=${s.category}`;
-
-  const res = await fetch(url);
-
-  if (!res.ok) {
-    throw new Error(`Pool Discovery API error: ${res.status} ${res.statusText}`);
-  }
-
-  const data = await res.json();
+  const data = await fetchPoolDiscoveryPage({
+    page_size,
+    filters,
+    timeframe: s.timeframe,
+    category: s.category,
+  });
 
   let rawPools = Array.isArray(data.data) ? data.data : [];
 
@@ -272,6 +331,8 @@ export async function discoverPools({
       rawPools = Array.from(byPool.values());
     }
   }
+
+  rawPools = await applyVolatilityTimeframe(rawPools, s.timeframe);
 
   const filteredExamples = [];
   const thresholdedRawPools = rawPools.filter((pool) => {
@@ -565,19 +626,7 @@ export async function getTopCandidates({ limit = 10 } = {}) {
  * Returns the full unfiltered API object (all fields, not condensed).
  */
 export async function getPoolDetail({ pool_address, timeframe = "5m" }) {
-  const url = `${POOL_DISCOVERY_BASE}/pools?` +
-    `page_size=1` +
-    `&filter_by=${encodeURIComponent(`pool_address=${pool_address}`)}` +
-    `&timeframe=${timeframe}`;
-
-  const res = await fetch(url);
-
-  if (!res.ok) {
-    throw new Error(`Pool detail API error: ${res.status} ${res.statusText}`);
-  }
-
-  const data = await res.json();
-  const pool = (data.data || [])[0];
+  const pool = await fetchPoolDiscoveryDetail({ poolAddress: pool_address, timeframe });
 
   if (!pool) {
     throw new Error(`Pool ${pool_address} not found`);
@@ -614,7 +663,8 @@ function condensePool(p) {
     fee_window: round(p.fee),
     volume_window: round(p.volume),
     fee_active_tvl_ratio: p.fee_active_tvl_ratio != null ? fix(p.fee_active_tvl_ratio, 4) : null,
-    volatility: fix(p.volatility, 2),
+    volatility: fix(p.volatility, 4),
+    volatility_timeframe: p.volatility_timeframe || VOLATILITY_TIMEFRAME,
 
 
     // Token health
