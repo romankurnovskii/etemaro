@@ -117,6 +117,32 @@ npm start      # live mode
 
 On startup Meridian fetches your wallet balance, open positions, and top pool candidates, then begins autonomous cycles immediately.
 
+### Run with PM2
+
+PM2 is supported and is the recommended way to keep Telegram control online on a VPS:
+
+```bash
+npm install
+npm run pm2:start
+pm2 save
+```
+
+To update an existing PM2 install:
+
+```bash
+git pull
+npm install
+npm run pm2:restart
+```
+
+If the process restarts repeatedly after an update, inspect the app error first:
+
+```bash
+npm run pm2:logs
+```
+
+Most post-update PM2 crashes are app startup errors, commonly from skipping `npm install` after `package-lock.json` changed, starting PM2 from the wrong directory, or missing `.env` / `user-config.json` values. Avoid `nohup`; it runs outside PM2 and can leave Telegram polling in a duplicate unmanaged process.
+
 ---
 
 ## Running modes

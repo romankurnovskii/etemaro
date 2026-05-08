@@ -271,15 +271,20 @@ const toolMap = {
       }
       // Delay restart so this tool response (and Telegram message) gets sent first
       setTimeout(() => {
-        const child = spawn(process.execPath, process.argv.slice(1), {
-          detached: true,
-          stdio: "inherit",
-          cwd: process.cwd(),
-        });
-        child.unref();
+        if (!process.env.pm_id) {
+          const child = spawn(process.execPath, process.argv.slice(1), {
+            detached: true,
+            stdio: "inherit",
+            cwd: process.cwd(),
+          });
+          child.unref();
+        }
         process.exit(0);
       }, 3000);
-      return { success: true, updated: true, message: `Updated! Restarting in 3s...\n${result}` };
+      const restartMode = process.env.pm_id
+        ? "PM2 detected — exiting in 3s so PM2 can restart the managed process."
+        : "Restarting in 3s...";
+      return { success: true, updated: true, message: `Updated! ${restartMode}\n${result}` };
     } catch (e) {
       return { success: false, error: e.message };
     }
