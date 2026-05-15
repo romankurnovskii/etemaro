@@ -18,6 +18,18 @@ const USER_CONFIG_PATH = path.join(__dirname, "user-config.json");
 const LESSONS_FILE = "./lessons.json";
 const MIN_EVOLVE_POSITIONS = 5;   // don't evolve until we have real data
 const MAX_CHANGE_PER_STEP  = 0.20; // never shift a threshold more than 20% at once
+const PERFORMANCE_SIGNAL_FIELDS = [
+  "organic_score",
+  "fee_tvl_ratio",
+  "volume",
+  "mcap",
+  "holder_count",
+  "smart_wallets_present",
+  "narrative_quality",
+  "study_win_rate",
+  "hive_consensus",
+  "volatility",
+];
 const MAX_MANUAL_LESSON_LENGTH = 400;
 
 function sanitizeLessonText(text, maxLen = MAX_MANUAL_LESSON_LENGTH) {
@@ -44,6 +56,17 @@ function load() {
 
 function save(data) {
   fs.writeFileSync(LESSONS_FILE, JSON.stringify(data, null, 2));
+}
+
+function buildSignalSnapshot(perf) {
+  const snapshot = { ...(perf.signal_snapshot || {}) };
+  if (perf.base_mint && snapshot.base_mint == null) snapshot.base_mint = perf.base_mint;
+  for (const field of PERFORMANCE_SIGNAL_FIELDS) {
+    if (snapshot[field] == null && perf[field] != null) {
+      snapshot[field] = perf[field];
+    }
+  }
+  return Object.values(snapshot).some((value) => value != null) ? snapshot : null;
 }
 
 // ─── Record Position Performance ──────────────────────────────
@@ -109,8 +132,10 @@ export async function recordPerformance(perf) {
     return;
   }
 
+  const signalSnapshot = buildSignalSnapshot(perf);
   const entry = {
     ...perf,
+    signal_snapshot: signalSnapshot,
     pnl_usd: Math.round(pnl_usd * 100) / 100,
     pnl_pct: Math.round(pnl_pct * 100) / 100,
     range_efficiency: Math.round(range_efficiency * 10) / 10,
