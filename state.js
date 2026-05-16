@@ -314,6 +314,15 @@ export function resolvePendingTrailingDrop(position_address, currentPnlPct, trai
 }
 
 /**
+ * Get all tracked positions (optionally filter open-only).
+ */
+export function getTrackedPositions(openOnly = false) {
+  const state = load();
+  const all = Object.values(state.positions);
+  return openOnly ? all.filter((p) => !p.closed) : all;
+}
+
+/**
  * Get a single tracked position.
  */
 export function getTrackedPosition(position_address) {
