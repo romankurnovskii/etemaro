@@ -387,10 +387,47 @@ async function poll(onMessage) {
   }
 }
 
+const BOT_COMMANDS = [
+  { command: "help",       description: "Show commands" },
+  { command: "status",     description: "Wallet + positions snapshot" },
+  { command: "wallet",     description: "Wallet, deploy amount, HiveMind status" },
+  { command: "positions",  description: "List open positions" },
+  { command: "pool",       description: "Detailed info for one open position" },
+  { command: "close",      description: "Close one position by index" },
+  { command: "closeall",   description: "Close all open positions" },
+  { command: "set",        description: "Set note/instruction on position" },
+  { command: "config",     description: "Show important runtime config" },
+  { command: "settings",   description: "Button menu for common config" },
+  { command: "setcfg",     description: "Update persisted config key" },
+  { command: "screen",     description: "Refresh deterministic candidate list" },
+  { command: "candidates", description: "Show latest cached candidates" },
+  { command: "deploy",     description: "Deploy candidate by cached index" },
+  { command: "briefing",   description: "Morning briefing" },
+  { command: "hive",       description: "HiveMind sync status" },
+  { command: "pause",      description: "Stop cron cycles" },
+  { command: "resume",     description: "Start cron cycles again" },
+  { command: "stop",       description: "Shut down agent" },
+];
+
+async function registerCommands() {
+  if (!BASE) return;
+  try {
+    await fetch(`${BASE}/setMyCommands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commands: BOT_COMMANDS }),
+    });
+    log("telegram", "Bot commands registered");
+  } catch (e) {
+    log("telegram_warn", `Failed to register bot commands: ${e.message}`);
+  }
+}
+
 export function startPolling(onMessage) {
   if (!TOKEN) return;
   _polling = true;
   poll(onMessage); // fire-and-forget
+  registerCommands();
   log("telegram", "Bot polling started");
 }
 
