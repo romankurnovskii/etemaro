@@ -58,29 +58,6 @@ export async function getTokenInfo({ query }) {
     stats_24h_net_buyers: t.stats24h ? t.stats24h.numNetBuyers : null, // keep only net buyer direction
   }));
 
-  // Enrich first result with OKX smart money + risk data (public endpoint, no key needed)
-  if (results[0]?.mint) {
-    const { getAdvancedInfo, getClusterList } = await import("./okx.js");
-    const [adv, clusters] = await Promise.all([
-      getAdvancedInfo(results[0].mint).catch(() => null),
-      getClusterList(results[0].mint).catch(() => []),
-    ]);
-    if (adv) {
-      results[0].risk_level      = adv.risk_level;
-      results[0].bundle_pct      = adv.bundle_pct;
-      results[0].sniper_pct      = adv.sniper_pct;
-      results[0].suspicious_pct  = adv.suspicious_pct;
-      results[0].new_wallet_pct  = adv.new_wallet_pct;
-      results[0].smart_money_buy = adv.smart_money_buy;
-      results[0].tags            = adv.tags;
-    }
-    if (clusters?.length) {
-      results[0].kol_in_clusters   = clusters.some((c) => c.has_kol);
-      results[0].top_cluster_trend = clusters[0]?.trend ?? null;
-      results[0].clusters          = clusters;
-    }
-  }
-
   return { found: true, query, results };
 }
 
@@ -123,13 +100,6 @@ export async function getTokenHolders({ mint, limit = 20 }) {
 
   const realHolders = mapped.filter((h) => !h.is_pool);
   const top10Pct = realHolders.slice(0, 10).reduce((s, h) => s + (Number(h.pct) || 0), 0);
-
-  // ─── Bundle / Cluster Analysis (OKX) ─────────────────────────
-  const { getAdvancedInfo, getClusterList } = await import("./okx.js");
-  const [advancedData, clusterList] = await Promise.all([
-    getAdvancedInfo(mint).catch(() => null),
-    getClusterList(mint).catch(() => []),
-  ]);
 
   // ─── Smart Wallet / KOL Cross-reference ──────────────────────
   // Use targeted holders endpoint — only returns matching wallets, no noise
@@ -197,12 +167,6 @@ export async function getTokenHolders({ mint, limit = 20 }) {
     total_fetched: holders.length,
     showing: mapped.length,
     top_10_real_holders_pct: top10Pct.toFixed(2),
-    // OKX advanced info
-    risk_level:     advancedData?.risk_level     ?? null,  // 1=low..5=high
-    bundle_pct:     advancedData?.bundle_pct     ?? null,
-    sniper_pct:     advancedData?.sniper_pct     ?? null,
-    suspicious_pct: advancedData?.suspicious_pct ?? null,
-    new_wallet_pct: advancedData?.new_wallet_pct ?? null,  // high = rug signal
     smart_wallets_holding: smartWalletsHolding,
     holders: mapped,
   };

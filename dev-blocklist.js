@@ -8,8 +8,9 @@
 
 import fs from "fs";
 import { log } from "./logger.js";
+import { repoPath } from "./repo-root.js";
 
-const BLOCKLIST_FILE = "./dev-blocklist.json";
+const BLOCKLIST_FILE = repoPath("dev-blocklist.json");
 
 function load() {
   if (!fs.existsSync(BLOCKLIST_FILE)) return {};

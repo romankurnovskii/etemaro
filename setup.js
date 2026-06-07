@@ -7,12 +7,11 @@
 import "./envcrypt.js";
 import readline from "readline";
 import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import { repoPath } from "./repo-root.js";
+import { getScreeningDefaultsForTimeframe, normalizeTimeframe } from "./screening-scales.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = path.join(__dirname, "user-config.json");
-const ENV_PATH    = path.join(__dirname, ".env");
+const CONFIG_PATH = repoPath("user-config.json");
+const ENV_PATH    = repoPath(".env");
 
 const DEFAULT_MODEL = "openai/gpt-oss-20b:free";
 
@@ -55,13 +54,15 @@ function askBool(question, defaultVal) {
   });
 }
 
-function askChoice(question, choices) {
+function askChoice(question, choices, { defaultKey } = {}) {
   return new Promise(async (resolve) => {
     const labels = choices.map((c, i) => `  ${i + 1}. ${c.label}`).join("\n");
+    const defaultIdx = defaultKey ? choices.findIndex((c) => c.key === defaultKey) : -1;
+    const defaultNum = defaultIdx >= 0 ? String(defaultIdx + 1) : "";
     while (true) {
       console.log(`\n${question}`);
       console.log(labels);
-      const raw = await ask("Enter number", "");
+      const raw = await ask("Enter number", defaultNum);
       const idx = parseInt(raw) - 1;
       if (idx >= 0 && idx < choices.length) { resolve(choices[idx]); break; }
       console.log("  ⚠ Invalid choice.");
@@ -86,39 +87,111 @@ function buildEnv(map) {
 const PRESETS = {
   degen: {
     label:                 "Degen",
+    strategy:              "bid_ask",
     timeframe:             "30m",
+    minBinsBelow:          35,
+    maxBinsBelow:          100,
+    defaultBinsBelow:      100,
     minOrganic:            60,
-    minHolders:            200,
+    minQuoteOrganic:       60,
+    minHolders:            1_000,
+    minMcap:               150_000,
     maxMcap:               5_000_000,
-    takeProfitFeePct:      10,
+    minTvl:                5_000,
+    maxTvl:                100_000,
+    minVolume:             1_000,
+    minBinStep:            80,
+    maxBinStep:            125,
+    minFeeActiveTvlRatio:  0.15,
+    minTokenFeesSol:       20,
+    takeProfitPct:         10,
     stopLossPct:           -25,
     outOfRangeWaitMinutes: 15,
+    trailingTakeProfit:    true,
+    trailingTriggerPct:    2,
+    trailingDropPct:       1,
+    positionSizePct:       0.5,
+    gasReserve:            0.15,
+    maxDeployAmount:       50,
+    minFeePerTvl24h:       20,
+    minAgeBeforeYieldCheck: 30,
+    minClaimAmount:        3,
+    oorCooldownTriggerCount: 3,
+    oorCooldownHours:      8,
     managementIntervalMin: 5,
     screeningIntervalMin:  15,
     description: "30m timeframe, pumping tokens allowed, fast cycles. High risk/reward.",
   },
   moderate: {
     label:                 "Moderate",
+    strategy:              "bid_ask",
     timeframe:             "4h",
-    minOrganic:            65,
-    minHolders:            500,
+    minBinsBelow:          35,
+    maxBinsBelow:          69,
+    defaultBinsBelow:      69,
+    minOrganic:            70,
+    minQuoteOrganic:       70,
+    minHolders:            2_000,
+    minMcap:               150_000,
     maxMcap:               10_000_000,
-    takeProfitFeePct:      5,
+    minTvl:                10_000,
+    maxTvl:                150_000,
+    minVolume:             2_000,
+    minBinStep:            80,
+    maxBinStep:            125,
+    minFeeActiveTvlRatio:  0.4,
+    minTokenFeesSol:       30,
+    takeProfitPct:         5,
     stopLossPct:           -15,
     outOfRangeWaitMinutes: 30,
+    trailingTakeProfit:    true,
+    trailingTriggerPct:    3,
+    trailingDropPct:       1.5,
+    positionSizePct:       0.35,
+    gasReserve:            0.2,
+    maxDeployAmount:       50,
+    minFeePerTvl24h:       25,
+    minAgeBeforeYieldCheck: 60,
+    minClaimAmount:        5,
+    oorCooldownTriggerCount: 3,
+    oorCooldownHours:      12,
     managementIntervalMin: 10,
     screeningIntervalMin:  30,
     description: "4h timeframe, balanced risk/reward. Recommended for most users.",
   },
   safe: {
     label:                 "Safe",
+    strategy:              "spot",
     timeframe:             "24h",
+    minBinsBelow:          35,
+    maxBinsBelow:          50,
+    defaultBinsBelow:      50,
     minOrganic:            75,
-    minHolders:            1000,
+    minQuoteOrganic:       75,
+    minHolders:            5_000,
+    minMcap:               500_000,
     maxMcap:               10_000_000,
-    takeProfitFeePct:      3,
+    minTvl:                20_000,
+    maxTvl:                200_000,
+    minVolume:             10_000,
+    minBinStep:            80,
+    maxBinStep:            125,
+    minFeeActiveTvlRatio:  2.0,
+    minTokenFeesSol:       50,
+    takeProfitPct:         3,
     stopLossPct:           -10,
     outOfRangeWaitMinutes: 60,
+    trailingTakeProfit:    true,
+    trailingTriggerPct:    5,
+    trailingDropPct:       2,
+    positionSizePct:       0.25,
+    gasReserve:            0.25,
+    maxDeployAmount:       30,
+    minFeePerTvl24h:       30,
+    minAgeBeforeYieldCheck: 90,
+    minClaimAmount:        5,
+    oorCooldownTriggerCount: 3,
+    oorCooldownHours:      12,
     managementIntervalMin: 15,
     screeningIntervalMin:  60,
     description: "24h timeframe, stable pools only, avoids pumps. Lower yield, lower risk.",
@@ -229,33 +302,78 @@ const dryRun = await askBool(
 
 const minBinsBelow = await askNum(
   "Minimum bins below active bin",
-  e("minBinsBelow", 35),
+  p("minBinsBelow", e("minBinsBelow", 35)),
   { min: 35, max: 1400 }
 );
 
 const maxBinsBelow = await askNum(
   "Maximum bins below active bin",
-  e("maxBinsBelow", e("binsBelow", 69)),
+  p("maxBinsBelow", e("maxBinsBelow", e("binsBelow", 69))),
   { min: minBinsBelow, max: 1400 }
 );
 
 const defaultBinsBelow = await askNum(
-  "Default bins below active bin",
-  e("defaultBinsBelow", e("binsBelow", maxBinsBelow)),
+  "Default bins below active bin (fallback when bins_below omitted)",
+  p("defaultBinsBelow", e("defaultBinsBelow", e("binsBelow", maxBinsBelow))),
   { min: minBinsBelow, max: maxBinsBelow }
+);
+
+// ─── Section 4b: Strategy ─────────────────────────────────────────────────────
+console.log("\n── Strategy ──────────────────────────────────────────────────");
+
+const strategyChoice = await askChoice("LP strategy:", [
+  { label: "bid_ask  — Concentrated at edges, best for volatile tokens", key: "bid_ask" },
+  { label: "spot     — Even distribution across range",                  key: "spot" },
+  { label: "curve    — Gaussian-like bell curve distribution",           key: "curve" },
+], { defaultKey: p("strategy", e("strategy", "bid_ask")) });
+const strategy = strategyChoice.key;
+
+// ─── Section 4c: Position Sizing ──────────────────────────────────────────────
+console.log("\n── Position Sizing ───────────────────────────────────────────");
+
+const positionSizePct = await askNum(
+  "Position size as % of wallet (0.1–1.0)",
+  p("positionSizePct", 0.35),
+  { min: 0.05, max: 1.0 }
+);
+
+const gasReserve = await askNum(
+  "Gas reserve SOL (kept aside for tx fees)",
+  p("gasReserve", 0.2),
+  { min: 0.05, max: 2 }
+);
+
+const maxDeployAmount = await askNum(
+  "Max deploy amount SOL (ceiling)",
+  p("maxDeployAmount", 50),
+  { min: 0.1 }
 );
 
 // ─── Section 5: Risk & Filters ────────────────────────────────────────────────
 console.log("\n── Risk & Filters ────────────────────────────────────────────");
 
-const timeframe = await ask(
-  "Pool discovery timeframe (30m / 1h / 4h / 12h / 24h)",
+const timeframe = normalizeTimeframe(await ask(
+  "Pool discovery timeframe (5m / 15m / 30m / 1h / 2h / 4h / 12h / 24h)",
   p("timeframe", "4h")
+));
+
+const tfScaled = getScreeningDefaultsForTimeframe(timeframe);
+const usePresetScreening = preset && timeframe === preset.timeframe;
+
+const category = await ask(
+  "Pool discovery category (trending / new / bluechip)",
+  p("category", e("category", "trending"))
 );
 
 const minOrganic = await askNum(
   "Min organic score (0–100)",
   p("minOrganic", 65),
+  { min: 0, max: 100 }
+);
+
+const minQuoteOrganic = await askNum(
+  "Min quote-token organic score (0–100)",
+  usePresetScreening ? p("minQuoteOrganic", minOrganic) : p("minQuoteOrganic", minOrganic),
   { min: 0, max: 100 }
 );
 
@@ -265,18 +383,66 @@ const minHolders = await askNum(
   { min: 1 }
 );
 
+const minMcap = await askNum(
+  "Min token market cap USD",
+  p("minMcap", 150_000),
+  { min: 0 }
+);
+
 const maxMcap = await askNum(
   "Max token market cap USD",
   p("maxMcap", 10_000_000),
-  { min: 100_000 }
+  { min: minMcap }
+);
+
+const minTvl = await askNum(
+  "Min pool TVL USD",
+  p("minTvl", 10_000),
+  { min: 0 }
+);
+
+const maxTvl = await askNum(
+  "Max pool TVL USD (0 = no limit)",
+  p("maxTvl", 150_000),
+  { min: 0 }
+);
+
+const minVolume = await askNum(
+  "Min pool volume USD",
+  usePresetScreening ? p("minVolume", tfScaled.minVolume) : tfScaled.minVolume,
+  { min: 0 }
+);
+
+const minBinStep = await askNum(
+  "Min bin step",
+  p("minBinStep", 80),
+  { min: 1, max: 500 }
+);
+
+const maxBinStep = await askNum(
+  "Max bin step",
+  p("maxBinStep", 125),
+  { min: minBinStep, max: 500 }
+);
+
+const minFeeActiveTvlRatio = await askNum(
+  "Min fee/active-TVL ratio %",
+  usePresetScreening ? p("minFeeActiveTvlRatio", tfScaled.minFeeActiveTvlRatio) : tfScaled.minFeeActiveTvlRatio,
+  { min: 0 }
+);
+
+const minTokenFeesSol = await askNum(
+  "Min token global fees SOL (anti-bundled filter)",
+  p("minTokenFeesSol", 30),
+  { min: 0 }
 );
 
 // ─── Section 6: Exit Rules ────────────────────────────────────────────────────
 console.log("\n── Exit Rules ────────────────────────────────────────────────");
 
-const takeProfitFeePct = await askNum(
+const takeProfitPct = await askNum(
   "Take profit when fees earned >= X% of deployed capital",
-  p("takeProfitFeePct", 5),
+  p("takeProfitPct", 5),
   { min: 0.1, max: 100 }
 );
 
@@ -317,6 +483,59 @@ const repeatDeployCooldownScope = await ask(
 const repeatDeployCooldownMinFeeEarnedPct = await askNum(
   "Repeat deploy min fee earned %",
   p("repeatDeployCooldownMinFeeEarnedPct", 0),
+  { min: 0 }
+);
+
+// ─── Section 6b: Trailing Take Profit ────────────────────────────────────────
+console.log("\n── Trailing Take Profit ──────────────────────────────────────");
+
+const trailingTakeProfit = await askBool(
+  "Enable trailing take profit?",
+  p("trailingTakeProfit", true)
+);
+
+const trailingTriggerPct = await askNum(
+  "Trailing TP trigger % (activate trailing at this PnL)",
+  p("trailingTriggerPct", 3),
+  { min: 0.1 }
+);
+
+const trailingDropPct = await askNum(
+  "Trailing TP drop % (close when drops this much from peak)",
+  p("trailingDropPct", 1.5),
+  { min: 0.1 }
+);
+
+// ─── Section 6c: Management Advanced ─────────────────────────────────────────
+console.log("\n── Management Advanced ───────────────────────────────────────");
+
+const minFeePerTvl24h = await askNum(
+  "Min fee/TVL 24h % (low yield close threshold)",
+  p("minFeePerTvl24h", 7),
+  { min: 0 }
+);
+
+const minAgeBeforeYieldCheck = await askNum(
+  "Min age (minutes) before low yield can trigger close",
+  p("minAgeBeforeYieldCheck", 60),
+  { min: 1 }
+);
+
+const minClaimAmount = await askNum(
+  "Min unclaimed fees USD before claiming",
+  p("minClaimAmount", 5),
+  { min: 0 }
+);
+
+const oorCooldownTriggerCount = await askNum(
+  "OOR cooldown trigger count (consecutive OOR closes)",
+  p("oorCooldownTriggerCount", 3),
+  { min: 1 }
+);
+
+const oorCooldownHours = await askNum(
+  "OOR cooldown hours",
+  p("oorCooldownHours", 12),
   { min: 0 }
 );
 
@@ -389,8 +608,34 @@ const llmApiKeyRaw = await ask("API Key", llmApiKeyExisting ? "*** (already set)
 const llmApiKey   = llmApiKeyRaw.startsWith("***") ? llmApiKeyExisting : llmApiKeyRaw;
 
 const llmModel = await ask(
-  "Model name",
+  "Default model name",
   e("llmModel", process.env.LLM_MODEL || provider.modelDefault)
+);
+
+// ─── Section 8b: Per-Role Models ─────────────────────────────────────────────
+console.log("\n── Per-Role Models (Enter to use default) ────────────────────");
+
+const managementModel = await ask(
+  "Management cycle model",
+  e("managementModel", llmModel)
+);
+
+const screeningModel = await ask(
+  "Screening cycle model",
+  e("screeningModel", llmModel)
+);
+
+const generalModel = await ask(
+  "General/chat model",
+  e("generalModel", llmModel)
+);
+
+// ─── Section 9: SOL Mode ─────────────────────────────────────────────────────
+console.log("\n── Display Mode ──────────────────────────────────────────────");
+
+const solMode = await askBool(
+  "SOL mode? (report PnL/balances in SOL instead of USD)",
+  e("solMode", false)
 );
 
 rl.close();
@@ -415,17 +660,35 @@ const userConfig = {
   ...existingConfig,
   preset: presetChoice.key,
   rpcUrl,
+  // Deployment
   deployAmountSol,
   maxPositions,
   minSolToOpen,
   minBinsBelow,
   maxBinsBelow,
   defaultBinsBelow,
+  strategy,
+  // Position sizing
+  positionSizePct,
+  gasReserve,
+  maxDeployAmount,
+  // Screening filters
   timeframe,
+  category,
   minOrganic,
+  minQuoteOrganic,
   minHolders,
+  minMcap,
   maxMcap,
-  takeProfitFeePct,
+  minTvl,
+  maxTvl,
+  minVolume,
+  minBinStep,
+  maxBinStep,
+  minFeeActiveTvlRatio,
+  minTokenFeesSol,
+  // Exit rules
+  takeProfitPct,
   stopLossPct,
   outOfRangeWaitMinutes,
   repeatDeployCooldownEnabled,
@@ -433,18 +696,39 @@ const userConfig = {
   repeatDeployCooldownHours,
   repeatDeployCooldownScope,
   repeatDeployCooldownMinFeeEarnedPct,
+  // Trailing TP
+  trailingTakeProfit,
+  trailingTriggerPct,
+  trailingDropPct,
+  // Management advanced
+  minFeePerTvl24h,
+  minAgeBeforeYieldCheck,
+  minClaimAmount,
+  oorCooldownTriggerCount,
+  oorCooldownHours,
+  // Scheduling
   managementIntervalMin,
   screeningIntervalMin,
+  // LLM
   llmProvider: provider.key,
   llmBaseUrl,
   llmModel,
+  managementModel,
+  screeningModel,
+  generalModel,
   ...(llmApiKey ? { llmApiKey } : {}),
-  telegramChatId: telegramChatId || "",
+  // Telegram — keep .env and user-config in sync
+  telegramChatId: telegramChatId || process.env.TELEGRAM_CHAT_ID || existingConfig.telegramChatId || "",
+  // Modes
   dryRun,
+  solMode,
 };
 
-// Remove legacy key if present
+// Remove legacy keys if present
 delete userConfig.emergencyPriceDropPct;
+delete userConfig.takeProfitFeePct;
+delete userConfig.maxBundlePct;
+delete userConfig.athFilterPct;
 
 fs.writeFileSync(CONFIG_PATH, JSON.stringify(userConfig, null, 2));
 
@@ -458,18 +742,34 @@ console.log(`
 
   Preset:       ${presetName}
   Dry run:      ${dryRun ? "YES — no real transactions" : "NO — live trading"}
+  SOL mode:     ${solMode ? "YES" : "NO"}
 
-  Deploy:       ${deployAmountSol} SOL/position  ·  max ${maxPositions} positions
+  Strategy:     ${strategy}
+  Deploy:       ${deployAmountSol} SOL/position  ·  max ${maxPositions} positions  ·  size ${(positionSizePct * 100).toFixed(0)}%
+  Gas reserve:  ${gasReserve} SOL  ·  max deploy ${maxDeployAmount} SOL
   Min balance:  ${minSolToOpen} SOL to open new position
-  Timeframe:    ${timeframe}  ·  organic ≥ ${minOrganic}  ·  holders ≥ ${minHolders}
-  Take profit:  fees ≥ ${takeProfitFeePct}%
-  Stop loss:    ${stopLossPct}% price drop
-  OOR close:    after ${outOfRangeWaitMinutes} min
+  Bins below:   ${minBinsBelow}–${maxBinsBelow} (default ${defaultBinsBelow})
+
+  Timeframe:    ${timeframe}  ·  category ${category}
+  Screening:    organic ≥ ${minOrganic}  ·  holders ≥ ${minHolders}  ·  fees ≥ ${minTokenFeesSol} SOL
+  Market cap:   $${minMcap.toLocaleString()} – $${maxMcap.toLocaleString()}
+  TVL:          $${minTvl.toLocaleString()} – $${maxTvl.toLocaleString()}  ·  vol ≥ $${minVolume}
+  Bin step:     ${minBinStep}–${maxBinStep}  ·  fee/TVL ≥ ${minFeeActiveTvlRatio}%
+
+  Take profit:  ${takeProfitPct}%  ·  stop loss ${stopLossPct}%
+  Trailing TP:  ${trailingTakeProfit ? `trigger ${trailingTriggerPct}%, drop ${trailingDropPct}%` : "disabled"}
+  OOR close:    after ${outOfRangeWaitMinutes} min  ·  cooldown ${oorCooldownTriggerCount}x → ${oorCooldownHours}h
+  Low yield:    fee/TVL < ${minFeePerTvl24h}% after ${minAgeBeforeYieldCheck} min
+  Claim min:    $${minClaimAmount}
   Repeat CD:    ${repeatDeployCooldownEnabled ? `${repeatDeployCooldownTriggerCount}x / ${repeatDeployCooldownHours}h / ${repeatDeployCooldownScope}` : "disabled"}
 
   Cycles:       management every ${managementIntervalMin}m  ·  screening every ${screeningIntervalMin}m
+
   Provider:     ${provider.label.split("(")[0].trim()}
-  Model:        ${llmModel}
+  Default:      ${llmModel}
+  Screening:    ${screeningModel}
+  Management:   ${managementModel}
+  General:      ${generalModel}
   Base URL:     ${llmBaseUrl}
 
   Telegram:     ${telegramToken ? "enabled" : "disabled"}

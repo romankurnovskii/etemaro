@@ -1,10 +1,8 @@
 import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import { log } from "./logger.js";
+import { repoPath } from "./repo-root.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const USER_CONFIG_PATH = path.join(__dirname, "user-config.json");
+const USER_CONFIG_PATH = repoPath("user-config.json");
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || null;
 const BASE  = TOKEN ? `https://api.telegram.org/bot${TOKEN}` : null;
@@ -15,23 +13,38 @@ const ALLOWED_USER_IDS = new Set(
     .filter(Boolean)
 );
 
-let chatId   = process.env.TELEGRAM_CHAT_ID || null;
+let chatId = null;
 let _offset  = 0;
 let _polling = false;
 let _liveMessageDepth = 0;
 let _warnedMissingChatId = false;
 let _warnedMissingAllowedUsers = false;
 
+function nonEmptyChatId(value) {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  return trimmed || null;
+}
+
 // ─── chatId persistence ──────────────────────────────────────────
-function loadChatId() {
+function resolveChatId() {
+  const fromEnv = nonEmptyChatId(process.env.TELEGRAM_CHAT_ID);
+  let fromConfig = null;
   try {
     if (fs.existsSync(USER_CONFIG_PATH)) {
       const cfg = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, "utf8"));
-      if (cfg.telegramChatId) chatId = cfg.telegramChatId;
+      fromConfig = nonEmptyChatId(cfg.telegramChatId);
     }
   } catch (error) {
     log("telegram_warn", `Invalid user-config.json; chatId not loaded: ${error.message}`);
   }
+  // user-config wins when set; otherwise fall back to .env
+  const resolved = fromConfig || fromEnv || null;
+  return resolved != null ? String(resolved) : null;
+}
+
+function loadChatId() {
+  chatId = resolveChatId();
 }
 
 function saveChatId(id) {
@@ -61,7 +74,7 @@ function isAuthorizedIncomingMessage(msg) {
     return false;
   }
 
-  if (incomingChatId !== chatId) return false;
+  if (incomingChatId !== String(chatId)) return false;
 
   if (chatType !== "private" && ALLOWED_USER_IDS.size === 0) {
     if (!_warnedMissingAllowedUsers) {
@@ -93,7 +106,11 @@ async function postTelegram(method, body) {
     });
     if (!res.ok) {
       const err = await res.text();
-      log("telegram_error", `${method} ${res.status}: ${err.slice(0, 200)}`);
+      if (res.status === 401) {
+        log("telegram_error", `${method} 401 Unauthorized — check TELEGRAM_BOT_TOKEN in .env (invalid, revoked, or encrypted without .envrypt key)`);
+      } else {
+        log("telegram_error", `${method} ${res.status}: ${err.slice(0, 200)}`);
+      }
       return null;
     }
     return await res.json();
@@ -113,7 +130,11 @@ async function postTelegramRaw(method, body) {
     });
     if (!res.ok) {
       const err = await res.text();
-      log("telegram_error", `${method} ${res.status}: ${err.slice(0, 200)}`);
+      if (res.status === 401) {
+        log("telegram_error", `${method} 401 Unauthorized — check TELEGRAM_BOT_TOKEN in .env (invalid, revoked, or encrypted without .envrypt key)`);
+      } else {
+        log("telegram_error", `${method} ${res.status}: ${err.slice(0, 200)}`);
+      }
       return null;
     }
     return await res.json();
@@ -425,6 +446,10 @@ async function registerCommands() {
 
 export function startPolling(onMessage) {
   if (!TOKEN) return;
+  loadChatId();
+  if (!chatId) {
+    log("telegram_warn", "TELEGRAM_CHAT_ID not set in .env or user-config.telegramChatId — outbound notifications and inbound control disabled until configured.");
+  }
   _polling = true;
   poll(onMessage); // fire-and-forget
   registerCommands();

@@ -37,7 +37,6 @@ The harness also keeps a structured decision log in `decision-log.json` for depl
 **Data sources:**
 - `@meteora-ag/dlmm` SDK — on-chain position data, active bin, deploy/close transactions
 - Meteora DLMM PnL API — position yield, fee accrual, PnL
-- OKX OnchainOS — smart money signals, token risk scoring
 - Pool screening API — fee/TVL ratios, volume, organic scores, holder counts
 - Jupiter API — token audit, mcap, launchpad, price stats
 
@@ -72,7 +71,15 @@ npm install
 npm run setup
 ```
 
-The wizard walks you through creating `.env` (API keys, wallet, RPC, Telegram) and `user-config.json` (risk preset, deploy size, thresholds, models). Takes about 2 minutes.
+The wizard writes **both** files at the repo root:
+
+| Goes in `.env` | Goes in `user-config.json` |
+|---|---|
+| `WALLET_PRIVATE_KEY`, `OPENROUTER_API_KEY`, `RPC_URL`, `HELIUS_API_KEY` | Risk preset, deploy size, max positions |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_ALLOWED_USER_IDS` | Strategy, screening filters, exit rules, trailing TP |
+| `DRY_RUN` | Position sizing, cycle intervals, per-role LLM models, `solMode` |
+
+`TELEGRAM_CHAT_ID` only needs to live in `.env` — setup also copies it to `user-config.json` when provided. Takes about 2 minutes.
 
 **Or set up manually:**
 
@@ -117,14 +124,21 @@ npm start      # live mode
 
 On startup Meridian fetches your wallet balance, open positions, and top pool candidates, then begins autonomous cycles immediately.
 
-### Run with PM2
+### Run with PM2 (VPS / always-on)
 
-PM2 is supported and is the recommended way to keep Telegram control online on a VPS:
+PM2 is the recommended way to keep Telegram control online on a VPS. **Always start via the ecosystem file** so the working directory and script path stay pinned to the repo:
 
 ```bash
 npm install
-npm run pm2:start
+npm run pm2:start    # uses ecosystem.config.cjs — do NOT use "pm2 start index.js"
 pm2 save
+```
+
+After `.env`, `user-config.json`, or code changes:
+
+```bash
+npm run pm2:restart  # re-reads .env on each restart
+npm run pm2:logs
 ```
 
 To update an existing PM2 install:
@@ -133,15 +147,41 @@ To update an existing PM2 install:
 git pull
 npm install
 npm run pm2:restart
+pm2 save
 ```
 
-If the process restarts repeatedly after an update, inspect the app error first:
+If a previous PM2 run was started incorrectly, reset it once:
 
 ```bash
-npm run pm2:logs
+pm2 delete meridian
+npm run pm2:start
+pm2 save
 ```
 
-Most post-update PM2 crashes are app startup errors, commonly from skipping `npm install` after `package-lock.json` changed, starting PM2 from the wrong directory, or missing `.env` / `user-config.json` values. Avoid `nohup`; it runs outside PM2 and can leave Telegram polling in a duplicate unmanaged process.
+**PM2 vs `npm start`**
+
+| | `npm start` | PM2 |
+|---|---|---|
+| Terminal | Interactive REPL | Headless daemon |
+| Cron / Telegram | Starts after REPL banner | Starts immediately on boot |
+| First screening | On cron schedule | May run one cycle right at startup |
+| Best for | Local dev / testing | VPS / 24-7 operation |
+
+On startup, logs show `Repo: ... | cwd: ... | PM2 id: ...`. **Repo and cwd must match.** If they differ, delete the process and use `npm run pm2:start` again.
+
+**Common PM2 issues**
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Crash loop after `git pull` | `npm install` skipped | `npm install && npm run pm2:restart` |
+| Missing wallet / API keys | Started with `pm2 start index.js` from wrong directory | `pm2 delete meridian && npm run pm2:start` |
+| `.env` changes ignored | Old PM2 env snapshot | `npm run pm2:restart` (`.env` now overrides stale PM2 env) |
+| Telegram `401 Unauthorized` | Invalid `TELEGRAM_BOT_TOKEN` (not chat ID) | Fix token in `.env`; if encrypted, ensure `.envrypt` exists |
+| Telegram commands ignored | Missing/wrong `TELEGRAM_CHAT_ID` | Set in `.env` (or `telegramChatId` in `user-config.json`) |
+| Duplicate polling / 409 errors | `nohup node index.js` or second PM2 instance running | Kill stray processes; run only one PM2 app |
+| Encrypted env crash at boot | `# encrypted` lines without `.envrypt` key | Add `.envrypt` or use plain `.env` values |
+
+Avoid `nohup node index.js` — it runs outside PM2 and can leave a duplicate Telegram poller fighting the managed process.
 
 ---
 
@@ -201,7 +241,7 @@ claude
 
 Two specialized sub-agents run inside Claude Code:
 
-**`screener`** — pool screening specialist. Invoke when you want to evaluate candidates, analyse token risk, or deploy a position. Has access to OKX smart money signals, full token audit pipeline, and all strategy logic.
+**`screener`** — pool screening specialist. Invoke when you want to evaluate candidates, analyse token risk, or deploy a position. Has access to Jupiter token audit, smart-wallet checks, and all strategy logic.
 
 **`manager`** — position management specialist. Invoke when reviewing open positions, assessing PnL, claiming fees, or closing positions.
 
@@ -391,8 +431,17 @@ Add known rug/farm deployer wallet addresses to `deployer-blacklist.json`:
 ### Setup
 
 1. Create a bot via [@BotFather](https://t.me/BotFather) and copy the token
-2. Add `TELEGRAM_BOT_TOKEN=<token>` to your `.env`
-3. Start the agent, then send any message to your bot — it auto-registers your chat ID
+2. Add to `.env`:
+
+```env
+TELEGRAM_BOT_TOKEN=<token>
+TELEGRAM_CHAT_ID=<your chat id>          # .env alone is enough; also saved to user-config by setup
+TELEGRAM_ALLOWED_USER_IDS=<user id>    # required for group/supergroup control
+```
+
+Meridian does **not** auto-register the first chat for safety — you must set `TELEGRAM_CHAT_ID` explicitly. For groups, also set `TELEGRAM_ALLOWED_USER_IDS` or inbound commands are ignored.
+
+`401 Unauthorized` in logs means a bad `TELEGRAM_BOT_TOKEN` (invalid, revoked, or encrypted without a working `.envrypt` key) — not a chat ID problem.
 
 ### Notifications
 
@@ -411,7 +460,7 @@ Meridian sends notifications automatically for:
 | `/close <n>` | Close position by list index |
 | `/set <n> <note>` | Set a note on a position |
 
-You can also chat freely via Telegram using the same interface as the REPL.
+You can also chat freely via Telegram using the same interface as the REPL. Only allowed user IDs can issue commands in groups.
 
 ---
 
@@ -436,7 +485,7 @@ All fields are optional — defaults shown. Edit `user-config.json`.
 | `timeframe` | `5m` | Candle timeframe for screening |
 | `category` | `trending` | Pool category filter |
 | `minTokenFeesSol` | `30` | Minimum all-time fees in SOL |
-| `maxBundlersPct` | `30` | Maximum bundler % in top 100 holders |
+| `maxBotHoldersPct` | `30` | Maximum bot holder % (Jupiter audit) |
 | `maxTop10Pct` | `60` | Maximum top-10 holder concentration |
 | `blockedLaunchpads` | `[]` | Launchpad names to never deploy into |
 
@@ -451,6 +500,11 @@ All fields are optional — defaults shown. Edit `user-config.json`.
 | `minSolToOpen` | `0.55` | Minimum wallet SOL before opening |
 | `outOfRangeWaitMinutes` | `30` | Minutes OOR before acting |
 | `stopLossPct` | `-15` | Close position if price drops by this % |
+| `takeProfitPct` | `5` | Close when fees earned reach this % of capital |
+| `trailingTakeProfit` | `true` | Enable trailing take-profit |
+| `trailingTriggerPct` | `3` | Activate trailing TP at this PnL % |
+| `trailingDropPct` | `1.5` | Close when PnL drops this % from peak |
+| `strategy` | `bid_ask` | LP strategy: `spot`, `bid_ask`, or `curve` |
 
 ### Schedule
 
@@ -468,38 +522,6 @@ All fields are optional — defaults shown. Edit `user-config.json`.
 | `generalModel` | `openai/gpt-oss-20b:free` | LLM for REPL / chat |
 
 > Override model at runtime: `node cli.js config set screeningModel anthropic/claude-opus-4-5`
-
----
-
-## Telegram
-
-**Setup:**
-
-1. Create a bot via [@BotFather](https://t.me/BotFather) and copy the token
-2. Add `TELEGRAM_BOT_TOKEN=<token>` to your `.env`
-3. Set the exact Telegram chat and allowed controller user IDs in `.env`
-
-Meridian no longer auto-registers the first chat for safety. You must set:
-
-```env
-TELEGRAM_BOT_TOKEN=<token>
-TELEGRAM_CHAT_ID=<target chat id>
-TELEGRAM_ALLOWED_USER_IDS=<comma-separated Telegram user ids allowed to control the bot>
-```
-
-Security notes:
-- If `TELEGRAM_CHAT_ID` is not set, inbound Telegram control is ignored.
-- If the target chat is a group/supergroup and `TELEGRAM_ALLOWED_USER_IDS` is empty, inbound control is ignored.
-- Notifications still go to the configured chat, but command/control is limited to the allowed user IDs.
-
-**Notifications sent:**
-- After every management cycle: full agent report (reasoning + decisions)
-- After every screening cycle: full agent report (what it found, whether it deployed)
-- When a position goes out of range past `outOfRangeWaitMinutes`
-- On deploy: pair, amount, position address, tx hash
-- On close: pair and PnL
-
-You can also chat with the agent via Telegram using the same free-form interface as the REPL: `"check wallet 7tB8..."`, `"who are the top LPers in pool ABC..."`, `"close all positions"`, etc. Only explicitly allowed Telegram user IDs can issue commands.
 
 ---
 
@@ -584,7 +606,8 @@ Any OpenAI-compatible endpoint works.
 ```
 index.js            Main entry: REPL + cron orchestration + Telegram bot polling
 agent.js            ReAct loop: LLM → tool call → repeat
-config.js           Runtime config from user-config.json + .env
+config.js           Runtime config from user-config.json + .env (repo-root paths)
+repo-root.js        Stable absolute repo path — used by PM2, state files, and .env loading
 prompt.js           System prompt builder (SCREENER / MANAGER / GENERAL roles)
 state.js            Position registry (state.json)
 decision-log.js     Structured decision log for deploy, close, skip, and no-deploy rationale

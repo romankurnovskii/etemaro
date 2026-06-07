@@ -12,7 +12,9 @@
 import fs from "fs";
 import { log } from "./logger.js";
 
-const WEIGHTS_FILE = "./signal-weights.json";
+import { repoPath } from "./repo-root.js";
+
+const WEIGHTS_FILE = repoPath("signal-weights.json");
 
 // ─── Signal Definitions ─────────────────────────────────────────
 
@@ -27,6 +29,9 @@ const SIGNAL_NAMES = [
   "study_win_rate",
   "hive_consensus",
   "volatility",
+  "entry_mcap",
+  "entry_tvl",
+  "entry_volume",
 ];
 
 const DEFAULT_WEIGHTS = Object.fromEntries(SIGNAL_NAMES.map((s) => [s, 1.0]));
