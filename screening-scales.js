@@ -4,9 +4,9 @@
  * means very different things on 30m vs 24h.
  */
 
+// Pool discovery API accepts: 5m, 30m, 1h, 2h, 4h, 12h, 24h (no 15m).
 export const TIMEFRAME_SCREENING_SCALES = {
   "5m":  { minFeeActiveTvlRatio: 0.02, minVolume: 500 },
-  "15m": { minFeeActiveTvlRatio: 0.05, minVolume: 2_000 },
   "30m": { minFeeActiveTvlRatio: 0.15, minVolume: 1_000 },
   "1h":  { minFeeActiveTvlRatio: 0.2,  minVolume: 10_000 },
   "2h":  { minFeeActiveTvlRatio: 0.4,  minVolume: 20_000 },

@@ -32,7 +32,6 @@ const POOL_DISCOVERY_BASE = "https://pool-discovery-api.datapi.meteora.ag";
 const MIN_VOLATILITY_TIMEFRAME = "30m";
 const TIMEFRAME_MINUTES = {
   "5m": 5,
-  "15m": 15,
   "30m": 30,
   "1h": 60,
   "2h": 120,

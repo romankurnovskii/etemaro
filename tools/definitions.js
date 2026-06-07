@@ -85,7 +85,7 @@ IMPORTANT: Only call this with a real pool address from get_my_positions or get_
           },
           timeframe: {
             type: "string",
-            enum: ["5m", "15m", "30m", "1h", "2h", "4h", "12h", "24h"],
+            enum: ["5m", "30m", "1h", "2h", "4h", "12h", "24h"],
             description: "Data timeframe. Default 5m for management (most accurate). Use 4h+ for screening."
           }
         },
