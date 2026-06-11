@@ -247,6 +247,7 @@ export async function computePositions(walletAddress) {
   const DLMM = await loadDlmmSdk();
 
   const map = await DLMM.getAllLbPairPositionsByUser(conn, new PublicKey(walletAddress));
+  log("pnl_tick", `poll tick — ${[...mapEntries(map)].reduce((n, [, i]) => n + (i?.lbPairPositionsData?.length ?? 0), 0)} positions`);
 
   const flat = [];
   for (const [lbPairKey, info] of mapEntries(map)) {
