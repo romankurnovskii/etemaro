@@ -45,6 +45,15 @@ if (u.telegramChatId) process.env.TELEGRAM_CHAT_ID ||= String(u.telegramChatId);
 
 const indicatorUserConfig = u.chartIndicators ?? {};
 
+// Optional standalone GMGN config file (mirrors user-config layering)
+const GMGN_CONFIG_PATH = repoPath("gmgn-config.json");
+const gmgnUserConfig = fs.existsSync(GMGN_CONFIG_PATH)
+  ? JSON.parse(fs.readFileSync(GMGN_CONFIG_PATH, "utf8"))
+  : {};
+if (gmgnUserConfig.apiKey || u.gmgnApiKey) {
+  process.env.GMGN_API_KEY ||= gmgnUserConfig.apiKey || u.gmgnApiKey;
+}
+
 function nonEmptyString(...values) {
   for (const value of values) {
     if (typeof value !== "string") continue;
@@ -177,6 +186,27 @@ export const config = {
     url: nonEmptyString(u.agentMeridianApiUrl, process.env.AGENT_MERIDIAN_API_URL, DEFAULT_AGENT_MERIDIAN_API_URL),
     publicApiKey: nonEmptyString(u.publicApiKey, process.env.PUBLIC_API_KEY, DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY),
     lpAgentRelayEnabled: u.lpAgentRelayEnabled ?? false,
+  },
+
+  // ─── PnL fetcher / poller (public infra: RPC + Meteora deposits + Jupiter) ──
+  pnl: {
+    // Live position value comes from on-chain reads on this RPC.
+    // Defaults to the public pump.helius endpoint so the aggressive poller
+    // never burns the main RPC_URL or the LPAgent sponsor budget.
+    rpcUrl: nonEmptyString(u.pnlRpcUrl, process.env.PNL_RPC_URL, "https://pump.helius-rpc.com"),
+    source: nonEmptyString(u.pnlSource, "rpc"), // rpc | meteora (fallback-only)
+    pollIntervalSec: Number(u.pnlPollIntervalSec ?? 3),
+    depositCacheTtlSec: Number(u.pnlDepositCacheTtlSec ?? 300),
+  },
+
+  // ─── GMGN (fee source for minTokenFeesSol gate) ──────────────
+  gmgn: {
+    apiKey: nonEmptyString(gmgnUserConfig.apiKey, u.gmgnApiKey, process.env.GMGN_API_KEY),
+    baseUrl: nonEmptyString(gmgnUserConfig.baseUrl, u.gmgnBaseUrl, "https://openapi.gmgn.ai"),
+    requestDelayMs: Number(gmgnUserConfig.requestDelayMs ?? u.gmgnRequestDelayMs ?? 2500),
+    maxRetries: Number(gmgnUserConfig.maxRetries ?? u.gmgnMaxRetries ?? 2),
+    // gmgn = use GMGN total_fee for global_fees_sol; jupiter = legacy Jupiter fees
+    feeSource: nonEmptyString(gmgnUserConfig.feeSource, u.gmgnFeeSource, "gmgn"),
   },
 
   jupiter: {
