@@ -104,6 +104,7 @@ async function getJupiterPrices(mints) {
 // is a slow 24h pool stat. Cache per pool, refetch when any position's latest
 // signature changes or the TTL lapses.
 const _meteoraCache = new Map(); // pool -> { at, byPosition, sigByPosition }
+let _pollCount = 0;
 
 async function getLatestSig(conn, addr) {
   try {
@@ -247,7 +248,11 @@ export async function computePositions(walletAddress) {
   const DLMM = await loadDlmmSdk();
 
   const map = await DLMM.getAllLbPairPositionsByUser(conn, new PublicKey(walletAddress));
-  log("pnl_tick", `poll tick — ${[...mapEntries(map)].reduce((n, [, i]) => n + (i?.lbPairPositionsData?.length ?? 0), 0)} positions`);
+  _pollCount++;
+  if (_pollCount % 20 === 1) {
+    const n = [...mapEntries(map)].reduce((s, [, i]) => s + (i?.lbPairPositionsData?.length ?? 0), 0);
+    log("pnl_tick", `poller alive — ${n} position(s) tracked (tick #${_pollCount})`);
+  }
 
   const flat = [];
   for (const [lbPairKey, info] of mapEntries(map)) {
