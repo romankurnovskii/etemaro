@@ -875,6 +875,8 @@ function formatCandidates(candidates) {
 function getDeterministicCloseRule(position, managementConfig) {
   const tracked = getTrackedPosition(position.position);
   const pnlSuspect = (() => {
+    // Couldn't-price-this-tick flag (e.g. Jupiter outage) — never act on PnL rules.
+    if (position.pnl_pct_suspicious) return true;
     if (position.pnl_pct == null) return false;
     if (position.pnl_pct > -90) return false;
     if (tracked?.amount_sol && (position.total_value_usd ?? 0) > 0.01) {
