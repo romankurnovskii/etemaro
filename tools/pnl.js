@@ -175,9 +175,26 @@ function buildPosition(f, prices, solUsd, meteora, solMode) {
   const pctSol = depositsSol > 0 ? (pnlSol / depositsSol) * 100 : 0;
 
   const ourPct = solMode ? pctSol : pctUsd;
+
+  // pnl_pct_diff is the gap vs Meteora's precomputed pct — kept ONLY as a logged
+  // diagnostic. It is NOT used to gate exits: Meteora's pct comes from the
+  // deposit cache (stale up to depositCacheTtlSec) while ourPct is fresh every
+  // poll, so on a fast move the gap inflates and would falsely suppress
+  // STOP_LOSS / TRAILING_TP exactly when they matter.
   const reportedPct = solMode ? maybeNum(meteora?.pnlSolPctChange) : maybeNum(meteora?.pnlPctChange);
   const pnlPctDiff = reportedPct != null ? Math.abs(ourPct - reportedPct) : null;
-  const pnlPctSuspicious = pnlPctDiff != null && pnlPctDiff > (config.management.pnlSanityMaxDiffPct ?? 5);
+
+  // On-chain amounts are authoritative; a tick is "suspicious" (don't act on it)
+  // only when we couldn't price it. Guards against:
+  //  - Jupiter outage → solUsd/priceX missing → balances collapse → false STOP_LOSS
+  //  - missing Meteora deposits → 0 cost basis → garbage pnl / inflated value
+  const holdsTokenX = xHuman > 0 || feeXHuman > 0;
+  const priceMissing = !(solUsd > 0) || (holdsTokenX && !!f.baseMint && !(priceX > 0));
+  const depositsMissing = (solMode ? depositsSol : depositsUsd) <= 0;
+  const pnlPctSuspicious = priceMissing || depositsMissing;
+  if (pnlPctSuspicious) {
+    log("pnl_warn", `${f.position.slice(0, 8)} suspicious tick — priceMissing=${priceMissing} depositsMissing=${depositsMissing} (solUsd=${solUsd}, priceX=${priceX})`);
+  }
 
   const inRange = f.active != null && f.lower != null && f.upper != null
     ? f.active >= f.lower && f.active <= f.upper
