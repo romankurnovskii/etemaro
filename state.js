@@ -105,13 +105,11 @@ export function trackPosition({
     notes: [],
     peak_pnl_pct: 0,
     pending_peak_pnl_pct: null,
+    pending_peak_confirm_count: 0,
     pending_peak_started_at: null,
-    pending_trailing_current_pnl_pct: null,
-    pending_trailing_peak_pnl_pct: null,
-    pending_trailing_drop_pct: null,
-    pending_trailing_started_at: null,
-    confirmed_trailing_exit_reason: null,
-    confirmed_trailing_exit_until: null,
+    pending_exit_action: null,
+    pending_exit_count: 0,
+    pending_exit_started_at: null,
     trailing_active: false,
   };
   pushEvent(state, { action: "deploy", position, pool_name: pool_name || pool });
@@ -212,114 +210,94 @@ export function setPositionInstruction(position_address, instruction) {
   return true;
 }
 
-export function queuePeakConfirmation(position_address, candidatePnlPct, options = {}) {
+/**
+ * Raise the confirmed peak PnL only after `confirmTicks` consecutive polls where the
+ * candidate stays above the current peak. With the 3s RPC poller this confirms a real
+ * high in ~3-6s and prevents a single noisy tick from inflating the peak (which would
+ * otherwise arm a false trailing-drop). Replaces the old 15s setTimeout recheck.
+ * Returns true when the peak was raised this call.
+ */
+export function confirmPeak(position_address, candidatePnlPct, confirmTicks = 2) {
   if (candidatePnlPct == null) return false;
   const state = load();
   const pos = state.positions[position_address];
   if (!pos || pos.closed) return false;
 
   const currentPeak = pos.peak_pnl_pct ?? 0;
-  if (candidatePnlPct <= currentPeak) return false;
+  // No new high — drop any pending peak candidate.
+  if (candidatePnlPct <= currentPeak) {
+    if (pos.pending_peak_pnl_pct != null) {
+      pos.pending_peak_pnl_pct = null;
+      pos.pending_peak_confirm_count = 0;
+      save(state);
+    }
+    return false;
+  }
 
-  if (options.immediate) {
-    pos.peak_pnl_pct = candidatePnlPct;
+  // Same-or-higher candidate as the pending one → another confirming tick.
+  if (pos.pending_peak_pnl_pct != null && candidatePnlPct >= pos.pending_peak_pnl_pct) {
+    pos.pending_peak_confirm_count = (pos.pending_peak_confirm_count ?? 1) + 1;
+    pos.pending_peak_pnl_pct = candidatePnlPct;
+  } else {
+    // New / lower-than-pending candidate → start a fresh confirmation streak.
+    pos.pending_peak_pnl_pct = candidatePnlPct;
+    pos.pending_peak_confirm_count = 1;
+    pos.pending_peak_started_at = new Date().toISOString();
+  }
+
+  if (pos.pending_peak_confirm_count >= confirmTicks) {
+    pos.peak_pnl_pct = Math.max(currentPeak, pos.pending_peak_pnl_pct);
     pos.pending_peak_pnl_pct = null;
+    pos.pending_peak_confirm_count = 0;
     pos.pending_peak_started_at = null;
     save(state);
-    log("state", `Position ${position_address} peak PnL accepted at ${candidatePnlPct.toFixed(2)}% from rpc poll`);
+    log("state", `Position ${position_address} peak PnL confirmed at ${pos.peak_pnl_pct.toFixed(2)}% (${confirmTicks} ticks)`);
     return true;
   }
 
-  const changed =
-    pos.pending_peak_pnl_pct == null ||
-    candidatePnlPct > pos.pending_peak_pnl_pct;
-
-  if (!changed) return false;
-
-  pos.pending_peak_pnl_pct = candidatePnlPct;
-  pos.pending_peak_started_at = new Date().toISOString();
   save(state);
-  log("state", `Position ${position_address} peak candidate ${candidatePnlPct.toFixed(2)}% queued for 15s confirmation`);
-  return true;
+  return false;
 }
 
-export function resolvePendingPeak(position_address, currentPnlPct, toleranceRatio = 0.85) {
+/**
+ * Consecutive-tick confirmation for an exit signal. The fast poller calls this every
+ * tick with the exit action string detected this poll (or null when no exit). An exit
+ * only fires after `confirmTicks` consecutive polls report the SAME action — so a single
+ * noisy tick can't close a position. Streak resets whenever the signal clears or changes.
+ * Returns { fire, action, count }.
+ */
+export function registerExitSignal(position_address, signal, confirmTicks = 2) {
   const state = load();
   const pos = state.positions[position_address];
-  if (!pos || pos.closed || pos.pending_peak_pnl_pct == null) return { confirmed: false, pending: false };
+  if (!pos || pos.closed) return { fire: false, action: null, count: 0 };
 
-  const pendingPeak = pos.pending_peak_pnl_pct;
-  pos.pending_peak_pnl_pct = null;
-  pos.pending_peak_started_at = null;
-
-  if (currentPnlPct != null && currentPnlPct >= pendingPeak * toleranceRatio) {
-    pos.peak_pnl_pct = Math.max(pos.peak_pnl_pct ?? 0, pendingPeak, currentPnlPct);
-    save(state);
-    log("state", `Position ${position_address} peak PnL confirmed at ${pos.peak_pnl_pct.toFixed(2)}% after recheck`);
-    return { confirmed: true, peak: pos.peak_pnl_pct };
+  if (!signal) {
+    if (pos.pending_exit_action != null) {
+      pos.pending_exit_action = null;
+      pos.pending_exit_count = 0;
+      save(state);
+    }
+    return { fire: false, action: null, count: 0 };
   }
 
-  save(state);
-  log("state", `Position ${position_address} rejected pending peak ${pendingPeak.toFixed(2)}% after 15s recheck (current: ${currentPnlPct ?? "?"}%)`);
-  return { confirmed: false, rejected: true, pendingPeak };
-}
-
-export function queueTrailingDropConfirmation(position_address, peakPnlPct, currentPnlPct, trailingDropPct) {
-  if (peakPnlPct == null || currentPnlPct == null || trailingDropPct == null) return false;
-  const dropFromPeak = peakPnlPct - currentPnlPct;
-  if (dropFromPeak < trailingDropPct) return false;
-
-  const state = load();
-  const pos = state.positions[position_address];
-  if (!pos || pos.closed) return false;
-
-  const changed =
-    pos.pending_trailing_current_pnl_pct == null ||
-    currentPnlPct < pos.pending_trailing_current_pnl_pct ||
-    dropFromPeak > (pos.pending_trailing_drop_pct ?? -Infinity);
-
-  if (!changed) return false;
-
-  pos.pending_trailing_peak_pnl_pct = peakPnlPct;
-  pos.pending_trailing_current_pnl_pct = currentPnlPct;
-  pos.pending_trailing_drop_pct = dropFromPeak;
-  pos.pending_trailing_started_at = new Date().toISOString();
-  save(state);
-  log("state", `Position ${position_address} trailing drop candidate queued: peak ${peakPnlPct.toFixed(2)}% -> current ${currentPnlPct.toFixed(2)}%`);
-  return true;
-}
-
-export function resolvePendingTrailingDrop(position_address, currentPnlPct, trailingDropPct, tolerancePct = 1.0) {
-  const state = load();
-  const pos = state.positions[position_address];
-  if (!pos || pos.closed || pos.pending_trailing_current_pnl_pct == null || pos.pending_trailing_peak_pnl_pct == null) {
-    return { confirmed: false, pending: false };
+  if (pos.pending_exit_action === signal) {
+    pos.pending_exit_count = (pos.pending_exit_count ?? 1) + 1;
+  } else {
+    pos.pending_exit_action = signal;
+    pos.pending_exit_count = 1;
+    pos.pending_exit_started_at = new Date().toISOString();
   }
 
-  const pendingCurrent = pos.pending_trailing_current_pnl_pct;
-  const pendingPeak = pos.pending_trailing_peak_pnl_pct;
-  const pendingDrop = pos.pending_trailing_drop_pct ?? (pendingPeak - pendingCurrent);
-
-  pos.pending_trailing_current_pnl_pct = null;
-  pos.pending_trailing_peak_pnl_pct = null;
-  pos.pending_trailing_drop_pct = null;
-  pos.pending_trailing_started_at = null;
-
-  const stillNearCrash = currentPnlPct != null && currentPnlPct <= pendingCurrent + tolerancePct;
-  const stillDroppedEnough = currentPnlPct != null && (pendingPeak - currentPnlPct) >= trailingDropPct;
-
-  if (stillNearCrash && stillDroppedEnough) {
-    const reason = `Trailing TP: peak ${pendingPeak.toFixed(2)}% → current ${currentPnlPct.toFixed(2)}% (dropped ${(pendingPeak - currentPnlPct).toFixed(2)}% >= ${trailingDropPct}%)`;
-    pos.confirmed_trailing_exit_reason = reason;
-    pos.confirmed_trailing_exit_until = new Date(Date.now() + 30_000).toISOString();
-    save(state);
-    log("state", `Position ${position_address} trailing drop confirmed after recheck: pending drop ${pendingDrop.toFixed(2)}%, current ${currentPnlPct.toFixed(2)}%`);
-    return { confirmed: true, reason };
+  const count = pos.pending_exit_count;
+  const fire = count >= confirmTicks;
+  if (fire) {
+    pos.pending_exit_action = null;
+    pos.pending_exit_count = 0;
+    pos.pending_exit_started_at = null;
   }
-
   save(state);
-  log("state", `Position ${position_address} rejected trailing drop after 15s recheck (pending current: ${pendingCurrent.toFixed(2)}%, current: ${currentPnlPct ?? "?"}%)`);
-  return { confirmed: false, rejected: true };
+  if (fire) log("state", `Position ${position_address} exit signal "${signal}" confirmed (${confirmTicks} ticks)`);
+  return { fire, action: signal, count };
 }
 
 /**
@@ -383,18 +361,6 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   const state = load();
   const pos = state.positions[position_address];
   if (!pos || pos.closed) return null;
-
-  if (pos.confirmed_trailing_exit_until) {
-    if (new Date(pos.confirmed_trailing_exit_until).getTime() > Date.now() && pos.confirmed_trailing_exit_reason) {
-      const reason = pos.confirmed_trailing_exit_reason;
-      pos.confirmed_trailing_exit_reason = null;
-      pos.confirmed_trailing_exit_until = null;
-      save(state);
-      return { action: "TRAILING_TP", reason, confirmed_recheck: true };
-    }
-    pos.confirmed_trailing_exit_reason = null;
-    pos.confirmed_trailing_exit_until = null;
-  }
 
   let changed = false;
 

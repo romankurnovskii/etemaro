@@ -1229,9 +1229,16 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
         const pnlPctDiff = reportedPnlPct != null && derivedPnlPct != null
           ? Math.abs(reportedPnlPct - derivedPnlPct)
           : null;
-        const pnlPctSuspicious = pnlPctDiff != null && pnlPctDiff > (config.management.pnlSanityMaxDiffPct ?? 5);
+        // Gate PnL rules ONLY when the tick is genuinely unpriceable (no real number
+        // from either method — e.g. missing deposits / data outage). Reported-vs-derived
+        // divergence is normal noise on volatile pools, so it is logged but NOT gated —
+        // gating on it froze all exits (stop-loss/trailing/close) and stranded positions.
+        const pnlPctSuspicious = reportedPnlPct == null && derivedPnlPct == null;
         if (pnlPctSuspicious) {
-          log("positions_warn", `Suspicious pnl_pct for ${positionAddress.slice(0, 8)}: reported=${reportedPnlPct.toFixed(2)} derived=${derivedPnlPct.toFixed(2)} diff=${pnlPctDiff.toFixed(2)}`);
+          log("positions_warn", `Unpriceable pnl_pct for ${positionAddress.slice(0, 8)}: no valid reported/derived value this tick — PnL rules paused`);
+        } else if (pnlPctDiff != null && pnlPctDiff > (config.management.pnlSanityMaxDiffPct ?? 5)) {
+          // Informational only — does not gate rules.
+          log("positions_warn", `pnl_pct divergence for ${positionAddress.slice(0, 8)}: reported=${reportedPnlPct.toFixed(2)} derived=${derivedPnlPct.toFixed(2)} diff=${pnlPctDiff.toFixed(2)} (informational)`);
         }
 
         positions.push({

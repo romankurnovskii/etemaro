@@ -93,6 +93,7 @@ export const config = {
     blockPvpSymbols:   u.blockPvpSymbols   ?? false, // hard-filter PVP rivals before the LLM sees them
     maxBotHoldersPct:  u.maxBotHoldersPct  ?? 30,  // max bot holder addresses % (Jupiter audit)
     maxTop10Pct:       u.maxTop10Pct       ?? 60,  // max top 10 holders concentration
+    loneCandidateMinDegen: u.loneCandidateMinDegen ?? 50, // degen score that lets a SOLO candidate deploy without a narrative
     allowedLaunchpads: u.allowedLaunchpads ?? [],  // allow-list launchpads, [] = no allow-list
     blockedLaunchpads:  u.blockedLaunchpads  ?? [],  // e.g. ["letsbonk.fun", "pump.fun"]
     minTokenAgeHours:   u.minTokenAgeHours   ?? null, // null = no minimum
@@ -103,6 +104,8 @@ export const config = {
   management: {
     minClaimAmount:        u.minClaimAmount        ?? 5,
     autoSwapAfterClaim:    u.autoSwapAfterClaim    ?? false,
+    autoSwapRetryAttempts: u.autoSwapRetryAttempts ?? 3,    // retries for base→SOL auto-swap on Jupiter failure
+    autoSwapRetryDelayMs:  u.autoSwapRetryDelayMs  ?? 3000, // delay between auto-swap retries
     outOfRangeBinsToClose: u.outOfRangeBinsToClose ?? 10,
     outOfRangeWaitMinutes: u.outOfRangeWaitMinutes ?? 30,
     oorCooldownTriggerCount: u.oorCooldownTriggerCount ?? 3,
@@ -197,6 +200,28 @@ export const config = {
     source: nonEmptyString(u.pnlSource, "rpc"), // rpc | meteora (fallback-only)
     pollIntervalSec: Number(u.pnlPollIntervalSec ?? 3),
     depositCacheTtlSec: Number(u.pnlDepositCacheTtlSec ?? 300),
+    // Consecutive confirming polls required before a peak is raised or an exit fires.
+    // At a 3s poll cadence, 2 ticks ≈ 3-6s — filters single-tick noise without the
+    // old fixed 15s setTimeout recheck.
+    confirmTicks: Number(u.pnlConfirmTicks ?? 2),
+  },
+
+  // ─── Opportunity poller (catches strong pools between screening cycles) ──
+  opportunity: {
+    enabled: u.opportunityPollEnabled ?? true,
+    pollIntervalSec: Number(u.opportunityPollIntervalSec ?? 45),
+    limit: Number(u.opportunityPollLimit ?? 10),
+    // Pre-gate: only trigger the full deploy decision when the best candidate's
+    // Degen Score (0..100) clears this bar — avoids running screening every 45s.
+    minScore: Number(u.opportunityMinScore ?? 40),
+    // A smart wallet (from the agentmeridian server) sitting on the pool LOWERS the
+    // effective minScore by this much — a strong signal nudges a borderline pool through.
+    smartWalletScoreBonus: Number(u.opportunitySmartWalletBonus ?? 20),
+    // Degen Score targets (each sub-score saturates at its target). Tune to calibrate.
+    targetVolRatio: Number(u.degenTargetVolRatio ?? 500),    // volume/active_tvl for full trading sub-score
+    targetLpCount: Number(u.degenTargetLpCount ?? 150),      // unique_lps + positions_created for full LP sub-score
+    targetFeeRatio: Number(u.degenTargetFeeRatio ?? 1.0),    // fee/active_tvl for full fee sub-score
+    targetLiquidity: Number(u.degenTargetLiquidity ?? 50000), // active_tvl ($) for full liquidity sub-score
   },
 
   // ─── GMGN (fee source for minTokenFeesSol gate) ──────────────
