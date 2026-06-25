@@ -218,10 +218,14 @@ export const config = {
     // effective minScore by this much — a strong signal nudges a borderline pool through.
     smartWalletScoreBonus: Number(u.opportunitySmartWalletBonus ?? 20),
     // Degen Score targets (each sub-score saturates at its target). Tune to calibrate.
-    targetVolRatio: Number(u.degenTargetVolRatio ?? 500),    // volume/active_tvl for full trading sub-score
-    targetLpCount: Number(u.degenTargetLpCount ?? 150),      // unique_lps + positions_created for full LP sub-score
-    targetFeeRatio: Number(u.degenTargetFeeRatio ?? 1.0),    // fee/active_tvl for full fee sub-score
-    targetLiquidity: Number(u.degenTargetLiquidity ?? 50000), // active_tvl ($) for full liquidity sub-score
+    // Inputs are normalized to a fixed 30m reference window, so these are timeframe-independent.
+    targetVolRatio: Number(u.degenTargetVolRatio ?? 20),     // (30m) volume/active_tvl for full trading sub-score
+    targetLpCount: Number(u.degenTargetLpCount ?? 40),       // (30m) unique_lps + positions_created for full LP sub-score
+    targetFeeRatio: Number(u.degenTargetFeeRatio ?? 0.20),   // (30m) fee/active_tvl for full fee sub-score (tune per timeframe; fees don't normalize as cleanly as volume)
+    // active_tvl ($) for full liquidity sub-score. NOT timeframe-scaled. Set near your
+    // active-TVL floor (≈ minTvl) so it acts as a dust floor, not a stretch goal — the
+    // screening minTvl filter already removes tiny pools.
+    targetLiquidity: Number(u.degenTargetLiquidity ?? 20000),
   },
 
   // ─── GMGN (fee source for minTokenFeesSol gate) ──────────────
