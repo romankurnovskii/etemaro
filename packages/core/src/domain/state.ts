@@ -32,7 +32,15 @@ import type {
 export type { PositionRecord } from "../shared/types.js";
 import type { AppConfig } from "../shared/types.js";
 
-const STATE_FILE = dataPath("state.json");
+let STATE_FILE = dataPath("state.json");
+
+/**
+ * Test-only seam: redirect the state file so tests don't read/write the real
+ * data/state.json. Production code always uses the default path.
+ */
+export function __setStateFilePath(path: string): void {
+  STATE_FILE = path;
+}
 
 interface StateData {
   positions: Record<string, PositionRecord>;

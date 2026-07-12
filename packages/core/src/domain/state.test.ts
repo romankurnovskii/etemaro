@@ -1,19 +1,29 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   reconcileTrackedPositions,
   getTrackedPositions,
   trackPosition,
   syncOpenPositions,
+  __setStateFilePath,
 } from "./state.js";
-import { dataPath } from "../shared/constants.js";
 
-const STATE_FILE = dataPath("state.json");
+// Isolate the test from the real data/state.json via the test seam.
+const TMP_STATE = path.join(os.tmpdir(), `meridian-state-test-${process.pid}.json`);
 
 describe("reconcileTrackedPositions", () => {
+  beforeAll(() => {
+    __setStateFilePath(TMP_STATE);
+  });
+
+  afterAll(() => {
+    if (fs.existsSync(TMP_STATE)) fs.unlinkSync(TMP_STATE);
+  });
+
   beforeEach(() => {
-    if (fs.existsSync(STATE_FILE)) fs.unlinkSync(STATE_FILE);
+    if (fs.existsSync(TMP_STATE)) fs.unlinkSync(TMP_STATE);
   });
 
   it("imports an on-chain position the agent did not deploy", () => {
@@ -74,9 +84,9 @@ describe("reconcileTrackedPositions", () => {
       initial_value_usd: 50,
     } as any);
     // Older than SYNC_GRACE_MS so it is eligible for auto-close.
-    const state = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+    const state = JSON.parse(fs.readFileSync(TMP_STATE, "utf8"));
     state.positions.PosZ.deployed_at = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state));
+    fs.writeFileSync(TMP_STATE, JSON.stringify(state));
 
     syncOpenPositions(["PosY"]); // PosZ not in on-chain list
     const tracked = getTrackedPositions(true);
