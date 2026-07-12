@@ -1,10 +1,26 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Absolute path to the repository root (one level above src/). */
-export const REPO_ROOT: string = path.resolve(
+/**
+ * Walk up from the given directory until we find the monorepo root,
+ * identified by the presence of pnpm-workspace.yaml. Falls back to the
+ * previous heuristic (two levels above this file) if no marker is found.
+ */
+function findRepoRoot(startDir: string): string {
+  let dir = startDir;
+  for (;;) {
+    if (fs.existsSync(path.join(dir, "pnpm-workspace.yaml"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(startDir, "../..");
+}
+
+/** Absolute path to the repository root (the pnpm workspace root). */
+export const REPO_ROOT: string = findRepoRoot(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../..",
 );
 
 /** Resolve a path relative to the repository root. */
