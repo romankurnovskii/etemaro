@@ -6,7 +6,7 @@ module.exports = {
   apps: [
     {
       name: "meridian",
-      script: path.join(repoRoot, "dist/interfaces/Daemon.js"),
+      script: path.join(repoRoot, "packages/daemon/dist/Daemon.js"),
       cwd: repoRoot,
       interpreter: "node",
       instances: 1,
