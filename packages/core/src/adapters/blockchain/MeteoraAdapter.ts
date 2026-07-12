@@ -23,6 +23,7 @@ import {
   getTrackedPosition,
   minutesOutOfRange,
   syncOpenPositions,
+  reconcileTrackedPositions,
 } from "../../domain/state.js";
 import { recordPerformance } from "../../domain/lessons.js";
 import { isBaseMintOnCooldown, isPoolOnCooldown } from "../../domain/pool-memory.js";
@@ -1183,6 +1184,7 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
         const rpcResult = await computePositions(walletAddress);
         if (useLocalWallet) {
           syncOpenPositions(rpcResult.positions.map((p: any) => p.position));
+          reconcileTrackedPositions(rpcResult.positions);
           _positionsCache = rpcResult;
           _positionsCacheAt = Date.now();
         }
@@ -1344,6 +1346,7 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
     };
     if (useLocalWallet) {
       syncOpenPositions(positions.map(p => p.position));
+      reconcileTrackedPositions(positions);
       _positionsCache = result;
       _positionsCacheAt = Date.now();
     }
