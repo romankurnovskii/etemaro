@@ -535,3 +535,69 @@ export function syncOpenPositions(active_addresses: string[]): void {
 
   if (changed) save(state);
 }
+
+/**
+ * Backfill state.json with on-chain positions the agent did not deploy itself
+ * (e.g. positions opened manually or via another tool). The sync command only
+ * prunes missing positions; this adds any live position not already tracked so
+ * the agent can monitor and manage it. Off-chain metadata (strategy, volatility,
+ * organic score, signal snapshot, entry market data) is unavailable for imported
+ * positions and is left as best-effort / null. Returns the number of positions added.
+ */
+export function reconcileTrackedPositions(livePositions: any[]): number {
+  if (!Array.isArray(livePositions) || livePositions.length === 0) return 0;
+  const state = load();
+  let added = 0;
+
+  for (const p of livePositions) {
+    const address = p?.position;
+    if (!address) continue;
+    // Already tracked (open or closed) — never clobber existing metadata.
+    if (state.positions[address]) continue;
+
+    state.positions[address] = {
+      position: address,
+      pool: p.pool || null,
+      pool_name: p.pool_name || null,
+      strategy: "imported",
+      bin_range: { min: p.lower_bin ?? null, max: p.upper_bin ?? null },
+      amount_sol: Number(p.amount_y ?? 0) || 0,
+      amount_x: Number(p.amount_x ?? 0) || 0,
+      active_bin_at_deploy: Number(p.active_bin) || 0,
+      bin_step: Number(p.bin_step) || 0,
+      volatility: 0,
+      fee_tvl_ratio: Number(p.fee_per_tvl_24h ?? 0) || 0,
+      initial_fee_tvl_24h: Number(p.fee_per_tvl_24h ?? 0) || 0,
+      organic_score: 0,
+      initial_value_usd: Number(p.total_value_true_usd ?? p.total_value_usd ?? 0) || 0,
+      entry_mcap: null,
+      entry_tvl: null,
+      entry_volume: null,
+      entry_holders: null,
+      signal_snapshot: null,
+      deployed_at: new Date().toISOString(),
+      out_of_range_since: null,
+      last_claim_at: null,
+      total_fees_claimed_usd: 0,
+      rebalance_count: 0,
+      closed: false,
+      closed_at: null,
+      notes: ["Imported from on-chain during sync (not deployed by agent)"],
+      peak_pnl_pct: 0,
+      pending_peak_pnl_pct: null,
+      pending_peak_confirm_count: 0,
+      pending_peak_started_at: null,
+      pending_exit_action: null,
+      pending_exit_count: 0,
+      pending_exit_started_at: null,
+      trailing_active: false,
+    };
+    added++;
+  }
+
+  if (added > 0) {
+    save(state);
+    log("state", `Reconciled ${added} imported position(s) into state.json`);
+  }
+  return added;
+}
