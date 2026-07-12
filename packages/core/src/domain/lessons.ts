@@ -1,0 +1,720 @@
+/**
+ * Agent learning system.
+ *
+ * After each position closes, performance is analyzed and lessons are
+ * derived. These lessons are injected into the system prompt so the
+ * agent avoids repeating mistakes and doubles down on what works.
+ */
+
+import fs from "node:fs";
+import { log } from "../shared/logger.js";
+import { dataPath, configPath, MIN_EVOLVE_POSITIONS, MAX_CHANGE_PER_STEP, PERFORMANCE_SIGNAL_FIELDS, MAX_MANUAL_LESSON_LENGTH, ROLE_TAGS } from "../shared/constants.js";
+import { sanitizeStoredText, isFiniteNum, avg, nudge, clamp, loadJsonFile, saveJsonFile } from "../shared/utils.js";
+import type { Lesson, PerformanceRecord, LessonsData, SignalSnapshot, AgentRole } from "../shared/types.js";
+import type { AppConfig } from "../shared/types.js";
+
+const LESSONS_FILE = dataPath("lessons.json");
+
+function load(): LessonsData {
+  return loadJsonFile<LessonsData>(LESSONS_FILE, { lessons: [], performance: [] });
+}
+
+function save(data: LessonsData): void {
+  saveJsonFile(LESSONS_FILE, data);
+}
+
+function buildSignalSnapshot(perf: Record<string, unknown>): SignalSnapshot | null {
+  const snapshot: Record<string, unknown> = { ...(perf.signal_snapshot as Record<string, unknown> || {}) };
+  if (perf.base_mint && snapshot.base_mint == null) snapshot.base_mint = perf.base_mint;
+  for (const field of PERFORMANCE_SIGNAL_FIELDS) {
+    if (snapshot[field] == null && perf[field] != null) {
+      snapshot[field] = perf[field];
+    }
+  }
+  return Object.values(snapshot).some((value) => value != null) ? snapshot as SignalSnapshot : null;
+}
+
+// ─── Record Position Performance ──────────────────────────────
+
+/**
+ * Call this when a position closes. Captures performance data and
+ * derives a lesson if the outcome was notably good or bad.
+ */
+export async function recordPerformance(perf: PerformanceRecord): Promise<void> {
+  const data = load();
+
+  // Guard against unit-mixed records where a SOL-sized final value is
+  // accidentally written into a USD field (e.g. final_value_usd = 2 for a 2 SOL close).
+  const suspiciousUnitMix =
+    Number.isFinite(perf.initial_value_usd) &&
+    Number.isFinite(perf.final_value_usd) &&
+    Number.isFinite(perf.amount_sol) &&
+    perf.initial_value_usd >= 20 &&
+    perf.amount_sol >= 0.25 &&
+    perf.final_value_usd > 0 &&
+    perf.final_value_usd <= perf.amount_sol * 2;
+
+  if (suspiciousUnitMix) {
+    log("lessons_warn", `Skipped suspicious performance record for ${perf.pool_name || perf.pool}: initial=${perf.initial_value_usd}, final=${perf.final_value_usd}, amount_sol=${perf.amount_sol}`);
+    return;
+  }
+
+  const pnl_usd = (perf.final_value_usd + perf.fees_earned_usd) - perf.initial_value_usd;
+  const pnl_pct = perf.initial_value_usd > 0
+    ? (pnl_usd / perf.initial_value_usd) * 100
+    : 0;
+  const range_efficiency = perf.minutes_held > 0
+    ? (perf.minutes_in_range / perf.minutes_held) * 100
+    : 0;
+
+  const closeReasonText = String(perf.close_reason || "").toLowerCase();
+  const suspiciousAbsurdClosedPnl =
+    Number.isFinite(pnl_pct) &&
+    perf.initial_value_usd >= 20 &&
+    pnl_pct <= -90 &&
+    !closeReasonText.includes("stop loss");
+
+  if (suspiciousAbsurdClosedPnl) {
+    log("lessons_warn", `Skipped absurd closed PnL record for ${perf.pool_name || perf.pool}: pnl_pct=${pnl_pct.toFixed(2)} reason=${perf.close_reason}`);
+    return;
+  }
+
+  const signalSnapshot = buildSignalSnapshot(perf as unknown as Record<string, unknown>);
+  const entry = {
+    ...perf,
+    signal_snapshot: signalSnapshot as SignalSnapshot | null as unknown as SignalSnapshot | undefined,
+    pnl_usd: Math.round(pnl_usd * 100) / 100,
+    pnl_pct: Math.round(pnl_pct * 100) / 100,
+    range_efficiency: Math.round(range_efficiency * 10) / 10,
+    recorded_at: new Date().toISOString(),
+  };
+
+  data.performance.push(entry as PerformanceRecord);
+
+  // Derive and store a lesson
+  const lesson = derivLesson(entry as PerformanceRecord & { recorded_at?: string });
+  if (lesson) {
+    data.lessons.push(lesson);
+    log("lessons", `New lesson: ${lesson.rule}`);
+  }
+
+  save(data);
+  if (lesson) {
+    void pushHiveLesson(lesson);
+  }
+
+  // Update pool-level memory
+  if (perf.pool) {
+    const { recordPoolDeploy } = await import("./pool-memory.js");
+    recordPoolDeploy(perf.pool, {
+      pool_name: perf.pool_name,
+      base_mint: perf.base_mint,
+      deployed_at: perf.deployed_at,
+      closed_at: entry.recorded_at,
+      pnl_pct: entry.pnl_pct,
+      pnl_usd: entry.pnl_usd,
+      range_efficiency: entry.range_efficiency,
+      minutes_held: perf.minutes_held,
+      fees_earned_usd: perf.fees_earned_usd,
+      fees_earned_sol: perf.fees_earned_sol,
+      fee_earned_pct: perf.initial_value_usd > 0 ? ((perf.fees_earned_usd || 0) / perf.initial_value_usd) * 100 : null,
+      close_reason: perf.close_reason,
+      strategy: perf.strategy,
+      volatility: perf.volatility,
+      entry_mcap: perf.entry_mcap,
+      entry_tvl: perf.entry_tvl,
+      entry_volume: perf.entry_volume,
+      exit_mcap: perf.exit_mcap,
+      exit_tvl: perf.exit_tvl,
+      exit_volume: perf.exit_volume,
+    });
+  }
+
+  // Evolve thresholds every 5 closed positions
+  if (data.performance.length % MIN_EVOLVE_POSITIONS === 0) {
+    const { config, reloadScreeningThresholds } = await import("../config/Config.js");
+    const result = evolveThresholds(data.performance, config);
+    if (result?.changes && Object.keys(result.changes).length > 0) {
+      reloadScreeningThresholds();
+      log("evolve", `Auto-evolved thresholds: ${JSON.stringify(result.changes)}`);
+    }
+
+    // Darwinian signal weight recalculation
+    if (config.darwin?.enabled) {
+      const { recalculateWeights } = await import("./signal-weights.js");
+      const wResult = recalculateWeights(data.performance, config);
+      if (wResult.changes.length > 0) {
+        log("evolve", `Darwin: adjusted ${wResult.changes.length} signal weight(s)`);
+      }
+    }
+  }
+
+  void pushHivePerformanceEvent({
+    ...(entry as unknown as Record<string, unknown>),
+    base_mint: perf.base_mint || null,
+    fees_earned_sol: perf.fees_earned_sol || 0,
+    eventId: `close:${perf.position}:${entry.recorded_at}`,
+  });
+}
+
+/**
+ * Derive a lesson from a closed position's performance.
+ * Only generates a lesson if the outcome was clearly good or bad.
+ */
+function derivLesson(perf: PerformanceRecord & { recorded_at?: string }): Lesson | null {
+  const tags: string[] = [];
+  const feeYieldPct = perf.initial_value_usd > 0
+    ? ((perf.fees_earned_usd || 0) / perf.initial_value_usd) * 100
+    : 0;
+
+  // Categorize outcome
+  const outcome: Lesson["outcome"] = perf.pnl_pct! >= 5 ? "good"
+    : (perf.pnl_pct! >= 0 && feeYieldPct >= 2) ? "good"
+    : perf.pnl_pct! >= 0 ? "neutral"
+    : perf.pnl_pct! >= -5 ? "poor"
+    : "bad";
+
+  if (outcome === "neutral") return null; // nothing interesting to learn
+
+  // Build context description with entry/exit market conditions
+  const fmtNum = (n: number | null | undefined): string => n == null ? "?" : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(0)}K` : String(Math.round(n));
+  const contextParts = [
+    `${perf.pool_name}`,
+    `strategy=${perf.strategy}`,
+    `bin_step=${perf.bin_step}`,
+    `volatility=${perf.volatility}`,
+    `fee_tvl_ratio=${perf.fee_tvl_ratio}`,
+    `organic=${perf.organic_score}`,
+    `bin_range=${typeof perf.bin_range === 'object' ? JSON.stringify(perf.bin_range) : perf.bin_range}`,
+  ];
+  if (perf.entry_mcap != null || perf.entry_tvl != null || perf.entry_volume != null) {
+    contextParts.push(`entry(mcap=${fmtNum(perf.entry_mcap)}, tvl=${fmtNum(perf.entry_tvl)}, vol=${fmtNum(perf.entry_volume)})`);
+  }
+  if (perf.exit_mcap != null || perf.exit_tvl != null || perf.exit_volume != null) {
+    contextParts.push(`exit(mcap=${fmtNum(perf.exit_mcap)}, tvl=${fmtNum(perf.exit_tvl)}, vol=${fmtNum(perf.exit_volume)})`);
+  }
+  const context = contextParts.join(", ");
+
+  let rule = "";
+
+  if (outcome === "good" || outcome === "bad") {
+    if (perf.range_efficiency! < 30 && outcome === "bad") {
+      rule = `AVOID: ${perf.pool_name}-type pools (volatility=${perf.volatility}, bin_step=${perf.bin_step}) with strategy="${perf.strategy}" — went OOR ${100 - perf.range_efficiency!}% of the time. Consider wider bin_range or bid_ask strategy.`;
+      tags.push("oor", perf.strategy, `volatility_${Math.round(perf.volatility)}`);
+    } else if (perf.range_efficiency! > 80 && outcome === "good") {
+      const entryNote = perf.entry_mcap != null ? ` Entry: mcap=${fmtNum(perf.entry_mcap)}, tvl=${fmtNum(perf.entry_tvl)}, vol=${fmtNum(perf.entry_volume)}.` : "";
+      rule = `PREFER: ${perf.pool_name}-type pools (volatility=${perf.volatility}, bin_step=${perf.bin_step}) with strategy="${perf.strategy}" — ${perf.range_efficiency}% in-range efficiency, PnL +${perf.pnl_pct}%.${entryNote}`;
+      tags.push("efficient", perf.strategy);
+    } else if (outcome === "bad" && perf.close_reason?.includes("volume")) {
+      rule = `AVOID: Pools with fee_tvl_ratio=${perf.fee_tvl_ratio} that showed volume collapse — fees evaporated quickly. Minimum sustained volume check needed before deploying.`;
+      tags.push("volume_collapse");
+    } else if (outcome === "good") {
+      rule = `WORKED: ${context} → PnL +${perf.pnl_pct}%, range efficiency ${perf.range_efficiency}%.`;
+      tags.push("worked");
+    } else {
+      rule = `FAILED: ${context} → PnL ${perf.pnl_pct}%, range efficiency ${perf.range_efficiency}%. Reason: ${perf.close_reason}.`;
+      tags.push("failed");
+    }
+  }
+
+  if (!rule) return null;
+
+  const closeReasonText = String(perf.close_reason || "").toLowerCase();
+  const positiveEvidence =
+    feeYieldPct >= 1 ||
+    (perf.fees_earned_usd || 0) >= 3 ||
+    perf.pnl_pct! >= 3;
+  const negativeEvidence =
+    perf.pnl_pct! <= -5 ||
+    perf.range_efficiency! <= 30 ||
+    closeReasonText.includes("out of range") ||
+    closeReasonText.includes("oor") ||
+    closeReasonText.includes("low yield") ||
+    closeReasonText.includes("volume");
+
+  let confidence = 0.35;
+  if (outcome === "good") {
+    confidence = positiveEvidence ? 0.82 : 0.22;
+  } else if (outcome === "bad") {
+    confidence = negativeEvidence ? 0.88 : 0.45;
+  } else if (outcome === "poor") {
+    confidence = negativeEvidence ? 0.68 : 0.32;
+  }
+
+  return {
+    id: Date.now(),
+    rule,
+    tags,
+    outcome,
+    sourceType: "performance",
+    confidence: Math.round(confidence * 100) / 100,
+    context,
+    pnl_pct: perf.pnl_pct,
+    fees_earned_usd: perf.fees_earned_usd,
+    initial_value_usd: perf.initial_value_usd,
+    range_efficiency: perf.range_efficiency,
+    close_reason: perf.close_reason,
+    pool: perf.pool,
+    entry_mcap: perf.entry_mcap ?? null,
+    entry_tvl: perf.entry_tvl ?? null,
+    entry_volume: perf.entry_volume ?? null,
+    exit_mcap: perf.exit_mcap ?? null,
+    exit_tvl: perf.exit_tvl ?? null,
+    exit_volume: perf.exit_volume ?? null,
+    created_at: new Date().toISOString(),
+  };
+}
+
+// ─── Adaptive Threshold Evolution ──────────────────────────────
+
+interface EvolutionResult {
+  changes: Record<string, number>;
+  rationale: Record<string, string>;
+}
+
+/**
+ * Analyze closed position performance and evolve screening thresholds.
+ * Writes changes to user-config.json and returns a summary.
+ */
+export function evolveThresholds(perfData: PerformanceRecord[], cfg: AppConfig): EvolutionResult | null {
+  if (!perfData || perfData.length < MIN_EVOLVE_POSITIONS) return null;
+
+  const winners = perfData.filter((p) => p.pnl_pct! > 0);
+  const losers  = perfData.filter((p) => p.pnl_pct! < -5);
+
+  // Need at least some signal in both directions before adjusting
+  const hasSignal = winners.length >= 2 || losers.length >= 2;
+  if (!hasSignal) return null;
+
+  const changes: Record<string, number> = {};
+  const rationale: Record<string, string> = {};
+
+  // ── 1. minFeeActiveTvlRatio ────────────────────────────────────
+  // Raise the floor if low-fee pools consistently underperform.
+  {
+    const winnerFees = winners.map((p) => p.fee_tvl_ratio).filter(isFiniteNum);
+    const loserFees  = losers.map((p) => p.fee_tvl_ratio).filter(isFiniteNum);
+    const current    = cfg.screening.minFeeActiveTvlRatio;
+
+    if (winnerFees.length >= 2) {
+      // Minimum fee/TVL among winners — we know pools below this don't work for us
+      const minWinnerFee = Math.min(...winnerFees);
+      if (minWinnerFee > current * 1.2) {
+        const target  = minWinnerFee * 0.85; // stay slightly below min winner
+        const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 0.05, 10.0);
+        const rounded = Number(newVal.toFixed(2));
+        if (rounded > current) {
+          changes.minFeeActiveTvlRatio = rounded;
+          rationale.minFeeActiveTvlRatio = `Lowest winner fee_tvl=${minWinnerFee.toFixed(2)} — raised floor from ${current} → ${rounded}`;
+        }
+      }
+    }
+
+    if (loserFees.length >= 2) {
+      // If losers all had high fee/TVL, that's noise (pumps then crash) — don't raise min
+      // But if losers had low fee/TVL, raise min
+      const maxLoserFee = Math.max(...loserFees);
+      if (maxLoserFee < current * 1.5 && winnerFees.length > 0) {
+        const minWinnerFee = Math.min(...winnerFees);
+        if (minWinnerFee > maxLoserFee) {
+          const target  = maxLoserFee * 1.2;
+          const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 0.05, 10.0);
+          const rounded = Number(newVal.toFixed(2));
+          if (rounded > current && !changes.minFeeActiveTvlRatio) {
+            changes.minFeeActiveTvlRatio = rounded;
+            rationale.minFeeActiveTvlRatio = `Losers had fee_tvl<=${maxLoserFee.toFixed(2)}, winners higher — raised floor from ${current} → ${rounded}`;
+          }
+        }
+      }
+    }
+  }
+
+  // ── 2. minOrganic ─────────────────────────────────────────────
+  // Raise organic floor if low-organic tokens consistently failed.
+  {
+    const loserOrganics  = losers.map((p) => p.organic_score).filter(isFiniteNum);
+    const winnerOrganics = winners.map((p) => p.organic_score).filter(isFiniteNum);
+    const current        = cfg.screening.minOrganic;
+
+    if (loserOrganics.length >= 2 && winnerOrganics.length >= 1) {
+      const avgLoserOrganic  = avg(loserOrganics);
+      const avgWinnerOrganic = avg(winnerOrganics);
+      // Only raise if there's a clear gap (winners consistently more organic)
+      if (avgWinnerOrganic - avgLoserOrganic >= 10) {
+        // Set floor just below worst winner
+        const minWinnerOrganic = Math.min(...winnerOrganics);
+        const target = Math.max(minWinnerOrganic - 3, current);
+        const newVal = clamp(Math.round(nudge(current, target, MAX_CHANGE_PER_STEP)), 60, 90);
+        if (newVal > current) {
+          changes.minOrganic = newVal;
+          rationale.minOrganic = `Winner avg organic ${avgWinnerOrganic.toFixed(0)} vs loser avg ${avgLoserOrganic.toFixed(0)} — raised from ${current} → ${newVal}`;
+        }
+      }
+    }
+  }
+
+  if (Object.keys(changes).length === 0) return { changes: {}, rationale: {} };
+
+  // ── Persist changes to user-config.json ───────────────────────
+  const USER_CONFIG_PATH = configPath("user-config.json");
+  let userConfig: Record<string, unknown> = {};
+  if (fs.existsSync(USER_CONFIG_PATH)) {
+    try { userConfig = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, "utf8")); } catch { /* ignore */ }
+  }
+
+  Object.assign(userConfig, changes);
+  userConfig._lastEvolved = new Date().toISOString();
+  userConfig._positionsAtEvolution = perfData.length;
+
+  fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(userConfig, null, 2));
+
+  // Apply to live config object immediately
+  const s = cfg.screening;
+  if (changes.minFeeActiveTvlRatio != null) s.minFeeActiveTvlRatio = changes.minFeeActiveTvlRatio;
+  if (changes.minOrganic       != null) s.minOrganic       = changes.minOrganic;
+
+  // Log a lesson summarizing the evolution
+  const data = load();
+  data.lessons.push({
+    id: Date.now(),
+    rule: `[AUTO-EVOLVED @ ${perfData.length} positions] ${Object.entries(changes).map(([k, v]) => `${k}=${v}`).join(", ")} — ${Object.values(rationale).join("; ")}`,
+    tags: ["evolution", "config_change"],
+    outcome: "manual",
+    created_at: new Date().toISOString(),
+  });
+  save(data);
+
+  return { changes, rationale };
+}
+
+// ─── Helpers ───────────────────────────────────────────────────
+
+/** Move current toward target by at most maxChange fraction. */
+
+// ─── Manual Lessons ────────────────────────────────────────────
+
+interface AddLessonOpts {
+  pinned?: boolean;
+  role?: AgentRole | null;
+}
+
+/**
+ * Add a manual lesson (e.g. from operator observation).
+ */
+export function addLesson(rule: string, tags: string[] = [], { pinned = false, role = null }: AddLessonOpts = {}): void {
+  const safeRule = sanitizeLessonText(rule);
+  if (!safeRule) return;
+  const data = load();
+  const lesson: Lesson = {
+    id: Date.now(),
+    rule: safeRule,
+    tags,
+    outcome: "manual",
+    sourceType: tags.includes("self_tune") || tags.includes("config_change") ? "config_change" : "manual",
+    pinned: !!pinned,
+    role: role || null,
+    created_at: new Date().toISOString(),
+  };
+  data.lessons.push(lesson);
+  save(data);
+  log("lessons", `Manual lesson added${pinned ? " [PINNED]" : ""}${role ? ` [${role}]` : ""}: ${safeRule}`);
+  void pushHiveLesson(lesson);
+}
+
+/**
+ * Pin a lesson by ID — pinned lessons are always injected regardless of cap.
+ */
+export function pinLesson(id: number): { found: boolean; pinned?: boolean; id?: number; rule?: string } {
+  const data = load();
+  const lesson = data.lessons.find((l) => l.id === id);
+  if (!lesson) return { found: false };
+  lesson.pinned = true;
+  save(data);
+  log("lessons", `Pinned lesson ${id}: ${lesson.rule.slice(0, 60)}`);
+  return { found: true, pinned: true, id, rule: lesson.rule };
+}
+
+/**
+ * Unpin a lesson by ID.
+ */
+export function unpinLesson(id: number): { found: boolean; pinned?: boolean; id?: number; rule?: string } {
+  const data = load();
+  const lesson = data.lessons.find((l) => l.id === id);
+  if (!lesson) return { found: false };
+  lesson.pinned = false;
+  save(data);
+  return { found: true, pinned: false, id, rule: lesson.rule };
+}
+
+interface ListLessonsOpts {
+  role?: string | null;
+  pinned?: boolean | null;
+  tag?: string | null;
+  limit?: number;
+}
+
+/**
+ * List lessons with optional filters — for agent browsing via Telegram.
+ */
+export function listLessons({ role = null, pinned = null, tag = null, limit = 30 }: ListLessonsOpts = {}): {
+  total: number;
+  lessons: Array<{ id: number; rule: string; tags: string[]; outcome: string; pinned: boolean; role: string; created_at: string | undefined }>;
+} {
+  const data = load();
+  let lessons = [...data.lessons];
+
+  if (pinned !== null) lessons = lessons.filter((l) => !!l.pinned === pinned);
+  if (role)            lessons = lessons.filter((l) => !l.role || l.role === role);
+  if (tag)             lessons = lessons.filter((l) => l.tags?.includes(tag));
+
+  return {
+    total: lessons.length,
+    lessons: lessons.slice(-limit).map((l) => ({
+      id: l.id,
+      rule: l.rule.slice(0, 120),
+      tags: l.tags,
+      outcome: l.outcome,
+      pinned: !!l.pinned,
+      role: l.role || "all",
+      created_at: l.created_at?.slice(0, 10),
+    })),
+  };
+}
+
+/**
+ * Remove lessons matching a keyword in their rule text (case-insensitive).
+ */
+export function removeLessonsByKeyword(keyword: string): number {
+  const data = load();
+  const before = data.lessons.length;
+  const kw = keyword.toLowerCase();
+  data.lessons = data.lessons.filter((l) => !l.rule.toLowerCase().includes(kw));
+  save(data);
+  return before - data.lessons.length;
+}
+
+/**
+ * Clear ALL lessons (keeps performance data).
+ */
+export function clearAllLessons(): number {
+  const data = load();
+  const count = data.lessons.length;
+  data.lessons = [];
+  save(data);
+  return count;
+}
+
+/**
+ * Clear ALL performance records.
+ */
+export function clearPerformance(): number {
+  const data = load();
+  const count = data.performance.length;
+  data.performance = [];
+  save(data);
+  return count;
+}
+
+// ─── Lesson Retrieval ──────────────────────────────────────────
+
+/**
+ * Get lessons formatted for injection into the system prompt.
+ * Structured injection with three tiers:
+ *   1. Pinned        — always injected, up to PINNED_CAP
+ *   2. Role-matched  — lessons tagged for this agentType, up to ROLE_CAP
+ *   3. Recent        — fill remaining slots up to RECENT_CAP
+ */
+export function getLessonsForPrompt(opts: { agentType?: AgentRole; maxLessons?: number } | number = {}): string | null {
+  // Support legacy call signature: getLessonsForPrompt(20)
+  const normalizedOpts = typeof opts === "number" ? { maxLessons: opts } : opts;
+  const { agentType = "GENERAL", maxLessons } = normalizedOpts;
+
+  const data = load();
+  if (data.lessons.length === 0) return null;
+
+  // Smaller caps for automated cycles — they don't need the full lesson history
+  const isAutoCycle = agentType === "SCREENER" || agentType === "MANAGER";
+  const PINNED_CAP  = isAutoCycle ? 5  : 10;
+  const ROLE_CAP    = isAutoCycle ? 6  : 15;
+  const RECENT_CAP  = maxLessons ?? (isAutoCycle ? 10 : 35);
+
+  const outcomePriority: Record<string, number> = { bad: 0, poor: 1, failed: 1, good: 2, worked: 2, manual: 1, neutral: 3, evolution: 2 };
+  const byPriority = (a: Lesson, b: Lesson) => (outcomePriority[a.outcome] ?? 3) - (outcomePriority[b.outcome] ?? 3);
+
+  // ── Tier 1: Pinned ──────────────────────────────────────────────
+  // Respect role even for pinned lessons — a pinned SCREENER lesson shouldn't pollute MANAGER
+  const pinned = data.lessons
+    .filter((l) => l.pinned && (!l.role || l.role === agentType || agentType === "GENERAL"))
+    .sort(byPriority)
+    .slice(0, PINNED_CAP);
+
+  const usedIds = new Set(pinned.map((l) => l.id));
+
+  // ── Tier 2: Role-matched ────────────────────────────────────────
+  const roleTags = ROLE_TAGS[agentType] || [];
+  const roleMatched = data.lessons
+    .filter((l) => {
+      if (usedIds.has(l.id)) return false;
+      // Include if: lesson has no role restriction OR matches this role
+      const roleOk = !l.role || l.role === agentType || agentType === "GENERAL";
+      // Include if: lesson has role-relevant tags OR no tags (general)
+      const tagOk  = roleTags.length === 0 || !l.tags?.length || l.tags.some((t) => roleTags.includes(t));
+      return roleOk && tagOk;
+    })
+    .sort(byPriority)
+    .slice(0, ROLE_CAP);
+
+  roleMatched.forEach((l) => usedIds.add(l.id));
+
+  // ── Tier 3: Recent fill ─────────────────────────────────────────
+  const remainingBudget = RECENT_CAP - pinned.length - roleMatched.length;
+  const recent = remainingBudget > 0
+    ? data.lessons
+        .filter((l) => !usedIds.has(l.id))
+        .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
+        .slice(0, remainingBudget)
+    : [];
+
+  const selected = [...pinned, ...roleMatched, ...recent];
+  const shared = getSharedLessonsForPrompt({
+    agentType,
+    maxLessons: isAutoCycle ? 4 : 6,
+  });
+  if (selected.length === 0 && !shared) return null;
+
+  const sections: string[] = [];
+  if (pinned.length)      sections.push(`── PINNED (${pinned.length}) ──\n` + fmt(pinned));
+  if (roleMatched.length) sections.push(`── ${agentType} (${roleMatched.length}) ──\n` + fmt(roleMatched));
+  if (recent.length)      sections.push(`── RECENT (${recent.length}) ──\n` + fmt(recent));
+  if (shared)             sections.push(`── HIVEMIND ──\n${shared}`);
+
+  return sections.join("\n\n");
+}
+
+function fmt(lessons: Lesson[]): string {
+  return lessons.map((l) => {
+    const date = l.created_at ? l.created_at.slice(0, 16).replace("T", " ") : "unknown";
+    const pin  = l.pinned ? "📌 " : "";
+    return `${pin}[${l.outcome.toUpperCase()}] [${date}] ${l.rule}`;
+  }).join("\n");
+}
+
+interface GetPerformanceHistoryOpts {
+  hours?: number;
+  limit?: number;
+}
+
+/**
+ * Get individual performance records filtered by time window.
+ * Tool handler: get_performance_history
+ */
+export function getPerformanceHistory({ hours = 24, limit = 50 }: GetPerformanceHistoryOpts = {}): Record<string, unknown> {
+  const data = load();
+  const p = data.performance;
+
+  if (p.length === 0) return { positions: [], count: 0, hours };
+
+  const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+  const filtered = p
+    .filter((r) => r.recorded_at! >= cutoff)
+    .slice(-limit)
+    .map((r) => ({
+      pool_name: r.pool_name,
+      pool: r.pool,
+      strategy: r.strategy,
+      pnl_usd: r.pnl_usd,
+      pnl_pct: r.pnl_pct,
+      fees_earned_usd: r.fees_earned_usd,
+      range_efficiency: r.range_efficiency,
+      minutes_held: r.minutes_held,
+      close_reason: r.close_reason,
+      closed_at: r.recorded_at,
+    }));
+
+  const totalPnl = filtered.reduce((s, r) => s + (r.pnl_usd ?? 0), 0);
+  const wins = filtered.filter((r) => r.pnl_usd! > 0).length;
+
+  return {
+    hours,
+    count: filtered.length,
+    total_pnl_usd: Math.round(totalPnl * 100) / 100,
+    win_rate_pct: filtered.length > 0 ? Math.round((wins / filtered.length) * 100) : null,
+    positions: filtered,
+  };
+}
+
+/**
+ * Get performance stats summary.
+ */
+export function getPerformanceSummary(): Record<string, unknown> | null {
+  const data = load();
+  const p = data.performance;
+
+  if (p.length === 0) return null;
+
+  const totalPnl = p.reduce((s, x) => s + x.pnl_usd!, 0);
+  const avgPnlPct = p.reduce((s, x) => s + x.pnl_pct!, 0) / p.length;
+  const avgRangeEfficiency = p.reduce((s, x) => s + x.range_efficiency!, 0) / p.length;
+  const wins = p.filter((x) => x.pnl_usd! > 0).length;
+
+  return {
+    total_positions_closed: p.length,
+    total_pnl_usd: Math.round(totalPnl * 100) / 100,
+    avg_pnl_pct: Math.round(avgPnlPct * 100) / 100,
+    avg_range_efficiency_pct: Math.round(avgRangeEfficiency * 10) / 10,
+    win_rate_pct: Math.round((wins / p.length) * 100),
+    total_lessons: data.lessons.length,
+  };
+}
+
+// ─── HiveMind Bridge ───────────────────────────────────────────
+// Lazy-loaded to avoid circular dependency at import time.
+// hivemind.js lives at the repo root (not yet ported to TS).
+
+let _hivemind: {
+  pushHiveLesson: (lesson: any) => Promise<any>;
+  pushHivePerformanceEvent: (event: Record<string, unknown>) => Promise<any>;
+  getSharedLessonsForPrompt: (opts: any) => string | null;
+} | null = null;
+
+let _hivemindLoadAttempted = false;
+
+async function ensureHivemind(): Promise<typeof _hivemind> {
+  if (_hivemind || _hivemindLoadAttempted) return _hivemind;
+  _hivemindLoadAttempted = true;
+  try {
+    const mod = await import("../adapters/external/HivemindAdapter.js");
+    _hivemind = {
+      pushHiveLesson: mod.pushHiveLesson,
+      pushHivePerformanceEvent: mod.pushHivePerformanceEvent,
+      getSharedLessonsForPrompt: mod.getSharedLessonsForPrompt,
+    };
+  } catch {
+    // hivemind not available — no-op
+  }
+  return _hivemind;
+}
+
+async function pushHiveLesson(lesson: Lesson): Promise<void> {
+  const hm = await ensureHivemind();
+  if (hm) void hm.pushHiveLesson(lesson);
+}
+
+async function pushHivePerformanceEvent(event: Record<string, unknown>): Promise<void> {
+  const hm = await ensureHivemind();
+  if (hm) void hm.pushHivePerformanceEvent(event);
+}
+
+function getSharedLessonsForPrompt(opts: { agentType: string; maxLessons: number }): string | null {
+  if (_hivemind) return _hivemind.getSharedLessonsForPrompt(opts);
+  // Fire-and-forget async load for next call
+  void ensureHivemind();
+  return null;
+}
+
+// ─── Local Helpers ─────────────────────────────────────────────
+
+function sanitizeLessonText(text: unknown, maxLen = MAX_MANUAL_LESSON_LENGTH): string | null {
+  return sanitizeStoredText(text, maxLen);
+}

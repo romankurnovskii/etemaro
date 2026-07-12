@@ -1,0 +1,21 @@
+{
+  "name": "@meridian/daemon",
+  "version": "2.0.0",
+  "type": "module",
+  "main": "dist/Daemon.js",
+  "types": "dist/Daemon.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node --import tsx src/Daemon.ts"
+  },
+  "dependencies": {
+    "@meridian/core": "workspace:*",
+    "dotenv": "^17.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
