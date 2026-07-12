@@ -1,0 +1,7 @@
+# Ignore all configuration files in this directory
+*
+
+# Except example templates and this gitignore itself
+!*.example.json
+!.gitignore
+!ecosystem.config.cjs

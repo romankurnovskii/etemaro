@@ -1,29 +1,41 @@
 {
   "name": "dlmm-agent",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "description": "Autonomous DLMM LP agent for Meteora on Solana",
-  "main": "index.js",
+  "main": "packages/daemon/dist/Daemon.js",
   "bin": {
-    "meridian": "cli.js"
+    "meridian": "packages/cli/dist/Cli.js"
   },
   "scripts": {
-    "setup": "node setup.js",
-    "env:encrypt": "node scripts/envrypt.js encrypt",
-    "start": "node index.js",
-    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "start": "node --import tsx packages/daemon/src/Daemon.ts",
+    "dev": "DRY_RUN=true node --import tsx packages/daemon/src/Daemon.ts",
+    "cli": "node --import tsx packages/cli/src/Cli.ts",
+    "setup": "node --import tsx packages/cli/src/Cli.ts setup",
+    "balance": "node --import tsx packages/cli/src/Cli.ts balance",
+    "positions": "node --import tsx packages/cli/src/Cli.ts positions",
+    "candidates": "node --import tsx packages/cli/src/Cli.ts candidates",
+    "screen": "node --import tsx packages/cli/src/Cli.ts screen",
+    "manage": "node --import tsx packages/cli/src/Cli.ts manage",
+    "performance": "node --import tsx packages/cli/src/Cli.ts performance",
+    "evolve": "node --import tsx packages/cli/src/Cli.ts evolve",
+    "blacklist": "node --import tsx packages/cli/src/Cli.ts blacklist",
+    "lessons": "node --import tsx packages/cli/src/Cli.ts lessons",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest --passWithNoTests",
+    "test:coverage": "vitest run --coverage",
+    "lint": "pnpm -r run typecheck",
+    "pm2:start": "pm2 start config/ecosystem.config.cjs",
     "pm2:restart": "pm2 restart meridian --update-env",
     "pm2:logs": "pm2 logs meridian --lines 100",
-    "dev": "DRY_RUN=true node index.js",
-    "test": "npm run test:syntax",
-    "test:syntax": "find . -path ./node_modules -prune -o -name '*.js' -exec node --check {} \\;",
-    "test:screen": "node test/test-screening.js",
-    "test:agent": "DRY_RUN=true node test/test-agent.js",
     "postinstall": "node scripts/patch-anchor.js"
   },
   "knip": {
     "ignore": [
-      "discord-listener/**"
+      "discord-listener/**",
+      "dist/**"
     ]
   },
   "dependencies": {
@@ -34,9 +46,18 @@
     "dotenv": "^17.3.1",
     "jsonrepair": "^3.13.3",
     "node-cron": "^3.0.3",
-    "openai": "^4.73.0"
+    "openai": "^4.73.0",
+    "zod": "^3.24.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.2.0",
+    "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
   }
 }

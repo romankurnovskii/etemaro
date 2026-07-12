@@ -1,0 +1,28 @@
+{
+  "name": "@meridian/core",
+  "version": "2.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@meteora-ag/dlmm": "1.9.4",
+    "@solana/web3.js": "^1.95.0",
+    "bn.js": "^5.2.1",
+    "bs58": "^5.0.0",
+    "dotenv": "^17.3.1",
+    "jsonrepair": "^3.13.3",
+    "node-cron": "^3.0.3",
+    "openai": "^4.73.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.2.0",
+    "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
+    "typescript": "^5.7.0"
+  }
+}

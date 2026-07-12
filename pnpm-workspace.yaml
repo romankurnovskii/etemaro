@@ -1,0 +1,9 @@
+allowBuilds:
+  bigint-buffer: true
+  bufferutil: true
+  esbuild: true
+  utf-8-validate: true
+
+packages:
+  - 'packages/*'
+  - 'apps/*'
