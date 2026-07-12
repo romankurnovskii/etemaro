@@ -27,7 +27,7 @@ import {
   DEFAULT_HIVEMIND_API_KEY,
   TOKEN_MINTS,
 } from '../shared/constants.js';
-import { numericConfig, nonEmptyString } from '../shared/utils.js';
+import { numericConfig, nonEmptyString, scaleScreeningToTimeframe } from '../shared/utils.js';
 
 // ─── Zod Schemas ───────────────────────────────────────────────
 
@@ -263,6 +263,11 @@ function buildConfig(): AppConfig {
 
   const binsBelow = buildBinsBelow(u);
 
+  // Per-timeframe screening floors. A 5m window yields a tiny fee/active-TVL
+  // snapshot, so the gate must scale with the timeframe (see TIMEFRAME_SCREENING_SCALES).
+  // Explicit user values in user-config.json still win over these defaults.
+  const scaledScreening = scaleScreeningToTimeframe(u.timeframe as string | undefined);
+
   return {
     risk: {
       maxPositions: (u.maxPositions as number) ?? 3,
@@ -270,10 +275,10 @@ function buildConfig(): AppConfig {
     },
     screening: {
       excludeHighSupplyConcentration: (u.excludeHighSupplyConcentration as boolean) ?? true,
-      minFeeActiveTvlRatio: (u.minFeeActiveTvlRatio as number) ?? 0.05,
+      minFeeActiveTvlRatio: (u.minFeeActiveTvlRatio as number) ?? scaledScreening.minFeeActiveTvlRatio,
       minTvl: (u.minTvl as number) ?? 10_000,
       maxTvl: u.maxTvl !== undefined ? (u.maxTvl as number) : 150_000,
-      minVolume: (u.minVolume as number) ?? 500,
+      minVolume: (u.minVolume as number) ?? scaledScreening.minVolume,
       minOrganic: (u.minOrganic as number) ?? 60,
       minQuoteOrganic: (u.minQuoteOrganic as number) ?? 60,
       minHolders: (u.minHolders as number) ?? 500,
