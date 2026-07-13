@@ -1,3 +1,14 @@
+/**
+ * @file types.ts
+ * @description Shared TypeScript interfaces and type aliases for positions, pools, tokens, lessons, signals, strategies, config, and agent loop.
+ *
+ * @features
+ * - Position, state, pool, token, lesson, performance, strategy, pool memory, and blacklist types
+ * - Decision log, signal weights, signal snapshot, and agent loop types
+ * - AppConfig, screening, management, strategy, schedule, LLM, Darwin, PnL, opportunity, GMGN, Jupiter, and indicator config types
+ *
+ * @dependencies none (pure types)
+ */
 // ─── Position State ────────────────────────────────────────────
 
 export interface PositionRecord {

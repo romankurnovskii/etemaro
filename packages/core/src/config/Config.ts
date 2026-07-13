@@ -1,3 +1,15 @@
+/**
+ * @file Config.ts
+ * @description Runtime configuration loader that merges Zod-validated defaults with user-config.json and gmgn-config.json overrides.
+ *
+ * @features
+ * - Defines Zod schemas for risk, screening, management, strategy, schedule, LLM, Darwin, tokens, HiveMind, APIs, PnL, opportunity, GMGN, Jupiter, and indicators
+ * - Builds the singleton AppConfig from file-based overrides and environment variables
+ * - Exposes computeDeployAmount and reloadScreeningThresholds for dynamic config updates
+ *
+ * @dependencies zod
+ * @sideEffects Reads user-config.json and gmgn-config.json from disk; mutates process.env
+ */
 import fs from 'node:fs';
 import { z } from 'zod';
 import {

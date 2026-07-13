@@ -1,3 +1,13 @@
+/**
+ * @file ToolDefinitions.ts
+ * @description LLM tool definitions array covering screening, deployment, management, wallet, learning, strategy, lesson, performance, pool memory, and blacklist tools.
+ *
+ * @features
+ * - 30+ tool definitions with strict JSON schemas for pools, positions, wallet, tokens, lessons, strategies, and blacklists
+ * - Exported `tools` array freezes additionalProperties on object parameters
+ *
+ * @dependencies none (pure data)
+ */
 import type { ToolDefinition } from "../shared/types.js";
 
 const toolDefinitions: ToolDefinition[] = [

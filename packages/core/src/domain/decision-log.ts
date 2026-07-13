@@ -1,3 +1,15 @@
+/**
+ * @file decision-log.ts
+ * @description Append-only JSON log of structured agent decisions (deploy, close, skip, no_deploy, note).
+ *
+ * @features
+ * - appendDecision stores sanitized decisions capped at MAX_DECISIONS
+ * - getRecentDecisions returns the N most recent entries
+ * - getDecisionSummary produces a compact human-readable digest
+ *
+ * @dependencies none (pure file I/O)
+ * @sideEffects Reads and writes decision-log.json
+ */
 import { log } from "../shared/logger.js";
 import { dataPath, MAX_DECISIONS } from "../shared/constants.js";
 import { loadJsonFile, saveJsonFile } from "../shared/utils.js";
