@@ -10,8 +10,9 @@ Meridian runs continuous screening and management cycles, deploying capital into
 Detailed guides are available in the [docs/](docs) directory:
 * **[Start Here (Index)](docs/START_HERE.md)** — List of all documents.
 * **[Architecture Guide](docs/ARCHITECTURE.md)** — Core TypeScript hexagonal design, ReAct loop, and tools.
-* **[Configuration Reference](docs/CONFIGURATION.md)** — Precedence, settings, and threshold evolution.
+* **[Configuration Reference](docs/CONFIGURATION.md)** — Precedence, settings, and the full `user-config.json` [field reference](docs/CONFIGURATION.md#2-user-configuration-user-configjson).
 * **[Usage Guide](docs/USAGE_GUIDE.md)** — Step-by-step instructions, REPL commands, and flowcharts.
+* **[HiveMind Shared Lessons](docs/HIVEMIND.md)** — Collective-learning sync (shared-lesson pull/push).
 * **[Q&A / FAQ](docs/QA.md)** — Frequently asked questions.
 
 ---

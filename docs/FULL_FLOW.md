@@ -1,6 +1,8 @@
 # Meridian — Full Application Flow
 
 > **Meridian** is an autonomous Meteora DLMM liquidity management agent for Solana, powered by LLMs. It runs continuous screening and management cycles, deploying capital into high-quality Meteora DLMM pools and closing positions based on live PnL, yield, and range data.
+>
+> This is the **canonical flow reference** (architecture, startup, screening/management flows, learning, integrations). For day-to-day operation and commands, see [USAGE_GUIDE.md](USAGE_GUIDE.md). For config fields see [CONFIGURATION.md](CONFIGURATION.md); for HiveMind shared learning see [HIVEMIND.md](HIVEMIND.md).
 
 ---
 
@@ -156,20 +158,22 @@ graph LR
     DOMAINLayer["Domain Layer"] --> TYPES
 ```
 
+> **Path note:** `Cli.ts` lives at `packages/cli/src/Cli.ts`, `Daemon.ts` at `packages/daemon/src/Daemon.ts`, and every other `*.ts` shown above at `packages/core/src/...` (e.g. `agent-loop.ts` → `packages/core/src/application/agent-loop.ts`).
+
 ### Key Files
 
 | File | Role |
 |------|------|
-| `src/config/Config.ts` | Zod-validated config singleton from `user-config.json` + `.env` |
-| `src/application/agent-loop.ts` | Core ReAct loop: LLM → tool call → repeat |
-| `src/application/prompt-builder.ts` | Builds role-specific system prompts |
-| `src/adapters/ToolExecutor.ts` | Dispatches tool calls to adapter implementations |
-| `src/adapters/ToolDefinitions.ts` | OpenAI-format tool schemas |
-| `src/domain/state.ts` | Position registry in `state.json` |
-| `src/domain/lessons.ts` | Learning engine + threshold evolution |
-| `src/domain/decision-log.ts` | Structured decision rationale log |
-| `src/domain/signal-weights.ts` | Darwinian signal weighting system |
-| `src/domain/pool-memory.ts` | Per-pool deploy history + snapshots |
+| `packages/core/src/config/Config.ts` | Zod-validated config singleton from `user-config.json` + `.env` |
+| `packages/core/src/application/agent-loop.ts` | Core ReAct loop: LLM → tool call → repeat |
+| `packages/core/src/application/prompt-builder.ts` | Builds role-specific system prompts |
+| `packages/core/src/adapters/ToolExecutor.ts` | Dispatches tool calls to adapter implementations |
+| `packages/core/src/adapters/ToolDefinitions.ts` | OpenAI-format tool schemas |
+| `packages/core/src/domain/state.ts` | Position registry in `state.json` |
+| `packages/core/src/domain/lessons.ts` | Learning engine + threshold evolution |
+| `packages/core/src/domain/decision-log.ts` | Structured decision rationale log |
+| `packages/core/src/domain/signal-weights.ts` | Darwinian signal weighting system |
+| `packages/core/src/domain/pool-memory.ts` | Per-pool deploy history + snapshots |
 
 ---
 
@@ -188,7 +192,7 @@ sequenceDiagram
 
     User->>CLI: npm start / meridian start
     CLI->>Config: loadConfig()
-    Note right of Config: Reads user-config.json<br/>Reads .env (with encryption support)<br/>Merges with defaults via Zod schema
+    Note right of Config: Reads user-config.json<br/>Reads .env (secrets)<br/>Merges with defaults via Zod schema
 
     CLI->>Wallet: getWalletBalances()
     Wallet-->>CLI: { sol: 10.5, usd: 1800, tokens: [...] }
@@ -226,7 +230,7 @@ graph TD
     subgraph "Configuration Sources"
         ENV[".env<br/>Secrets: keys, tokens, RPC URLs"]
         USER["user-config.json<br/>Runtime settings: thresholds, strategy"]
-        GMGN_CFG["gmgn-config.json<br/>GMGN API settings"]
+        GMGN_CFG["gmgn-config.example.json<br/>GMGN API settings"]
         DEFAULTS["Zod Schema Defaults<br/>Hardcoded fallbacks"]
     end
 
