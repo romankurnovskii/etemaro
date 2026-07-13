@@ -53,11 +53,16 @@
     "node": ">=22.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/bn.js": "^5.2.0",
     "@types/node": "^22.0.0",
     "@types/node-cron": "^3.0.11",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.5",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.63.0",
     "vitest": "^3.0.0"
   },
   "lint-staged": {
