@@ -1,0 +1,20 @@
+services:
+  meridian:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: meridian:dev
+    command: pnpm run dev
+    env_file: .env
+    volumes:
+      - ./packages:/app/packages
+      - ./config:/app/config
+      - meridian_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  meridian_data:
+
+networks:
+  default:
+    name: meridian-dev

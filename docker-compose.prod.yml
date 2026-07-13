@@ -1,0 +1,25 @@
+services:
+  meridian:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: meridian:latest
+    env_file: .env.prod
+    volumes:
+      - meridian_config:/app/config
+      - meridian_data:/app/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'Daemon.js' > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  meridian_config:
+  meridian_data:
+
+networks:
+  default:
+    name: meridian-prod
