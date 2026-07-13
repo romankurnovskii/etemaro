@@ -25,4 +25,4 @@ RUN mkdir -p /app/data && \
 
 ENV NODE_ENV=production
 
-CMD ["node", "packages/daemon/dist/Daemon.js"]
+CMD ["node", "--import", "tsx", "packages/daemon/src/Daemon.ts"]
