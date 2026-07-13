@@ -14,13 +14,20 @@
       "Write",
       "Edit",
       "Glob",
-      "Grep"
+      "Grep",
+      "Read(./.env.example)"
     ],
     "deny": [
       "Bash(rm -rf *)",
       "Bash(wget *)",
-      "Read(./.env)",
-      "Read(./.env.*)"
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(*/.env)",
+      "Read(*/.env.*)",
+      "Read(./*.env)",
+      "Bash(cat .env*)",
+      "Bash(echo *.env*)",
+      "Bash(printenv *)"
     ]
   },
   "hooks": {
