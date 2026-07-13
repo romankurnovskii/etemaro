@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: meridian:dev
+    image: meridian:prod
     command: pnpm run start
     env_file: .env
     volumes:
