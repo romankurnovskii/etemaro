@@ -41,7 +41,6 @@ import {
   tools,
 } from '@meridian/core';
 // These will be injected or resolved at runtime by the adapter layer.
-// The adapters expose the same function signatures as the original JS modules.
 
 export interface DaemonAdapters {
   meteora: {
