@@ -85,7 +85,8 @@ export async function getWalletBalances(): Promise<WalletBalancesResult> {
   }
 
   // Normalize: strip "api-key=" prefix if copy-pasted with parameter name
-  HELIUS_KEY = HELIUS_KEY.trim().replace(/^api-key=/i, "");
+  // TODO: deprecate such workaround
+  HELIUS_KEY = HELIUS_KEY.trim().replace(/^api-key=/i, '');
 
   try {
     const url = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_KEY}`;

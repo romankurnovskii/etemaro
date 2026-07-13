@@ -197,15 +197,7 @@ export interface Lesson {
   exit_volume?: number | null;
 }
 
-export type LessonOutcome =
-  | "good"
-  | "bad"
-  | "poor"
-  | "neutral"
-  | "manual"
-  | "evolution"
-  | "failed"
-  | "worked";
+export type LessonOutcome = 'good' | 'bad' | 'poor' | 'neutral' | 'manual' | 'evolution' | 'failed' | 'worked';
 
 export interface PerformanceRecord {
   position: string;
@@ -247,7 +239,7 @@ export interface LessonsData {
 
 // ─── Decision Log ──────────────────────────────────────────────
 
-export type DecisionType = "deploy" | "close" | "skip" | "no_deploy" | "note";
+export type DecisionType = 'deploy' | 'close' | 'skip' | 'no_deploy' | 'note';
 
 export interface Decision {
   id: string;
@@ -267,19 +259,19 @@ export interface Decision {
 // ─── Signal Weights ────────────────────────────────────────────
 
 export type SignalName =
-  | "organic_score"
-  | "fee_tvl_ratio"
-  | "volume"
-  | "mcap"
-  | "holder_count"
-  | "smart_wallets_present"
-  | "narrative_quality"
-  | "study_win_rate"
-  | "hive_consensus"
-  | "volatility"
-  | "entry_mcap"
-  | "entry_tvl"
-  | "entry_volume";
+  | 'organic_score'
+  | 'fee_tvl_ratio'
+  | 'volume'
+  | 'mcap'
+  | 'holder_count'
+  | 'smart_wallets_present'
+  | 'narrative_quality'
+  | 'study_win_rate'
+  | 'hive_consensus'
+  | 'volatility'
+  | 'entry_mcap'
+  | 'entry_tvl'
+  | 'entry_volume';
 
 export interface SignalWeightsData {
   weights: Partial<Record<SignalName, number>>;
@@ -295,7 +287,7 @@ export interface SignalWeightHistory {
     from: number;
     to: number;
     lift: number;
-    action: "boosted" | "decayed";
+    action: 'boosted' | 'decayed';
   }>;
   window_size: number;
   win_count: number;
@@ -388,7 +380,7 @@ export interface SmartWallet {
   name: string;
   address: string;
   category: string;
-  type: "lp" | "holder";
+  type: 'lp' | 'holder';
   addedAt: string;
 }
 
@@ -417,7 +409,7 @@ export interface BlockedDev {
 
 // ─── Agent Roles ───────────────────────────────────────────────
 
-export type AgentRole = "SCREENER" | "MANAGER" | "GENERAL";
+export type AgentRole = 'SCREENER' | 'MANAGER' | 'GENERAL';
 
 // ─── Telegram ──────────────────────────────────────────────────
 
@@ -460,12 +452,12 @@ export interface BriefingData {
 // ─── Tool Definitions ──────────────────────────────────────────
 
 export interface ToolDefinition {
-  type: "function";
+  type: 'function';
   function: {
     name: string;
     description: string;
     parameters: {
-      type: "object";
+      type: 'object';
       properties: Record<string, ToolParameter>;
       required?: string[];
     };
@@ -483,7 +475,7 @@ export interface ToolParameter {
 
 export interface ToolCall {
   id: string;
-  type: "function";
+  type: 'function';
   function: {
     name: string;
     arguments: string;
@@ -492,14 +484,14 @@ export interface ToolCall {
 
 export interface ToolResult {
   tool_call_id: string;
-  role: "tool";
+  role: 'tool';
   content: string;
 }
 
 // ─── Agent Loop ────────────────────────────────────────────────
 
 export interface AgentMessage {
-  role: "system" | "user" | "assistant" | "tool";
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | null;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
@@ -705,11 +697,7 @@ export interface IndicatorConfig {
 
 // ─── Exit Actions ──────────────────────────────────────────────
 
-export type ExitAction =
-  | "STOP_LOSS"
-  | "TRAILING_TP"
-  | "OUT_OF_RANGE"
-  | "LOW_YIELD";
+export type ExitAction = 'STOP_LOSS' | 'TRAILING_TP' | 'OUT_OF_RANGE' | 'LOW_YIELD';
 
 export interface ExitResult {
   action: ExitAction;

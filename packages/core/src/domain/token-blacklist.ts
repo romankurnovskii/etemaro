@@ -5,12 +5,12 @@
  * Screening filters blacklisted tokens before passing pools to the LLM.
  */
 
-import { log } from "../shared/logger.js";
-import { dataPath } from "../shared/constants.js";
-import { loadJsonFile, saveJsonFile } from "../shared/utils.js";
-import type { BlacklistedToken } from "../shared/types.js";
+import { log } from '../shared/logger.js';
+import { dataPath } from '../shared/constants.js';
+import { loadJsonFile, saveJsonFile } from '../shared/utils.js';
+import type { BlacklistedToken } from '../shared/types.js';
 
-const BLACKLIST_FILE = dataPath("token-blacklist.json");
+const BLACKLIST_FILE = dataPath('token-blacklist.json');
 
 type BlacklistDb = Record<string, BlacklistedToken>;
 
@@ -40,7 +40,7 @@ export function isBlacklisted(mint: string | null | undefined): boolean {
  * Tool handler: add_to_blacklist
  */
 export function addToBlacklist({ mint, symbol, reason }: { mint: string; symbol?: string; reason?: string }): Record<string, unknown> {
-  if (!mint) return { error: "mint required" };
+  if (!mint) return { error: 'mint required' };
 
   const db = load();
 
@@ -54,14 +54,14 @@ export function addToBlacklist({ mint, symbol, reason }: { mint: string; symbol?
   }
 
   db[mint] = {
-    symbol: symbol || "UNKNOWN",
-    reason: reason || "no reason provided",
+    symbol: symbol || 'UNKNOWN',
+    reason: reason || 'no reason provided',
     added_at: new Date().toISOString(),
-    added_by: "agent",
+    added_by: 'agent',
   };
 
   save(db);
-  log("blacklist", `Blacklisted ${symbol || mint}: ${reason}`);
+  log('blacklist', `Blacklisted ${symbol || mint}: ${reason}`);
   return { blacklisted: true, mint, symbol, reason };
 }
 
@@ -69,7 +69,7 @@ export function addToBlacklist({ mint, symbol, reason }: { mint: string; symbol?
  * Tool handler: remove_from_blacklist
  */
 export function removeFromBlacklist({ mint }: { mint: string }): Record<string, unknown> {
-  if (!mint) return { error: "mint required" };
+  if (!mint) return { error: 'mint required' };
 
   const db = load();
 
@@ -80,7 +80,7 @@ export function removeFromBlacklist({ mint }: { mint: string }): Record<string, 
   const entry = db[mint];
   delete db[mint];
   save(db);
-  log("blacklist", `Removed ${entry.symbol || mint} from blacklist`);
+  log('blacklist', `Removed ${entry.symbol || mint} from blacklist`);
   return { removed: true, mint, was: entry };
 }
 

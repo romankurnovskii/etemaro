@@ -20,12 +20,12 @@ If HiveMind is disabled, every pull/push call short-circuits to `null` and the f
 
 ## 2. Configuration Fields
 
-| Field | Purpose | Example / what to expect |
-|-------|---------|--------------------------|
-| `hiveMindUrl` | Base URL of the HiveMind backend (e.g. `https://api.agentmeridian.xyz/api`). Empty = disabled. | `""` → HiveMind off. `"https://..."` → enabled once key is also set. |
-| `hiveMindApiKey` | Auth key sent as the `x-api-key` header on every request. Falls back to `HIVEMIND_API_KEY` env. | Missing/empty → disabled even if URL set. |
-| `hiveMindPullMode` | `auto` (default) or `manual`. Controls whether lessons are pulled on startup + periodically. | `"auto"` → continuous sync. `"manual"` → only pulled on demand via `/hive pull` (see §4). |
-| `agentId` | Stable instance identity. Leave empty to auto-generate. | `""` → a new `agt_...` id is written on startup. A fixed string persists your identity across restarts. |
+| Field              | Purpose                                                                                         | Example / what to expect                                                                                |
+| ------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `hiveMindUrl`      | Base URL of the HiveMind backend (e.g. `https://api.agentmeridian.xyz/api`). Empty = disabled.  | `""` → HiveMind off. `"https://..."` → enabled once key is also set.                                    |
+| `hiveMindApiKey`   | Auth key sent as the `x-api-key` header on every request. Falls back to `HIVEMIND_API_KEY` env. | Missing/empty → disabled even if URL set.                                                               |
+| `hiveMindPullMode` | `auto` (default) or `manual`. Controls whether lessons are pulled on startup + periodically.    | `"auto"` → continuous sync. `"manual"` → only pulled on demand via `/hive pull` (see §4).               |
+| `agentId`          | Stable instance identity. Leave empty to auto-generate.                                         | `""` → a new `agt_...` id is written on startup. A fixed string persists your identity across restarts. |
 
 Type definition: `HiveMindConfig` at `packages/core/src/shared/types.ts:647-652`.
 
@@ -36,11 +36,14 @@ Type definition: `HiveMindConfig` at `packages/core/src/shared/types.ts:647-652`
 Lessons and presets are pulled in **two** places:
 
 ### On startup — `bootstrapHiveMind()`
+
 Called from `Daemon.start()` at `Daemon.ts:260`. It fires-and-forgets and:
+
 1. Registers the agent (`reason: "startup"`).
 2. If `pullMode === "auto"`, pulls lessons (`pullHiveMindLessons()`) **and** presets (`pullHiveMindPresets()`) — `HivemindAdapter.ts:271-284`.
 
 ### Periodically — `startHiveMindBackgroundSync()`
+
 Called from `Daemon.start()` at `Daemon.ts:263`. It starts a heartbeat `setInterval` every `HEARTBEAT_INTERVAL_MS = 15 * 60 * 1000` (15 minutes) — `HivemindAdapter.ts:13`, `286-298`. Each tick re-registers the agent and, when `pullMode === "auto"`, re-pulls lessons + presets.
 
 ```
@@ -54,6 +57,7 @@ Daemon.start()
 ```
 
 ### Caching
+
 Pulled lessons are normalized and written to `data/hivemind-cache.json` (`sharedLessons`, `presets`, `pulledAt`) — `HivemindAdapter.ts:11`, `240-246`. The prompt reader reads from this cache, **not** the network, so injection is cheap and works offline between pulls.
 
 ---
@@ -91,14 +95,14 @@ Both pushes are best-effort: failures are logged as `hivemind_warn` and never bl
 
 ## 7. Quick Reference
 
-| Concern | Behavior | Code |
-|---------|----------|------|
-| Enabled? | Needs `hiveMindUrl` + `hiveMindApiKey` | `HivemindAdapter.ts:81` |
-| Startup pull | Yes, if `pullMode=auto` | `Daemon.ts:260`, `HivemindAdapter.ts:271` |
-| Periodic pull | Every 15 min, if `pullMode=auto` | `Daemon.ts:263`, `HivemindAdapter.ts:286` |
-| Manual pull | `/hive pull` Telegram command | `Daemon.ts:1653` |
-| Cache file | `data/hivemind-cache.json` | `HivemindAdapter.ts:11` |
-| Injected lessons | Top 6 by score, role-filtered | `HivemindAdapter.ts:175` |
-| Contribute | Lessons + performance on derive/close | `HivemindAdapter.ts:426`, `453` |
+| Concern          | Behavior                               | Code                                      |
+| ---------------- | -------------------------------------- | ----------------------------------------- |
+| Enabled?         | Needs `hiveMindUrl` + `hiveMindApiKey` | `HivemindAdapter.ts:81`                   |
+| Startup pull     | Yes, if `pullMode=auto`                | `Daemon.ts:260`, `HivemindAdapter.ts:271` |
+| Periodic pull    | Every 15 min, if `pullMode=auto`       | `Daemon.ts:263`, `HivemindAdapter.ts:286` |
+| Manual pull      | `/hive pull` Telegram command          | `Daemon.ts:1653`                          |
+| Cache file       | `data/hivemind-cache.json`             | `HivemindAdapter.ts:11`                   |
+| Injected lessons | Top 6 by score, role-filtered          | `HivemindAdapter.ts:175`                  |
+| Contribute       | Lessons + performance on derive/close  | `HivemindAdapter.ts:426`, `453`           |
 
 See also: [CONFIGURATION.md](CONFIGURATION.md) (config fields) · [ARCHITECTURE.md](ARCHITECTURE.md) (adapter overview).

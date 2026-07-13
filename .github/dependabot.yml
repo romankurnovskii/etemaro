@@ -1,36 +1,36 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     versioning-strategy: increase
 
-  - package-ecosystem: "npm"
-    directory: "apps/discord-listener"
+  - package-ecosystem: 'npm'
+    directory: 'apps/discord-listener'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     versioning-strategy: increase
 
-  - package-ecosystem: "npm"
-    directory: "packages/cli"
+  - package-ecosystem: 'npm'
+    directory: 'packages/cli'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     versioning-strategy: increase
 
-  - package-ecosystem: "npm"
-    directory: "packages/core"
+  - package-ecosystem: 'npm'
+    directory: 'packages/core'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     versioning-strategy: increase
 
-  - package-ecosystem: "npm"
-    directory: "packages/daemon"
+  - package-ecosystem: 'npm'
+    directory: 'packages/daemon'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     versioning-strategy: increase
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: 'github-actions'
+    directory: '/'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'

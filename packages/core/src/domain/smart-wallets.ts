@@ -1,9 +1,9 @@
-import { log } from "../shared/logger.js";
-import { dataPath, SOLANA_PUBKEY_RE, CACHE_TTL_MS } from "../shared/constants.js";
-import { loadJsonFile, saveJsonFile } from "../shared/utils.js";
-import type { SmartWallet, SmartWalletHit } from "../shared/types.js";
+import { log } from '../shared/logger.js';
+import { dataPath, SOLANA_PUBKEY_RE, CACHE_TTL_MS } from '../shared/constants.js';
+import { loadJsonFile, saveJsonFile } from '../shared/utils.js';
+import type { SmartWallet, SmartWalletHit } from '../shared/types.js';
 
-const WALLETS_PATH = dataPath("smart-wallets.json");
+const WALLETS_PATH = dataPath('smart-wallets.json');
 
 interface SmartWalletsData {
   wallets: SmartWallet[];
@@ -17,9 +17,19 @@ function saveWallets(data: SmartWalletsData): void {
   saveJsonFile(WALLETS_PATH, data);
 }
 
-export function addSmartWallet({ name, address, category = "alpha", type = "lp" }: { name: string; address: string; category?: string; type?: "lp" | "holder" }): Record<string, unknown> {
+export function addSmartWallet({
+  name,
+  address,
+  category = 'alpha',
+  type = 'lp',
+}: {
+  name: string;
+  address: string;
+  category?: string;
+  type?: 'lp' | 'holder';
+}): Record<string, unknown> {
   if (!SOLANA_PUBKEY_RE.test(address)) {
-    return { success: false, error: "Invalid Solana address format" };
+    return { success: false, error: 'Invalid Solana address format' };
   }
   const data = loadWallets();
   const existing = data.wallets.find((w) => w.address === address);
@@ -28,17 +38,17 @@ export function addSmartWallet({ name, address, category = "alpha", type = "lp" 
   }
   data.wallets.push({ name, address, category, type, addedAt: new Date().toISOString() });
   saveWallets(data);
-  log("smart_wallets", `Added wallet: ${name} (${category}, type=${type})`);
+  log('smart_wallets', `Added wallet: ${name} (${category}, type=${type})`);
   return { success: true, wallet: { name, address, category, type } };
 }
 
 export function removeSmartWallet({ address }: { address: string }): Record<string, unknown> {
   const data = loadWallets();
   const wallet = data.wallets.find((w) => w.address === address);
-  if (!wallet) return { success: false, error: "Wallet not found" };
+  if (!wallet) return { success: false, error: 'Wallet not found' };
   data.wallets = data.wallets.filter((w) => w.address !== address);
   saveWallets(data);
-  log("smart_wallets", `Removed wallet: ${wallet.name}`);
+  log('smart_wallets', `Removed wallet: ${wallet.name}`);
   return { success: true, removed: wallet.name };
 }
 
@@ -74,18 +84,18 @@ export async function checkSmartWalletsOnPool(
 }> {
   const { wallets: allWallets } = loadWallets();
   // Only check LP-type wallets — holder wallets don't have positions
-  const wallets = allWallets.filter((w) => !w.type || w.type === "lp");
+  const wallets = allWallets.filter((w) => !w.type || w.type === 'lp');
   if (wallets.length === 0) {
     return {
       pool: pool_address,
       tracked_wallets: 0,
       in_pool: [],
       confidence_boost: false,
-      signal: "No smart wallets tracked yet — neutral signal",
+      signal: 'No smart wallets tracked yet — neutral signal',
     };
   }
 
-  const getPositions: GetWalletPositionsFn = getWalletPositions ?? (await import("../adapters/blockchain/MeteoraAdapter.js")).getWalletPositions;
+  const getPositions: GetWalletPositionsFn = getWalletPositions ?? (await import('../adapters/blockchain/MeteoraAdapter.js')).getWalletPositions;
 
   const results = await Promise.all(
     wallets.map(async (wallet) => {
@@ -100,7 +110,7 @@ export async function checkSmartWalletsOnPool(
       } catch {
         return { wallet, positions: [] as Array<{ pool: string }> };
       }
-    })
+    }),
   );
 
   const inPool = results
@@ -112,8 +122,9 @@ export async function checkSmartWalletsOnPool(
     tracked_wallets: wallets.length,
     in_pool: inPool,
     confidence_boost: inPool.length > 0,
-    signal: inPool.length > 0
-      ? `${inPool.length}/${wallets.length} smart wallet(s) are in this pool: ${inPool.map((w) => w.name).join(", ")} — STRONG signal`
-      : `0/${wallets.length} smart wallets in this pool — neutral, rely on fundamentals`,
+    signal:
+      inPool.length > 0
+        ? `${inPool.length}/${wallets.length} smart wallet(s) are in this pool: ${inPool.map((w) => w.name).join(', ')} — STRONG signal`
+        : `0/${wallets.length} smart wallets in this pool — neutral, rely on fundamentals`,
   };
 }

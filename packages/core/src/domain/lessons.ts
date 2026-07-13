@@ -6,14 +6,22 @@
  * agent avoids repeating mistakes and doubles down on what works.
  */
 
-import fs from "node:fs";
-import { log } from "../shared/logger.js";
-import { dataPath, configPath, MIN_EVOLVE_POSITIONS, MAX_CHANGE_PER_STEP, PERFORMANCE_SIGNAL_FIELDS, MAX_MANUAL_LESSON_LENGTH, ROLE_TAGS } from "../shared/constants.js";
-import { sanitizeStoredText, isFiniteNum, avg, nudge, clamp, loadJsonFile, saveJsonFile } from "../shared/utils.js";
-import type { Lesson, PerformanceRecord, LessonsData, SignalSnapshot, AgentRole } from "../shared/types.js";
-import type { AppConfig } from "../shared/types.js";
+import fs from 'node:fs';
+import { log } from '../shared/logger.js';
+import {
+  dataPath,
+  configPath,
+  MIN_EVOLVE_POSITIONS,
+  MAX_CHANGE_PER_STEP,
+  PERFORMANCE_SIGNAL_FIELDS,
+  MAX_MANUAL_LESSON_LENGTH,
+  ROLE_TAGS,
+} from '../shared/constants.js';
+import { sanitizeStoredText, isFiniteNum, avg, nudge, clamp, loadJsonFile, saveJsonFile } from '../shared/utils.js';
+import type { Lesson, PerformanceRecord, LessonsData, SignalSnapshot, AgentRole } from '../shared/types.js';
+import type { AppConfig } from '../shared/types.js';
 
-const LESSONS_FILE = dataPath("lessons.json");
+const LESSONS_FILE = dataPath('lessons.json');
 
 function load(): LessonsData {
   return loadJsonFile<LessonsData>(LESSONS_FILE, { lessons: [], performance: [] });
@@ -24,14 +32,14 @@ function save(data: LessonsData): void {
 }
 
 function buildSignalSnapshot(perf: Record<string, unknown>): SignalSnapshot | null {
-  const snapshot: Record<string, unknown> = { ...(perf.signal_snapshot as Record<string, unknown> || {}) };
+  const snapshot: Record<string, unknown> = { ...((perf.signal_snapshot as Record<string, unknown>) || {}) };
   if (perf.base_mint && snapshot.base_mint == null) snapshot.base_mint = perf.base_mint;
   for (const field of PERFORMANCE_SIGNAL_FIELDS) {
     if (snapshot[field] == null && perf[field] != null) {
       snapshot[field] = perf[field];
     }
   }
-  return Object.values(snapshot).some((value) => value != null) ? snapshot as SignalSnapshot : null;
+  return Object.values(snapshot).some((value) => value != null) ? (snapshot as SignalSnapshot) : null;
 }
 
 // ─── Record Position Performance ──────────────────────────────
@@ -55,27 +63,26 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
     perf.final_value_usd <= perf.amount_sol * 2;
 
   if (suspiciousUnitMix) {
-    log("lessons_warn", `Skipped suspicious performance record for ${perf.pool_name || perf.pool}: initial=${perf.initial_value_usd}, final=${perf.final_value_usd}, amount_sol=${perf.amount_sol}`);
+    log(
+      'lessons_warn',
+      `Skipped suspicious performance record for ${perf.pool_name || perf.pool}: initial=${perf.initial_value_usd}, final=${perf.final_value_usd}, amount_sol=${perf.amount_sol}`,
+    );
     return;
   }
 
-  const pnl_usd = (perf.final_value_usd + perf.fees_earned_usd) - perf.initial_value_usd;
-  const pnl_pct = perf.initial_value_usd > 0
-    ? (pnl_usd / perf.initial_value_usd) * 100
-    : 0;
-  const range_efficiency = perf.minutes_held > 0
-    ? (perf.minutes_in_range / perf.minutes_held) * 100
-    : 0;
+  const pnl_usd = perf.final_value_usd + perf.fees_earned_usd - perf.initial_value_usd;
+  const pnl_pct = perf.initial_value_usd > 0 ? (pnl_usd / perf.initial_value_usd) * 100 : 0;
+  const range_efficiency = perf.minutes_held > 0 ? (perf.minutes_in_range / perf.minutes_held) * 100 : 0;
 
-  const closeReasonText = String(perf.close_reason || "").toLowerCase();
+  const closeReasonText = String(perf.close_reason || '').toLowerCase();
   const suspiciousAbsurdClosedPnl =
-    Number.isFinite(pnl_pct) &&
-    perf.initial_value_usd >= 20 &&
-    pnl_pct <= -90 &&
-    !closeReasonText.includes("stop loss");
+    Number.isFinite(pnl_pct) && perf.initial_value_usd >= 20 && pnl_pct <= -90 && !closeReasonText.includes('stop loss');
 
   if (suspiciousAbsurdClosedPnl) {
-    log("lessons_warn", `Skipped absurd closed PnL record for ${perf.pool_name || perf.pool}: pnl_pct=${pnl_pct.toFixed(2)} reason=${perf.close_reason}`);
+    log(
+      'lessons_warn',
+      `Skipped absurd closed PnL record for ${perf.pool_name || perf.pool}: pnl_pct=${pnl_pct.toFixed(2)} reason=${perf.close_reason}`,
+    );
     return;
   }
 
@@ -95,7 +102,7 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
   const lesson = derivLesson(entry as PerformanceRecord & { recorded_at?: string });
   if (lesson) {
     data.lessons.push(lesson);
-    log("lessons", `New lesson: ${lesson.rule}`);
+    log('lessons', `New lesson: ${lesson.rule}`);
   }
 
   save(data);
@@ -105,7 +112,7 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
 
   // Update pool-level memory
   if (perf.pool) {
-    const { recordPoolDeploy } = await import("./pool-memory.js");
+    const { recordPoolDeploy } = await import('./pool-memory.js');
     recordPoolDeploy(perf.pool, {
       pool_name: perf.pool_name,
       base_mint: perf.base_mint,
@@ -132,19 +139,19 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
 
   // Evolve thresholds every 5 closed positions
   if (data.performance.length % MIN_EVOLVE_POSITIONS === 0) {
-    const { config, reloadScreeningThresholds } = await import("../config/Config.js");
+    const { config, reloadScreeningThresholds } = await import('../config/Config.js');
     const result = evolveThresholds(data.performance, config);
     if (result?.changes && Object.keys(result.changes).length > 0) {
       reloadScreeningThresholds();
-      log("evolve", `Auto-evolved thresholds: ${JSON.stringify(result.changes)}`);
+      log('evolve', `Auto-evolved thresholds: ${JSON.stringify(result.changes)}`);
     }
 
     // Darwinian signal weight recalculation
     if (config.darwin?.enabled) {
-      const { recalculateWeights } = await import("./signal-weights.js");
+      const { recalculateWeights } = await import('./signal-weights.js');
       const wResult = recalculateWeights(data.performance, config);
       if (wResult.changes.length > 0) {
-        log("evolve", `Darwin: adjusted ${wResult.changes.length} signal weight(s)`);
+        log('evolve', `Darwin: adjusted ${wResult.changes.length} signal weight(s)`);
       }
     }
   }
@@ -163,21 +170,25 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
  */
 function derivLesson(perf: PerformanceRecord & { recorded_at?: string }): Lesson | null {
   const tags: string[] = [];
-  const feeYieldPct = perf.initial_value_usd > 0
-    ? ((perf.fees_earned_usd || 0) / perf.initial_value_usd) * 100
-    : 0;
+  const feeYieldPct = perf.initial_value_usd > 0 ? ((perf.fees_earned_usd || 0) / perf.initial_value_usd) * 100 : 0;
 
   // Categorize outcome
-  const outcome: Lesson["outcome"] = perf.pnl_pct! >= 5 ? "good"
-    : (perf.pnl_pct! >= 0 && feeYieldPct >= 2) ? "good"
-    : perf.pnl_pct! >= 0 ? "neutral"
-    : perf.pnl_pct! >= -5 ? "poor"
-    : "bad";
+  const outcome: Lesson['outcome'] =
+    perf.pnl_pct! >= 5
+      ? 'good'
+      : perf.pnl_pct! >= 0 && feeYieldPct >= 2
+        ? 'good'
+        : perf.pnl_pct! >= 0
+          ? 'neutral'
+          : perf.pnl_pct! >= -5
+            ? 'poor'
+            : 'bad';
 
-  if (outcome === "neutral") return null; // nothing interesting to learn
+  if (outcome === 'neutral') return null; // nothing interesting to learn
 
   // Build context description with entry/exit market conditions
-  const fmtNum = (n: number | null | undefined): string => n == null ? "?" : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(0)}K` : String(Math.round(n));
+  const fmtNum = (n: number | null | undefined): string =>
+    n == null ? '?' : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(0)}K` : String(Math.round(n));
   const contextParts = [
     `${perf.pool_name}`,
     `strategy=${perf.strategy}`,
@@ -193,51 +204,49 @@ function derivLesson(perf: PerformanceRecord & { recorded_at?: string }): Lesson
   if (perf.exit_mcap != null || perf.exit_tvl != null || perf.exit_volume != null) {
     contextParts.push(`exit(mcap=${fmtNum(perf.exit_mcap)}, tvl=${fmtNum(perf.exit_tvl)}, vol=${fmtNum(perf.exit_volume)})`);
   }
-  const context = contextParts.join(", ");
+  const context = contextParts.join(', ');
 
-  let rule = "";
+  let rule = '';
 
-  if (outcome === "good" || outcome === "bad") {
-    if (perf.range_efficiency! < 30 && outcome === "bad") {
+  if (outcome === 'good' || outcome === 'bad') {
+    if (perf.range_efficiency! < 30 && outcome === 'bad') {
       rule = `AVOID: ${perf.pool_name}-type pools (volatility=${perf.volatility}, bin_step=${perf.bin_step}) with strategy="${perf.strategy}" — went OOR ${100 - perf.range_efficiency!}% of the time. Consider wider bin_range or bid_ask strategy.`;
-      tags.push("oor", perf.strategy, `volatility_${Math.round(perf.volatility)}`);
-    } else if (perf.range_efficiency! > 80 && outcome === "good") {
-      const entryNote = perf.entry_mcap != null ? ` Entry: mcap=${fmtNum(perf.entry_mcap)}, tvl=${fmtNum(perf.entry_tvl)}, vol=${fmtNum(perf.entry_volume)}.` : "";
+      tags.push('oor', perf.strategy, `volatility_${Math.round(perf.volatility)}`);
+    } else if (perf.range_efficiency! > 80 && outcome === 'good') {
+      const entryNote =
+        perf.entry_mcap != null ? ` Entry: mcap=${fmtNum(perf.entry_mcap)}, tvl=${fmtNum(perf.entry_tvl)}, vol=${fmtNum(perf.entry_volume)}.` : '';
       rule = `PREFER: ${perf.pool_name}-type pools (volatility=${perf.volatility}, bin_step=${perf.bin_step}) with strategy="${perf.strategy}" — ${perf.range_efficiency}% in-range efficiency, PnL +${perf.pnl_pct}%.${entryNote}`;
-      tags.push("efficient", perf.strategy);
-    } else if (outcome === "bad" && perf.close_reason?.includes("volume")) {
+      tags.push('efficient', perf.strategy);
+    } else if (outcome === 'bad' && perf.close_reason?.includes('volume')) {
       rule = `AVOID: Pools with fee_tvl_ratio=${perf.fee_tvl_ratio} that showed volume collapse — fees evaporated quickly. Minimum sustained volume check needed before deploying.`;
-      tags.push("volume_collapse");
-    } else if (outcome === "good") {
+      tags.push('volume_collapse');
+    } else if (outcome === 'good') {
       rule = `WORKED: ${context} → PnL +${perf.pnl_pct}%, range efficiency ${perf.range_efficiency}%.`;
-      tags.push("worked");
+      tags.push('worked');
     } else {
       rule = `FAILED: ${context} → PnL ${perf.pnl_pct}%, range efficiency ${perf.range_efficiency}%. Reason: ${perf.close_reason}.`;
-      tags.push("failed");
+      tags.push('failed');
     }
   }
 
   if (!rule) return null;
 
-  const closeReasonText = String(perf.close_reason || "").toLowerCase();
-  const positiveEvidence =
-    feeYieldPct >= 1 ||
-    (perf.fees_earned_usd || 0) >= 3 ||
-    perf.pnl_pct! >= 3;
+  const closeReasonText = String(perf.close_reason || '').toLowerCase();
+  const positiveEvidence = feeYieldPct >= 1 || (perf.fees_earned_usd || 0) >= 3 || perf.pnl_pct! >= 3;
   const negativeEvidence =
     perf.pnl_pct! <= -5 ||
     perf.range_efficiency! <= 30 ||
-    closeReasonText.includes("out of range") ||
-    closeReasonText.includes("oor") ||
-    closeReasonText.includes("low yield") ||
-    closeReasonText.includes("volume");
+    closeReasonText.includes('out of range') ||
+    closeReasonText.includes('oor') ||
+    closeReasonText.includes('low yield') ||
+    closeReasonText.includes('volume');
 
   let confidence = 0.35;
-  if (outcome === "good") {
+  if (outcome === 'good') {
     confidence = positiveEvidence ? 0.82 : 0.22;
-  } else if (outcome === "bad") {
+  } else if (outcome === 'bad') {
     confidence = negativeEvidence ? 0.88 : 0.45;
-  } else if (outcome === "poor") {
+  } else if (outcome === 'poor') {
     confidence = negativeEvidence ? 0.68 : 0.32;
   }
 
@@ -246,7 +255,7 @@ function derivLesson(perf: PerformanceRecord & { recorded_at?: string }): Lesson
     rule,
     tags,
     outcome,
-    sourceType: "performance",
+    sourceType: 'performance',
     confidence: Math.round(confidence * 100) / 100,
     context,
     pnl_pct: perf.pnl_pct,
@@ -280,7 +289,7 @@ export function evolveThresholds(perfData: PerformanceRecord[], cfg: AppConfig):
   if (!perfData || perfData.length < MIN_EVOLVE_POSITIONS) return null;
 
   const winners = perfData.filter((p) => p.pnl_pct! > 0);
-  const losers  = perfData.filter((p) => p.pnl_pct! < -5);
+  const losers = perfData.filter((p) => p.pnl_pct! < -5);
 
   // Need at least some signal in both directions before adjusting
   const hasSignal = winners.length >= 2 || losers.length >= 2;
@@ -293,15 +302,15 @@ export function evolveThresholds(perfData: PerformanceRecord[], cfg: AppConfig):
   // Raise the floor if low-fee pools consistently underperform.
   {
     const winnerFees = winners.map((p) => p.fee_tvl_ratio).filter(isFiniteNum);
-    const loserFees  = losers.map((p) => p.fee_tvl_ratio).filter(isFiniteNum);
-    const current    = cfg.screening.minFeeActiveTvlRatio;
+    const loserFees = losers.map((p) => p.fee_tvl_ratio).filter(isFiniteNum);
+    const current = cfg.screening.minFeeActiveTvlRatio;
 
     if (winnerFees.length >= 2) {
       // Minimum fee/TVL among winners — we know pools below this don't work for us
       const minWinnerFee = Math.min(...winnerFees);
       if (minWinnerFee > current * 1.2) {
-        const target  = minWinnerFee * 0.85; // stay slightly below min winner
-        const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 0.05, 10.0);
+        const target = minWinnerFee * 0.85; // stay slightly below min winner
+        const newVal = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 0.05, 10.0);
         const rounded = Number(newVal.toFixed(2));
         if (rounded > current) {
           changes.minFeeActiveTvlRatio = rounded;
@@ -317,8 +326,8 @@ export function evolveThresholds(perfData: PerformanceRecord[], cfg: AppConfig):
       if (maxLoserFee < current * 1.5 && winnerFees.length > 0) {
         const minWinnerFee = Math.min(...winnerFees);
         if (minWinnerFee > maxLoserFee) {
-          const target  = maxLoserFee * 1.2;
-          const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 0.05, 10.0);
+          const target = maxLoserFee * 1.2;
+          const newVal = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 0.05, 10.0);
           const rounded = Number(newVal.toFixed(2));
           if (rounded > current && !changes.minFeeActiveTvlRatio) {
             changes.minFeeActiveTvlRatio = rounded;
@@ -332,12 +341,12 @@ export function evolveThresholds(perfData: PerformanceRecord[], cfg: AppConfig):
   // ── 2. minOrganic ─────────────────────────────────────────────
   // Raise organic floor if low-organic tokens consistently failed.
   {
-    const loserOrganics  = losers.map((p) => p.organic_score).filter(isFiniteNum);
+    const loserOrganics = losers.map((p) => p.organic_score).filter(isFiniteNum);
     const winnerOrganics = winners.map((p) => p.organic_score).filter(isFiniteNum);
-    const current        = cfg.screening.minOrganic;
+    const current = cfg.screening.minOrganic;
 
     if (loserOrganics.length >= 2 && winnerOrganics.length >= 1) {
-      const avgLoserOrganic  = avg(loserOrganics);
+      const avgLoserOrganic = avg(loserOrganics);
       const avgWinnerOrganic = avg(winnerOrganics);
       // Only raise if there's a clear gap (winners consistently more organic)
       if (avgWinnerOrganic - avgLoserOrganic >= 10) {
@@ -356,10 +365,14 @@ export function evolveThresholds(perfData: PerformanceRecord[], cfg: AppConfig):
   if (Object.keys(changes).length === 0) return { changes: {}, rationale: {} };
 
   // ── Persist changes to user-config.json ───────────────────────
-  const USER_CONFIG_PATH = configPath("user-config.json");
+  const USER_CONFIG_PATH = configPath('user-config.json');
   let userConfig: Record<string, unknown> = {};
   if (fs.existsSync(USER_CONFIG_PATH)) {
-    try { userConfig = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, "utf8")); } catch { /* ignore */ }
+    try {
+      userConfig = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'));
+    } catch {
+      /* ignore */
+    }
   }
 
   Object.assign(userConfig, changes);
@@ -371,15 +384,17 @@ export function evolveThresholds(perfData: PerformanceRecord[], cfg: AppConfig):
   // Apply to live config object immediately
   const s = cfg.screening;
   if (changes.minFeeActiveTvlRatio != null) s.minFeeActiveTvlRatio = changes.minFeeActiveTvlRatio;
-  if (changes.minOrganic       != null) s.minOrganic       = changes.minOrganic;
+  if (changes.minOrganic != null) s.minOrganic = changes.minOrganic;
 
   // Log a lesson summarizing the evolution
   const data = load();
   data.lessons.push({
     id: Date.now(),
-    rule: `[AUTO-EVOLVED @ ${perfData.length} positions] ${Object.entries(changes).map(([k, v]) => `${k}=${v}`).join(", ")} — ${Object.values(rationale).join("; ")}`,
-    tags: ["evolution", "config_change"],
-    outcome: "manual",
+    rule: `[AUTO-EVOLVED @ ${perfData.length} positions] ${Object.entries(changes)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ')} — ${Object.values(rationale).join('; ')}`,
+    tags: ['evolution', 'config_change'],
+    outcome: 'manual',
     created_at: new Date().toISOString(),
   });
   save(data);
@@ -409,15 +424,15 @@ export function addLesson(rule: string, tags: string[] = [], { pinned = false, r
     id: Date.now(),
     rule: safeRule,
     tags,
-    outcome: "manual",
-    sourceType: tags.includes("self_tune") || tags.includes("config_change") ? "config_change" : "manual",
+    outcome: 'manual',
+    sourceType: tags.includes('self_tune') || tags.includes('config_change') ? 'config_change' : 'manual',
     pinned: !!pinned,
     role: role || null,
     created_at: new Date().toISOString(),
   };
   data.lessons.push(lesson);
   save(data);
-  log("lessons", `Manual lesson added${pinned ? " [PINNED]" : ""}${role ? ` [${role}]` : ""}: ${safeRule}`);
+  log('lessons', `Manual lesson added${pinned ? ' [PINNED]' : ''}${role ? ` [${role}]` : ''}: ${safeRule}`);
   void pushHiveLesson(lesson);
 }
 
@@ -430,7 +445,7 @@ export function pinLesson(id: number): { found: boolean; pinned?: boolean; id?: 
   if (!lesson) return { found: false };
   lesson.pinned = true;
   save(data);
-  log("lessons", `Pinned lesson ${id}: ${lesson.rule.slice(0, 60)}`);
+  log('lessons', `Pinned lesson ${id}: ${lesson.rule.slice(0, 60)}`);
   return { found: true, pinned: true, id, rule: lesson.rule };
 }
 
@@ -464,8 +479,8 @@ export function listLessons({ role = null, pinned = null, tag = null, limit = 30
   let lessons = [...data.lessons];
 
   if (pinned !== null) lessons = lessons.filter((l) => !!l.pinned === pinned);
-  if (role)            lessons = lessons.filter((l) => !l.role || l.role === role);
-  if (tag)             lessons = lessons.filter((l) => l.tags?.includes(tag));
+  if (role) lessons = lessons.filter((l) => !l.role || l.role === role);
+  if (tag) lessons = lessons.filter((l) => l.tags?.includes(tag));
 
   return {
     total: lessons.length,
@@ -475,7 +490,7 @@ export function listLessons({ role = null, pinned = null, tag = null, limit = 30
       tags: l.tags,
       outcome: l.outcome,
       pinned: !!l.pinned,
-      role: l.role || "all",
+      role: l.role || 'all',
       created_at: l.created_at?.slice(0, 10),
     })),
   };
@@ -526,17 +541,17 @@ export function clearPerformance(): number {
  */
 export function getLessonsForPrompt(opts: { agentType?: AgentRole; maxLessons?: number } | number = {}): string | null {
   // Support legacy call signature: getLessonsForPrompt(20)
-  const normalizedOpts = typeof opts === "number" ? { maxLessons: opts } : opts;
-  const { agentType = "GENERAL", maxLessons } = normalizedOpts;
+  const normalizedOpts = typeof opts === 'number' ? { maxLessons: opts } : opts;
+  const { agentType = 'GENERAL', maxLessons } = normalizedOpts;
 
   const data = load();
   if (data.lessons.length === 0) return null;
 
   // Smaller caps for automated cycles — they don't need the full lesson history
-  const isAutoCycle = agentType === "SCREENER" || agentType === "MANAGER";
-  const PINNED_CAP  = isAutoCycle ? 5  : 10;
-  const ROLE_CAP    = isAutoCycle ? 6  : 15;
-  const RECENT_CAP  = maxLessons ?? (isAutoCycle ? 10 : 35);
+  const isAutoCycle = agentType === 'SCREENER' || agentType === 'MANAGER';
+  const PINNED_CAP = isAutoCycle ? 5 : 10;
+  const ROLE_CAP = isAutoCycle ? 6 : 15;
+  const RECENT_CAP = maxLessons ?? (isAutoCycle ? 10 : 35);
 
   const outcomePriority: Record<string, number> = { bad: 0, poor: 1, failed: 1, good: 2, worked: 2, manual: 1, neutral: 3, evolution: 2 };
   const byPriority = (a: Lesson, b: Lesson) => (outcomePriority[a.outcome] ?? 3) - (outcomePriority[b.outcome] ?? 3);
@@ -544,7 +559,7 @@ export function getLessonsForPrompt(opts: { agentType?: AgentRole; maxLessons?: 
   // ── Tier 1: Pinned ──────────────────────────────────────────────
   // Respect role even for pinned lessons — a pinned SCREENER lesson shouldn't pollute MANAGER
   const pinned = data.lessons
-    .filter((l) => l.pinned && (!l.role || l.role === agentType || agentType === "GENERAL"))
+    .filter((l) => l.pinned && (!l.role || l.role === agentType || agentType === 'GENERAL'))
     .sort(byPriority)
     .slice(0, PINNED_CAP);
 
@@ -556,9 +571,9 @@ export function getLessonsForPrompt(opts: { agentType?: AgentRole; maxLessons?: 
     .filter((l) => {
       if (usedIds.has(l.id)) return false;
       // Include if: lesson has no role restriction OR matches this role
-      const roleOk = !l.role || l.role === agentType || agentType === "GENERAL";
+      const roleOk = !l.role || l.role === agentType || agentType === 'GENERAL';
       // Include if: lesson has role-relevant tags OR no tags (general)
-      const tagOk  = roleTags.length === 0 || !l.tags?.length || l.tags.some((t) => roleTags.includes(t));
+      const tagOk = roleTags.length === 0 || !l.tags?.length || l.tags.some((t) => roleTags.includes(t));
       return roleOk && tagOk;
     })
     .sort(byPriority)
@@ -568,12 +583,13 @@ export function getLessonsForPrompt(opts: { agentType?: AgentRole; maxLessons?: 
 
   // ── Tier 3: Recent fill ─────────────────────────────────────────
   const remainingBudget = RECENT_CAP - pinned.length - roleMatched.length;
-  const recent = remainingBudget > 0
-    ? data.lessons
-        .filter((l) => !usedIds.has(l.id))
-        .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
-        .slice(0, remainingBudget)
-    : [];
+  const recent =
+    remainingBudget > 0
+      ? data.lessons
+          .filter((l) => !usedIds.has(l.id))
+          .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+          .slice(0, remainingBudget)
+      : [];
 
   const selected = [...pinned, ...roleMatched, ...recent];
   const shared = getSharedLessonsForPrompt({
@@ -583,20 +599,22 @@ export function getLessonsForPrompt(opts: { agentType?: AgentRole; maxLessons?: 
   if (selected.length === 0 && !shared) return null;
 
   const sections: string[] = [];
-  if (pinned.length)      sections.push(`── PINNED (${pinned.length}) ──\n` + fmt(pinned));
+  if (pinned.length) sections.push(`── PINNED (${pinned.length}) ──\n` + fmt(pinned));
   if (roleMatched.length) sections.push(`── ${agentType} (${roleMatched.length}) ──\n` + fmt(roleMatched));
-  if (recent.length)      sections.push(`── RECENT (${recent.length}) ──\n` + fmt(recent));
-  if (shared)             sections.push(`── HIVEMIND ──\n${shared}`);
+  if (recent.length) sections.push(`── RECENT (${recent.length}) ──\n` + fmt(recent));
+  if (shared) sections.push(`── HIVEMIND ──\n${shared}`);
 
-  return sections.join("\n\n");
+  return sections.join('\n\n');
 }
 
 function fmt(lessons: Lesson[]): string {
-  return lessons.map((l) => {
-    const date = l.created_at ? l.created_at.slice(0, 16).replace("T", " ") : "unknown";
-    const pin  = l.pinned ? "📌 " : "";
-    return `${pin}[${l.outcome.toUpperCase()}] [${date}] ${l.rule}`;
-  }).join("\n");
+  return lessons
+    .map((l) => {
+      const date = l.created_at ? l.created_at.slice(0, 16).replace('T', ' ') : 'unknown';
+      const pin = l.pinned ? '📌 ' : '';
+      return `${pin}[${l.outcome.toUpperCase()}] [${date}] ${l.rule}`;
+    })
+    .join('\n');
 }
 
 interface GetPerformanceHistoryOpts {
@@ -684,7 +702,7 @@ async function ensureHivemind(): Promise<typeof _hivemind> {
   if (_hivemind || _hivemindLoadAttempted) return _hivemind;
   _hivemindLoadAttempted = true;
   try {
-    const mod = await import("../adapters/external/HivemindAdapter.js");
+    const mod = await import('../adapters/external/HivemindAdapter.js');
     _hivemind = {
       pushHiveLesson: mod.pushHiveLesson,
       pushHivePerformanceEvent: mod.pushHivePerformanceEvent,

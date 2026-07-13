@@ -3,6 +3,7 @@
 Welcome to the Meridian project documentation. This index lists all architectural and project documentation.
 
 ## Architecture & Guides
+
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Monorepo layout, ReAct loop, tools, and strategy presets.
 - [CONFIGURATION.md](CONFIGURATION.md) — Configuration hierarchy, environment variables, and the full `user-config.json` field reference.
 - [FULL_FLOW.md](FULL_FLOW.md) — Canonical flow reference: architecture, startup, screening/management flows, learning, integrations.
@@ -10,7 +11,9 @@ Welcome to the Meridian project documentation. This index lists all architectura
 - [HIVEMIND.md](HIVEMIND.md) — HiveMind collective-learning sync: shared-lesson pull on startup + every 15 min, push, and prompt injection.
 
 ## Rules & Standards
+
 - [AGENTS.md](../AGENTS.md) — Agent Documentation System Rules and behavior guidelines.
 
 ## Q&A & FAQ
+
 - [QA.md](QA.md) — Frequently asked questions about environment, models, dry-run behavior, and DLMM mechanics.

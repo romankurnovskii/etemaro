@@ -1,4 +1,4 @@
-import { agentMeridianJson, getAgentMeridianHeaders } from "../external/AgentMeridianClient.js";
+import { agentMeridianJson, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js';
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ function isNum(value: unknown): boolean {
 
 function fmtPct(value: unknown): string {
   const n = Number(value || 0);
-  return `${n >= 0 ? "+" : ""}${round(n, 2)}%`;
+  return `${n >= 0 ? '+' : ''}${round(n, 2)}%`;
 }
 
 function countValues(values: string[]): Record<string, number> {
@@ -120,47 +120,35 @@ function buildPatterns(
     ranked
       .map((o) => Number(o.avgAgeHours))
       .filter(isNum)
-      .reduce((s: number, v: number) => s + v, 0) /
-      Math.max(1, ranked.filter((o) => isNum(o.avgAgeHours)).length),
+      .reduce((s: number, v: number) => s + v, 0) / Math.max(1, ranked.filter((o) => isNum(o.avgAgeHours)).length),
   );
   const avgOpenPnlPct = round(
     ranked
       .map((o) => Number(o.pnlPerInflowPct))
       .filter(isNum)
-      .reduce((s: number, v: number) => s + v, 0) /
-      Math.max(1, ranked.filter((o) => isNum(o.pnlPerInflowPct)).length),
+      .reduce((s: number, v: number) => s + v, 0) / Math.max(1, ranked.filter((o) => isNum(o.pnlPerInflowPct)).length),
   );
   const avgFeePct = round(
     ranked
       .map((o) => Number(o.feePercent))
       .filter(isNum)
-      .reduce((s: number, v: number) => s + v, 0) /
-      Math.max(1, ranked.filter((o) => isNum(o.feePercent)).length),
+      .reduce((s: number, v: number) => s + v, 0) / Math.max(1, ranked.filter((o) => isNum(o.feePercent)).length),
   );
   const avgRoiPct = round(
     ranked
       .map((o) => Number(o.roiPct))
       .filter(isNum)
-      .reduce((s: number, v: number) => s + v, 0) /
-      Math.max(1, ranked.filter((o) => isNum(o.roiPct)).length),
+      .reduce((s: number, v: number) => s + v, 0) / Math.max(1, ranked.filter((o) => isNum(o.roiPct)).length),
   );
-  const preferredStrategies = countValues(
-    historicalOwners
-      .map((o) => String(o.preferredStrategy || ""))
-      .filter(Boolean),
-  );
-  const preferredRanges = countValues(
-    historicalOwners
-      .map((o) => String(o.preferredRangeStyle || ""))
-      .filter(Boolean),
-  );
+  const preferredStrategies = countValues(historicalOwners.map((o) => String(o.preferredStrategy || '')).filter(Boolean));
+  const preferredRanges = countValues(historicalOwners.map((o) => String(o.preferredRangeStyle || '')).filter(Boolean));
 
-  const tokenXSymbol = String(overview.tokenXSymbol || "TOKEN");
-  const tokenYSymbol = String(overview.tokenYSymbol || "SOL");
+  const tokenXSymbol = String(overview.tokenXSymbol || 'TOKEN');
+  const tokenYSymbol = String(overview.tokenYSymbol || 'SOL');
 
   return {
     top_lper_count: ranked.length,
-    study_mode: "lpagent_top_lpers",
+    study_mode: 'lpagent_top_lpers',
     pool_name: String(overview.name || `${tokenXSymbol}-${tokenYSymbol}`),
     active_position_count: Number(signalData.activePositionCount) || ranked.length,
     owner_count: Number(signalData.ownerCount) || ranked.length,
@@ -168,9 +156,7 @@ function buildPatterns(
     avg_open_pnl_pct: avgOpenPnlPct,
     avg_fee_percent: avgFeePct,
     avg_roi_pct: avgRoiPct,
-    best_open_pnl_pct: ranked[0]
-      ? `${round(Number(ranked[0].pnlPerInflowPct) || 0, 2)}%`
-      : null,
+    best_open_pnl_pct: ranked[0] ? `${round(Number(ranked[0].pnlPerInflowPct) || 0, 2)}%` : null,
     scalper_count: ranked.filter((o) => (Number(o.avgAgeHours) || 0) < 1).length,
     holder_count: ranked.filter((o) => (Number(o.avgAgeHours) || 0) >= 4).length,
     preferred_strategies: preferredStrategies,
@@ -182,80 +168,44 @@ function buildPatterns(
 
 // ─── Public API ────────────────────────────────────────────────
 
-export async function studyTopLPers({
-  pool_address,
-  limit = 4,
-}: {
-  pool_address: string;
-  limit?: number;
-}): Promise<StudyTopLpersResult> {
-  const [poolRes, signalRes] = await Promise.all([
-    fetchTopLp(pool_address),
-    fetchStudyTopLp(pool_address),
-  ]);
+export async function studyTopLPers({ pool_address, limit = 4 }: { pool_address: string; limit?: number }): Promise<StudyTopLpersResult> {
+  const [poolRes, signalRes] = await Promise.all([fetchTopLp(pool_address), fetchStudyTopLp(pool_address)]);
 
   const poolData = poolRes;
   const signalData = signalRes;
   const topLpers = Array.isArray(poolData.topLpers) ? poolData.topLpers : [];
-  const historicalOwners = Array.isArray(poolData.historicalOwners)
-    ? poolData.historicalOwners
-    : [];
+  const historicalOwners = Array.isArray(poolData.historicalOwners) ? poolData.historicalOwners : [];
   const ranked = topLpers.slice(0, Math.max(1, limit));
 
   if (!ranked.length) {
     return {
       pool: pool_address,
-      message: "No LPAgent top LPer data found for this pool yet.",
+      message: 'No LPAgent top LPer data found for this pool yet.',
       patterns: {},
       lpers: [],
     };
   }
 
-  const historicalMap = new Map(
-    historicalOwners.map((owner: Record<string, unknown>) => [owner.owner, owner]),
-  );
+  const historicalMap = new Map(historicalOwners.map((owner: Record<string, unknown>) => [owner.owner, owner]));
 
   const overview = (poolData.overview || {}) as Record<string, unknown>;
-  const tokenXSymbol = String(overview.tokenXSymbol || "TOKEN");
-  const tokenYSymbol = String(overview.tokenYSymbol || "SOL");
+  const tokenXSymbol = String(overview.tokenXSymbol || 'TOKEN');
+  const tokenYSymbol = String(overview.tokenYSymbol || 'SOL');
 
   const lpers: TopLPer[] = ranked.map((owner: Record<string, unknown>) => {
     const history = historicalMap.get(owner.owner as string) as Record<string, unknown> | undefined;
     return {
       owner: owner.owner as string,
-      owner_short:
-        (owner.ownerShort as string) || `${String(owner.owner).slice(0, 8)}...`,
+      owner_short: (owner.ownerShort as string) || `${String(owner.owner).slice(0, 8)}...`,
       signal_tags: [
-        history?.preferredStrategy
-          ? `strategy:${history.preferredStrategy}`
-          : null,
-        history?.preferredRangeStyle
-          ? `range:${history.preferredRangeStyle}`
-          : null,
+        history?.preferredStrategy ? `strategy:${history.preferredStrategy}` : null,
+        history?.preferredRangeStyle ? `range:${history.preferredRangeStyle}` : null,
       ].filter(Boolean) as string[],
       summary: {
-        total_positions:
-          (owner.totalLp as number) ||
-          (history?.topPositions as unknown[])?.length ||
-          0,
-        avg_hold_hours: round(
-          (owner.avgAgeHours as number) ??
-            (history?.avgHoldHours as number) ??
-            0,
-          2,
-        ),
-        avg_open_pnl_pct: round(
-          (owner.pnlPerInflowPct as number) ??
-            (history?.avgPnlPct as number) ??
-            0,
-          2,
-        ),
-        avg_fee_per_tvl_24h_pct: round(
-          (owner.feePercent as number) ??
-            (history?.avgFeePercent as number) ??
-            0,
-          2,
-        ),
+        total_positions: (owner.totalLp as number) || (history?.topPositions as unknown[])?.length || 0,
+        avg_hold_hours: round((owner.avgAgeHours as number) ?? (history?.avgHoldHours as number) ?? 0, 2),
+        avg_open_pnl_pct: round((owner.pnlPerInflowPct as number) ?? (history?.avgPnlPct as number) ?? 0, 2),
+        avg_fee_per_tvl_24h_pct: round((owner.feePercent as number) ?? (history?.avgFeePercent as number) ?? 0, 2),
         total_pnl_usd: round((owner.totalPnlUsd as number) ?? 0, 2),
         total_balance_usd: round((owner.totalInflowUsd as number) ?? 0, 2),
         avg_range_width_pct: null,
@@ -263,41 +213,27 @@ export async function studyTopLPers({
         win_rate: round(((owner.winRatePct as number) ?? 0) / 100, 2),
         roi: round(((owner.roiPct as number) ?? 0) / 100, 4),
         fee_pct_of_capital: round((owner.feePercent as number) ?? 0, 2),
-        preferred_strategy:
-          (history?.preferredStrategy as string) || "unknown",
-        preferred_range_style:
-          (history?.preferredRangeStyle as string) || "unknown",
+        preferred_strategy: (history?.preferredStrategy as string) || 'unknown',
+        preferred_range_style: (history?.preferredRangeStyle as string) || 'unknown',
       },
       positions: Array.isArray(history?.topPositions)
-        ? (history.topPositions as Record<string, unknown>[]).map(
-            (position: Record<string, unknown>) => ({
-              pool: pool_address,
-              pair:
-                String(overview.name || "") ||
-                `${tokenXSymbol}-${tokenYSymbol}`,
-              hold_hours: round((position.ageHours as number) ?? 0, 2),
-              pnl_usd: round((position.pnlUsd as number) ?? 0, 2),
-              pnl_pct: fmtPct(position.pnlPct),
-              fee_usd: round((position.feeUsd as number) ?? 0, 2),
-              in_range_pct:
-                position.inRange == null
-                  ? null
-                  : (position.inRange as boolean)
-                    ? 100
-                    : 0,
-              strategy: (position.strategy as string) || null,
-              closed_reason: (position.rangeStyle as string) || null,
-              balance_usd: round((position.inputValue as number) ?? 0, 2),
-              fee_per_tvl_24h_pct: round(
-                (position.feePercent as number) ?? 0,
-                2,
-              ),
-              range_width_pct: (position.widthBins as number) ?? null,
-              distance_to_active_pct: null,
-              lower_bin_id: (position.lowerBinId as number) ?? null,
-              upper_bin_id: (position.upperBinId as number) ?? null,
-            }),
-          )
+        ? (history.topPositions as Record<string, unknown>[]).map((position: Record<string, unknown>) => ({
+            pool: pool_address,
+            pair: String(overview.name || '') || `${tokenXSymbol}-${tokenYSymbol}`,
+            hold_hours: round((position.ageHours as number) ?? 0, 2),
+            pnl_usd: round((position.pnlUsd as number) ?? 0, 2),
+            pnl_pct: fmtPct(position.pnlPct),
+            fee_usd: round((position.feeUsd as number) ?? 0, 2),
+            in_range_pct: position.inRange == null ? null : (position.inRange as boolean) ? 100 : 0,
+            strategy: (position.strategy as string) || null,
+            closed_reason: (position.rangeStyle as string) || null,
+            balance_usd: round((position.inputValue as number) ?? 0, 2),
+            fee_per_tvl_24h_pct: round((position.feePercent as number) ?? 0, 2),
+            range_width_pct: (position.widthBins as number) ?? null,
+            distance_to_active_pct: null,
+            lower_bin_id: (position.lowerBinId as number) ?? null,
+            upper_bin_id: (position.upperBinId as number) ?? null,
+          }))
         : [],
     };
   });
@@ -306,11 +242,8 @@ export async function studyTopLPers({
 
   return {
     pool: pool_address,
-    pool_name:
-      String(overview.name || "") ||
-      `${tokenXSymbol}-${tokenYSymbol}`,
-    message:
-      "LPAgent-backed top LP study from Agent Meridian 30m cached owner aggregates plus owner historical positions.",
+    pool_name: String(overview.name || '') || `${tokenXSymbol}-${tokenYSymbol}`,
+    message: 'LPAgent-backed top LP study from Agent Meridian 30m cached owner aggregates plus owner historical positions.',
     patterns,
     lpers,
   };

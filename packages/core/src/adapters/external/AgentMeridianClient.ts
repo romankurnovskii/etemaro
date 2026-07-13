@@ -1,4 +1,4 @@
-import { config } from "../../config/Config.js";
+import { config } from '../../config/Config.js';
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -8,7 +8,7 @@ interface RetryOptions {
   perAttemptTimeoutMs?: number;
 }
 
-interface AgentMeridianRequestOptions extends Omit<RequestInit, "signal"> {
+interface AgentMeridianRequestOptions extends Omit<RequestInit, 'signal'> {
   retry?: RetryOptions;
 }
 
@@ -21,18 +21,18 @@ interface AgentMeridianError extends Error {
 // ─── Helpers ───────────────────────────────────────────────────
 
 export function getAgentMeridianBase(): string {
-  return String(config.api.url || "https://api.agentmeridian.xyz/api").replace(/\/+$/, "");
+  return String(config.api.url || 'https://api.agentmeridian.xyz/api').replace(/\/+$/, '');
 }
 
 export function getAgentMeridianHeaders({ json = false } = {}): Record<string, string> {
   const headers: Record<string, string> = {};
-  if (json) headers["Content-Type"] = "application/json";
-  if (config.api.publicApiKey) headers["x-api-key"] = config.api.publicApiKey;
+  if (json) headers['Content-Type'] = 'application/json';
+  if (config.api.publicApiKey) headers['x-api-key'] = config.api.publicApiKey;
   return headers;
 }
 
 export function getAgentIdForRequests(): string {
-  return config.hiveMind.agentId || "agent-local";
+  return config.hiveMind.agentId || 'agent-local';
 }
 
 function sleep(ms: number): Promise<void> {
@@ -51,11 +51,7 @@ function retryDelayMs(error: AgentMeridianError, attempt: number): number {
   return Math.min(500 * 2 ** attempt, 5_000);
 }
 
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit,
-  timeoutMs: number | null,
-): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number | null): Promise<Response> {
   if (!Number.isFinite(timeoutMs!) || timeoutMs! <= 0) {
     return fetch(url, options);
   }
@@ -66,24 +62,20 @@ async function fetchWithTimeout(
   const abortFromParent = (): void => controller.abort();
   if (signal) {
     if (signal.aborted) controller.abort();
-    else signal.addEventListener("abort", abortFromParent, { once: true });
+    else signal.addEventListener('abort', abortFromParent, { once: true });
   }
 
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timer);
-    if (signal) signal.removeEventListener("abort", abortFromParent);
+    if (signal) signal.removeEventListener('abort', abortFromParent);
   }
 }
 
-async function agentMeridianJsonOnce(
-  pathname: string,
-  options: RequestInit = {},
-  timeoutMs: number | null = null,
-): Promise<Record<string, unknown>> {
+async function agentMeridianJsonOnce(pathname: string, options: RequestInit = {}, timeoutMs: number | null = null): Promise<Record<string, unknown>> {
   const res = await fetchWithTimeout(`${getAgentMeridianBase()}${pathname}`, options, timeoutMs);
-  const text = await res.text().catch(() => "");
+  const text = await res.text().catch(() => '');
   let payload: Record<string, unknown> = {};
   try {
     payload = text ? JSON.parse(text) : {};
@@ -91,12 +83,10 @@ async function agentMeridianJsonOnce(
     payload = { raw: text };
   }
   if (!res.ok) {
-    const error: AgentMeridianError = new Error(
-      (payload?.error as string) || `${pathname} ${res.status}`,
-    );
+    const error: AgentMeridianError = new Error((payload?.error as string) || `${pathname} ${res.status}`);
     error.status = res.status;
     error.payload = payload;
-    error.retryAfter = res.headers.get("retry-after");
+    error.retryAfter = res.headers.get('retry-after');
     throw error;
   }
   return payload;
@@ -104,10 +94,7 @@ async function agentMeridianJsonOnce(
 
 // ─── Public API ────────────────────────────────────────────────
 
-export async function agentMeridianJson(
-  pathname: string,
-  options: AgentMeridianRequestOptions = {},
-): Promise<Record<string, unknown>> {
+export async function agentMeridianJson(pathname: string, options: AgentMeridianRequestOptions = {}): Promise<Record<string, unknown>> {
   const { retry, ...fetchOptions } = options;
   if (!retry) {
     return agentMeridianJsonOnce(pathname, fetchOptions);
@@ -123,11 +110,7 @@ export async function agentMeridianJson(
     const elapsedMs = Date.now() - startedAt;
     const remainingMs = Math.max(1, maxElapsedMs - elapsedMs);
     try {
-      return await agentMeridianJsonOnce(
-        pathname,
-        fetchOptions,
-        Math.min(Number(retry.perAttemptTimeoutMs || 10_000), remainingMs),
-      );
+      return await agentMeridianJsonOnce(pathname, fetchOptions, Math.min(Number(retry.perAttemptTimeoutMs || 10_000), remainingMs));
     } catch (error) {
       lastError = error as AgentMeridianError;
       const status = Number(lastError?.status || 0);

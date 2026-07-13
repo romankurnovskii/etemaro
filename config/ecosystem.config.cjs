@@ -1,26 +1,26 @@
-const path = require("path");
+const path = require('path');
 
-const repoRoot = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(__dirname, '..');
 
 module.exports = {
   apps: [
     {
-      name: "meridian",
-      script: path.join(repoRoot, "packages/daemon/dist/Daemon.js"),
+      name: 'meridian',
+      script: path.join(repoRoot, 'packages/daemon/dist/Daemon.js'),
       cwd: repoRoot,
-      interpreter: "node",
+      interpreter: 'node',
       instances: 1,
-      exec_mode: "fork",
+      exec_mode: 'fork',
       autorestart: true,
       restart_delay: 5000,
       kill_timeout: 10000,
       max_restarts: 10,
-      min_uptime: "10s",
+      min_uptime: '10s',
       merge_logs: true,
       time: true,
       // Always start via this file (npm run pm2:start) so cwd + script path stay pinned to the repo.
       env: {
-        NODE_ENV: "production",
+        NODE_ENV: 'production',
       },
     },
   ],

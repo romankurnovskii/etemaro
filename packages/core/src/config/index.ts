@@ -1,1 +1,1 @@
-export { config, computeDeployAmount, reloadScreeningThresholds } from "./Config.js";
+export { config, computeDeployAmount, reloadScreeningThresholds } from './Config.js';

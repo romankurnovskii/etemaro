@@ -8,31 +8,15 @@
  * - Actions taken (claims, rebalances)
  */
 
-import { log } from "../shared/logger.js";
-import {
-  dataPath,
-  MAX_RECENT_EVENTS,
-  MAX_INSTRUCTION_LENGTH,
-  SYNC_GRACE_MS,
-} from "../shared/constants.js";
-import {
-  sanitizeStoredText,
-  loadJsonFile,
-  saveJsonFile,
-} from "../shared/utils.js";
-import type {
-  PositionRecord,
-  StateEvent,
-  BinRange,
-  ExitResult,
-  ExitAction,
-  StateSummary,
-} from "../shared/types.js";
+import { log } from '../shared/logger.js';
+import { dataPath, MAX_RECENT_EVENTS, MAX_INSTRUCTION_LENGTH, SYNC_GRACE_MS } from '../shared/constants.js';
+import { sanitizeStoredText, loadJsonFile, saveJsonFile } from '../shared/utils.js';
+import type { PositionRecord, StateEvent, BinRange, ExitResult, ExitAction, StateSummary } from '../shared/types.js';
 
-export type { PositionRecord } from "../shared/types.js";
-import type { AppConfig } from "../shared/types.js";
+export type { PositionRecord } from '../shared/types.js';
+import type { AppConfig } from '../shared/types.js';
 
-let STATE_FILE = dataPath("state.json");
+let STATE_FILE = dataPath('state.json');
 
 /**
  * Test-only seam: redirect the state file so tests don't read/write the real
@@ -63,7 +47,7 @@ function save(state: StateData): void {
     saveJsonFile(STATE_FILE, state);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    log("state_error", `Failed to write state.json: ${message}`);
+    log('state_error', `Failed to write state.json: ${message}`);
   }
 }
 
@@ -83,7 +67,7 @@ interface TrackPositionOpts {
   fee_tvl_ratio: number;
   organic_score: number;
   initial_value_usd: number;
-  signal_snapshot?: import("../shared/types.js").SignalSnapshot | null;
+  signal_snapshot?: import('../shared/types.js').SignalSnapshot | null;
   entry_mcap?: number | null;
   entry_tvl?: number | null;
   entry_volume?: number | null;
@@ -151,9 +135,9 @@ export function trackPosition({
     pending_exit_started_at: null,
     trailing_active: false,
   };
-  pushEvent(state, { action: "deploy", position, pool_name: pool_name || pool });
+  pushEvent(state, { action: 'deploy', position, pool_name: pool_name || pool });
   save(state);
-  log("state", `Tracked new position: ${position} in pool ${pool}`);
+  log('state', `Tracked new position: ${position} in pool ${pool}`);
 }
 
 /**
@@ -166,7 +150,7 @@ export function markOutOfRange(position_address: string): void {
   if (!pos.out_of_range_since) {
     pos.out_of_range_since = new Date().toISOString();
     save(state);
-    log("state", `Position ${position_address} marked out of range`);
+    log('state', `Position ${position_address} marked out of range`);
   }
 }
 
@@ -180,7 +164,7 @@ export function markInRange(position_address: string): void {
   if (pos.out_of_range_since) {
     pos.out_of_range_since = null;
     save(state);
-    log("state", `Position ${position_address} back in range`);
+    log('state', `Position ${position_address} back in range`);
   }
 }
 
@@ -205,14 +189,14 @@ export function recordClaim(position_address: string, fees_usd?: number | null):
   if (!pos) return;
   pos.last_claim_at = new Date().toISOString();
   pos.total_fees_claimed_usd = (pos.total_fees_claimed_usd || 0) + (fees_usd || 0);
-  pos.notes.push(`Claimed ~$${fees_usd?.toFixed(2) || "?"} fees at ${pos.last_claim_at}`);
+  pos.notes.push(`Claimed ~$${fees_usd?.toFixed(2) || '?'} fees at ${pos.last_claim_at}`);
   save(state);
 }
 
 /**
  * Append to the recent events log (shown in every prompt).
  */
-function pushEvent(state: StateData, event: Omit<StateEvent, "ts">): void {
+function pushEvent(state: StateData, event: Omit<StateEvent, 'ts'>): void {
   if (!state.recentEvents) state.recentEvents = [];
   state.recentEvents.push({ ts: new Date().toISOString(), ...event });
   if (state.recentEvents.length > MAX_RECENT_EVENTS) {
@@ -230,9 +214,9 @@ export function recordClose(position_address: string, reason: string): void {
   pos.closed = true;
   pos.closed_at = new Date().toISOString();
   pos.notes.push(`Closed at ${pos.closed_at}: ${reason}`);
-  pushEvent(state, { action: "close", position: position_address, pool_name: pos.pool_name || pos.pool, reason });
+  pushEvent(state, { action: 'close', position: position_address, pool_name: pos.pool_name || pos.pool, reason });
   save(state);
-  log("state", `Position ${position_address} marked closed: ${reason}`);
+  log('state', `Position ${position_address} marked closed: ${reason}`);
 }
 
 /**
@@ -245,7 +229,7 @@ export function setPositionInstruction(position_address: string, instruction: st
   if (!pos) return false;
   pos.instruction = sanitizeStoredText(instruction, MAX_INSTRUCTION_LENGTH);
   save(state);
-  log("state", `Position ${position_address} instruction set: ${pos.instruction}`);
+  log('state', `Position ${position_address} instruction set: ${pos.instruction}`);
   return true;
 }
 
@@ -256,11 +240,7 @@ export function setPositionInstruction(position_address: string, instruction: st
  * otherwise arm a false trailing-drop). Replaces the old 15s setTimeout recheck.
  * Returns true when the peak was raised this call.
  */
-export function confirmPeak(
-  position_address: string,
-  candidatePnlPct: number | null | undefined,
-  confirmTicks = 2,
-): boolean {
+export function confirmPeak(position_address: string, candidatePnlPct: number | null | undefined, confirmTicks = 2): boolean {
   if (candidatePnlPct == null) return false;
   const state = load();
   const pos = state.positions[position_address];
@@ -294,7 +274,7 @@ export function confirmPeak(
     pos.pending_peak_confirm_count = 0;
     pos.pending_peak_started_at = null;
     save(state);
-    log("state", `Position ${position_address} peak PnL confirmed at ${pos.peak_pnl_pct.toFixed(2)}% (${confirmTicks} ticks)`);
+    log('state', `Position ${position_address} peak PnL confirmed at ${pos.peak_pnl_pct.toFixed(2)}% (${confirmTicks} ticks)`);
     return true;
   }
 
@@ -343,7 +323,7 @@ export function registerExitSignal(
     pos.pending_exit_started_at = null;
   }
   save(state);
-  if (fire) log("state", `Position ${position_address} exit signal "${signal}" confirmed (${confirmTicks} ticks)`);
+  if (fire) log('state', `Position ${position_address} exit signal "${signal}" confirmed (${confirmTicks} ticks)`);
   return { fire, action: signal, count };
 }
 
@@ -371,8 +351,7 @@ export function getStateSummary(): StateSummary {
   const state = load();
   const open = Object.values(state.positions).filter((p) => !p.closed);
   const closed = Object.values(state.positions).filter((p) => p.closed);
-  const totalFeesClaimed = Object.values(state.positions)
-    .reduce((sum, p) => sum + (p.total_fees_claimed_usd || 0), 0);
+  const totalFeesClaimed = Object.values(state.positions).reduce((sum, p) => sum + (p.total_fees_claimed_usd || 0), 0);
 
   return {
     open_positions: open.length,
@@ -411,11 +390,7 @@ interface PositionData {
  * @param mgmtConfig
  * Returns { action, reason } or null if no exit needed.
  */
-export function updatePnlAndCheckExits(
-  position_address: string,
-  positionData: PositionData,
-  mgmtConfig: AppConfig["management"],
-): ExitResult | null {
+export function updatePnlAndCheckExits(position_address: string, positionData: PositionData, mgmtConfig: AppConfig['management']): ExitResult | null {
   const { pnl_pct: currentPnlPct, pnl_pct_suspicious, in_range, fee_per_tvl_24h } = positionData;
   const state = load();
   const pos = state.positions[position_address];
@@ -427,18 +402,18 @@ export function updatePnlAndCheckExits(
   if (mgmtConfig.trailingTakeProfit && !pos.trailing_active && (pos.peak_pnl_pct ?? 0) >= mgmtConfig.trailingTriggerPct) {
     pos.trailing_active = true;
     changed = true;
-    log("state", `Position ${position_address} trailing TP activated (confirmed peak: ${pos.peak_pnl_pct}%)`);
+    log('state', `Position ${position_address} trailing TP activated (confirmed peak: ${pos.peak_pnl_pct}%)`);
   }
 
   // Update OOR state
   if (in_range === false && !pos.out_of_range_since) {
     pos.out_of_range_since = new Date().toISOString();
     changed = true;
-    log("state", `Position ${position_address} marked out of range`);
+    log('state', `Position ${position_address} marked out of range`);
   } else if (in_range === true && pos.out_of_range_since) {
     pos.out_of_range_since = null;
     changed = true;
-    log("state", `Position ${position_address} back in range`);
+    log('state', `Position ${position_address} back in range`);
   }
 
   if (changed) save(state);
@@ -446,7 +421,7 @@ export function updatePnlAndCheckExits(
   // ── Stop loss ──────────────────────────────────────────────────
   if (!pnl_pct_suspicious && currentPnlPct != null && mgmtConfig.stopLossPct != null && currentPnlPct <= mgmtConfig.stopLossPct) {
     return {
-      action: "STOP_LOSS",
+      action: 'STOP_LOSS',
       reason: `Stop loss: PnL ${currentPnlPct.toFixed(2)}% <= ${mgmtConfig.stopLossPct}%`,
     };
   }
@@ -456,7 +431,7 @@ export function updatePnlAndCheckExits(
     const dropFromPeak = pos.peak_pnl_pct - currentPnlPct!;
     if (dropFromPeak >= mgmtConfig.trailingDropPct) {
       return {
-        action: "TRAILING_TP",
+        action: 'TRAILING_TP',
         reason: `Trailing TP: peak ${pos.peak_pnl_pct.toFixed(2)}% → current ${currentPnlPct!.toFixed(2)}% (dropped ${dropFromPeak.toFixed(2)}% >= ${mgmtConfig.trailingDropPct}%)`,
         needs_confirmation: true,
         peak_pnl_pct: pos.peak_pnl_pct,
@@ -471,7 +446,7 @@ export function updatePnlAndCheckExits(
     const minutesOOR = Math.floor((Date.now() - new Date(pos.out_of_range_since).getTime()) / 60000);
     if (minutesOOR >= mgmtConfig.outOfRangeWaitMinutes) {
       return {
-        action: "OUT_OF_RANGE",
+        action: 'OUT_OF_RANGE',
         reason: `Out of range for ${minutesOOR}m (limit: ${mgmtConfig.outOfRangeWaitMinutes}m)`,
       };
     }
@@ -487,8 +462,8 @@ export function updatePnlAndCheckExits(
     (age_minutes == null || age_minutes >= minAgeForYieldCheck)
   ) {
     return {
-      action: "LOW_YIELD",
-      reason: `Low yield: fee/TVL ${fee_per_tvl_24h.toFixed(2)}% < min ${mgmtConfig.minFeePerTvl24h}% (age: ${age_minutes ?? "?"}m)`,
+      action: 'LOW_YIELD',
+      reason: `Low yield: fee/TVL ${fee_per_tvl_24h.toFixed(2)}% < min ${mgmtConfig.minFeePerTvl24h}% (age: ${age_minutes ?? '?'}m)`,
     };
   }
 
@@ -530,7 +505,7 @@ export function syncOpenPositions(active_addresses: string[]): void {
     // Grace period: newly deployed positions may not be indexed yet
     const deployedAt = pos.deployed_at ? new Date(pos.deployed_at).getTime() : 0;
     if (Date.now() - deployedAt < SYNC_GRACE_MS) {
-      log("state", `Position ${posId} not on-chain yet — within grace period, skipping auto-close`);
+      log('state', `Position ${posId} not on-chain yet — within grace period, skipping auto-close`);
       continue;
     }
 
@@ -538,7 +513,7 @@ export function syncOpenPositions(active_addresses: string[]): void {
     pos.closed_at = new Date().toISOString();
     pos.notes.push(`Auto-closed during state sync (not found on-chain)`);
     changed = true;
-    log("state", `Position ${posId} auto-closed (missing from on-chain data)`);
+    log('state', `Position ${posId} auto-closed (missing from on-chain data)`);
   }
 
   if (changed) save(state);
@@ -567,7 +542,7 @@ export function reconcileTrackedPositions(livePositions: any[]): number {
       position: address,
       pool: p.pool || null,
       pool_name: p.pool_name || null,
-      strategy: "imported",
+      strategy: 'imported',
       bin_range: { min: p.lower_bin ?? null, max: p.upper_bin ?? null },
       amount_sol: Number(p.amount_y ?? 0) || 0,
       amount_x: Number(p.amount_x ?? 0) || 0,
@@ -590,7 +565,7 @@ export function reconcileTrackedPositions(livePositions: any[]): number {
       rebalance_count: 0,
       closed: false,
       closed_at: null,
-      notes: ["Imported from on-chain during sync (not deployed by agent)"],
+      notes: ['Imported from on-chain during sync (not deployed by agent)'],
       peak_pnl_pct: 0,
       pending_peak_pnl_pct: null,
       pending_peak_confirm_count: 0,
@@ -605,7 +580,7 @@ export function reconcileTrackedPositions(livePositions: any[]): number {
 
   if (added > 0) {
     save(state);
-    log("state", `Reconciled ${added} imported position(s) into state.json`);
+    log('state', `Reconciled ${added} imported position(s) into state.json`);
   }
   return added;
 }

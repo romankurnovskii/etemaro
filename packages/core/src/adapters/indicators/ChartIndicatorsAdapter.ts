@@ -1,10 +1,10 @@
-import { config } from "../../config/Config.js";
-import { log } from "../../shared/logger.js";
-import { agentMeridianJson, getAgentMeridianHeaders } from "../external/AgentMeridianClient.js";
-import { safeNumber } from "../../shared/utils.js";
-import type { IndicatorConfig } from "../../shared/types.js";
+import { config } from '../../config/Config.js';
+import { log } from '../../shared/logger.js';
+import { agentMeridianJson, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js';
+import { safeNumber } from '../../shared/utils.js';
+import type { IndicatorConfig } from '../../shared/types.js';
 
-const DEFAULT_INTERVALS = ["5_MINUTE"];
+const DEFAULT_INTERVALS = ['5_MINUTE'];
 const DEFAULT_CANDLES = 298;
 
 // ─── Types ─────────────────────────────────────────────────────
@@ -50,8 +50,12 @@ export interface IndicatorConfirmation {
 function normalizeIntervals(intervals: string[] | undefined): string[] {
   const list = Array.isArray(intervals) ? intervals : DEFAULT_INTERVALS;
   return list
-    .map((value) => String(value || "").trim().toUpperCase())
-    .filter((value) => value === "5_MINUTE" || value === "15_MINUTE");
+    .map((value) =>
+      String(value || '')
+        .trim()
+        .toUpperCase(),
+    )
+    .filter((value) => value === '5_MINUTE' || value === '15_MINUTE');
 }
 
 function safeNum(value: unknown): number | null {
@@ -78,17 +82,17 @@ function buildSignalSummary(payload: Record<string, unknown>): SignalSummary {
     middleBand: safeNum(bollinger.middle),
     upperBand: safeNum(bollinger.upper),
     supertrendValue: safeNum(supertrend.value),
-    supertrendDirection: String(supertrend.direction || "unknown"),
+    supertrendDirection: String(supertrend.direction || 'unknown'),
     supertrendBreakUp: !!states?.supertrendBreakUp,
     supertrendBreakDown: !!states?.supertrendBreakDown,
-    fib50: safeNum(fibonacciLevels["0.500"]),
-    fib618: safeNum(fibonacciLevels["0.618"]),
-    fib786: safeNum(fibonacciLevels["0.786"]),
+    fib50: safeNum(fibonacciLevels['0.500']),
+    fib618: safeNum(fibonacciLevels['0.618']),
+    fib786: safeNum(fibonacciLevels['0.786']),
   };
 }
 
 function evaluatePreset(
-  side: "entry" | "exit",
+  side: 'entry' | 'exit',
   preset: string,
   payload: Record<string, unknown>,
 ): { confirmed: boolean; reason: string; signal: SignalSummary } {
@@ -100,160 +104,116 @@ function evaluatePreset(
   const lowerBand = summary.lowerBand;
   const upperBand = summary.upperBand;
   const rsi = summary.rsi;
-  const isBullish = summary.supertrendDirection === "bullish";
-  const isBearish = summary.supertrendDirection === "bearish";
+  const isBullish = summary.supertrendDirection === 'bullish';
+  const isBearish = summary.supertrendDirection === 'bearish';
   const crossedUp = (level: number | null): boolean =>
-    level != null &&
-    close != null &&
-    previousClose != null &&
-    previousClose < level &&
-    close >= level;
+    level != null && close != null && previousClose != null && previousClose < level && close >= level;
   const crossedDown = (level: number | null): boolean =>
-    level != null &&
-    close != null &&
-    previousClose != null &&
-    previousClose > level &&
-    close <= level;
+    level != null && close != null && previousClose != null && previousClose > level && close <= level;
 
   switch (preset) {
-    case "supertrend_break":
-      return side === "entry"
+    case 'supertrend_break':
+      return side === 'entry'
         ? {
             confirmed:
-              summary.supertrendBreakUp ||
-              (isBullish &&
-                close != null &&
-                summary.supertrendValue != null &&
-                close >= summary.supertrendValue),
-            reason: summary.supertrendBreakUp
-              ? "Supertrend flipped bullish"
-              : "Price is above bullish Supertrend",
+              summary.supertrendBreakUp || (isBullish && close != null && summary.supertrendValue != null && close >= summary.supertrendValue),
+            reason: summary.supertrendBreakUp ? 'Supertrend flipped bullish' : 'Price is above bullish Supertrend',
             signal: summary,
           }
         : {
             confirmed:
-              summary.supertrendBreakDown ||
-              (isBearish &&
-                close != null &&
-                summary.supertrendValue != null &&
-                close <= summary.supertrendValue),
-            reason: summary.supertrendBreakDown
-              ? "Supertrend flipped bearish"
-              : "Price is below bearish Supertrend",
+              summary.supertrendBreakDown || (isBearish && close != null && summary.supertrendValue != null && close <= summary.supertrendValue),
+            reason: summary.supertrendBreakDown ? 'Supertrend flipped bearish' : 'Price is below bearish Supertrend',
             signal: summary,
           };
-    case "rsi_reversal":
-      return side === "entry"
+    case 'rsi_reversal':
+      return side === 'entry'
         ? {
             confirmed: rsi != null && rsi <= oversold,
-            reason: `RSI ${rsi ?? "n/a"} <= oversold ${oversold}`,
+            reason: `RSI ${rsi ?? 'n/a'} <= oversold ${oversold}`,
             signal: summary,
           }
         : {
             confirmed: rsi != null && rsi >= overbought,
-            reason: `RSI ${rsi ?? "n/a"} >= overbought ${overbought}`,
+            reason: `RSI ${rsi ?? 'n/a'} >= overbought ${overbought}`,
             signal: summary,
           };
-    case "bollinger_reversion":
-      return side === "entry"
+    case 'bollinger_reversion':
+      return side === 'entry'
         ? {
             confirmed: close != null && lowerBand != null && close <= lowerBand,
-            reason: `Close ${close ?? "n/a"} <= lower band ${lowerBand ?? "n/a"}`,
+            reason: `Close ${close ?? 'n/a'} <= lower band ${lowerBand ?? 'n/a'}`,
             signal: summary,
           }
         : {
             confirmed: close != null && upperBand != null && close >= upperBand,
-            reason: `Close ${close ?? "n/a"} >= upper band ${upperBand ?? "n/a"}`,
+            reason: `Close ${close ?? 'n/a'} >= upper band ${upperBand ?? 'n/a'}`,
             signal: summary,
           };
-    case "rsi_plus_supertrend":
-      return side === "entry"
+    case 'rsi_plus_supertrend':
+      return side === 'entry'
         ? {
-            confirmed:
-              rsi != null && rsi <= oversold && (summary.supertrendBreakUp || isBullish),
-            reason: "RSI oversold with bullish Supertrend context",
+            confirmed: rsi != null && rsi <= oversold && (summary.supertrendBreakUp || isBullish),
+            reason: 'RSI oversold with bullish Supertrend context',
             signal: summary,
           }
         : {
-            confirmed:
-              rsi != null && rsi >= overbought && (summary.supertrendBreakDown || isBearish),
-            reason: "RSI overbought with bearish Supertrend context",
+            confirmed: rsi != null && rsi >= overbought && (summary.supertrendBreakDown || isBearish),
+            reason: 'RSI overbought with bearish Supertrend context',
             signal: summary,
           };
-    case "supertrend_or_rsi":
-      return side === "entry"
+    case 'supertrend_or_rsi':
+      return side === 'entry'
         ? {
             confirmed:
               summary.supertrendBreakUp ||
-              (isBullish &&
-                close != null &&
-                summary.supertrendValue != null &&
-                close >= summary.supertrendValue) ||
+              (isBullish && close != null && summary.supertrendValue != null && close >= summary.supertrendValue) ||
               (rsi != null && rsi <= oversold),
-            reason: "Supertrend bullish confirmation or RSI oversold",
+            reason: 'Supertrend bullish confirmation or RSI oversold',
             signal: summary,
           }
         : {
             confirmed:
               summary.supertrendBreakDown ||
-              (isBearish &&
-                close != null &&
-                summary.supertrendValue != null &&
-                close <= summary.supertrendValue) ||
+              (isBearish && close != null && summary.supertrendValue != null && close <= summary.supertrendValue) ||
               (rsi != null && rsi >= overbought),
-            reason: "Supertrend bearish confirmation or RSI overbought",
+            reason: 'Supertrend bearish confirmation or RSI overbought',
             signal: summary,
           };
-    case "bb_plus_rsi":
-      return side === "entry"
+    case 'bb_plus_rsi':
+      return side === 'entry'
         ? {
-            confirmed:
-              close != null &&
-              lowerBand != null &&
-              close <= lowerBand &&
-              rsi != null &&
-              rsi <= oversold,
-            reason: "Close at/below lower band with RSI oversold",
+            confirmed: close != null && lowerBand != null && close <= lowerBand && rsi != null && rsi <= oversold,
+            reason: 'Close at/below lower band with RSI oversold',
             signal: summary,
           }
         : {
-            confirmed:
-              close != null &&
-              upperBand != null &&
-              close >= upperBand &&
-              rsi != null &&
-              rsi >= overbought,
-            reason: "Close at/above upper band with RSI overbought",
+            confirmed: close != null && upperBand != null && close >= upperBand && rsi != null && rsi >= overbought,
+            reason: 'Close at/above upper band with RSI overbought',
             signal: summary,
           };
-    case "fibo_reclaim":
-      return side === "entry"
+    case 'fibo_reclaim':
+      return side === 'entry'
         ? {
-            confirmed:
-              crossedUp(summary.fib618) ||
-              crossedUp(summary.fib50) ||
-              crossedUp(summary.fib786),
-            reason: "Price reclaimed a key Fibonacci level",
+            confirmed: crossedUp(summary.fib618) || crossedUp(summary.fib50) || crossedUp(summary.fib786),
+            reason: 'Price reclaimed a key Fibonacci level',
             signal: summary,
           }
         : {
             confirmed: crossedUp(summary.fib618) || crossedUp(summary.fib50),
-            reason: "Price reclaimed a key Fibonacci level upward",
+            reason: 'Price reclaimed a key Fibonacci level upward',
             signal: summary,
           };
-    case "fibo_reject":
-      return side === "entry"
+    case 'fibo_reject':
+      return side === 'entry'
         ? {
             confirmed: crossedDown(summary.fib618) || crossedDown(summary.fib50),
-            reason: "Price rejected from a key Fibonacci level",
+            reason: 'Price rejected from a key Fibonacci level',
             signal: summary,
           }
         : {
-            confirmed:
-              crossedDown(summary.fib618) ||
-              crossedDown(summary.fib50) ||
-              crossedDown(summary.fib786),
-            reason: "Price rejected below a key Fibonacci level",
+            confirmed: crossedDown(summary.fib618) || crossedDown(summary.fib50) || crossedDown(summary.fib786),
+            reason: 'Price rejected below a key Fibonacci level',
             signal: summary,
           };
     default:
@@ -279,13 +239,15 @@ async function fetchChartIndicatorsForMint(
     refresh?: boolean;
   },
 ): Promise<Record<string, unknown>> {
-  const normalizedInterval = String(interval || "15_MINUTE").trim().toUpperCase();
+  const normalizedInterval = String(interval || '15_MINUTE')
+    .trim()
+    .toUpperCase();
   const search = new URLSearchParams({
     interval: normalizedInterval,
     candles: String(candles),
     rsiLength: String(rsiLength),
   });
-  if (refresh) search.set("refresh", "1");
+  if (refresh) search.set('refresh', '1');
 
   return agentMeridianJson(`/chart-indicators/${mint}?${search.toString()}`, {
     headers: getAgentMeridianHeaders(),
@@ -296,25 +258,24 @@ async function fetchChartIndicatorsForMint(
 
 export async function confirmIndicatorPreset({
   mint,
-  side = "entry",
+  side = 'entry',
   preset,
   intervals = (config.indicators as IndicatorConfig).intervals,
   refresh = false,
 }: {
   mint?: string;
-  side?: "entry" | "exit";
+  side?: 'entry' | 'exit';
   preset?: string;
   intervals?: string[];
   refresh?: boolean;
 } = {}): Promise<IndicatorConfirmation> {
-  const effectivePreset = preset ?? (side === "entry"
-    ? (config.indicators as IndicatorConfig).entryPreset
-    : (config.indicators as IndicatorConfig).exitPreset);
+  const effectivePreset =
+    preset ?? (side === 'entry' ? (config.indicators as IndicatorConfig).entryPreset : (config.indicators as IndicatorConfig).exitPreset);
   if (!(config.indicators as IndicatorConfig).enabled || !mint || !effectivePreset) {
     return {
       enabled: false,
       confirmed: true,
-      reason: "Indicators disabled or not configured",
+      reason: 'Indicators disabled or not configured',
       intervals: [],
     };
   }
@@ -324,7 +285,7 @@ export async function confirmIndicatorPreset({
     return {
       enabled: false,
       confirmed: true,
-      reason: "No indicator intervals configured",
+      reason: 'No indicator intervals configured',
       intervals: [],
     };
   }
@@ -343,10 +304,7 @@ export async function confirmIndicatorPreset({
         latest: (payload?.latest as Record<string, unknown>) || null,
       });
     } catch (error) {
-      log(
-        "indicators_warn",
-        `Indicator fetch failed for ${mint.slice(0, 8)} ${interval}: ${(error as Error).message}`,
-      );
+      log('indicators_warn', `Indicator fetch failed for ${mint.slice(0, 8)} ${interval}: ${(error as Error).message}`);
       results.push({
         interval,
         ok: false,
@@ -366,15 +324,13 @@ export async function confirmIndicatorPreset({
       skipped: true,
       preset: effectivePreset,
       side,
-      reason: "Indicator API unavailable; falling back to existing logic",
+      reason: 'Indicator API unavailable; falling back to existing logic',
       intervals: results,
     };
   }
 
   const requireAll = !!(config.indicators as IndicatorConfig).requireAllIntervals;
-  const confirmed = requireAll
-    ? successful.every((entry) => entry.confirmed)
-    : successful.some((entry) => entry.confirmed);
+  const confirmed = requireAll ? successful.every((entry) => entry.confirmed) : successful.some((entry) => entry.confirmed);
 
   return {
     enabled: true,
@@ -387,8 +343,8 @@ export async function confirmIndicatorPreset({
       ? `${effectivePreset} confirmed on ${successful
           .filter((entry) => entry.confirmed)
           .map((entry) => entry.interval)
-          .join(", ")}`
-      : `${effectivePreset} not confirmed on ${successful.map((entry) => entry.interval).join(", ")}`,
+          .join(', ')}`
+      : `${effectivePreset} not confirmed on ${successful.map((entry) => entry.interval).join(', ')}`,
     intervals: results,
   };
 }

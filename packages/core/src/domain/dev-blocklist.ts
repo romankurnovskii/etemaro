@@ -6,12 +6,12 @@
  * before the pool list reaches the LLM.
  */
 
-import { log } from "../shared/logger.js";
-import { dataPath } from "../shared/constants.js";
-import { loadJsonFile, saveJsonFile } from "../shared/utils.js";
-import type { BlockedDev } from "../shared/types.js";
+import { log } from '../shared/logger.js';
+import { dataPath } from '../shared/constants.js';
+import { loadJsonFile, saveJsonFile } from '../shared/utils.js';
+import type { BlockedDev } from '../shared/types.js';
 
-const BLOCKLIST_FILE = dataPath("dev-blocklist.json");
+const BLOCKLIST_FILE = dataPath('dev-blocklist.json');
 
 type DevBlocklistDb = Record<string, BlockedDev>;
 
@@ -33,27 +33,27 @@ export function getBlockedDevs(): DevBlocklistDb {
 }
 
 export function blockDev({ wallet, reason, label }: { wallet: string; reason?: string; label?: string }): Record<string, unknown> {
-  if (!wallet) return { error: "wallet required" };
+  if (!wallet) return { error: 'wallet required' };
   const db = load();
   if (db[wallet]) return { already_blocked: true, wallet, label: db[wallet].label, reason: db[wallet].reason };
   db[wallet] = {
-    label: label || "unknown",
-    reason: reason || "no reason provided",
+    label: label || 'unknown',
+    reason: reason || 'no reason provided',
     added_at: new Date().toISOString(),
   };
   save(db);
-  log("dev_blocklist", `Blocked deployer ${label || wallet}: ${reason}`);
+  log('dev_blocklist', `Blocked deployer ${label || wallet}: ${reason}`);
   return { blocked: true, wallet, label, reason };
 }
 
 export function unblockDev({ wallet }: { wallet: string }): Record<string, unknown> {
-  if (!wallet) return { error: "wallet required" };
+  if (!wallet) return { error: 'wallet required' };
   const db = load();
   if (!db[wallet]) return { error: `Wallet ${wallet} not on dev blocklist` };
   const entry = db[wallet];
   delete db[wallet];
   save(db);
-  log("dev_blocklist", `Removed deployer ${entry.label || wallet} from blocklist`);
+  log('dev_blocklist', `Removed deployer ${entry.label || wallet} from blocklist`);
   return { unblocked: true, wallet, was: entry };
 }
 

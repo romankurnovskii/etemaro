@@ -1,8 +1,8 @@
-import fs from "node:fs";
-import path from "node:path";
-import { REPO_ROOT } from "./constants.js";
+import fs from 'node:fs';
+import path from 'node:path';
+import { REPO_ROOT } from './constants.js';
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 const LOG_LEVELS: Record<LogLevel, number> = {
   debug: 0,
@@ -11,10 +11,10 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3,
 };
 
-const currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || "info";
+const currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
 const minLevel = LOG_LEVELS[currentLevel] ?? LOG_LEVELS.info;
 
-const logsDir = path.join(REPO_ROOT, "logs");
+const logsDir = path.join(REPO_ROOT, 'logs');
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
@@ -37,7 +37,9 @@ export function log(level: string, message: string): void {
   const line = `[${ts}] [${level}] ${message}\n`;
   try {
     fs.appendFileSync(getLogPath(), line);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   if (LOG_LEVELS[level as LogLevel] !== undefined && LOG_LEVELS[level as LogLevel] >= minLevel) {
     process.stdout.write(line);
   }
@@ -61,6 +63,8 @@ export function logAction(entry: LogActionEntry): void {
     ...entry,
   };
   try {
-    fs.appendFileSync(getAuditPath(), JSON.stringify(record) + "\n");
-  } catch { /* ignore */ }
+    fs.appendFileSync(getAuditPath(), JSON.stringify(record) + '\n');
+  } catch {
+    /* ignore */
+  }
 }

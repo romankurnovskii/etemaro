@@ -5,8 +5,5 @@
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../daemon" }
-  ]
+  "references": [{ "path": "../core" }, { "path": "../daemon" }]
 }
