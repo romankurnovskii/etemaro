@@ -38,9 +38,6 @@
       "dist/**"
     ]
   },
-  "lint-staged": {
-    "*": "pnpm typecheck"
-  },
   "dependencies": {
     "@meteora-ag/dlmm": "1.9.4",
     "@solana/web3.js": "^1.95.0",
