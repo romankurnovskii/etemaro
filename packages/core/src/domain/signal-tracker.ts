@@ -5,9 +5,9 @@
  * short-lived context rather than durable performance data.
  */
 
-import { log } from "../shared/logger.js";
-import { STAGE_TTL_MS } from "../shared/constants.js";
-import type { SignalSnapshot } from "../shared/types.js";
+import { log } from '../shared/logger.js';
+import { STAGE_TTL_MS } from '../shared/constants.js';
+import type { SignalSnapshot } from '../shared/types.js';
 
 // In-memory staging area — cleared after retrieval or after 10 minutes
 interface StagedSignal {
@@ -70,7 +70,7 @@ export function getAndClearStagedSignals(poolAddress: string, baseMint: string |
 
   if (!data && baseMint) {
     const baseKey = normalizeKey(baseMint);
-    poolKey = baseKey ? _stagedByBaseMint.get(baseKey) ?? null : null;
+    poolKey = baseKey ? (_stagedByBaseMint.get(baseKey) ?? null) : null;
     data = poolKey ? _staged.get(poolKey) : null;
   }
 
@@ -80,7 +80,7 @@ export function getAndClearStagedSignals(poolAddress: string, baseMint: string |
     _stagedByBaseMint.delete(data.base_mint);
   }
   const { staged_at, ...signals } = data;
-  log("signals", `Retrieved staged signals for ${poolKey!.slice(0, 8)}: ${Object.keys(signals).filter(k => signals[k] != null).length} signals`);
+  log('signals', `Retrieved staged signals for ${poolKey!.slice(0, 8)}: ${Object.keys(signals).filter((k) => signals[k] != null).length} signals`);
   return signals as unknown as SignalSnapshot;
 }
 

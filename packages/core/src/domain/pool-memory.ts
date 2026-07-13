@@ -5,13 +5,13 @@
  * (via recordPerformance in lessons.js). Agent can query before deploying.
  */
 
-import { log } from "../shared/logger.js";
-import { dataPath, MAX_NOTE_LENGTH } from "../shared/constants.js";
-import { sanitizeStoredText, isOorCloseReason, isAdjustedWinRateExcludedReason, loadJsonFile, saveJsonFile } from "../shared/utils.js";
-import { config } from "../config/Config.js";
-import type { PoolMemoryEntry, PoolMemoryDeploy, PoolSnapshot } from "../shared/types.js";
+import { log } from '../shared/logger.js';
+import { dataPath, MAX_NOTE_LENGTH } from '../shared/constants.js';
+import { sanitizeStoredText, isOorCloseReason, isAdjustedWinRateExcludedReason, loadJsonFile, saveJsonFile } from '../shared/utils.js';
+import { config } from '../config/Config.js';
+import type { PoolMemoryEntry, PoolMemoryDeploy, PoolSnapshot } from '../shared/types.js';
 
-const POOL_MEMORY_FILE = dataPath("pool-memory.json");
+const POOL_MEMORY_FILE = dataPath('pool-memory.json');
 
 type PoolMemoryDb = Record<string, PoolMemoryEntry>;
 
@@ -128,57 +128,51 @@ export function recordPoolDeploy(poolAddress: string, deployData: RecordPoolDepl
   entry.deploys.push(deploy);
   entry.total_deploys = entry.deploys.length;
   entry.last_deployed_at = deploy.closed_at;
-  entry.last_outcome = (deploy.pnl_pct ?? 0) >= 0 ? "profit" : "loss";
+  entry.last_outcome = (deploy.pnl_pct ?? 0) >= 0 ? 'profit' : 'loss';
 
   // Recompute aggregates
   const withPnl = entry.deploys.filter((d) => d.pnl_pct != null);
   if (withPnl.length > 0) {
-    entry.avg_pnl_pct = Math.round(
-      (withPnl.reduce((s, d) => s + d.pnl_pct!, 0) / withPnl.length) * 100
-    ) / 100;
-    entry.win_rate = Math.round(
-      (withPnl.filter((d) => d.pnl_pct! >= 0).length / withPnl.length) * 100
-    ) / 100;
+    entry.avg_pnl_pct = Math.round((withPnl.reduce((s, d) => s + d.pnl_pct!, 0) / withPnl.length) * 100) / 100;
+    entry.win_rate = Math.round((withPnl.filter((d) => d.pnl_pct! >= 0).length / withPnl.length) * 100) / 100;
   }
   const adjusted = withPnl.filter((d) => !isAdjustedWinRateExcludedReason(d.close_reason));
   entry.adjusted_win_rate_sample_count = adjusted.length;
-  entry.adjusted_win_rate = adjusted.length > 0
-    ? Math.round((adjusted.filter((d) => d.pnl_pct! >= 0).length / adjusted.length) * 10000) / 100
-    : 0;
+  entry.adjusted_win_rate = adjusted.length > 0 ? Math.round((adjusted.filter((d) => d.pnl_pct! >= 0).length / adjusted.length) * 10000) / 100 : 0;
 
   if (deployData.base_mint && !entry.base_mint) {
     entry.base_mint = deployData.base_mint;
   }
 
   // Set cooldown for low yield closes — pool wasn't profitable enough, don't redeploy soon
-  if (deploy.close_reason === "low yield") {
+  if (deploy.close_reason === 'low yield') {
     const cooldownHours = 4;
-    const cooldownUntil = setPoolCooldown(entry, cooldownHours, "low yield");
-    log("pool-memory", `Cooldown set for ${entry.name} until ${cooldownUntil} (low yield close)`);
+    const cooldownUntil = setPoolCooldown(entry, cooldownHours, 'low yield');
+    log('pool-memory', `Cooldown set for ${entry.name} until ${cooldownUntil} (low yield close)`);
   }
 
   const oorTriggerCount = config.management.oorCooldownTriggerCount ?? 3;
   const oorCooldownHours = config.management.oorCooldownHours ?? 12;
   const recentDeploys = entry.deploys.slice(-oorTriggerCount);
-  const repeatedOorCloses =
-    recentDeploys.length >= oorTriggerCount &&
-    recentDeploys.every((d) => isOorCloseReason(d.close_reason));
+  const repeatedOorCloses = recentDeploys.length >= oorTriggerCount && recentDeploys.every((d) => isOorCloseReason(d.close_reason));
 
   if (repeatedOorCloses) {
     const reason = `repeated OOR closes (${oorTriggerCount}x)`;
     const poolCooldownUntil = setPoolCooldown(entry, oorCooldownHours, reason);
     const mintCooldownUntil = setBaseMintCooldown(db, entry.base_mint, oorCooldownHours, reason);
-    log("pool-memory", `Cooldown set for ${entry.name} until ${poolCooldownUntil} (${reason})`);
+    log('pool-memory', `Cooldown set for ${entry.name} until ${poolCooldownUntil} (${reason})`);
     if (entry.base_mint && mintCooldownUntil) {
-      log("pool-memory", `Base mint cooldown set for ${entry.base_mint.slice(0, 8)} until ${mintCooldownUntil} (${reason})`);
+      log('pool-memory', `Base mint cooldown set for ${entry.base_mint.slice(0, 8)} until ${mintCooldownUntil} (${reason})`);
     }
   }
 
   if (config.management.repeatDeployCooldownEnabled) {
     const triggerCount = Math.max(1, Number(config.management.repeatDeployCooldownTriggerCount ?? 3));
     const cooldownHours = Math.max(0, Number(config.management.repeatDeployCooldownHours ?? 12));
-    const rawScope = String(config.management.repeatDeployCooldownScope || "token").toLowerCase();
-    const scope: "pool" | "token" | "both" = (["pool", "token", "both"] as string[]).includes(rawScope) ? rawScope as "pool" | "token" | "both" : "token";
+    const rawScope = String(config.management.repeatDeployCooldownScope || 'token').toLowerCase();
+    const scope: 'pool' | 'token' | 'both' = (['pool', 'token', 'both'] as string[]).includes(rawScope)
+      ? (rawScope as 'pool' | 'token' | 'both')
+      : 'token';
     const recentRepeatDeploys = entry.deploys.slice(-triggerCount);
     const repeatedFeeGeneratingDeploys =
       cooldownHours > 0 &&
@@ -187,21 +181,21 @@ export function recordPoolDeploy(poolAddress: string, deployData: RecordPoolDepl
 
     if (repeatedFeeGeneratingDeploys) {
       const reason = `repeat fee-generating deploys (${triggerCount}x)`;
-      if (scope === "pool" || scope === "both" || !entry.base_mint) {
+      if (scope === 'pool' || scope === 'both' || !entry.base_mint) {
         const poolCooldownUntil = setPoolCooldown(entry, cooldownHours, reason);
-        log("pool-memory", `Cooldown set for ${entry.name} until ${poolCooldownUntil} (${reason})`);
+        log('pool-memory', `Cooldown set for ${entry.name} until ${poolCooldownUntil} (${reason})`);
       }
-      if ((scope === "token" || scope === "both") && entry.base_mint) {
+      if ((scope === 'token' || scope === 'both') && entry.base_mint) {
         const mintCooldownUntil = setBaseMintCooldown(db, entry.base_mint, cooldownHours, reason);
         if (mintCooldownUntil) {
-          log("pool-memory", `Base mint cooldown set for ${entry.base_mint.slice(0, 8)} until ${mintCooldownUntil} (${reason})`);
+          log('pool-memory', `Base mint cooldown set for ${entry.base_mint.slice(0, 8)} until ${mintCooldownUntil} (${reason})`);
         }
       }
     }
   }
 
   save(db);
-  log("pool-memory", `Recorded deploy for ${entry.name} (${poolAddress.slice(0, 8)}): PnL ${deploy.pnl_pct}%`);
+  log('pool-memory', `Recorded deploy for ${entry.name} (${poolAddress.slice(0, 8)}): PnL ${deploy.pnl_pct}%`);
 }
 
 export function isPoolOnCooldown(poolAddress: string | null | undefined): boolean {
@@ -216,10 +210,8 @@ export function isBaseMintOnCooldown(baseMint: string | null | undefined): boole
   if (!baseMint) return false;
   const db = load();
   const now = new Date();
-  return Object.values(db).some((entry) =>
-    entry?.base_mint === baseMint &&
-    entry?.base_mint_cooldown_until &&
-    new Date(entry.base_mint_cooldown_until) > now
+  return Object.values(db).some(
+    (entry) => entry?.base_mint === baseMint && entry?.base_mint_cooldown_until && new Date(entry.base_mint_cooldown_until) > now,
   );
 }
 
@@ -234,7 +226,7 @@ interface GetPoolMemoryOpts {
  * Returns deploy history and summary for a pool.
  */
 export function getPoolMemory({ pool_address }: GetPoolMemoryOpts): Record<string, unknown> {
-  if (!pool_address) return { error: "pool_address required" };
+  if (!pool_address) return { error: 'pool_address required' };
 
   const db = load();
   const entry = db[pool_address];
@@ -243,7 +235,7 @@ export function getPoolMemory({ pool_address }: GetPoolMemoryOpts): Record<strin
     return {
       pool_address,
       known: false,
-      message: "No history for this pool — first time deploying here.",
+      message: 'No history for this pool — first time deploying here.',
     };
   }
 
@@ -340,15 +332,19 @@ export function recallForPool(poolAddress: string): string | null {
 
   // Deploy history summary
   if (entry.total_deploys > 0) {
-    lines.push(`POOL MEMORY [${entry.name}]: ${entry.total_deploys} past deploy(s), avg PnL ${entry.avg_pnl_pct}%, win rate ${entry.win_rate}%, last outcome: ${entry.last_outcome}`);
+    lines.push(
+      `POOL MEMORY [${entry.name}]: ${entry.total_deploys} past deploy(s), avg PnL ${entry.avg_pnl_pct}%, win rate ${entry.win_rate}%, last outcome: ${entry.last_outcome}`,
+    );
   }
 
   if (entry.cooldown_until && new Date(entry.cooldown_until) > new Date()) {
-    lines.push(`POOL COOLDOWN: active until ${entry.cooldown_until}${entry.cooldown_reason ? ` (${entry.cooldown_reason})` : ""}`);
+    lines.push(`POOL COOLDOWN: active until ${entry.cooldown_until}${entry.cooldown_reason ? ` (${entry.cooldown_reason})` : ''}`);
   }
 
   if (entry.base_mint_cooldown_until && new Date(entry.base_mint_cooldown_until) > new Date()) {
-    lines.push(`TOKEN COOLDOWN: active until ${entry.base_mint_cooldown_until}${entry.base_mint_cooldown_reason ? ` (${entry.base_mint_cooldown_reason})` : ""}`);
+    lines.push(
+      `TOKEN COOLDOWN: active until ${entry.base_mint_cooldown_until}${entry.base_mint_cooldown_reason ? ` (${entry.base_mint_cooldown_reason})` : ''}`,
+    );
   }
 
   // Recent snapshot trend (last 6 = ~30min)
@@ -356,11 +352,11 @@ export function recallForPool(poolAddress: string): string | null {
   if (snaps.length >= 2) {
     const first = snaps[0]!;
     const last = snaps[snaps.length - 1]!;
-    const pnlTrend = last.pnl_pct != null && first.pnl_pct != null
-      ? (last.pnl_pct - first.pnl_pct).toFixed(2)
-      : null;
-    const oorCount = snaps.filter(s => s.in_range === false).length;
-    lines.push(`RECENT TREND: PnL drift ${pnlTrend !== null ? (Number(pnlTrend) >= 0 ? "+" : "") + pnlTrend + "%" : "unknown"} over last ${snaps.length} cycles, OOR in ${oorCount}/${snaps.length} cycles`);
+    const pnlTrend = last.pnl_pct != null && first.pnl_pct != null ? (last.pnl_pct - first.pnl_pct).toFixed(2) : null;
+    const oorCount = snaps.filter((s) => s.in_range === false).length;
+    lines.push(
+      `RECENT TREND: PnL drift ${pnlTrend !== null ? (Number(pnlTrend) >= 0 ? '+' : '') + pnlTrend + '%' : 'unknown'} over last ${snaps.length} cycles, OOR in ${oorCount}/${snaps.length} cycles`,
+    );
   }
 
   // Notes
@@ -370,7 +366,7 @@ export function recallForPool(poolAddress: string): string | null {
     if (safeNote) lines.push(`NOTE: ${safeNote}`);
   }
 
-  return lines.length > 0 ? lines.join("\n") : null;
+  return lines.length > 0 ? lines.join('\n') : null;
 }
 
 interface AddPoolNoteOpts {
@@ -383,9 +379,9 @@ interface AddPoolNoteOpts {
  * Agent can annotate a pool with a freeform note.
  */
 export function addPoolNote({ pool_address, note }: AddPoolNoteOpts): Record<string, unknown> {
-  if (!pool_address) return { error: "pool_address required" };
+  if (!pool_address) return { error: 'pool_address required' };
   const safeNote = sanitizeStoredText(note, MAX_NOTE_LENGTH);
-  if (!safeNote) return { error: "note required" };
+  if (!safeNote) return { error: 'note required' };
 
   const db = load();
 
@@ -411,6 +407,6 @@ export function addPoolNote({ pool_address, note }: AddPoolNoteOpts): Record<str
   });
 
   save(db);
-  log("pool-memory", `Note added to ${pool_address.slice(0, 8)}: ${safeNote}`);
+  log('pool-memory', `Note added to ${pool_address.slice(0, 8)}: ${safeNote}`);
   return { saved: true, pool_address, note: safeNote };
 }

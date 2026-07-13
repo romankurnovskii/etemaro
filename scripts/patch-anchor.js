@@ -1,3 +1,4 @@
+/* global console */
 /**
  * Patches @coral-xyz/anchor + @meteora-ag/dlmm for Node 24 ESM compatibility.
  *
@@ -9,79 +10,73 @@
  * Fix 2: Directly rewrite the bare import in DLMM's index.mjs to use the explicit path.
  */
 
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.join(__dirname, "..");
+const root = path.join(__dirname, '..');
 
 // ─── Fix 1: Patch anchor's package.json exports ──────────────────────────────
-const anchorPkgPath = path.join(root, "node_modules/@coral-xyz/anchor/package.json");
+const anchorPkgPath = path.join(root, 'node_modules/@coral-xyz/anchor/package.json');
 
 function findAnchorPkgPath() {
   if (fs.existsSync(anchorPkgPath)) return anchorPkgPath;
-  const pnpmStore = path.join(root, "node_modules/.pnpm");
+  const pnpmStore = path.join(root, 'node_modules/.pnpm');
   if (!fs.existsSync(pnpmStore)) return null;
-  const candidates = fs.readdirSync(pnpmStore)
-    .filter(d => d.startsWith("@coral-xyz+anchor@"))
-    .map(d => path.join(pnpmStore, d, "node_modules", "@coral-xyz", "anchor", "package.json"))
-    .filter(p => fs.existsSync(p));
+  const candidates = fs
+    .readdirSync(pnpmStore)
+    .filter((d) => d.startsWith('@coral-xyz+anchor@'))
+    .map((d) => path.join(pnpmStore, d, 'node_modules', '@coral-xyz', 'anchor', 'package.json'))
+    .filter((p) => fs.existsSync(p));
   return candidates[0] || null;
 }
 
 const resolvedAnchorPkgPath = findAnchorPkgPath();
 
 if (resolvedAnchorPkgPath) {
-  const anchorPkg = JSON.parse(fs.readFileSync(resolvedAnchorPkgPath, "utf8"));
+  const anchorPkg = JSON.parse(fs.readFileSync(resolvedAnchorPkgPath, 'utf8'));
   const anchorDir = path.dirname(resolvedAnchorPkgPath);
-  const anchorUtils = path.join(anchorDir, "dist/cjs/utils");
+  const anchorUtils = path.join(anchorDir, 'dist/cjs/utils');
 
   if (!anchorPkg.exports) {
-    const dirs = fs.readdirSync(anchorUtils, { withFileTypes: true })
-      .filter(d => d.isDirectory())
-      .map(d => d.name);
+    const dirs = fs
+      .readdirSync(anchorUtils, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
 
     anchorPkg.exports = {
-      ".": {
-        default: "./dist/cjs/index.js",
+      '.': {
+        default: './dist/cjs/index.js',
       },
-      ...Object.fromEntries(
-        dirs.map(dir => [
-          `./dist/cjs/utils/${dir}`,
-          `./dist/cjs/utils/${dir}/index.js`,
-        ])
-      ),
-      "./*": "./*",
+      ...Object.fromEntries(dirs.map((dir) => [`./dist/cjs/utils/${dir}`, `./dist/cjs/utils/${dir}/index.js`])),
+      './*': './*',
     };
 
     fs.writeFileSync(resolvedAnchorPkgPath, JSON.stringify(anchorPkg, null, 2));
-    console.log("Patched: @coral-xyz/anchor/package.json exports");
+    console.log('Patched: @coral-xyz/anchor/package.json exports');
   } else {
-    console.log("Skip: @coral-xyz/anchor exports already set");
+    console.log('Skip: @coral-xyz/anchor exports already set');
   }
 } else {
-  console.log("Skip: @coral-xyz/anchor not found in node_modules");
+  console.log('Skip: @coral-xyz/anchor not found in node_modules');
 }
 
 // ─── Fix 2: Patch DLMM index.mjs bare directory imports ──────────────────────
-const dlmmMjs = path.join(root, "node_modules/@meteora-ag/dlmm/dist/index.mjs");
+const dlmmMjs = path.join(root, 'node_modules/@meteora-ag/dlmm/dist/index.mjs');
 
 if (fs.existsSync(dlmmMjs)) {
-  let src = fs.readFileSync(dlmmMjs, "utf8");
+  let src = fs.readFileSync(dlmmMjs, 'utf8');
   const original = src;
 
   // Replace all bare directory imports of anchor utils with explicit .js paths
-  src = src.replace(
-    /from ["'](@coral-xyz\/anchor\/dist\/cjs\/utils\/\w+)["']/g,
-    (_, p) => `from "${p}/index.js"`
-  );
+  src = src.replace(/from ["'](@coral-xyz\/anchor\/dist\/cjs\/utils\/\w+)["']/g, (_, p) => `from "${p}/index.js"`);
 
   // Fix 3: ESM cannot find named export 'BN' from CommonJS anchor
   // We rewrite the imports to remove BN and then add a single top-level BN import.
 
   // Strip any existing duplicate `import BN from "bn.js"` lines first
-  src = src.replace(/^import BN from "bn\.js";\n/gm, "");
+  src = src.replace(/^import BN from "bn\.js";\n/gm, '');
 
   // Add exactly one BN import at the top if BN is used
   if (src.includes('from "@coral-xyz/anchor"') && src.includes('BN')) {
@@ -91,35 +86,29 @@ if (fs.existsSync(dlmmMjs)) {
   // Helper: remove BN or BN as alias from an import specifier list and clean up commas
   function removeBNFromSpecifiers(specifiers) {
     return specifiers
-      .split(",")
-      .map(s => s.trim())
-      .filter(s => s && !/^BN(\s+as\s+\w+)?$/.test(s))
-      .join(", ");
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s && !/^BN(\s+as\s+\w+)?$/.test(s))
+      .join(', ');
   }
 
   // Handle aliased BN imports: import { BN as BN18 } from "@coral-xyz/anchor";
-  src = src.replace(
-    /import \{([^}]*)\bBN as (\w+)\b([^}]*)\} from "@coral-xyz\/anchor";/g,
-    (_, before, alias, after) => {
-      const remaining = removeBNFromSpecifiers(before + "," + after);
-      const anchorImport = remaining ? `import { ${remaining} } from "@coral-xyz/anchor";` : "";
-      return `${anchorImport}\nconst ${alias} = BN;`;
-    }
-  );
+  src = src.replace(/import \{([^}]*)\bBN as (\w+)\b([^}]*)\} from "@coral-xyz\/anchor";/g, (_, before, alias, after) => {
+    const remaining = removeBNFromSpecifiers(before + ',' + after);
+    const anchorImport = remaining ? `import { ${remaining} } from "@coral-xyz/anchor";` : '';
+    return `${anchorImport}\nconst ${alias} = BN;`;
+  });
 
   // Handle named BN imports: import { BN } from "@coral-xyz/anchor";
-  src = src.replace(
-    /import \{([^}]*)\bBN\b(?!\s*as\b)([^}]*)\} from "@coral-xyz\/anchor";/g,
-    (_, before, after) => {
-      const remaining = removeBNFromSpecifiers(before + "," + after);
-      return remaining ? `import { ${remaining} } from "@coral-xyz/anchor";` : "";
-    }
-  );
+  src = src.replace(/import \{([^}]*)\bBN\b(?!\s*as\b)([^}]*)\} from "@coral-xyz\/anchor";/g, (_, before, after) => {
+    const remaining = removeBNFromSpecifiers(before + ',' + after);
+    return remaining ? `import { ${remaining} } from "@coral-xyz/anchor";` : '';
+  });
 
   if (src !== original) {
     fs.writeFileSync(dlmmMjs, src);
-    console.log("Patched: @meteora-ag/dlmm/dist/index.mjs directory imports");
+    console.log('Patched: @meteora-ag/dlmm/dist/index.mjs directory imports');
   } else {
-    console.log("Skip: @meteora-ag/dlmm/dist/index.mjs already patched");
+    console.log('Skip: @meteora-ag/dlmm/dist/index.mjs already patched');
   }
 }

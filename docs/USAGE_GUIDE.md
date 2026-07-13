@@ -24,6 +24,7 @@ npm run pm2:start  # Headless daemon for VPS (24/7)
 ```
 
 The REPL prompt shows countdown timers to the next cycle:
+
 ```
 [manage: 8m 12s | screen: 24m 3s]
 >
@@ -69,12 +70,14 @@ npm run dev
 ### Day-to-Day Operations
 
 **Autonomous mode** (hands-off):
+
 ```bash
 npm start          # Live mode with REPL
 npm run pm2:start  # Headless daemon for VPS
 ```
 
 **One-shot CLI** (scripting / debugging):
+
 ```bash
 npm run balance                              # Check wallet
 npm run positions                            # Open positions
@@ -90,6 +93,7 @@ npm run evolve                               # Auto-adjust thresholds
 ```
 
 **Telegram commands** (remote control):
+
 ```
 /status          — wallet balance + open positions
 /positions       — detailed position list with PnL
@@ -104,6 +108,7 @@ npm run evolve                               # Auto-adjust thresholds
 ```
 
 **Claude Code** (AI-powered terminal):
+
 ```bash
 claude              # Start Claude Code in repo dir
 /screen             # Full AI screening cycle
@@ -155,17 +160,17 @@ Cron fires management cycle
 
 ## 4. Quick Reference — Entry Points
 
-| What you want | How to do it |
-|---|---|
-| Safe testing | `npm run dev` (DRY_RUN) |
-| Live trading | `npm start` or `npm run pm2:start` |
-| One-shot screening | `npm run screen -- --dry-run` |
-| One-shot management | `npm run manage -- --dry-run` |
-| Check balance | `npm run balance` |
-| List positions | `npm run positions` |
-| Deploy manually | `npm run cli deploy -- --pool <addr> --amount 0.5 --dry-run` |
-| Close manually | `npm run cli close -- --position <addr> --dry-run` |
-| Remote control | Telegram `/positions`, `/close`, `/screen` |
-| Learn from history | `npm run lessons` |
-| Auto-evolve thresholds | `npm run evolve` |
-| Pull shared lessons | Telegram `/hive pull` (see [HIVEMIND.md](HIVEMIND.md)) |
+| What you want          | How to do it                                                 |
+| ---------------------- | ------------------------------------------------------------ |
+| Safe testing           | `npm run dev` (DRY_RUN)                                      |
+| Live trading           | `npm start` or `npm run pm2:start`                           |
+| One-shot screening     | `npm run screen -- --dry-run`                                |
+| One-shot management    | `npm run manage -- --dry-run`                                |
+| Check balance          | `npm run balance`                                            |
+| List positions         | `npm run positions`                                          |
+| Deploy manually        | `npm run cli deploy -- --pool <addr> --amount 0.5 --dry-run` |
+| Close manually         | `npm run cli close -- --position <addr> --dry-run`           |
+| Remote control         | Telegram `/positions`, `/close`, `/screen`                   |
+| Learn from history     | `npm run lessons`                                            |
+| Auto-evolve thresholds | `npm run evolve`                                             |
+| Pull shared lessons    | Telegram `/hive pull` (see [HIVEMIND.md](HIVEMIND.md))       |

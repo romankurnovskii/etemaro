@@ -12,8 +12,8 @@
  * @returns Complete system prompt string
  */
 
-import { config } from "../config/Config.js";
-import type { AgentRole, WalletBalances, OnChainPosition, StateSummary } from "../shared/types.js";
+import { config } from '../config/Config.js';
+import type { AgentRole, WalletBalances, OnChainPosition, StateSummary } from '../shared/types.js';
 
 export function buildSystemPrompt(
   agentType: AgentRole,
@@ -26,7 +26,7 @@ export function buildSystemPrompt(
   decisionSummary: string | null = null,
 ): string {
   // MANAGER gets a leaner prompt — positions are pre-loaded in the goal, not repeated here
-  if (agentType === "MANAGER") {
+  if (agentType === 'MANAGER') {
     const portfolioCompact = JSON.stringify(portfolio);
     const mgmtConfig = JSON.stringify(config.management);
     return `You are an autonomous DLMM LP agent on Meteora, Solana. Role: MANAGER
@@ -41,12 +41,12 @@ BEHAVIORAL CORE:
 2. GAS EFFICIENCY: close_position costs gas — only close for clear reasons. After close, swap_token is MANDATORY for any token worth >= $0.10 (dust < $0.10 = skip). Always check token USD value before swapping.
 3. DATA-DRIVEN AUTONOMY: You have full autonomy. Guidelines are heuristics.
 
-${lessons ? `LESSONS LEARNED:\n${lessons}\n` : ""}Timestamp: ${new Date().toISOString()}
+${lessons ? `LESSONS LEARNED:\n${lessons}\n` : ''}Timestamp: ${new Date().toISOString()}
 `;
   }
 
   let basePrompt = `You are an autonomous DLMM LP (Liquidity Provider) agent operating on Meteora, Solana.
-Role: ${agentType || "GENERAL"}
+Role: ${agentType || 'GENERAL'}
 
 ═══════════════════════════════════════════
  CURRENT STATE
@@ -55,23 +55,35 @@ Role: ${agentType || "GENERAL"}
 Portfolio: ${JSON.stringify(portfolio, null, 2)}
 Open Positions: ${JSON.stringify(positions, null, 2)}
 Memory: ${JSON.stringify(stateSummary, null, 2)}
-Performance: ${perfSummary ? JSON.stringify(perfSummary, null, 2) : "No closed positions yet"}
+Performance: ${perfSummary ? JSON.stringify(perfSummary, null, 2) : 'No closed positions yet'}
 
-Config: ${JSON.stringify({
-  screening: config.screening,
-  management: config.management,
-  schedule: config.schedule,
-}, null, 2)}
+Config: ${JSON.stringify(
+    {
+      screening: config.screening,
+      management: config.management,
+      schedule: config.schedule,
+    },
+    null,
+    2,
+  )}
 
-${lessons ? `═══════════════════════════════════════════
+${
+  lessons
+    ? `═══════════════════════════════════════════
  LESSONS LEARNED
 ═══════════════════════════════════════════
-${lessons}` : ""}
+${lessons}`
+    : ''
+}
 
-${decisionSummary ? `═══════════════════════════════════════════
+${
+  decisionSummary
+    ? `═══════════════════════════════════════════
  RECENT DECISIONS
 ═══════════════════════════════════════════
-${decisionSummary}` : ""}
+${decisionSummary}`
+    : ''
+}
 
 ═══════════════════════════════════════════
  BEHAVIORAL CORE
@@ -105,7 +117,7 @@ Current screening timeframe: ${config.screening.timeframe} — interpret all non
 
 `;
 
-  if (agentType === "SCREENER") {
+  if (agentType === 'SCREENER') {
     return `You are an autonomous DLMM LP agent on Meteora, Solana. Role: SCREENER
 
 All candidates are pre-loaded. Your job: pick the highest-conviction candidate and call deploy_position. active_bin is pre-fetched.
@@ -136,7 +148,7 @@ DEPLOY RULES:
 - Bin steps must be [80-125].
 - Pick ONE pool only when conviction is real. If only one weak candidate survives, skip and explain why none qualify.
 
-${weightsSummary ? `${weightsSummary}\nPrioritize candidates whose strongest attributes align with high-weight signals.\n\n` : ""}${lessons ? `LESSONS LEARNED:\n${lessons}\n` : ""}Timestamp: ${new Date().toISOString()}
+${weightsSummary ? `${weightsSummary}\nPrioritize candidates whose strongest attributes align with high-weight signals.\n\n` : ''}${lessons ? `LESSONS LEARNED:\n${lessons}\n` : ''}Timestamp: ${new Date().toISOString()}
 `;
   } else {
     basePrompt += `
