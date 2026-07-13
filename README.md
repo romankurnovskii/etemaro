@@ -51,6 +51,7 @@ npm start        # Live autonomous agent mode
 **Option B: PM2 (production process manager)**
 
 ```bash
+npm run build
 npm run pm2:start    # Start daemon under PM2 with auto-restart
 npm run pm2:logs     # Tail live logs
 ```
@@ -61,6 +62,6 @@ npm run pm2:logs     # Tail live logs
 # Development (hot reload, mounts source)
 docker compose -f docker-compose.dev.yml up --build
 
-# Production (on remote server, .env.prod already present)
+# Production (on remote server, .env already present)
 docker compose -f docker-compose.prod.yml up -d --build --force-recreate --remove-orphans
 ```
