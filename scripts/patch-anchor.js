@@ -18,34 +18,50 @@ const root = path.join(__dirname, "..");
 
 // ─── Fix 1: Patch anchor's package.json exports ──────────────────────────────
 const anchorPkgPath = path.join(root, "node_modules/@coral-xyz/anchor/package.json");
-const anchorPkg = JSON.parse(fs.readFileSync(anchorPkgPath, "utf8"));
-const anchorUtils = path.join(root, "node_modules/@coral-xyz/anchor/dist/cjs/utils");
 
-if (!anchorPkg.exports) {
-  const dirs = fs.readdirSync(anchorUtils, { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name);
+function findAnchorPkgPath() {
+  if (fs.existsSync(anchorPkgPath)) return anchorPkgPath;
+  const pnpmStore = path.join(root, "node_modules/.pnpm");
+  if (!fs.existsSync(pnpmStore)) return null;
+  const candidates = fs.readdirSync(pnpmStore)
+    .filter(d => d.startsWith("@coral-xyz+anchor@"))
+    .map(d => path.join(pnpmStore, d, "node_modules", "@coral-xyz", "anchor", "package.json"))
+    .filter(p => fs.existsSync(p));
+  return candidates[0] || null;
+}
 
-  anchorPkg.exports = {
-    // Always serve CJS — anchor's ESM dist has its own bare directory import bugs
-    ".": {
-      default: "./dist/cjs/index.js",
-    },
-    // Map each util directory to its explicit CJS index.js
-    ...Object.fromEntries(
-      dirs.map(dir => [
-        `./dist/cjs/utils/${dir}`,
-        `./dist/cjs/utils/${dir}/index.js`,
-      ])
-    ),
-    // Allow any other direct file path through
-    "./*": "./*",
-  };
+const resolvedAnchorPkgPath = findAnchorPkgPath();
 
-  fs.writeFileSync(anchorPkgPath, JSON.stringify(anchorPkg, null, 2));
-  console.log("Patched: @coral-xyz/anchor/package.json exports");
+if (resolvedAnchorPkgPath) {
+  const anchorPkg = JSON.parse(fs.readFileSync(resolvedAnchorPkgPath, "utf8"));
+  const anchorDir = path.dirname(resolvedAnchorPkgPath);
+  const anchorUtils = path.join(anchorDir, "dist/cjs/utils");
+
+  if (!anchorPkg.exports) {
+    const dirs = fs.readdirSync(anchorUtils, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+
+    anchorPkg.exports = {
+      ".": {
+        default: "./dist/cjs/index.js",
+      },
+      ...Object.fromEntries(
+        dirs.map(dir => [
+          `./dist/cjs/utils/${dir}`,
+          `./dist/cjs/utils/${dir}/index.js`,
+        ])
+      ),
+      "./*": "./*",
+    };
+
+    fs.writeFileSync(resolvedAnchorPkgPath, JSON.stringify(anchorPkg, null, 2));
+    console.log("Patched: @coral-xyz/anchor/package.json exports");
+  } else {
+    console.log("Skip: @coral-xyz/anchor exports already set");
+  }
 } else {
-  console.log("Skip: @coral-xyz/anchor exports already set");
+  console.log("Skip: @coral-xyz/anchor not found in node_modules");
 }
 
 // ─── Fix 2: Patch DLMM index.mjs bare directory imports ──────────────────────
