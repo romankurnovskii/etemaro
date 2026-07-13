@@ -4,13 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile
     image: meridian:latest
-    env_file: .env.prod
+    env_file: .env
     volumes:
       - meridian_config:/app/config
       - meridian_data:/app/data
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'Daemon.js' > /dev/null || exit 1"]
+      test: ['CMD-SHELL', "pgrep -f 'Daemon.js' > /dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
