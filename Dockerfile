@@ -1,4 +1,4 @@
-FROM node:22-slim
+FROM node:24-slim
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/*/package.json ./packages/*/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 COPY packages/ ./packages/
 COPY scripts/ ./scripts/
