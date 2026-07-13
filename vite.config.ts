@@ -1,3 +1,13 @@
+/**
+ * @file vite.config.ts
+ * @description Vite build configuration bundling the monorepo into ESM entry files for Node 22.
+ *
+ * @features
+ * - Builds Daemon and CLI as separate ESM bundles with sourcemaps
+ * - Sets path aliases (@/domain, @/application, @/ports, @/adapters, @/interfaces, @/config, @/shared, @/legacy-bridge)
+ *
+ * @dependencies vite
+ */
 import { defineConfig } from "vite";
 
 export default defineConfig({

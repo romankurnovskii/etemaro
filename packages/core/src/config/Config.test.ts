@@ -1,3 +1,14 @@
+/**
+ * @file Config.test.ts
+ * @description Unit tests for Config module, covering fee/active-TVL scaling and config defaults.
+ *
+ * @features
+ * - Validates scaleScreeningToTimeframe produces correct thresholds per timeframe
+ * - Asserts default screening.minFeeActiveTvlRatio matches scaled floor for 5m
+ * - Spot-checks a known pool ratio against the current default gate
+ *
+ * @dependencies vitest
+ */
 import { describe, it, expect } from "vitest";
 import { config } from "./Config.js";
 import { scaleScreeningToTimeframe } from "../shared/utils.js";

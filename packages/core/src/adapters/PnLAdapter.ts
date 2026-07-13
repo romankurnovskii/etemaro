@@ -1,3 +1,16 @@
+/**
+ * @file PnLAdapter.ts
+ * @description Computes live position PnL from on-chain DLMM state and Meteora deposit-history API, using Jupiter for token prices.
+ *
+ * @features
+ * - computePositions fetches all DLMM positions for a wallet via SDK and enriches them with PnL
+ * - getPnlConnection lazily creates a Solana RPC connection (pump.helius)
+ * - Deposit-history cache is invalidated by latest on-chain signature and TTL
+ * - Supports SOL and USD valuation modes via config.management.solMode
+ *
+ * @dependencies @solana/web3.js, @meteora-ag/dlmm
+ * @sideEffects Reads on-chain state; fetches Jupiter and Meteora APIs; updates in-memory position range flags
+ */
 import { Connection, PublicKey } from "@solana/web3.js";
 import { config } from "../config/Config.js";
 import { log } from "../shared/logger.js";

@@ -1,3 +1,17 @@
+/**
+ * @file ToolExecutor.ts
+ * @description Central router that executes LLM tool calls with safety checks, post-execution notifications, config persistence, and lesson logging.
+ *
+ * @features
+ * - Maps tool names to adapter functions and normalizes OpenAI-style arguments
+ * - Safety-checks deploy_position (thresholds, balances, duplicate pool/token, amount limits)
+ * - Auto-swaps base token back to SOL after close/claim with retry
+ * - Persists update_config changes to user-config.json and restarts cron jobs when intervals change
+ * - Logs every execution to the audit JSONL trail
+ *
+ * @dependencies node-cron
+ * @sideEffects On-chain transactions via deploy/claim/close/swap; writes user-config.json; sends Telegram notifications; starts child processes on self-update
+ */
 import fs from "node:fs";
 import { execSync, spawn } from "node:child_process";
 

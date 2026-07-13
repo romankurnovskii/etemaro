@@ -1,3 +1,14 @@
+/**
+ * @file BriefingAdapter.ts
+ * @description Generates an HTML morning briefing message summarizing the last 24h of positions, performance, and lessons.
+ *
+ * @features
+ * - Aggregates open/closed positions, PnL, fees, and new lessons from state.json and lessons.json
+ * - Formats a compact, Telegram-ready HTML summary with activity, performance, lessons, and portfolio sections
+ *
+ * @dependencies none
+ * @sideEffects Reads state.json and lessons.json from disk
+ */
 import fs from "fs";
 import { log } from "../shared/logger.js";
 import { getPerformanceSummary } from "../domain/lessons.js";
