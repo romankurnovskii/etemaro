@@ -2,13 +2,73 @@
 
 ## Codebase Organization (Hexagonal Design)
 
-The codebase is structured under the repository root, with configurations separated into `/config`, runtime databases in `/data`, logs in `/logs`, and core code in `/src`:
-
+The codebase is a pnpm monorepo. Config and runtime data live at the repository root; application code is split across three packages under `packages/`:
+```
+config/
+  user-config.json           # Active user configuration (written by `npm run setup`)
+  user-config.example.json   # Template user configuration
+  gmgn-config.example.json   # GMGN fee provider config template
+data/
+  state.json                 # Registry of open/closed positions
+  lessons.json               # Historical performance lessons
+  pool-memory.json           # Snapshotted pool activity caching
+  signal-weights.json        # Darwinian signal adjustments
+  decision-log.json          # Decisional records log
+  smart-wallets.json         # KOL wallet tracking list
+  strategy-library.json      # Saved LP strategy profiles
+  token-blacklist.json       # Hard-blocked token mints
+  hivemind-cache.json        # Cached shared HiveMind lessons + presets
+logs/
+  agent-YYYY-MM-DD.log       # Rotating application logs
+packages/
+  cli/src/
+    Cli.ts                   # CLI entrypoint: one-shot command runner
+  daemon/src/
+    Daemon.ts                # Daemon entrypoint: cron orchestration + REPL + Telegram bot
+  core/src/
+    application/
+      agent-loop.ts          # Core ReAct loop: LLM reasoning → tool calling → execution
+      prompt-builder.ts      # Dynamic system prompt builder (Screener, Manager, General roles)
+    adapters/
+      blockchain/
+        MeteoraAdapter.ts    # Meteora DLMM SDK wrapper (lazy loaded, caching)
+        WalletAdapter.ts     # Wallet balances (Helius) + Jupiter swap
+        ScreeningAdapter.ts  # Pool candidates scorer and discovery filters
+        TokenDataAdapter.ts  # Token holder audits and narratives from Jupiter API
+        StudyAdapter.ts      # Top LPer performance study via Relays
+      indicators/
+        ChartIndicatorsAdapter.ts # Price chart technical analysis indicators
+      notifications/
+        TelegramAdapter.ts   # Telegram bot interaction & notification handler
+      external/
+        HivemindAdapter.ts   # HiveMind collective intelligence agent sync
+        AgentMeridianClient.ts # Agent Meridian API client
+        GmgnClient.ts        # GMGN token tracking API client
+      BriefingAdapter.ts     # Daily HTML/text briefing generator
+      PnLAdapter.ts          # Closed positions PnL tracker
+      ToolDefinitions.ts     # ReAct agent tools JSON schemas (source of truth for LLM)
+      ToolExecutor.ts        # ReAct agent tools execution router & safety checks
+    domain/
+      state.ts               # Position state manager
+      decision-log.ts        # Decisional state manager
+      lessons.ts             # Lessons state manager
+      pool-memory.ts         # Pool memory state manager
+      strategy-library.ts    # LP strategies state manager
+      token-blacklist.ts     # Token blacklist state manager
+      dev-blocklist.ts       # Dev blocklist state manager
+      smart-wallets.ts       # Smart wallets state manager
+    config/
+      Config.ts              # Configuration parser (loads config/ files + .env)
+    shared/
+      utils.ts               # Timeframe, normalization, and math utilities
+      logger.ts              # Daily rotating file logger
+      constants.ts           # Default limits, paths (dataPath, configPath), and constants
+      types.ts               # Shared TypeScript types and Zod schemas
 ```
 config/
   user-config.json          # Active user configuration
   user-config.example.json  # Template user configuration
-  gmgn-config.json          # GMGN fee provider config
+   gmgn-config.example.json  # GMGN fee provider config template
 data/
   state.json                # Registry of open/closed positions
   lessons.json              # Historical performance lessons

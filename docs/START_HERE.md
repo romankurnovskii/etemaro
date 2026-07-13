@@ -3,16 +3,14 @@
 Welcome to the Meridian project documentation. This index lists all architectural and project documentation.
 
 ## Architecture & Guides
-- [ARCHITECTURE.md](ARCHITECTURE.md) — Comprehensive technical guide to codebase structure, ReAct loop, tools, and strategy presets.
-- [CONFIGURATION.md](CONFIGURATION.md) — Guide to the configuration hierarchy, model priority, parameters, and evolved thresholds.
-- [USAGE_GUIDE.md](USAGE_GUIDE.md) — Detailed operational flow diagrams and usage guide for screening and management cycles.
-- [tasks/2026-07/090709_js-to-ts-migration.md](../.memory-bank/tasks/2026-07/090709_js-to-ts-migration.md) — Execution plan + per-phase status for the faithful JS→TS port.
+- [ARCHITECTURE.md](ARCHITECTURE.md) — Monorepo layout, ReAct loop, tools, and strategy presets.
+- [CONFIGURATION.md](CONFIGURATION.md) — Configuration hierarchy, environment variables, and the full `user-config.json` field reference.
+- [FULL_FLOW.md](FULL_FLOW.md) — Canonical flow reference: architecture, startup, screening/management flows, learning, integrations.
+- [USAGE_GUIDE.md](USAGE_GUIDE.md) — Operational guide: how to run, REPL/Telegram/CLI commands, and decision flows.
+- [HIVEMIND.md](HIVEMIND.md) — HiveMind collective-learning sync: shared-lesson pull on startup + every 15 min, push, and prompt injection.
 
 ## Rules & Standards
 - [AGENTS.md](../AGENTS.md) — Agent Documentation System Rules and behavior guidelines.
-
-## Q&A & FAQ
-- [QA.md](QA.md) — Frequently asked questions about environment, models, dry-run behavior, and DLMM mechanics.
 
 ## Q&A & FAQ
 - [QA.md](QA.md) — Frequently asked questions about environment, models, dry-run behavior, and DLMM mechanics.
