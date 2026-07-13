@@ -1,8 +1,8 @@
-import { config } from "../../config/Config.js";
-import { getGmgnTokenFees, hasGmgnApiKey } from "../external/GmgnClient.js";
-import type { SmartWallet } from "../../shared/types.js";
+import { config } from '../../config/Config.js';
+import { getGmgnTokenFees, hasGmgnApiKey } from '../external/GmgnClient.js';
+import type { SmartWallet } from '../../shared/types.js';
 
-const DATAPI_BASE = "https://datapi.jup.ag/v1";
+const DATAPI_BASE = 'https://datapi.jup.ag/v1';
 
 interface TokenNarrativeResult {
   mint: string;
@@ -106,7 +106,7 @@ interface TokenHoldersResponse {
 // Falls back to the Jupiter value when GMGN is disabled / keyless / errors.
 async function resolveGlobalFeesSol(mint: string | null, jupiterFees: number | null | undefined): Promise<number | null> {
   const jup = jupiterFees != null ? parseFloat(jupiterFees.toFixed(2)) : null;
-  if (!mint || config.gmgn.feeSource !== "gmgn" || !hasGmgnApiKey()) return jup;
+  if (!mint || config.gmgn.feeSource !== 'gmgn' || !hasGmgnApiKey()) return jup;
   const fees = await getGmgnTokenFees(mint);
   if (fees?.total_fee != null) return parseFloat(fees.total_fee.toFixed(2));
   return jup;
@@ -119,7 +119,7 @@ async function resolveGlobalFeesSol(mint: string | null, jupiterFees: number | n
 export async function getTokenNarrative({ mint }: { mint: string }): Promise<TokenNarrativeResult> {
   const res = await fetch(`${DATAPI_BASE}/chaininsight/narrative/${mint}`);
   if (!res.ok) throw new Error(`Narrative API error: ${res.status}`);
-  const data = await res.json() as Record<string, unknown>;
+  const data = (await res.json()) as Record<string, unknown>;
   return {
     mint,
     narrative: (data.narrative as string) || null,
@@ -152,20 +152,24 @@ export async function getTokenInfo({ query }: { query: string }): Promise<TokenI
     launchpad: t.launchpad,
     graduated: !!t.graduatedPool,
     global_fees_sol: t.fees != null ? parseFloat(t.fees.toFixed(2)) : null,
-    audit: t.audit ? {
-      mint_disabled: t.audit.mintAuthorityDisabled,
-      freeze_disabled: t.audit.freezeAuthorityDisabled,
-      top_holders_pct: t.audit.topHoldersPercentage?.toFixed(2),
-      bot_holders_pct: t.audit.botHoldersPercentage?.toFixed(2),
-      dev_migrations: t.audit.devMigrations,
-    } : null,
-    stats_1h: t.stats1h ? {
-      price_change: t.stats1h.priceChange?.toFixed(2),
-      buy_vol: t.stats1h.buyVolume?.toFixed(0),
-      sell_vol: t.stats1h.sellVolume?.toFixed(0),
-      buyers: t.stats1h.numOrganicBuyers,
-      net_buyers: t.stats1h.numNetBuyers,
-    } : null,
+    audit: t.audit
+      ? {
+          mint_disabled: t.audit.mintAuthorityDisabled,
+          freeze_disabled: t.audit.freezeAuthorityDisabled,
+          top_holders_pct: t.audit.topHoldersPercentage?.toFixed(2),
+          bot_holders_pct: t.audit.botHoldersPercentage?.toFixed(2),
+          dev_migrations: t.audit.devMigrations,
+        }
+      : null,
+    stats_1h: t.stats1h
+      ? {
+          price_change: t.stats1h.priceChange?.toFixed(2),
+          buy_vol: t.stats1h.buyVolume?.toFixed(0),
+          sell_vol: t.stats1h.sellVolume?.toFixed(0),
+          buyers: t.stats1h.numOrganicBuyers,
+          net_buyers: t.stats1h.numNetBuyers,
+        }
+      : null,
     stats_24h_net_buyers: t.stats24h ? t.stats24h.numNetBuyers : null,
   }));
 
@@ -193,7 +197,7 @@ export async function getTokenHolders({ mint, limit = 20 }: { mint: string; limi
   const tokenInfo = Array.isArray(tokenData) ? tokenData[0] : tokenData;
   const totalSupply: number | null = tokenInfo?.totalSupply || tokenInfo?.circSupply || null;
 
-  const holders = Array.isArray(data) ? data : (data.holders || data.data || []);
+  const holders = Array.isArray(data) ? data : data.holders || data.data || [];
 
   const mapped: HolderEntry[] = holders.slice(0, Math.min(limit, 100)).map((h: any) => {
     const tags: string[] = (h.tags || []).map((t: any) => t.name || t.id || t);
@@ -206,11 +210,13 @@ export async function getTokenHolders({ mint, limit = 20 }: { mint: string; limi
       sol_balance: h.solBalanceDisplay ?? h.solBalance,
       tags: tags.length ? tags : undefined,
       is_pool: isPool || undefined,
-      funding: h.addressInfo?.fundingAddress ? {
-        address: h.addressInfo.fundingAddress,
-        amount: h.addressInfo.fundingAmount,
-        slot: h.addressInfo.fundingSlot,
-      } : undefined,
+      funding: h.addressInfo?.fundingAddress
+        ? {
+            address: h.addressInfo.fundingAddress,
+            amount: h.addressInfo.fundingAmount,
+            slot: h.addressInfo.fundingSlot,
+          }
+        : undefined,
     };
   });
 
@@ -218,63 +224,64 @@ export async function getTokenHolders({ mint, limit = 20 }: { mint: string; limi
   const top10Pct = realHolders.slice(0, 10).reduce((s, h) => s + (Number(h.pct) || 0), 0);
 
   // ─── Smart Wallet / KOL Cross-reference ──────────────────────
-  let smartWalletsHolding: SmartWalletHolder[] = [];
+  const smartWalletsHolding: SmartWalletHolder[] = [];
   try {
-    const smartWalletsMod = await import("../../domain/smart-wallets.js");
+    const smartWalletsMod = await import('../../domain/smart-wallets.js');
     const smartWallets: SmartWallet[] = smartWalletsMod.listSmartWallets().wallets;
 
     if (smartWallets.length > 0) {
-      const addresses = smartWallets.map((w: SmartWallet) => w.address).join(",");
-      const kwRes = await fetch(
-        `${DATAPI_BASE}/holders/${mint}?addresses=${addresses}`
-      ).catch(() => null);
+      const addresses = smartWallets.map((w: SmartWallet) => w.address).join(',');
+      const kwRes = await fetch(`${DATAPI_BASE}/holders/${mint}?addresses=${addresses}`).catch(() => null);
       const kwData: any = kwRes?.ok ? await kwRes.json() : null;
-      const kwHolders: any[] = Array.isArray(kwData) ? kwData : (kwData?.holders || kwData?.data || []);
+      const kwHolders: any[] = Array.isArray(kwData) ? kwData : kwData?.holders || kwData?.data || [];
 
       const smartWalletMap = new Map(smartWallets.map((w: SmartWallet) => [w.address, w]));
-      const matchedHolders = kwHolders
-        .map((h: any) => ({ ...h, addr: h.address || h.wallet }))
-        .filter((h: any) => smartWalletMap.has(h.addr));
+      const matchedHolders = kwHolders.map((h: any) => ({ ...h, addr: h.address || h.wallet })).filter((h: any) => smartWalletMap.has(h.addr));
 
-      await Promise.all(matchedHolders.map(async (h: any) => {
-        const wallet = smartWalletMap.get(h.addr);
-        const pct = totalSupply ? parseFloat(((Number(h.amount) / totalSupply) * 100).toFixed(4)) : null;
+      await Promise.all(
+        matchedHolders.map(async (h: any) => {
+          const wallet = smartWalletMap.get(h.addr);
+          const pct = totalSupply ? parseFloat(((Number(h.amount) / totalSupply) * 100).toFixed(4)) : null;
 
-        let pnl: SmartWalletPnl | null = null;
-        try {
-          const pnlRes = await fetch(`${DATAPI_BASE}/pnl-positions?address=${h.addr}&assetId=${mint}`);
-          if (pnlRes.ok) {
-            const pnlData = await pnlRes.json() as Record<string, any>;
-            const pos = pnlData?.[h.addr]?.tokenPositions?.[0];
-            if (pos) pnl = {
-              balance: pos.balance,
-              balance_usd: pos.balanceValue,
-              avg_cost: pos.averageCost,
-              realized_pnl: pos.realizedPnl,
-              unrealized_pnl: pos.unrealizedPnl,
-              total_pnl: pos.totalPnl,
-              total_pnl_pct: pos.totalPnlPercentage,
-              buys: pos.totalBuys,
-              sells: pos.totalSells,
-              wins: pos.totalWins,
-              bought_value: pos.boughtValue,
-              sold_value: pos.soldValue,
-              first_active: pos.firstActiveTime,
-              last_active: pos.lastActiveTime,
-              holding_days: pos.holdingPeriodInSeconds ? Math.round(pos.holdingPeriodInSeconds / 86400) : null,
-            };
+          let pnl: SmartWalletPnl | null = null;
+          try {
+            const pnlRes = await fetch(`${DATAPI_BASE}/pnl-positions?address=${h.addr}&assetId=${mint}`);
+            if (pnlRes.ok) {
+              const pnlData = (await pnlRes.json()) as Record<string, any>;
+              const pos = pnlData?.[h.addr]?.tokenPositions?.[0];
+              if (pos)
+                pnl = {
+                  balance: pos.balance,
+                  balance_usd: pos.balanceValue,
+                  avg_cost: pos.averageCost,
+                  realized_pnl: pos.realizedPnl,
+                  unrealized_pnl: pos.unrealizedPnl,
+                  total_pnl: pos.totalPnl,
+                  total_pnl_pct: pos.totalPnlPercentage,
+                  buys: pos.totalBuys,
+                  sells: pos.totalSells,
+                  wins: pos.totalWins,
+                  bought_value: pos.boughtValue,
+                  sold_value: pos.soldValue,
+                  first_active: pos.firstActiveTime,
+                  last_active: pos.lastActiveTime,
+                  holding_days: pos.holdingPeriodInSeconds ? Math.round(pos.holdingPeriodInSeconds / 86400) : null,
+                };
+            }
+          } catch {
+            /* ignore */
           }
-        } catch { /* ignore */ }
 
-        smartWalletsHolding.push({
-          name: wallet!.name,
-          category: wallet!.category,
-          address: h.addr,
-          pct,
-          sol_balance: h.solBalanceDisplay ?? h.solBalance,
-          pnl,
-        });
-      }));
+          smartWalletsHolding.push({
+            name: wallet!.name,
+            category: wallet!.category,
+            address: h.addr,
+            pct,
+            sol_balance: h.solBalanceDisplay ?? h.solBalance,
+            pnl,
+          });
+        }),
+      );
     }
   } catch {
     // SmartWallets module not yet available in adapter layer — skip cross-reference

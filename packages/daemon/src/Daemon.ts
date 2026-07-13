@@ -6,9 +6,9 @@
  * shutdown into a class-based design.
  */
 
-import "dotenv/config";
-import cron from "node-cron";
-import readline from "readline";
+import 'dotenv/config';
+import cron from 'node-cron';
+import readline from 'readline';
 import {
   config,
   computeDeployAmount,
@@ -39,7 +39,7 @@ import {
   domain,
   token,
   tools,
-} from "@meridian/core";
+} from '@meridian/core';
 // These will be injected or resolved at runtime by the adapter layer.
 // The adapters expose the same function signatures as the original JS modules.
 
@@ -105,15 +105,12 @@ export interface DaemonAdapters {
 // ─── Deterministic Close Rule ───────────────────────────────────
 
 interface DeterministicCloseResult {
-  action: "CLOSE";
+  action: 'CLOSE';
   rule: number;
   reason: string;
 }
 
-export function getDeterministicCloseRule(
-  position: any,
-  managementConfig: typeof config.management,
-): DeterministicCloseResult | null {
+export function getDeterministicCloseRule(position: any, managementConfig: typeof config.management): DeterministicCloseResult | null {
   const tracked = getTrackedPosition(position.position);
   const pnlSuspect = (() => {
     // Couldn't-price-this-tick flag (e.g. Jupiter outage) — never act on PnL rules.
@@ -121,24 +118,24 @@ export function getDeterministicCloseRule(
     if (position.pnl_pct == null) return false;
     if (position.pnl_pct > -90) return false;
     if (tracked?.amount_sol && (position.total_value_usd ?? 0) > 0.01) {
-      log("cron_warn", `Suspect PnL for ${position.pair}: ${position.pnl_pct}% but position still has value — skipping PnL rules`);
+      log('cron_warn', `Suspect PnL for ${position.pair}: ${position.pnl_pct}% but position still has value — skipping PnL rules`);
       return true;
     }
     return false;
   })();
 
   if (!pnlSuspect && position.pnl_pct != null && position.pnl_pct <= managementConfig.stopLossPct) {
-    return { action: "CLOSE", rule: 1, reason: "stop loss" };
+    return { action: 'CLOSE', rule: 1, reason: 'stop loss' };
   }
   if (!pnlSuspect && position.pnl_pct != null && position.pnl_pct >= managementConfig.takeProfitPct) {
-    return { action: "CLOSE", rule: 2, reason: "take profit" };
+    return { action: 'CLOSE', rule: 2, reason: 'take profit' };
   }
   if (
     position.active_bin != null &&
     position.upper_bin != null &&
     position.active_bin > position.upper_bin + managementConfig.outOfRangeBinsToClose
   ) {
-    return { action: "CLOSE", rule: 3, reason: "pumped far above range" };
+    return { action: 'CLOSE', rule: 3, reason: 'pumped far above range' };
   }
   if (
     position.active_bin != null &&
@@ -146,14 +143,10 @@ export function getDeterministicCloseRule(
     position.active_bin > position.upper_bin &&
     (position.minutes_out_of_range ?? 0) >= managementConfig.outOfRangeWaitMinutes
   ) {
-    return { action: "CLOSE", rule: 4, reason: "OOR" };
+    return { action: 'CLOSE', rule: 4, reason: 'OOR' };
   }
-  if (
-    position.fee_per_tvl_24h != null &&
-    position.fee_per_tvl_24h < managementConfig.minFeePerTvl24h &&
-    (position.age_minutes ?? 0) >= 60
-  ) {
-    return { action: "CLOSE", rule: 5, reason: "low yield" };
+  if (position.fee_per_tvl_24h != null && position.fee_per_tvl_24h < managementConfig.minFeePerTvl24h && (position.age_minutes ?? 0) >= 60) {
+    return { action: 'CLOSE', rule: 5, reason: 'low yield' };
   }
   return null;
 }
@@ -162,16 +155,16 @@ export function getDeterministicCloseRule(
 
 /** Strip <think>...</think> reasoning blocks that some models leak into output */
 function stripThink(text: string | null | undefined): string {
-  if (!text) return text ?? "";
-  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  if (!text) return text ?? '';
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 }
 
 function sanitizeUntrustedPromptText(text: unknown, maxLen = 500): string | null {
   if (!text) return null;
   const cleaned = String(text)
-    .replace(/[\r\n\t]+/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/[<>`]/g, "")
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[<>`]/g, '')
     .trim()
     .slice(0, maxLen);
   return cleaned ? JSON.stringify(cleaned) : null;
@@ -179,13 +172,13 @@ function sanitizeUntrustedPromptText(text: unknown, maxLen = 500): string | null
 
 function fmtPct(value: unknown): string {
   const n = Number(value);
-  return Number.isFinite(n) ? `${n.toFixed(2)}%` : "?";
+  return Number.isFinite(n) ? `${n.toFixed(2)}%` : '?';
 }
 
 function computeBinsBelow(volatility: unknown): number {
   const parsedVolatility = Number(volatility);
   if (!Number.isFinite(parsedVolatility) || parsedVolatility <= 0) {
-    throw new Error(`Invalid volatility ${volatility ?? "unknown"} — refusing volatility-scaled deploy.`);
+    throw new Error(`Invalid volatility ${volatility ?? 'unknown'} — refusing volatility-scaled deploy.`);
   }
   const lo = config.strategy.minBinsBelow;
   const hi = config.strategy.maxBinsBelow;
@@ -193,12 +186,12 @@ function computeBinsBelow(volatility: unknown): number {
 }
 
 function parseConfigValue(raw: string): unknown {
-  const value = String(raw ?? "").trim();
-  if (!value.length) return "";
-  if (/^(true|false)$/i.test(value)) return value.toLowerCase() === "true";
+  const value = String(raw ?? '').trim();
+  if (!value.length) return '';
+  if (/^(true|false)$/i.test(value)) return value.toLowerCase() === 'true';
   if (/^null$/i.test(value)) return null;
   if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
-  if ((value.startsWith("[") && value.endsWith("]")) || (value.startsWith("{") && value.endsWith("}"))) {
+  if ((value.startsWith('[') && value.endsWith(']')) || (value.startsWith('{') && value.endsWith('}'))) {
     return JSON.parse(value);
   }
   return value;
@@ -251,15 +244,13 @@ export class Daemon {
   // ─── Lifecycle ─────────────────────────────────────────────────
 
   async start(options: { tty?: boolean } = {}): Promise<void> {
-    log("startup", "DLMM LP Agent starting...");
-    log("startup", `Repo: ${process.cwd()}`);
-    log("startup", `Mode: ${process.env.DRY_RUN === "true" ? "DRY RUN" : "LIVE"}`);
-    log("startup", `Model: ${process.env.LLM_MODEL || "hermes-3-405b"}`);
+    log('startup', 'DLMM LP Agent starting...');
+    log('startup', `Repo: ${process.cwd()}`);
+    log('startup', `Mode: ${process.env.DRY_RUN === 'true' ? 'DRY RUN' : 'LIVE'}`);
+    log('startup', `Model: ${process.env.LLM_MODEL || 'hermes-3-405b'}`);
 
     this.adapters.hivemind.ensureAgentId();
-    this.adapters.hivemind.bootstrapHiveMind().catch((error: any) =>
-      log("hivemind_warn", `Bootstrap failed: ${error.message}`),
-    );
+    this.adapters.hivemind.bootstrapHiveMind().catch((error: any) => log('hivemind_warn', `Bootstrap failed: ${error.message}`));
     this.adapters.hivemind.startHiveMindBackgroundSync();
 
     // Register cron restarter
@@ -270,44 +261,44 @@ export class Daemon {
     if (options.tty) {
       await this.startTTY();
     } else {
-      log("startup", "Non-TTY mode — starting cron cycles immediately.");
+      log('startup', 'Non-TTY mode — starting cron cycles immediately.');
       this.startCronJobs();
       this.maybeRunMissedBriefing().catch(() => {});
       this.adapters.telegram.startPolling((msg: any) => this.telegramHandler(msg));
       try {
         await this.runScreeningCycle({ silent: false });
       } catch (e: any) {
-        log("startup_error", e.message);
+        log('startup_error', e.message);
       }
     }
   }
 
   async stop(): Promise<void> {
-    await this.shutdown("manual");
+    await this.shutdown('manual');
   }
 
   private async shutdown(signal: string): Promise<void> {
     if (this.shuttingDown) {
-      log("shutdown", `Received ${signal} while shutdown is already in progress.`);
+      log('shutdown', `Received ${signal} while shutdown is already in progress.`);
       return;
     }
     this.shuttingDown = true;
 
-    log("shutdown", `Received ${signal}. Shutting down...`);
+    log('shutdown', `Received ${signal}. Shutting down...`);
     this.adapters.telegram.stopPolling();
     this.stopCronJobs();
 
     const positions = await this.withTimeout(
       this.adapters.meteora.getMyPositions({ force: true, silent: true }).catch((error: any) => {
-        log("shutdown", `Position snapshot failed during shutdown: ${error.message}`);
+        log('shutdown', `Position snapshot failed during shutdown: ${error.message}`);
         return null;
       }),
       5000,
     );
     if (positions) {
-      log("shutdown", `Open positions at shutdown: ${positions.total_positions}`);
+      log('shutdown', `Open positions at shutdown: ${positions.total_positions}`);
     } else {
-      log("shutdown", "Open position snapshot skipped during shutdown timeout");
+      log('shutdown', 'Open position snapshot skipped during shutdown timeout');
     }
     process.exit(0);
   }
@@ -321,7 +312,7 @@ export class Daemon {
   }
 
   private formatCountdown(seconds: number): string {
-    if (seconds <= 0) return "now";
+    if (seconds <= 0) return 'now';
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
@@ -360,29 +351,45 @@ export class Daemon {
     const healthTask = cron.schedule(`0 * * * *`, async () => {
       if (this.managementBusy) return;
       this.managementBusy = true;
-      log("cron", "Starting health check");
+      log('cron', 'Starting health check');
       try {
-        await agentLoop(`
+        await agentLoop(
+          `
 HEALTH CHECK
 
 Summarize the current portfolio health, total fees earned, and performance of all open positions. Recommend any high-level adjustments if needed.
-        `, config.llm.maxSteps, [], "MANAGER", null, null, { deps: this.adapters.agentLoopDeps });
+        `,
+          config.llm.maxSteps,
+          [],
+          'MANAGER',
+          null,
+          null,
+          { deps: this.adapters.agentLoopDeps },
+        );
       } catch (error: any) {
-        log("cron_error", `Health check failed: ${error.message}`);
+        log('cron_error', `Health check failed: ${error.message}`);
       } finally {
         this.managementBusy = false;
       }
     });
 
     // Morning Briefing at 8:00 AM UTC+7 (1:00 AM UTC)
-    const briefingTask = cron.schedule(`0 1 * * *`, async () => {
-      await this.runBriefing();
-    }, { timezone: "UTC" });
+    const briefingTask = cron.schedule(
+      `0 1 * * *`,
+      async () => {
+        await this.runBriefing();
+      },
+      { timezone: 'UTC' },
+    );
 
     // Every 6h — catch up if briefing was missed (agent restart, crash, etc.)
-    const briefingWatchdog = cron.schedule(`0 */6 * * *`, async () => {
-      await this.maybeRunMissedBriefing();
-    }, { timezone: "UTC" });
+    const briefingWatchdog = cron.schedule(
+      `0 */6 * * *`,
+      async () => {
+        await this.maybeRunMissedBriefing();
+      },
+      { timezone: 'UTC' },
+    );
 
     // Fast PnL poller — the real-time exit path between management cycles, no LLM.
     const pnlPollMs = Math.max(1, Number(config.pnl.pollIntervalSec ?? 3)) * 1000;
@@ -401,23 +408,31 @@ Summarize the current portfolio health, total fees earned, and performance of al
           // Detect an exit signal this tick (rule-based exits, then deterministic close rules).
           const exit = updatePnlAndCheckExits(p.position, p, config.management);
           const closeRule = exit ? null : getDeterministicCloseRule(p, config.management);
-          let signal: string | null = null, reason: string | null = null, rule: string | number = "exit";
-          if (exit) { signal = exit.action; reason = exit.reason; }
-          else if (closeRule) { signal = `RULE_${closeRule.rule}`; reason = closeRule.reason; rule = closeRule.rule; }
+          let signal: string | null = null,
+            reason: string | null = null,
+            rule: string | number = 'exit';
+          if (exit) {
+            signal = exit.action;
+            reason = exit.reason;
+          } else if (closeRule) {
+            signal = `RULE_${closeRule.rule}`;
+            reason = closeRule.reason;
+            rule = closeRule.rule;
+          }
 
           // Require N consecutive confirming ticks before acting.
           const { fire } = registerExitSignal(p.position, signal, confirmTicks);
           if (!signal || !fire) continue;
 
-          log("state", `[PnL poll] ${signal} confirmed (${confirmTicks} ticks): ${p.pair} — ${reason} — closing directly`);
+          log('state', `[PnL poll] ${signal} confirmed (${confirmTicks} ticks): ${p.pair} — ${reason} — closing directly`);
           // Hold the management lock so the cron cycle can't double-act on this position.
           this.managementBusy = true;
           try {
-            const actMap = new Map([[p.position, { action: "CLOSE", rule, reason }]]);
+            const actMap = new Map([[p.position, { action: 'CLOSE', rule, reason }]]);
             const rpt = await this.executeManagementActions([p], actMap, {});
-            log("state", `[PnL poll] ${p.pair}: ${rpt || "closed"}`);
+            log('state', `[PnL poll] ${p.pair}: ${rpt || 'closed'}`);
           } catch (e: any) {
-            log("cron_error", `Poll-triggered close failed: ${e.message}`);
+            log('cron_error', `Poll-triggered close failed: ${e.message}`);
           } finally {
             this.managementBusy = false;
           }
@@ -444,12 +459,15 @@ Summarize the current portfolio health, total fees earned, and performance of al
           ]);
           if (!positions || (positions.total_positions ?? 0) >= config.risk.maxPositions) return;
           const minRequired = config.management.deployAmountSol + config.management.gasReserve;
-          if (process.env.DRY_RUN !== "true" && (!balance || balance.sol < minRequired)) return;
+          if (process.env.DRY_RUN !== 'true' && (!balance || balance.sol < minRequired)) return;
 
           const top = await this.adapters.screening.getTopCandidates({ limit: config.opportunity.limit }).catch(() => null);
-          const candidates = (top?.candidates || []).slice().sort(
-            (a: any, b: any) => this.adapters.screening.degenScore(b, config.opportunity) - this.adapters.screening.degenScore(a, config.opportunity),
-          );
+          const candidates = (top?.candidates || [])
+            .slice()
+            .sort(
+              (a: any, b: any) =>
+                this.adapters.screening.degenScore(b, config.opportunity) - this.adapters.screening.degenScore(a, config.opportunity),
+            );
           if (!candidates.length) return;
 
           const minScore = config.opportunity.minScore;
@@ -460,20 +478,29 @@ Summarize the current portfolio health, total fees earned, and performance of al
           for (const c of candidates) {
             const s = this.adapters.screening.degenScore(c, config.opportunity);
             if (s < floor) break;
-            if (s >= minScore) { trigger = { c, s, smart: [] }; break; }
+            if (s >= minScore) {
+              trigger = { c, s, smart: [] };
+              break;
+            }
             if (bonus <= 0) continue;
             const smart = (await this.adapters.domain.checkSmartWalletsOnPool({ pool_address: c.pool }).catch(() => null))?.in_pool || [];
-            if (smart.length > 0) { trigger = { c, s, smart }; break; }
+            if (smart.length > 0) {
+              trigger = { c, s, smart };
+              break;
+            }
           }
           if (!trigger) return;
 
           const smartTag = trigger.smart.length
-            ? ` + smart wallet [${trigger.smart.map((w: any) => w.name || w.address?.slice(0, 4)).join(", ")}] (bar lowered ${minScore}→${floor})`
-            : "";
-          log("cron", `[Opportunity] ${trigger.c.name} degen ${trigger.s.toFixed(1)} >= ${trigger.smart.length ? floor : minScore}${smartTag} — triggering screening deploy decision`);
-          this.runScreeningCycle({ silent: true }).catch((e: any) => log("cron_error", `Opportunity-triggered screening failed: ${e.message}`));
+            ? ` + smart wallet [${trigger.smart.map((w: any) => w.name || w.address?.slice(0, 4)).join(', ')}] (bar lowered ${minScore}→${floor})`
+            : '';
+          log(
+            'cron',
+            `[Opportunity] ${trigger.c.name} degen ${trigger.s.toFixed(1)} >= ${trigger.smart.length ? floor : minScore}${smartTag} — triggering screening deploy decision`,
+          );
+          this.runScreeningCycle({ silent: true }).catch((e: any) => log('cron_error', `Opportunity-triggered screening failed: ${e.message}`));
         } catch (e: any) {
-          log("cron_error", `Opportunity poll failed: ${e.message}`);
+          log('cron_error', `Opportunity poll failed: ${e.message}`);
         } finally {
           this.opportunityPollBusy = false;
         }
@@ -481,13 +508,16 @@ Summarize the current portfolio health, total fees earned, and performance of al
     }
 
     this.cronTasks = [mgmtTask, screenTask, healthTask, briefingTask, briefingWatchdog];
-    log("cron", `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m${config.opportunity.enabled ? `, opportunity poll every ${config.opportunity.pollIntervalSec}s` : ""}`);
+    log(
+      'cron',
+      `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m${config.opportunity.enabled ? `, opportunity poll every ${config.opportunity.pollIntervalSec}s` : ''}`,
+    );
   }
 
   // ─── Briefing ──────────────────────────────────────────────────
 
   async runBriefing(): Promise<void> {
-    log("cron", "Starting morning briefing");
+    log('cron', 'Starting morning briefing');
     try {
       const briefing = await this.adapters.briefing.generateBriefing();
       if (this.adapters.telegram.isEnabled()) {
@@ -495,7 +525,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
       }
       setLastBriefingDate();
     } catch (error: any) {
-      log("cron_error", `Morning briefing failed: ${error.message}`);
+      log('cron_error', `Morning briefing failed: ${error.message}`);
     }
   }
 
@@ -509,7 +539,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
     const briefingHourUtc = 1;
     if (nowUtc.getUTCHours() < briefingHourUtc) return;
 
-    log("cron", `Missed briefing detected (last sent: ${lastSent || "never"}) — sending now`);
+    log('cron', `Missed briefing detected (last sent: ${lastSent || 'never'}) — sending now`);
     await this.runBriefing();
   }
 
@@ -518,48 +548,60 @@ Summarize the current portfolio health, total fees earned, and performance of al
   async executeManagementActions(
     actionPositions: any[],
     actionMap: Map<string, any>,
-    { liveMessage = null as any, cur = "$" } = {},
+    { liveMessage = null as any, cur = '$' } = {},
   ): Promise<string> {
     const lines: string[] = [];
     const instructionPositions: any[] = [];
 
-    const mechanical = actionPositions.filter((p: any) => actionMap.get(p.position).action !== "INSTRUCTION");
+    const mechanical = actionPositions.filter((p: any) => actionMap.get(p.position).action !== 'INSTRUCTION');
     if (mechanical.length) {
-      log("cron", `Management: executing ${mechanical.length} mechanical action(s) — no LLM`);
+      log('cron', `Management: executing ${mechanical.length} mechanical action(s) — no LLM`);
     }
 
     for (const p of actionPositions) {
       const act = actionMap.get(p.position);
-      if (act.action === "INSTRUCTION") { instructionPositions.push(p); continue; }
+      if (act.action === 'INSTRUCTION') {
+        instructionPositions.push(p);
+        continue;
+      }
 
-      if (act.action === "CLOSE") {
-        const reason = act.reason || (act.rule ? `Rule ${act.rule}` : "rule close");
-        await liveMessage?.toolStart("close_position");
-        const res = await this.adapters.toolExecutor.executeTool("close_position", { position_address: p.position, reason }).catch((e: any) => ({ error: e.message }));
+      if (act.action === 'CLOSE') {
+        const reason = act.reason || (act.rule ? `Rule ${act.rule}` : 'rule close');
+        await liveMessage?.toolStart('close_position');
+        const res = await this.adapters.toolExecutor
+          .executeTool('close_position', { position_address: p.position, reason })
+          .catch((e: any) => ({ error: e.message }));
         const ok = res?.success !== false && !res?.error && !res?.blocked;
-        await liveMessage?.toolFinish("close_position", res, ok);
-        lines.push(`${p.pair}: ${ok ? `closed (${reason})` : `close FAILED — ${res?.error || res?.reason || "unknown"}`}`);
-      } else if (act.action === "CLAIM") {
-        await liveMessage?.toolStart("claim_fees");
-        const res = await this.adapters.toolExecutor.executeTool("claim_fees", { position_address: p.position }).catch((e: any) => ({ error: e.message }));
+        await liveMessage?.toolFinish('close_position', res, ok);
+        lines.push(`${p.pair}: ${ok ? `closed (${reason})` : `close FAILED — ${res?.error || res?.reason || 'unknown'}`}`);
+      } else if (act.action === 'CLAIM') {
+        await liveMessage?.toolStart('claim_fees');
+        const res = await this.adapters.toolExecutor
+          .executeTool('claim_fees', { position_address: p.position })
+          .catch((e: any) => ({ error: e.message }));
         const ok = res?.success !== false && !res?.error && !res?.blocked;
-        await liveMessage?.toolFinish("claim_fees", res, ok);
-        lines.push(`${p.pair}: ${ok ? "fees claimed" : `claim FAILED — ${res?.error || res?.reason || "unknown"}`}`);
+        await liveMessage?.toolFinish('claim_fees', res, ok);
+        lines.push(`${p.pair}: ${ok ? 'fees claimed' : `claim FAILED — ${res?.error || res?.reason || 'unknown'}`}`);
       }
     }
 
     // INSTRUCTION positions need the LLM to evaluate the free-text condition.
     if (instructionPositions.length > 0) {
-      log("cron", `Management: ${instructionPositions.length} instruction position(s) — invoking LLM [model: ${config.llm.managementModel}]`);
-      const actionBlocks = instructionPositions.map((p: any) => [
-        `POSITION: ${p.pair} (${p.position})`,
-        `  pool: ${p.pool}`,
-        `  pnl_pct: ${p.pnl_pct}% | unclaimed_fees: ${cur}${p.unclaimed_fees_usd} | value: ${cur}${p.total_value_usd} | fee_per_tvl_24h: ${p.fee_per_tvl_24h ?? "?"}%`,
-        `  bins: lower=${p.lower_bin} upper=${p.upper_bin} active=${p.active_bin} | oor_minutes: ${p.minutes_out_of_range ?? 0}`,
-        `  instruction: "${p.instruction}"`,
-      ].join("\n")).join("\n\n");
+      log('cron', `Management: ${instructionPositions.length} instruction position(s) — invoking LLM [model: ${config.llm.managementModel}]`);
+      const actionBlocks = instructionPositions
+        .map((p: any) =>
+          [
+            `POSITION: ${p.pair} (${p.position})`,
+            `  pool: ${p.pool}`,
+            `  pnl_pct: ${p.pnl_pct}% | unclaimed_fees: ${cur}${p.unclaimed_fees_usd} | value: ${cur}${p.total_value_usd} | fee_per_tvl_24h: ${p.fee_per_tvl_24h ?? '?'}%`,
+            `  bins: lower=${p.lower_bin} upper=${p.upper_bin} active=${p.active_bin} | oor_minutes: ${p.minutes_out_of_range ?? 0}`,
+            `  instruction: "${p.instruction}"`,
+          ].join('\n'),
+        )
+        .join('\n\n');
 
-      const { content } = await agentLoop(`
+      const { content } = await agentLoop(
+        `
 INSTRUCTION EVALUATION — ${instructionPositions.length} position(s)
 
 ${actionBlocks}
@@ -569,22 +611,33 @@ For each position, evaluate the instruction condition against the live data:
 - If NOT met → HOLD, do nothing.
 
 After evaluating, write a brief one-line result per position.
-      `, config.llm.maxSteps, [], "MANAGER", config.llm.managementModel, 2048, {
-        deps: this.adapters.agentLoopDeps,
-        onToolStart: async ({ name }: any) => { await liveMessage?.toolStart(name); },
-        onToolFinish: async ({ name, result, success }: any) => { await liveMessage?.toolFinish(name, result, success); },
-      });
+      `,
+        config.llm.maxSteps,
+        [],
+        'MANAGER',
+        config.llm.managementModel,
+        2048,
+        {
+          deps: this.adapters.agentLoopDeps,
+          onToolStart: async ({ name }: any) => {
+            await liveMessage?.toolStart(name);
+          },
+          onToolFinish: async ({ name, result, success }: any) => {
+            await liveMessage?.toolFinish(name, result, success);
+          },
+        },
+      );
       if (content) lines.push(content);
     }
 
-    return lines.join("\n");
+    return lines.join('\n');
   }
 
   async runManagementCycle({ silent = false } = {}): Promise<string | null> {
     if (this.managementBusy) return null;
     this.managementBusy = true;
     this.managementLastRun = Date.now();
-    log("cron", "Starting management cycle");
+    log('cron', 'Starting management cycle');
     let mgmtReport: string | null = null;
     let positions: any[] = [];
     let liveMessage: any = null;
@@ -592,15 +645,15 @@ After evaluating, write a brief one-line result per position.
 
     try {
       if (!silent && this.adapters.telegram.isEnabled()) {
-        liveMessage = await this.adapters.telegram.createLiveMessage("🔄 Management Cycle", "Evaluating positions...");
+        liveMessage = await this.adapters.telegram.createLiveMessage('🔄 Management Cycle', 'Evaluating positions...');
       }
       const livePositions = await this.adapters.meteora.getMyPositions({ force: true }).catch(() => null);
       positions = livePositions?.positions || [];
 
       if (positions.length === 0) {
-        log("cron", "No open positions — triggering screening cycle");
-        mgmtReport = "No open positions. Triggering screening cycle.";
-        this.runScreeningCycle().catch((e: any) => log("cron_error", `Triggered screening failed: ${e.message}`));
+        log('cron', 'No open positions — triggering screening cycle');
+        mgmtReport = 'No open positions. Triggering screening cycle.';
+        this.runScreeningCycle().catch((e: any) => log('cron_error', `Triggered screening failed: ${e.message}`));
         return mgmtReport;
       }
 
@@ -617,7 +670,7 @@ After evaluating, write a brief one-line result per position.
         const exit = updatePnlAndCheckExits(p.position, p, config.management);
         if (exit) {
           exitMap.set(p.position, exit.reason);
-          log("state", `Exit alert for ${p.pair}: ${exit.reason}`);
+          log('state', `Exit alert for ${p.pair}: ${exit.reason}`);
         }
       }
 
@@ -625,11 +678,11 @@ After evaluating, write a brief one-line result per position.
       const actionMap = new Map<string, any>();
       for (const p of positionData) {
         if (exitMap.has(p.position)) {
-          actionMap.set(p.position, { action: "CLOSE", rule: "exit", reason: exitMap.get(p.position) });
+          actionMap.set(p.position, { action: 'CLOSE', rule: 'exit', reason: exitMap.get(p.position) });
           continue;
         }
         if (p.instruction) {
-          actionMap.set(p.position, { action: "INSTRUCTION" });
+          actionMap.set(p.position, { action: 'INSTRUCTION' });
           continue;
         }
 
@@ -639,10 +692,10 @@ After evaluating, write a brief one-line result per position.
           continue;
         }
         if ((p.unclaimed_fees_usd ?? 0) >= config.management.minClaimAmount) {
-          actionMap.set(p.position, { action: "CLAIM" });
+          actionMap.set(p.position, { action: 'CLAIM' });
           continue;
         }
-        actionMap.set(p.position, { action: "STAY" });
+        actionMap.set(p.position, { action: 'STAY' });
       }
 
       // ── Build JS report ──────────────────────────────────────────────
@@ -651,50 +704,54 @@ After evaluating, write a brief one-line result per position.
 
       const reportLines = positionData.map((p: any) => {
         const act = actionMap.get(p.position);
-        const inRange = p.in_range ? "🟢 IN" : `🔴 OOR ${p.minutes_out_of_range ?? 0}m`;
-        const val = config.management.solMode ? `◎${p.total_value_usd ?? "?"}` : `$${p.total_value_usd ?? "?"}`;
-        const unclaimed = config.management.solMode ? `◎${p.unclaimed_fees_usd ?? "?"}` : `$${p.unclaimed_fees_usd ?? "?"}`;
-        const statusLabel = act.action === "INSTRUCTION" ? "HOLD (instruction)" : act.action;
-        let line = `**${p.pair}** | Age: ${p.age_minutes ?? "?"}m | Val: ${val} | Unclaimed: ${unclaimed} | PnL: ${p.pnl_pct ?? "?"}% | Yield: ${p.fee_per_tvl_24h ?? "?"}% | ${inRange} | ${statusLabel}`;
+        const inRange = p.in_range ? '🟢 IN' : `🔴 OOR ${p.minutes_out_of_range ?? 0}m`;
+        const val = config.management.solMode ? `◎${p.total_value_usd ?? '?'}` : `$${p.total_value_usd ?? '?'}`;
+        const unclaimed = config.management.solMode ? `◎${p.unclaimed_fees_usd ?? '?'}` : `$${p.unclaimed_fees_usd ?? '?'}`;
+        const statusLabel = act.action === 'INSTRUCTION' ? 'HOLD (instruction)' : act.action;
+        let line = `**${p.pair}** | Age: ${p.age_minutes ?? '?'}m | Val: ${val} | Unclaimed: ${unclaimed} | PnL: ${p.pnl_pct ?? '?'}% | Yield: ${p.fee_per_tvl_24h ?? '?'}% | ${inRange} | ${statusLabel}`;
         if (p.instruction) line += `\nNote: "${p.instruction}"`;
-        if (act.action === "CLOSE" && act.rule === "exit") line += `\n⚡ Trailing TP: ${act.reason}`;
-        if (act.action === "CLOSE" && act.rule && act.rule !== "exit") line += `\nRule ${act.rule}: ${act.reason}`;
-        if (act.action === "CLAIM") line += `\n→ Claiming fees`;
+        if (act.action === 'CLOSE' && act.rule === 'exit') line += `\n⚡ Trailing TP: ${act.reason}`;
+        if (act.action === 'CLOSE' && act.rule && act.rule !== 'exit') line += `\nRule ${act.rule}: ${act.reason}`;
+        if (act.action === 'CLAIM') line += `\n→ Claiming fees`;
         return line;
       });
 
-      const needsAction = [...actionMap.values()].filter((a: any) => a.action !== "STAY");
-      const actionSummary = needsAction.length > 0
-        ? needsAction.map((a: any) => a.action === "INSTRUCTION" ? "EVAL instruction" : `${a.action}${a.reason ? ` (${a.reason})` : ""}`).join(", ")
-        : "no action";
+      const needsAction = [...actionMap.values()].filter((a: any) => a.action !== 'STAY');
+      const actionSummary =
+        needsAction.length > 0
+          ? needsAction
+              .map((a: any) => (a.action === 'INSTRUCTION' ? 'EVAL instruction' : `${a.action}${a.reason ? ` (${a.reason})` : ''}`))
+              .join(', ')
+          : 'no action';
 
-      const cur = config.management.solMode ? "◎" : "$";
-      mgmtReport = reportLines.join("\n\n") +
+      const cur = config.management.solMode ? '◎' : '$';
+      mgmtReport =
+        reportLines.join('\n\n') +
         `\n\nSummary: 💼 ${positions.length} positions | ${cur}${totalValue.toFixed(4)} | fees: ${cur}${totalUnclaimed.toFixed(4)} | ${actionSummary}`;
 
       // ── Call LLM only if action needed ──────────────────────────────
       const actionPositions = positionData.filter((p: any) => {
         const a = actionMap.get(p.position);
-        return a.action !== "STAY";
+        return a.action !== 'STAY';
       });
 
       if (actionPositions.length > 0) {
         const execReport = await this.executeManagementActions(actionPositions, actionMap, { liveMessage, cur });
         if (execReport) mgmtReport += `\n\n${execReport}`;
       } else {
-        log("cron", "Management: all positions STAY — skipping");
-        await liveMessage?.note("No tool actions needed.");
+        log('cron', 'Management: all positions STAY — skipping');
+        await liveMessage?.note('No tool actions needed.');
       }
 
       // Trigger screening after management
       const afterPositions = await this.adapters.meteora.getMyPositions({ force: true }).catch(() => null);
       const afterCount = afterPositions?.positions?.length ?? 0;
       if (afterCount < config.risk.maxPositions && Date.now() - this.screeningLastTriggered > screeningCooldownMs) {
-        log("cron", `Post-management: ${afterCount}/${config.risk.maxPositions} positions — triggering screening`);
-        this.runScreeningCycle().catch((e: any) => log("cron_error", `Triggered screening failed: ${e.message}`));
+        log('cron', `Post-management: ${afterCount}/${config.risk.maxPositions} positions — triggering screening`);
+        this.runScreeningCycle().catch((e: any) => log('cron_error', `Triggered screening failed: ${e.message}`));
       }
     } catch (error: any) {
-      log("cron_error", `Management cycle failed: ${error.message}`);
+      log('cron_error', `Management cycle failed: ${error.message}`);
       mgmtReport = `Management cycle failed: ${error.message}`;
     } finally {
       this.managementBusy = false;
@@ -717,7 +774,7 @@ After evaluating, write a brief one-line result per position.
 
   private getLoneCandidateSkipReason(context: { pool?: any; sw?: any; n?: any; ti?: any } = {}): string | null {
     const { pool, sw, n, ti } = context;
-    if (!pool) return "missing candidate data";
+    if (!pool) return 'missing candidate data';
     const tokenInfo = ti || {};
     const hasNarrative = !!n?.narrative;
     const degen = this.adapters.screening.degenScore(pool, config.opportunity);
@@ -750,7 +807,7 @@ After evaluating, write a brief one-line result per position.
 
   async runScreeningCycle({ silent = false } = {}): Promise<string | null> {
     if (this.screeningBusy) {
-      log("cron", "Screening skipped — previous cycle still running");
+      log('cron', 'Screening skipped — previous cycle still running');
       return null;
     }
     this.screeningBusy = true;
@@ -765,51 +822,54 @@ After evaluating, write a brief one-line result per position.
         this.adapters.wallet.getWalletBalances(),
       ]);
       if (prePositions.total_positions >= config.risk.maxPositions) {
-        log("cron", `Screening skipped — max positions reached (${prePositions.total_positions}/${config.risk.maxPositions})`);
+        log('cron', `Screening skipped — max positions reached (${prePositions.total_positions}/${config.risk.maxPositions})`);
         screenReport = `Screening skipped — max positions reached (${prePositions.total_positions}/${config.risk.maxPositions}).`;
         this.adapters.domain.appendDecision({
-          type: "skip",
-          actor: "SCREENER",
-          summary: "Screening skipped",
+          type: 'skip',
+          actor: 'SCREENER',
+          summary: 'Screening skipped',
           reason: `Max positions reached (${prePositions.total_positions}/${config.risk.maxPositions})`,
         });
         this.screeningBusy = false;
         return screenReport;
       }
       const minRequired = config.management.deployAmountSol + config.management.gasReserve;
-      const isDryRun = process.env.DRY_RUN === "true";
+      const isDryRun = process.env.DRY_RUN === 'true';
       if (!isDryRun && preBalance.sol < minRequired) {
-        log("cron", `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired} needed for deploy + gas)`);
+        log('cron', `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired} needed for deploy + gas)`);
         screenReport = `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired} needed for deploy + gas).`;
         this.adapters.domain.appendDecision({
-          type: "skip",
-          actor: "SCREENER",
-          summary: "Screening skipped",
+          type: 'skip',
+          actor: 'SCREENER',
+          summary: 'Screening skipped',
           reason: `Insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired})`,
         });
         this.screeningBusy = false;
         return screenReport;
       }
     } catch (e: any) {
-      log("cron_error", `Screening pre-check failed: ${e.message}`);
+      log('cron_error', `Screening pre-check failed: ${e.message}`);
       screenReport = `Screening pre-check failed: ${e.message}`;
       this.screeningBusy = false;
       return screenReport;
     }
     if (!silent && this.adapters.telegram.isEnabled()) {
-      liveMessage = await this.adapters.telegram.createLiveMessage("🔍 Screening Cycle", "Scanning candidates...");
+      liveMessage = await this.adapters.telegram.createLiveMessage('🔍 Screening Cycle', 'Scanning candidates...');
     }
     this.screeningLastRun = Date.now();
-    log("cron", `Starting screening cycle [model: ${config.llm.screeningModel}]`);
+    log('cron', `Starting screening cycle [model: ${config.llm.screeningModel}]`);
     try {
       const currentBalance = preBalance;
       const deployAmount = computeDeployAmount(currentBalance.sol);
-      log("cron", `Computed deploy amount: ${deployAmount} SOL (wallet: ${currentBalance.sol} SOL)`);
+      log('cron', `Computed deploy amount: ${deployAmount} SOL (wallet: ${currentBalance.sol} SOL)`);
 
       const activeStrategy = this.adapters.domain.getActiveStrategy();
       const deployStrategy = config.strategy.strategy;
-      const strategyBlock = `DEPLOY STRATEGY: ${deployStrategy} (from config) | bins_above: 0 (FIXED — never change) | deposit: SOL only (amount_y, amount_x=0)`
-        + (activeStrategy ? `\nSTRATEGY CONTEXT: ${activeStrategy.name} — entry: ${activeStrategy.entry?.condition || "n/a"} | exit: ${activeStrategy.exit?.notes || "n/a"} | best for: ${activeStrategy.best_for}` : "");
+      const strategyBlock =
+        `DEPLOY STRATEGY: ${deployStrategy} (from config) | bins_above: 0 (FIXED — never change) | deposit: SOL only (amount_y, amount_x=0)` +
+        (activeStrategy
+          ? `\nSTRATEGY CONTEXT: ${activeStrategy.name} — entry: ${activeStrategy.entry?.condition || 'n/a'} | exit: ${activeStrategy.exit?.notes || 'n/a'} | best for: ${activeStrategy.best_for}`
+          : '');
 
       const topCandidates = await this.adapters.screening.getTopCandidates({ limit: 10 }).catch(() => null);
       const candidates = (topCandidates?.candidates || topCandidates?.pools || []).slice(0, 10);
@@ -825,12 +885,12 @@ After evaluating, write a brief one-line result per position.
         ]);
         allCandidates.push({
           pool,
-          sw: smartWallets.status === "fulfilled" ? smartWallets.value : null,
-          n: narrative.status === "fulfilled" ? narrative.value : null,
-          ti: tokenInfo.status === "fulfilled" ? tokenInfo.value?.results?.[0] : null,
+          sw: smartWallets.status === 'fulfilled' ? smartWallets.value : null,
+          n: narrative.status === 'fulfilled' ? narrative.value : null,
+          ti: tokenInfo.status === 'fulfilled' ? tokenInfo.value?.results?.[0] : null,
           mem: this.adapters.domain.recallForPool(pool.pool),
         });
-        await new Promise(r => setTimeout(r, 150));
+        await new Promise((r) => setTimeout(r, 150));
       }
 
       // Hard filters after token recon
@@ -838,19 +898,19 @@ After evaluating, write a brief one-line result per position.
       const passing = allCandidates.filter(({ pool, ti }: any) => {
         const launchpad = ti?.launchpad ?? null;
         if (launchpad && config.screening.allowedLaunchpads?.length > 0 && !config.screening.allowedLaunchpads.includes(launchpad)) {
-          log("screening", `Skipping ${pool.name} — launchpad ${launchpad} not in allow-list`);
+          log('screening', `Skipping ${pool.name} — launchpad ${launchpad} not in allow-list`);
           filteredOut.push({ name: pool.name, reason: `launchpad ${launchpad} not in allow-list` });
           return false;
         }
         if (launchpad && config.screening.blockedLaunchpads.includes(launchpad)) {
-          log("screening", `Skipping ${pool.name} — blocked launchpad (${launchpad})`);
+          log('screening', `Skipping ${pool.name} — blocked launchpad (${launchpad})`);
           filteredOut.push({ name: pool.name, reason: `blocked launchpad (${launchpad})` });
           return false;
         }
         const botPct = ti?.audit?.bot_holders_pct;
         const maxBotHoldersPct = config.screening.maxBotHoldersPct;
         if (botPct != null && maxBotHoldersPct != null && botPct > maxBotHoldersPct) {
-          log("screening", `Bot-holder filter: dropped ${pool.name} — bots ${botPct}% > ${maxBotHoldersPct}%`);
+          log('screening', `Bot-holder filter: dropped ${pool.name} — bots ${botPct}% > ${maxBotHoldersPct}%`);
           filteredOut.push({ name: pool.name, reason: `bot holders ${botPct}% > ${maxBotHoldersPct}%` });
           return false;
         }
@@ -859,17 +919,18 @@ After evaluating, write a brief one-line result per position.
 
       if (passing.length === 0) {
         const combined = filteredOut.length > 0 ? filteredOut : earlyFilteredExamples;
-        const combinedExamples = combined.slice(0, 3)
+        const combinedExamples = combined
+          .slice(0, 3)
           .map((entry: any) => `- ${entry.name}: ${entry.reason}`)
-          .join("\n");
+          .join('\n');
         screenReport = combinedExamples
           ? `No candidates available.\nFiltered examples:\n${combinedExamples}`
           : `No candidates available (all filtered by launchpad / holder-quality rules).`;
         this.adapters.domain.appendDecision({
-          type: "no_deploy",
-          actor: "SCREENER",
-          summary: "No candidates available",
-          reason: combinedExamples || "All candidates filtered before deploy",
+          type: 'no_deploy',
+          actor: 'SCREENER',
+          summary: 'No candidates available',
+          reason: combinedExamples || 'All candidates filtered before deploy',
           rejected: combined.slice(0, 5).map((entry: any) => `${entry.name}: ${entry.reason}`),
         });
         return screenReport;
@@ -878,25 +939,25 @@ After evaluating, write a brief one-line result per position.
       if (passing.length === 1) {
         const skipReason = this.getLoneCandidateSkipReason(passing[0]);
         if (skipReason) {
-          const candidateName = passing[0].pool?.name || "unknown";
+          const candidateName = passing[0].pool?.name || 'unknown';
           screenReport = [
-            "⛔ NO DEPLOY",
-            "",
-            "Cycle finished with no valid entry.",
-            "",
-            "BEST LOOKING CANDIDATE",
+            '⛔ NO DEPLOY',
+            '',
+            'Cycle finished with no valid entry.',
+            '',
+            'BEST LOOKING CANDIDATE',
             candidateName,
-            "",
-            "WHY SKIPPED",
+            '',
+            'WHY SKIPPED',
             `Only one candidate survived filtering, but it was not worth deploying: ${skipReason}.`,
-            "",
-            "REJECTED",
+            '',
+            'REJECTED',
             `- ${candidateName}: ${skipReason}`,
-          ].join("\n");
+          ].join('\n');
           this.adapters.domain.appendDecision({
-            type: "no_deploy",
-            actor: "SCREENER",
-            summary: "Single candidate skipped",
+            type: 'no_deploy',
+            actor: 'SCREENER',
+            summary: 'Single candidate skipped',
             reason: skipReason,
             pool: passing[0].pool?.pool,
             pool_name: candidateName,
@@ -912,13 +973,13 @@ After evaluating, write a brief one-line result per position.
 
       // Build compact candidate blocks
       const candidateBlocks = passing.map(({ pool, sw, n, ti, mem }: any, i: number) => {
-        const botPct = ti?.audit?.bot_holders_pct ?? "?";
-        const top10Pct = ti?.audit?.top_holders_pct ?? "?";
-        const feesSol = ti?.global_fees_sol ?? "?";
+        const botPct = ti?.audit?.bot_holders_pct ?? '?';
+        const top10Pct = ti?.audit?.top_holders_pct ?? '?';
+        const feesSol = ti?.global_fees_sol ?? '?';
         const launchpad = ti?.launchpad ?? null;
         const priceChange = ti?.stats_1h?.price_change;
         const netBuyers = ti?.stats_1h?.net_buyers;
-        const activeBin = activeBinResults[i]?.status === "fulfilled" ? (activeBinResults[i] as PromiseFulfilledResult<any>).value?.binId : null;
+        const activeBin = activeBinResults[i]?.status === 'fulfilled' ? (activeBinResults[i] as PromiseFulfilledResult<any>).value?.binId : null;
 
         const pvpLine = pool.is_pvp
           ? `  pvp: HIGH — rival ${pool.pvp_rival_name || pool.pvp_symbol} (${pool.pvp_rival_mint?.slice(0, 8)}...) has pool ${pool.pvp_rival_pool?.slice(0, 8)}..., tvl=$${pool.pvp_rival_tvl}, holders=${pool.pvp_rival_holders}, fees=${pool.pvp_rival_fees}SOL`
@@ -926,15 +987,17 @@ After evaluating, write a brief one-line result per position.
 
         const block = [
           `POOL: ${pool.name} (${pool.pool})`,
-          `  metrics: bin_step=${pool.bin_step}, fee_pct=${pool.fee_pct}%, fee_tvl=${pool.fee_active_tvl_ratio}, vol=$${pool.volume_window}, tvl=$${pool.tvl ?? pool.active_tvl}, volatility_${pool.volatility_timeframe || "30m"}=${pool.volatility}, mcap=$${pool.mcap}, organic=${pool.organic_score}${pool.token_age_hours != null ? `, age=${pool.token_age_hours}h` : ""}`,
-          `  audit: top10=${top10Pct}%, bots=${botPct}%, fees=${feesSol}SOL${launchpad ? `, launchpad=${launchpad}` : ""}`,
+          `  metrics: bin_step=${pool.bin_step}, fee_pct=${pool.fee_pct}%, fee_tvl=${pool.fee_active_tvl_ratio}, vol=$${pool.volume_window}, tvl=$${pool.tvl ?? pool.active_tvl}, volatility_${pool.volatility_timeframe || '30m'}=${pool.volatility}, mcap=$${pool.mcap}, organic=${pool.organic_score}${pool.token_age_hours != null ? `, age=${pool.token_age_hours}h` : ''}`,
+          `  audit: top10=${top10Pct}%, bots=${botPct}%, fees=${feesSol}SOL${launchpad ? `, launchpad=${launchpad}` : ''}`,
           pvpLine,
-          `  smart_wallets: ${sw?.in_pool?.length ?? 0} present${sw?.in_pool?.length ? ` → CONFIDENCE BOOST (${sw.in_pool.map((w: any) => w.name).join(", ")})` : ""}`,
+          `  smart_wallets: ${sw?.in_pool?.length ?? 0} present${sw?.in_pool?.length ? ` → CONFIDENCE BOOST (${sw.in_pool.map((w: any) => w.name).join(', ')})` : ''}`,
           activeBin != null ? `  active_bin: ${activeBin}` : null,
-          priceChange != null ? `  1h: price${priceChange >= 0 ? "+" : ""}${priceChange}%, net_buyers=${netBuyers ?? "?"}` : null,
+          priceChange != null ? `  1h: price${priceChange >= 0 ? '+' : ''}${priceChange}%, net_buyers=${netBuyers ?? '?'}` : null,
           n?.narrative ? `  narrative_untrusted: ${sanitizeUntrustedPromptText(n.narrative, 500)}` : `  narrative_untrusted: none`,
           mem ? `  memory_untrusted: ${sanitizeUntrustedPromptText(mem, 500)}` : null,
-        ].filter(Boolean).join("\n");
+        ]
+          .filter(Boolean)
+          .join('\n');
 
         // Stage signals for Darwinian weighting
         if (config.darwin?.enabled) {
@@ -947,7 +1010,7 @@ After evaluating, write a brief one-line result per position.
             mcap: pool.mcap ?? null,
             holder_count: ti?.holders ?? null,
             smart_wallets_present: (sw?.in_pool?.length ?? 0) > 0,
-            narrative_quality: n?.narrative ? "present" : "absent",
+            narrative_quality: n?.narrative ? 'present' : 'absent',
             volatility: pool.volatility ?? null,
           });
         }
@@ -959,13 +1022,14 @@ After evaluating, write a brief one-line result per position.
 
       let deployAttempted = false;
       let deploySucceeded = false;
-      const { content } = await agentLoop(`
+      const { content } = await agentLoop(
+        `
 SCREENING CYCLE
 ${strategyBlock}
 Positions: ${prePositions.total_positions}/${config.risk.maxPositions} | SOL: ${currentBalance.sol.toFixed(3)} | Deploy: ${deployAmount} SOL
 
 PRE-LOADED CANDIDATES (${passing.length} pools):
-${candidateBlocks.join("\n\n")}
+${candidateBlocks.join('\n\n')}
 
 STEPS:
 1. Decide if any candidate is actually worth deploying. One surviving candidate is not automatically good enough.
@@ -1024,38 +1088,45 @@ STEPS:
    <short flat list of top candidate names and why they were skipped>
 IMPORTANT:
 - Keep the whole report compact and highly scannable for Telegram.
-      `, config.llm.maxSteps, [], "SCREENER", config.llm.screeningModel, 2048, {
-        deps: this.adapters.agentLoopDeps,
-        onToolStart: async ({ name }: any) => {
-          if (name === "deploy_position") deployAttempted = true;
-          await liveMessage?.toolStart(name);
+      `,
+        config.llm.maxSteps,
+        [],
+        'SCREENER',
+        config.llm.screeningModel,
+        2048,
+        {
+          deps: this.adapters.agentLoopDeps,
+          onToolStart: async ({ name }: any) => {
+            if (name === 'deploy_position') deployAttempted = true;
+            await liveMessage?.toolStart(name);
+          },
+          onToolFinish: async ({ name, result, success }: any) => {
+            if (name === 'deploy_position') {
+              deployAttempted = true;
+              deploySucceeded = Boolean(success && result?.success !== false && !result?.error && !result?.blocked);
+            }
+            await liveMessage?.toolFinish(name, result, success);
+          },
         },
-        onToolFinish: async ({ name, result, success }: any) => {
-          if (name === "deploy_position") {
-            deployAttempted = true;
-            deploySucceeded = Boolean(success && result?.success !== false && !result?.error && !result?.blocked);
-          }
-          await liveMessage?.toolFinish(name, result, success);
-        },
-      });
+      );
       screenReport = content;
       if (/⛔\s*NO DEPLOY/i.test(content)) {
         this.adapters.domain.appendDecision({
-          type: "no_deploy",
-          actor: "SCREENER",
-          summary: "LLM chose no deploy",
+          type: 'no_deploy',
+          actor: 'SCREENER',
+          summary: 'LLM chose no deploy',
           reason: stripThink(content).slice(0, 500),
         });
       } else if (!deploySucceeded) {
         this.adapters.domain.appendDecision({
-          type: "no_deploy",
-          actor: "SCREENER",
-          summary: deployAttempted ? "Deploy attempt did not succeed" : "No successful deploy in screening cycle",
+          type: 'no_deploy',
+          actor: 'SCREENER',
+          summary: deployAttempted ? 'Deploy attempt did not succeed' : 'No successful deploy in screening cycle',
           reason: stripThink(content).slice(0, 500),
         });
       }
     } catch (error: any) {
-      log("cron_error", `Screening cycle failed: ${error.message}`);
+      log('cron_error', `Screening cycle failed: ${error.message}`);
       screenReport = `Screening cycle failed: ${error.message}`;
     } finally {
       this.screeningBusy = false;
@@ -1090,18 +1161,17 @@ IMPORTANT:
     this.setLatestCandidates(candidates);
     if (candidates.length > 0) {
       const lines = candidates.map((pool: any, i: number) => {
-        const feeTvl = pool.fee_active_tvl_ratio ?? pool.fee_tvl_ratio ?? "?";
-        const vol = pool.volume_window ?? pool.volume_24h ?? "?";
-        return `${i + 1}. ${pool.name} | ${pool.pool}\n   fee/aTVL ${feeTvl}% | vol $${vol} | organic ${pool.organic_score ?? "?"}`;
+        const feeTvl = pool.fee_active_tvl_ratio ?? pool.fee_tvl_ratio ?? '?';
+        const vol = pool.volume_window ?? pool.volume_24h ?? '?';
+        return `${i + 1}. ${pool.name} | ${pool.pool}\n   fee/aTVL ${feeTvl}% | vol $${vol} | organic ${pool.organic_score ?? '?'}`;
       });
-      return `Top candidates (${candidates.length})\n\n${lines.join("\n")}`;
+      return `Top candidates (${candidates.length})\n\n${lines.join('\n')}`;
     }
-    const examples = (top?.filtered_examples || []).slice(0, 3)
+    const examples = (top?.filtered_examples || [])
+      .slice(0, 3)
       .map((entry: any) => `- ${entry.name}: ${entry.reason}`)
-      .join("\n");
-    return examples
-      ? `No candidates available.\nFiltered examples:\n${examples}`
-      : "No candidates available right now.";
+      .join('\n');
+    return examples ? `No candidates available.\nFiltered examples:\n${examples}` : 'No candidates available right now.';
   }
 
   // ─── Deploy Latest Candidate ───────────────────────────────────
@@ -1109,7 +1179,7 @@ IMPORTANT:
   async deployLatestCandidate(index: number): Promise<{ result: any; candidate: any; deployAmount: number; binsBelow: number }> {
     const candidate = this.latestCandidates[index];
     if (!candidate) {
-      throw new Error("Invalid candidate index. Run /screen first.");
+      throw new Error('Invalid candidate index. Run /screen first.');
     }
     if (this.latestCandidates.length === 1) {
       const mint = candidate.base?.mint || candidate.base_mint || null;
@@ -1120,16 +1190,16 @@ IMPORTANT:
       ]);
       const context = {
         pool: candidate,
-        sw: smartWallets.status === "fulfilled" ? smartWallets.value : null,
-        n: narrative.status === "fulfilled" ? narrative.value : null,
-        ti: tokenInfo.status === "fulfilled" ? tokenInfo.value?.results?.[0] : null,
+        sw: smartWallets.status === 'fulfilled' ? smartWallets.value : null,
+        n: narrative.status === 'fulfilled' ? narrative.value : null,
+        ti: tokenInfo.status === 'fulfilled' ? tokenInfo.value?.results?.[0] : null,
       };
       const skipReason = this.getLoneCandidateSkipReason(context);
       if (skipReason) {
         this.adapters.domain.appendDecision({
-          type: "no_deploy",
-          actor: "SCREENER",
-          summary: "Single cached candidate skipped",
+          type: 'no_deploy',
+          actor: 'SCREENER',
+          summary: 'Single cached candidate skipped',
           reason: skipReason,
           pool: candidate.pool,
           pool_name: candidate.name,
@@ -1139,7 +1209,7 @@ IMPORTANT:
     }
     const deployAmount = computeDeployAmount((await this.adapters.wallet.getWalletBalances()).sol);
     const binsBelow = computeBinsBelow(candidate.volatility);
-    const result = await this.adapters.toolExecutor.executeTool("deploy_position", {
+    const result = await this.adapters.toolExecutor.executeTool('deploy_position', {
       pool_address: candidate.pool,
       amount_y: deployAmount,
       strategy: config.strategy.strategy,
@@ -1155,7 +1225,7 @@ IMPORTANT:
       initial_value_usd: candidate.tvl ?? candidate.active_tvl ?? null,
     });
     if (result?.success === false || result?.error) {
-      throw new Error(result.error || "Deploy failed");
+      throw new Error(result.error || 'Deploy failed');
     }
     return { result, candidate, deployAmount, binsBelow };
   }
@@ -1198,8 +1268,8 @@ IMPORTANT:
   }
 
   private fmtSettingValue(value: unknown): string {
-    if (Array.isArray(value)) return value.join(",");
-    if (typeof value === "boolean") return value ? "on" : "off";
+    if (Array.isArray(value)) return value.join(',');
+    if (typeof value === 'boolean') return value ? 'on' : 'off';
     return String(value);
   }
 
@@ -1213,7 +1283,7 @@ IMPORTANT:
 
   private stepButtons(key: string, label: string, step: number, { digits = 2 } = {}): Array<{ text: string; callback_data: string }> {
     const value = Number(this.settingValue(key));
-    const shown = Number.isFinite(value) ? value.toFixed(digits).replace(/\.?0+$/, "") : "?";
+    const shown = Number.isFinite(value) ? value.toFixed(digits).replace(/\.?0+$/, '') : '?';
     return [
       this.settingButton(`- ${label}`, `cfg:step:${key}:${-step}`),
       this.settingButton(`${label}: ${shown}`, `cfg:noop`),
@@ -1221,102 +1291,88 @@ IMPORTANT:
     ];
   }
 
-  renderSettingsMenu(page = "main"): { text: string; keyboard: Array<Array<{ text: string; callback_data: string }>> } {
-    const title = page === "main" ? "Settings menu" : `Settings: ${page}`;
+  renderSettingsMenu(page = 'main'): { text: string; keyboard: Array<Array<{ text: string; callback_data: string }>> } {
+    const title = page === 'main' ? 'Settings menu' : `Settings: ${page}`;
     const summary = [
       title,
-      "",
-      `Mode: ${config.management.solMode ? "SOL" : "USD"} | Relay: ${config.api.lpAgentRelayEnabled ? "on" : "off"}`,
+      '',
+      `Mode: ${config.management.solMode ? 'SOL' : 'USD'} | Relay: ${config.api.lpAgentRelayEnabled ? 'on' : 'off'}`,
       `Strategy: ${config.strategy.strategy} | bins ${config.strategy.minBinsBelow}-${config.strategy.maxBinsBelow} | deploy ${config.management.deployAmountSol} SOL`,
-      `TP/SL: ${config.management.takeProfitPct}% / ${config.management.stopLossPct}% | trailing ${config.management.trailingTakeProfit ? "on" : "off"}`,
-      `Indicators: ${config.indicators.enabled ? "on" : "off"} | entry ${config.indicators.entryPreset} | ${this.fmtSettingValue(config.indicators.intervals)}`,
-    ].join("\n");
+      `TP/SL: ${config.management.takeProfitPct}% / ${config.management.stopLossPct}% | trailing ${config.management.trailingTakeProfit ? 'on' : 'off'}`,
+      `Indicators: ${config.indicators.enabled ? 'on' : 'off'} | entry ${config.indicators.entryPreset} | ${this.fmtSettingValue(config.indicators.intervals)}`,
+    ].join('\n');
 
     const nav = [
       [
-        this.settingButton("Main", "cfg:page:main"),
-        this.settingButton("Risk", "cfg:page:risk"),
-        this.settingButton("Screen", "cfg:page:screen"),
-        this.settingButton("Indicators", "cfg:page:indicators"),
+        this.settingButton('Main', 'cfg:page:main'),
+        this.settingButton('Risk', 'cfg:page:risk'),
+        this.settingButton('Screen', 'cfg:page:screen'),
+        this.settingButton('Indicators', 'cfg:page:indicators'),
       ],
     ];
 
-    const footer = [
-      [
-        this.settingButton("Refresh", `cfg:page:${page}`),
-        this.settingButton("Close", "cfg:close"),
-      ],
-    ];
+    const footer = [[this.settingButton('Refresh', `cfg:page:${page}`), this.settingButton('Close', 'cfg:close')]];
 
     let rows: Array<Array<{ text: string; callback_data: string }>>;
-    if (page === "risk") {
+    if (page === 'risk') {
       rows = [
-        this.stepButtons("deployAmountSol", "Deploy", 0.1),
-        this.stepButtons("gasReserve", "Gas", 0.05),
-        this.stepButtons("maxPositions", "Max pos", 1, { digits: 0 }),
-        this.stepButtons("maxDeployAmount", "Max SOL", 1, { digits: 0 }),
-        this.stepButtons("takeProfitPct", "TP %", 1, { digits: 0 }),
-        this.stepButtons("stopLossPct", "SL %", 5, { digits: 0 }),
-        [this.toggleButton("trailingTakeProfit", "Trailing TP")],
-        this.stepButtons("trailingTriggerPct", "Trail trigger", 0.5, { digits: 1 }),
-        this.stepButtons("trailingDropPct", "Trail drop", 0.5, { digits: 1 }),
-        [this.toggleButton("repeatDeployCooldownEnabled", "Repeat cooldown")],
-        this.stepButtons("repeatDeployCooldownTriggerCount", "Repeat count", 1, { digits: 0 }),
-        this.stepButtons("repeatDeployCooldownHours", "Repeat hrs", 1, { digits: 0 }),
-        this.stepButtons("repeatDeployCooldownMinFeeEarnedPct", "Fee earned %", 0.1, { digits: 1 }),
+        this.stepButtons('deployAmountSol', 'Deploy', 0.1),
+        this.stepButtons('gasReserve', 'Gas', 0.05),
+        this.stepButtons('maxPositions', 'Max pos', 1, { digits: 0 }),
+        this.stepButtons('maxDeployAmount', 'Max SOL', 1, { digits: 0 }),
+        this.stepButtons('takeProfitPct', 'TP %', 1, { digits: 0 }),
+        this.stepButtons('stopLossPct', 'SL %', 5, { digits: 0 }),
+        [this.toggleButton('trailingTakeProfit', 'Trailing TP')],
+        this.stepButtons('trailingTriggerPct', 'Trail trigger', 0.5, { digits: 1 }),
+        this.stepButtons('trailingDropPct', 'Trail drop', 0.5, { digits: 1 }),
+        [this.toggleButton('repeatDeployCooldownEnabled', 'Repeat cooldown')],
+        this.stepButtons('repeatDeployCooldownTriggerCount', 'Repeat count', 1, { digits: 0 }),
+        this.stepButtons('repeatDeployCooldownHours', 'Repeat hrs', 1, { digits: 0 }),
+        this.stepButtons('repeatDeployCooldownMinFeeEarnedPct', 'Fee earned %', 0.1, { digits: 1 }),
       ];
-    } else if (page === "screen") {
+    } else if (page === 'screen') {
       rows = [
-        [this.toggleButton("useDiscordSignals", "Discord signals"), this.toggleButton("blockPvpSymbols", "PVP hard block")],
-        [
-          this.settingButton(`Strategy: spot`, "cfg:set:strategy:spot"),
-          this.settingButton(`Strategy: bid_ask`, "cfg:set:strategy:bid_ask"),
-        ],
-        this.stepButtons("minBinsBelow", "Min bins", 1, { digits: 0 }),
-        this.stepButtons("maxBinsBelow", "Max bins", 1, { digits: 0 }),
-        this.stepButtons("defaultBinsBelow", "Default bins", 1, { digits: 0 }),
-        this.stepButtons("managementIntervalMin", "Manage min", 1, { digits: 0 }),
-        this.stepButtons("screeningIntervalMin", "Screen min", 5, { digits: 0 }),
+        [this.toggleButton('useDiscordSignals', 'Discord signals'), this.toggleButton('blockPvpSymbols', 'PVP hard block')],
+        [this.settingButton(`Strategy: spot`, 'cfg:set:strategy:spot'), this.settingButton(`Strategy: bid_ask`, 'cfg:set:strategy:bid_ask')],
+        this.stepButtons('minBinsBelow', 'Min bins', 1, { digits: 0 }),
+        this.stepButtons('maxBinsBelow', 'Max bins', 1, { digits: 0 }),
+        this.stepButtons('defaultBinsBelow', 'Default bins', 1, { digits: 0 }),
+        this.stepButtons('managementIntervalMin', 'Manage min', 1, { digits: 0 }),
+        this.stepButtons('screeningIntervalMin', 'Screen min', 5, { digits: 0 }),
       ];
-    } else if (page === "indicators") {
+    } else if (page === 'indicators') {
       rows = [
-        [this.toggleButton("chartIndicatorsEnabled", "Chart indicators"), this.toggleButton("requireAllIntervals", "Require all TF")],
+        [this.toggleButton('chartIndicatorsEnabled', 'Chart indicators'), this.toggleButton('requireAllIntervals', 'Require all TF')],
         [
-          this.settingButton("TF: 5m", "cfg:set:indicatorIntervals:5_MINUTE"),
-          this.settingButton("TF: 15m", "cfg:set:indicatorIntervals:15_MINUTE"),
-          this.settingButton("TF: both", "cfg:set:indicatorIntervals:both"),
+          this.settingButton('TF: 5m', 'cfg:set:indicatorIntervals:5_MINUTE'),
+          this.settingButton('TF: 15m', 'cfg:set:indicatorIntervals:15_MINUTE'),
+          this.settingButton('TF: both', 'cfg:set:indicatorIntervals:both'),
         ],
         [
-          this.settingButton("Entry: ST", "cfg:set:indicatorEntryPreset:supertrend_break"),
-          this.settingButton("Entry: RSI", "cfg:set:indicatorEntryPreset:rsi_reversal"),
-          this.settingButton("Entry: ST/RSI", "cfg:set:indicatorEntryPreset:supertrend_or_rsi"),
+          this.settingButton('Entry: ST', 'cfg:set:indicatorEntryPreset:supertrend_break'),
+          this.settingButton('Entry: RSI', 'cfg:set:indicatorEntryPreset:rsi_reversal'),
+          this.settingButton('Entry: ST/RSI', 'cfg:set:indicatorEntryPreset:supertrend_or_rsi'),
         ],
         [
-          this.settingButton("Exit: ST", "cfg:set:indicatorExitPreset:supertrend_break"),
-          this.settingButton("Exit: RSI", "cfg:set:indicatorExitPreset:rsi_reversal"),
-          this.settingButton("Exit: BB+RSI", "cfg:set:indicatorExitPreset:bb_plus_rsi"),
+          this.settingButton('Exit: ST', 'cfg:set:indicatorExitPreset:supertrend_break'),
+          this.settingButton('Exit: RSI', 'cfg:set:indicatorExitPreset:rsi_reversal'),
+          this.settingButton('Exit: BB+RSI', 'cfg:set:indicatorExitPreset:bb_plus_rsi'),
         ],
-        this.stepButtons("rsiLength", "RSI len", 1, { digits: 0 }),
+        this.stepButtons('rsiLength', 'RSI len', 1, { digits: 0 }),
       ];
     } else {
       rows = [
-        [this.toggleButton("solMode", "SOL mode"), this.toggleButton("lpAgentRelayEnabled", "LPAgent relay")],
-        [this.toggleButton("chartIndicatorsEnabled", "Chart indicators"), this.toggleButton("trailingTakeProfit", "Trailing TP")],
-        [
-          this.settingButton("Risk / deploy", "cfg:page:risk"),
-          this.settingButton("Screening", "cfg:page:screen"),
-        ],
-        [
-          this.settingButton("Indicators", "cfg:page:indicators"),
-          this.settingButton("Show config", "cfg:show"),
-        ],
+        [this.toggleButton('solMode', 'SOL mode'), this.toggleButton('lpAgentRelayEnabled', 'LPAgent relay')],
+        [this.toggleButton('chartIndicatorsEnabled', 'Chart indicators'), this.toggleButton('trailingTakeProfit', 'Trailing TP')],
+        [this.settingButton('Risk / deploy', 'cfg:page:risk'), this.settingButton('Screening', 'cfg:page:screen')],
+        [this.settingButton('Indicators', 'cfg:page:indicators'), this.settingButton('Show config', 'cfg:show')],
       ];
     }
 
     return { text: summary, keyboard: [...nav, ...rows, ...footer] };
   }
 
-  private async showSettingsMenu({ messageId = null, page = "main" } = {}): Promise<void> {
+  private async showSettingsMenu({ messageId = null, page = 'main' } = {}): Promise<void> {
     const menu = this.renderSettingsMenu(page);
     if (messageId) {
       await this.adapters.telegram.editMessageWithButtons(menu.text, messageId, menu.keyboard);
@@ -1326,35 +1382,37 @@ IMPORTANT:
   }
 
   private normalizeMenuValue(key: string, raw: string): unknown {
-    if (key === "indicatorIntervals") {
-      if (raw === "both") return ["5_MINUTE", "15_MINUTE"];
+    if (key === 'indicatorIntervals') {
+      if (raw === 'both') return ['5_MINUTE', '15_MINUTE'];
       return [raw];
     }
     return parseConfigValue(raw);
   }
 
   private async applySettingsMenuCallback(msg: any): Promise<void> {
-    const data = msg.callbackData || msg.text || "";
-    const parts = data.split(":");
+    const data = msg.callbackData || msg.text || '';
+    const parts = data.split(':');
     const action = parts[1];
-    let page = "main";
+    let page = 'main';
 
-    if (action === "noop") {
+    if (action === 'noop') {
       await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId);
       return;
     }
-    if (action === "close") {
-      await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, "Closed");
-      await this.adapters.telegram.editMessage("Settings menu closed.", msg.messageId);
+    if (action === 'close') {
+      await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, 'Closed');
+      await this.adapters.telegram.editMessage('Settings menu closed.', msg.messageId);
       return;
     }
-    if (action === "show") {
+    if (action === 'show') {
       await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId);
-      await this.adapters.telegram.editMessageWithButtons(this.formatConfigSnapshot(), msg.messageId, [[this.settingButton("Back", "cfg:page:main")]]);
+      await this.adapters.telegram.editMessageWithButtons(this.formatConfigSnapshot(), msg.messageId, [
+        [this.settingButton('Back', 'cfg:page:main')],
+      ]);
       return;
     }
-    if (action === "page") {
-      page = parts[2] || "main";
+    if (action === 'page') {
+      page = parts[2] || 'main';
       await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId);
       await this.showSettingsMenu({ messageId: msg.messageId, page });
       return;
@@ -1362,62 +1420,72 @@ IMPORTANT:
 
     const key = parts[2];
     let value: unknown;
-    if (action === "toggle") {
-      value = !Boolean(this.settingValue(key));
-    } else if (action === "step") {
+    if (action === 'toggle') {
+      value = !this.settingValue(key);
+    } else if (action === 'step') {
       const current = Number(this.settingValue(key));
       const delta = Number(parts[3]);
       if (!Number.isFinite(current) || !Number.isFinite(delta)) {
-        await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, "Invalid setting");
+        await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, 'Invalid setting');
         return;
       }
       value = Number((current + delta).toFixed(4));
-      if (key === "maxPositions") value = Math.max(1, Math.round(value as number));
-      if (key === "rsiLength") value = Math.max(2, Math.round(value as number));
-      if (key === "repeatDeployCooldownTriggerCount") value = Math.max(1, Math.round(value as number));
-      if (key === "repeatDeployCooldownHours") value = Math.max(0, Math.round(value as number));
-      if (key === "repeatDeployCooldownMinFeeEarnedPct") value = Math.max(0, value as number);
-      if (["minBinsBelow", "maxBinsBelow", "defaultBinsBelow"].includes(key)) value = Math.max(35, Math.round(value as number));
-      if (["deployAmountSol", "gasReserve", "maxDeployAmount"].includes(key)) value = Math.max(0, value as number);
-    } else if (action === "set") {
-      value = this.normalizeMenuValue(key, parts.slice(3).join(":"));
+      if (key === 'maxPositions') value = Math.max(1, Math.round(value as number));
+      if (key === 'rsiLength') value = Math.max(2, Math.round(value as number));
+      if (key === 'repeatDeployCooldownTriggerCount') value = Math.max(1, Math.round(value as number));
+      if (key === 'repeatDeployCooldownHours') value = Math.max(0, Math.round(value as number));
+      if (key === 'repeatDeployCooldownMinFeeEarnedPct') value = Math.max(0, value as number);
+      if (['minBinsBelow', 'maxBinsBelow', 'defaultBinsBelow'].includes(key)) value = Math.max(35, Math.round(value as number));
+      if (['deployAmountSol', 'gasReserve', 'maxDeployAmount'].includes(key)) value = Math.max(0, value as number);
+    } else if (action === 'set') {
+      value = this.normalizeMenuValue(key, parts.slice(3).join(':'));
     } else {
-      await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, "Unknown action");
+      await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, 'Unknown action');
       return;
     }
 
-    const result = await this.adapters.toolExecutor.executeTool("update_config", {
+    const result = await this.adapters.toolExecutor.executeTool('update_config', {
       changes: { [key]: value },
-      reason: "Telegram settings menu",
+      reason: 'Telegram settings menu',
     });
     if (!result?.success) {
-      await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, "Config update failed");
+      await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, 'Config update failed');
       return;
     }
-    page = key.startsWith("indicator") || key === "chartIndicatorsEnabled" || key === "rsiLength" || key === "requireAllIntervals"
-      ? "indicators"
-      : ["useDiscordSignals", "blockPvpSymbols", "strategy", "minBinsBelow", "maxBinsBelow", "defaultBinsBelow", "managementIntervalMin", "screeningIntervalMin"].includes(key)
-        ? "screen"
-        : "risk";
+    page =
+      key.startsWith('indicator') || key === 'chartIndicatorsEnabled' || key === 'rsiLength' || key === 'requireAllIntervals'
+        ? 'indicators'
+        : [
+              'useDiscordSignals',
+              'blockPvpSymbols',
+              'strategy',
+              'minBinsBelow',
+              'maxBinsBelow',
+              'defaultBinsBelow',
+              'managementIntervalMin',
+              'screeningIntervalMin',
+            ].includes(key)
+          ? 'screen'
+          : 'risk';
     await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, `Updated ${key}`);
     await this.showSettingsMenu({ messageId: msg.messageId, page });
   }
 
   private formatConfigSnapshot(): string {
     return [
-      "Config snapshot",
-      "",
+      'Config snapshot',
+      '',
       `Strategy: ${config.strategy.strategy} | binsBelow: ${config.strategy.minBinsBelow}-${config.strategy.maxBinsBelow} | default ${config.strategy.defaultBinsBelow}`,
       `Deploy: ${config.management.deployAmountSol} SOL | gasReserve: ${config.management.gasReserve} | maxPositions: ${config.risk.maxPositions}`,
       `Stop loss: ${config.management.stopLossPct}% | take profit: ${config.management.takeProfitPct}%`,
-      `Trailing: ${config.management.trailingTakeProfit ? "on" : "off"} | trigger ${config.management.trailingTriggerPct}% | drop ${config.management.trailingDropPct}%`,
+      `Trailing: ${config.management.trailingTakeProfit ? 'on' : 'off'} | trigger ${config.management.trailingTriggerPct}% | drop ${config.management.trailingDropPct}%`,
       `OOR: ${config.management.outOfRangeWaitMinutes}m | cooldown ${config.management.oorCooldownTriggerCount}x / ${config.management.oorCooldownHours}h`,
-      `Repeat deploy cooldown: ${config.management.repeatDeployCooldownEnabled ? "on" : "off"} | ${config.management.repeatDeployCooldownTriggerCount}x / ${config.management.repeatDeployCooldownHours}h | min fee earned ${config.management.repeatDeployCooldownMinFeeEarnedPct}% | ${config.management.repeatDeployCooldownScope}`,
+      `Repeat deploy cooldown: ${config.management.repeatDeployCooldownEnabled ? 'on' : 'off'} | ${config.management.repeatDeployCooldownTriggerCount}x / ${config.management.repeatDeployCooldownHours}h | min fee earned ${config.management.repeatDeployCooldownMinFeeEarnedPct}% | ${config.management.repeatDeployCooldownScope}`,
       `Yield floor: ${config.management.minFeePerTvl24h}% | min age ${config.management.minAgeBeforeYieldCheck}m`,
       `Screening: ${config.screening.category} / ${config.screening.timeframe} | TVL ${config.screening.minTvl}-${config.screening.maxTvl}`,
       `Intervals: manage ${config.schedule.managementIntervalMin}m | screen ${config.schedule.screeningIntervalMin}m`,
-      `HiveMind: ${this.adapters.hivemind.isHiveMindEnabled() ? "enabled" : "disabled"}${config.hiveMind.agentId ? ` | ${config.hiveMind.agentId}` : ""}`,
-    ].join("\n");
+      `HiveMind: ${this.adapters.hivemind.isHiveMindEnabled() ? 'enabled' : 'disabled'}${config.hiveMind.agentId ? ` | ${config.hiveMind.agentId}` : ''}`,
+    ].join('\n');
   }
 
   // ─── Telegram Handler ──────────────────────────────────────────
@@ -1425,7 +1493,7 @@ IMPORTANT:
   private async telegramHandler(msg: any): Promise<void> {
     const text = msg?.text?.trim();
     if (!text) return;
-    if (msg?.isCallback && text.startsWith("cfg:")) {
+    if (msg?.isCallback && text.startsWith('cfg:')) {
       try {
         await this.applySettingsMenuCallback(msg);
       } catch (e: any) {
@@ -1433,7 +1501,7 @@ IMPORTANT:
       }
       return;
     }
-    if (text === "/settings" || text === "/menu" || text === "/configmenu") {
+    if (text === '/settings' || text === '/menu' || text === '/configmenu') {
       await this.showSettingsMenu().catch((e: any) => this.adapters.telegram.sendMessage(`Settings error: ${e.message}`).catch(() => {}));
       return;
     }
@@ -1442,12 +1510,12 @@ IMPORTANT:
         this.telegramQueue.push(msg);
         this.adapters.telegram.sendMessage(`⏳ Queued (${this.telegramQueue.length} in queue): "${text.slice(0, 60)}"`).catch(() => {});
       } else {
-        this.adapters.telegram.sendMessage("Queue is full (5 messages). Wait for the agent to finish.").catch(() => {});
+        this.adapters.telegram.sendMessage('Queue is full (5 messages). Wait for the agent to finish.').catch(() => {});
       }
       return;
     }
 
-    if (text === "/briefing") {
+    if (text === '/briefing') {
       try {
         const briefing = await this.adapters.briefing.generateBriefing();
         await this.adapters.telegram.sendHTML(briefing);
@@ -1457,17 +1525,18 @@ IMPORTANT:
       return;
     }
 
-    if (text === "/help") {
+    if (text === '/help') {
       await this.adapters.telegram.sendMessage(this.formatHelpText()).catch(() => {});
       return;
     }
 
-    if (text === "/wallet" || text === "/status") {
+    if (text === '/wallet' || text === '/status') {
       try {
-        const [wallet, positions] = await Promise.all([this.adapters.wallet.getWalletBalances(), this.adapters.meteora.getMyPositions({ force: true })]);
-        const suffix = text === "/status" && positions.total_positions
-          ? `\n\nUse /positions for the numbered list.`
-          : "";
+        const [wallet, positions] = await Promise.all([
+          this.adapters.wallet.getWalletBalances(),
+          this.adapters.meteora.getMyPositions({ force: true }),
+        ]);
+        const suffix = text === '/status' && positions.total_positions ? `\n\nUse /positions for the numbered list.` : '';
         await this.adapters.telegram.sendMessage(`${this.formatWalletStatus(wallet, positions)}${suffix}`).catch(() => {});
       } catch (e: any) {
         await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
@@ -1475,24 +1544,31 @@ IMPORTANT:
       return;
     }
 
-    if (text === "/config") {
+    if (text === '/config') {
       await this.adapters.telegram.sendMessage(this.formatConfigSnapshot()).catch(() => {});
       return;
     }
 
-    if (text === "/positions") {
+    if (text === '/positions') {
       try {
         const { positions, total_positions } = await this.adapters.meteora.getMyPositions({ force: true });
-        if (total_positions === 0) { await this.adapters.telegram.sendMessage("No open positions."); return; }
-        const cur = config.management.solMode ? "◎" : "$";
+        if (total_positions === 0) {
+          await this.adapters.telegram.sendMessage('No open positions.');
+          return;
+        }
+        const cur = config.management.solMode ? '◎' : '$';
         const lines = positions.map((p: any, i: number) => {
           const pnl = p.pnl_usd >= 0 ? `+${cur}${p.pnl_usd}` : `-${cur}${Math.abs(p.pnl_usd)}`;
-          const age = p.age_minutes != null ? `${p.age_minutes}m` : "?";
-          const oor = !p.in_range ? " ⚠️OOR" : "";
+          const age = p.age_minutes != null ? `${p.age_minutes}m` : '?';
+          const oor = !p.in_range ? ' ⚠️OOR' : '';
           return `${i + 1}. ${p.pair} | ${cur}${p.total_value_usd} | PnL: ${pnl} | fees: ${cur}${p.unclaimed_fees_usd} | ${age}${oor}`;
         });
-        await this.adapters.telegram.sendMessage(`📊 Open Positions (${total_positions}):\n\n${lines.join("\n")}\n\n/close <n> to close | /set <n> <note> to set instruction`);
-      } catch (e: any) { await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {}); }
+        await this.adapters.telegram.sendMessage(
+          `📊 Open Positions (${total_positions}):\n\n${lines.join('\n')}\n\n/close <n> to close | /set <n> <note> to set instruction`,
+        );
+      } catch (e: any) {
+        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+      }
       return;
     }
 
@@ -1501,18 +1577,25 @@ IMPORTANT:
       try {
         const idx = parseInt(poolMatch[1]) - 1;
         const { positions } = await this.adapters.meteora.getMyPositions({ force: true });
-        if (idx < 0 || idx >= positions.length) { await this.adapters.telegram.sendMessage("Invalid number. Use /positions first."); return; }
+        if (idx < 0 || idx >= positions.length) {
+          await this.adapters.telegram.sendMessage('Invalid number. Use /positions first.');
+          return;
+        }
         const pos = positions[idx];
-        await this.adapters.telegram.sendMessage([
-          `${idx + 1}. ${pos.pair}`,
-          `Pool: ${pos.pool}`,
-          `Position: ${pos.position}`,
-          `Range: ${pos.lower_bin} → ${pos.upper_bin} | active ${pos.active_bin}`,
-          `PnL: ${pos.pnl_pct ?? "?"}% | fees: ${config.management.solMode ? "◎" : "$"}${pos.unclaimed_fees_usd ?? "?"}`,
-          `Value: ${config.management.solMode ? "◎" : "$"}${pos.total_value_usd ?? "?"}`,
-          `Age: ${pos.age_minutes ?? "?"}m | ${pos.in_range ? "IN RANGE" : `OOR ${pos.minutes_out_of_range ?? 0}m`}`,
-          pos.instruction ? `Note: ${pos.instruction}` : null,
-        ].filter(Boolean).join("\n"));
+        await this.adapters.telegram.sendMessage(
+          [
+            `${idx + 1}. ${pos.pair}`,
+            `Pool: ${pos.pool}`,
+            `Position: ${pos.position}`,
+            `Range: ${pos.lower_bin} → ${pos.upper_bin} | active ${pos.active_bin}`,
+            `PnL: ${pos.pnl_pct ?? '?'}% | fees: ${config.management.solMode ? '◎' : '$'}${pos.unclaimed_fees_usd ?? '?'}`,
+            `Value: ${config.management.solMode ? '◎' : '$'}${pos.total_value_usd ?? '?'}`,
+            `Age: ${pos.age_minutes ?? '?'}m | ${pos.in_range ? 'IN RANGE' : `OOR ${pos.minutes_out_of_range ?? 0}m`}`,
+            pos.instruction ? `Note: ${pos.instruction}` : null,
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        );
       } catch (e: any) {
         await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
       }
@@ -1524,36 +1607,46 @@ IMPORTANT:
       try {
         const idx = parseInt(closeMatch[1]) - 1;
         const { positions } = await this.adapters.meteora.getMyPositions({ force: true });
-        if (idx < 0 || idx >= positions.length) { await this.adapters.telegram.sendMessage("Invalid number. Use /positions first."); return; }
+        if (idx < 0 || idx >= positions.length) {
+          await this.adapters.telegram.sendMessage('Invalid number. Use /positions first.');
+          return;
+        }
         const pos = positions[idx];
         await this.adapters.telegram.sendMessage(`Closing ${pos.pair}...`);
         const result = await this.adapters.meteora.closePosition({ position_address: pos.position });
         if (result.success) {
           const closeTxs = result.close_txs?.length ? result.close_txs : result.txs;
-          const claimNote = result.claim_txs?.length ? `\nClaim txs: ${result.claim_txs.join(", ")}` : "";
-          await this.adapters.telegram.sendMessage(`✅ Closed ${pos.pair}\nPnL: ${config.management.solMode ? "◎" : "$"}${result.pnl_usd ?? "?"} | close txs: ${closeTxs?.join(", ") || "n/a"}${claimNote}`);
+          const claimNote = result.claim_txs?.length ? `\nClaim txs: ${result.claim_txs.join(', ')}` : '';
+          await this.adapters.telegram.sendMessage(
+            `✅ Closed ${pos.pair}\nPnL: ${config.management.solMode ? '◎' : '$'}${result.pnl_usd ?? '?'} | close txs: ${closeTxs?.join(', ') || 'n/a'}${claimNote}`,
+          );
         } else {
           await this.adapters.telegram.sendMessage(`❌ Close failed: ${JSON.stringify(result)}`);
         }
-      } catch (e: any) { await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {}); }
+      } catch (e: any) {
+        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+      }
       return;
     }
 
-    if (text === "/closeall") {
+    if (text === '/closeall') {
       try {
         const { positions } = await this.adapters.meteora.getMyPositions({ force: true });
-        if (!positions.length) { await this.adapters.telegram.sendMessage("No open positions."); return; }
+        if (!positions.length) {
+          await this.adapters.telegram.sendMessage('No open positions.');
+          return;
+        }
         await this.adapters.telegram.sendMessage(`Closing ${positions.length} position(s)...`);
         const results: string[] = [];
         for (const pos of positions) {
           try {
             const result = await this.adapters.meteora.closePosition({ position_address: pos.position });
-            results.push(`${pos.pair}: ${result.success ? "closed" : `failed (${result.error || "unknown"})`}`);
+            results.push(`${pos.pair}: ${result.success ? 'closed' : `failed (${result.error || 'unknown'})`}`);
           } catch (error: any) {
             results.push(`${pos.pair}: failed (${error.message})`);
           }
         }
-        await this.adapters.telegram.sendMessage(`Close-all finished.\n\n${results.join("\n")}`).catch(() => {});
+        await this.adapters.telegram.sendMessage(`Close-all finished.\n\n${results.join('\n')}`).catch(() => {});
       } catch (e: any) {
         await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
       }
@@ -1566,11 +1659,16 @@ IMPORTANT:
         const idx = parseInt(setMatch[1]) - 1;
         const note = setMatch[2].trim();
         const { positions } = await this.adapters.meteora.getMyPositions({ force: true });
-        if (idx < 0 || idx >= positions.length) { await this.adapters.telegram.sendMessage("Invalid number. Use /positions first."); return; }
+        if (idx < 0 || idx >= positions.length) {
+          await this.adapters.telegram.sendMessage('Invalid number. Use /positions first.');
+          return;
+        }
         const pos = positions[idx];
         setPositionInstruction(pos.position, note);
         await this.adapters.telegram.sendMessage(`✅ Note set for ${pos.pair}:\n"${note}"`);
-      } catch (e: any) { await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {}); }
+      } catch (e: any) {
+        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+      }
       return;
     }
 
@@ -1579,12 +1677,12 @@ IMPORTANT:
       try {
         const key = setCfgMatch[1];
         const value = parseConfigValue(setCfgMatch[2]);
-        const result = await this.adapters.toolExecutor.executeTool("update_config", {
+        const result = await this.adapters.toolExecutor.executeTool('update_config', {
           changes: { [key]: value },
-          reason: "Telegram slash command /setcfg",
+          reason: 'Telegram slash command /setcfg',
         });
         if (!result?.success) {
-          await this.adapters.telegram.sendMessage(`Config update failed.\nUnknown: ${(result?.unknown || []).join(", ") || "none"}`).catch(() => {});
+          await this.adapters.telegram.sendMessage(`Config update failed.\nUnknown: ${(result?.unknown || []).join(', ') || 'none'}`).catch(() => {});
           return;
         }
         await this.adapters.telegram.sendMessage(`✅ Updated ${key} = ${JSON.stringify(value)}`).catch(() => {});
@@ -1594,7 +1692,7 @@ IMPORTANT:
       return;
     }
 
-    if (text === "/screen") {
+    if (text === '/screen') {
       try {
         await this.adapters.telegram.sendMessage(await this.runDeterministicScreen(5)).catch(() => {});
       } catch (e: any) {
@@ -1603,7 +1701,7 @@ IMPORTANT:
       return;
     }
 
-    if (text === "/candidates") {
+    if (text === '/candidates') {
       await this.adapters.telegram.sendMessage(this.describeLatestCandidates(5)).catch(() => {});
       return;
     }
@@ -1616,41 +1714,49 @@ IMPORTANT:
         const coverage = result.range_coverage
           ? `Range: ${fmtPct(result.range_coverage.downside_pct)} downside | ${fmtPct(result.range_coverage.upside_pct)} upside`
           : `Strategy: ${config.strategy.strategy} | binsBelow: ${binsBelow}`;
-        await this.adapters.telegram.sendMessage([
-          `✅ Deployed ${candidate.name}`,
-          `Pool: ${candidate.pool}`,
-          `Amount: ${deployAmount} SOL`,
-          coverage,
-          `Position: ${result.position || "n/a"}`,
-          result.txs?.length ? `Tx: ${result.txs[0]}` : null,
-        ].filter(Boolean).join("\n")).catch(() => {});
+        await this.adapters.telegram
+          .sendMessage(
+            [
+              `✅ Deployed ${candidate.name}`,
+              `Pool: ${candidate.pool}`,
+              `Amount: ${deployAmount} SOL`,
+              coverage,
+              `Position: ${result.position || 'n/a'}`,
+              result.txs?.length ? `Tx: ${result.txs[0]}` : null,
+            ]
+              .filter(Boolean)
+              .join('\n'),
+          )
+          .catch(() => {});
       } catch (e: any) {
         await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
       }
       return;
     }
 
-    if (text === "/pause") {
+    if (text === '/pause') {
       this.stopCronJobs();
       this.cronStarted = false;
-      await this.adapters.telegram.sendMessage("⏸ Paused autonomous cycles. Telegram control still works. Use /resume to start again.").catch(() => {});
+      await this.adapters.telegram
+        .sendMessage('⏸ Paused autonomous cycles. Telegram control still works. Use /resume to start again.')
+        .catch(() => {});
       return;
     }
 
-    if (text === "/resume") {
+    if (text === '/resume') {
       if (!this.cronStarted) {
         this.cronStarted = true;
         this.managementLastRun = Date.now();
         this.screeningLastRun = Date.now();
         this.startCronJobs();
-        await this.adapters.telegram.sendMessage("▶️ Autonomous cycles resumed.").catch(() => {});
+        await this.adapters.telegram.sendMessage('▶️ Autonomous cycles resumed.').catch(() => {});
       } else {
-        await this.adapters.telegram.sendMessage("Autonomous cycles are already running.").catch(() => {});
+        await this.adapters.telegram.sendMessage('Autonomous cycles are already running.').catch(() => {});
       }
       return;
     }
 
-    if (text === "/hive" || text === "/hive pull") {
+    if (text === '/hive' || text === '/hive pull') {
       try {
         const enabled = this.adapters.hivemind.isHiveMindEnabled();
         const agentId = this.adapters.hivemind.ensureAgentId();
@@ -1658,23 +1764,27 @@ IMPORTANT:
           await this.adapters.telegram.sendMessage(`HiveMind: disabled\nAgent ID: ${agentId}\nSet hiveMindApiKey to connect.`).catch(() => {});
           return;
         }
-        const isManualPull = text === "/hive pull";
+        const isManualPull = text === '/hive pull';
         const pullMode = this.adapters.hivemind.getHiveMindPullMode();
         const [registerResult, lessons, presets] = await Promise.all([
-          this.adapters.hivemind.registerHiveMindAgent({ reason: isManualPull ? "telegram_pull" : "telegram_status" }),
-          (pullMode === "auto" || isManualPull) ? this.adapters.hivemind.pullHiveMindLessons(12) : Promise.resolve(null),
-          (pullMode === "auto" || isManualPull) ? this.adapters.hivemind.pullHiveMindPresets() : Promise.resolve(null),
+          this.adapters.hivemind.registerHiveMindAgent({ reason: isManualPull ? 'telegram_pull' : 'telegram_status' }),
+          pullMode === 'auto' || isManualPull ? this.adapters.hivemind.pullHiveMindLessons(12) : Promise.resolve(null),
+          pullMode === 'auto' || isManualPull ? this.adapters.hivemind.pullHiveMindPresets() : Promise.resolve(null),
         ]);
-        await this.adapters.telegram.sendMessage([
-          "HiveMind: enabled",
-          `Agent ID: ${agentId}`,
-          `URL: ${config.hiveMind.url}`,
-          `Pull mode: ${pullMode}`,
-          `Register: ${registerResult ? "ok" : "warn"}`,
-          `Shared lessons: ${Array.isArray(lessons) ? lessons.length : (pullMode === "manual" ? "manual" : 0)}`,
-          `Presets: ${Array.isArray(presets) ? presets.length : (pullMode === "manual" ? "manual" : 0)}`,
-          isManualPull ? "Manual pull: completed" : null,
-        ].join("\n")).catch(() => {});
+        await this.adapters.telegram
+          .sendMessage(
+            [
+              'HiveMind: enabled',
+              `Agent ID: ${agentId}`,
+              `URL: ${config.hiveMind.url}`,
+              `Pull mode: ${pullMode}`,
+              `Register: ${registerResult ? 'ok' : 'warn'}`,
+              `Shared lessons: ${Array.isArray(lessons) ? lessons.length : pullMode === 'manual' ? 'manual' : 0}`,
+              `Presets: ${Array.isArray(presets) ? presets.length : pullMode === 'manual' ? 'manual' : 0}`,
+              isManualPull ? 'Manual pull: completed' : null,
+            ].join('\n'),
+          )
+          .catch(() => {});
       } catch (e: any) {
         await this.adapters.telegram.sendMessage(`HiveMind error: ${e.message}`).catch(() => {});
       }
@@ -1685,17 +1795,21 @@ IMPORTANT:
     this.busy = true;
     let liveMessage: any = null;
     try {
-      log("telegram", `Incoming: ${text}`);
+      log('telegram', `Incoming: ${text}`);
       const hasCloseIntent = /\bclose\b|\bsell\b|\bexit\b|\bwithdraw\b/i.test(text);
       const isDeployRequest = !hasCloseIntent && /\bdeploy\b|\bopen position\b|\blp into\b|\badd liquidity\b/i.test(text);
-      const agentRole = isDeployRequest ? "SCREENER" : "GENERAL";
-      const agentModel = agentRole === "SCREENER" ? config.llm.screeningModel : config.llm.generalModel;
-      liveMessage = await this.adapters.telegram.createLiveMessage("🤖 Live Update", `Request: ${text.slice(0, 240)}`);
+      const agentRole = isDeployRequest ? 'SCREENER' : 'GENERAL';
+      const agentModel = agentRole === 'SCREENER' ? config.llm.screeningModel : config.llm.generalModel;
+      liveMessage = await this.adapters.telegram.createLiveMessage('🤖 Live Update', `Request: ${text.slice(0, 240)}`);
       const { content } = await agentLoop(text, config.llm.maxSteps, this.sessionHistory, agentRole, agentModel, null, {
         deps: this.adapters.agentLoopDeps,
         interactive: true,
-        onToolStart: async ({ name }: any) => { await liveMessage?.toolStart(name); },
-        onToolFinish: async ({ name, result, success }: any) => { await liveMessage?.toolFinish(name, result, success); },
+        onToolStart: async ({ name }: any) => {
+          await liveMessage?.toolStart(name);
+        },
+        onToolFinish: async ({ name, result, success }: any) => {
+          await liveMessage?.toolFinish(name, result, success);
+        },
       });
       this.appendHistory(text, content);
       if (liveMessage) await liveMessage.finalize(stripThink(content));
@@ -1714,62 +1828,62 @@ IMPORTANT:
 
   private formatHelpText(): string {
     return [
-      "Telegram commands",
-      "",
-      "/help — show commands",
-      "/status — wallet + positions snapshot",
-      "/wallet — wallet, deploy amount, HiveMind status",
-      "/positions — list open positions",
-      "/pool <n> — detailed info for one open position",
-      "/close <n> — close one position by index",
-      "/closeall — close all open positions",
-      "/set <n> <note> — set note/instruction on position",
-      "/config — show important runtime config",
-      "/settings — button menu for common config",
-      "/setcfg <key> <value> — update persisted config",
-      "/screen — refresh deterministic candidate list",
-      "/candidates — show latest cached candidates",
-      "/deploy <n> — deploy candidate by cached index",
-      "/briefing — morning briefing",
-      "/hive — HiveMind sync status",
-      "/hive pull — manual HiveMind pull now",
-      "/pause — stop cron cycles",
-      "/resume — start cron cycles again",
-      "/stop — shut down agent",
-    ].join("\n");
+      'Telegram commands',
+      '',
+      '/help — show commands',
+      '/status — wallet + positions snapshot',
+      '/wallet — wallet, deploy amount, HiveMind status',
+      '/positions — list open positions',
+      '/pool <n> — detailed info for one open position',
+      '/close <n> — close one position by index',
+      '/closeall — close all open positions',
+      '/set <n> <note> — set note/instruction on position',
+      '/config — show important runtime config',
+      '/settings — button menu for common config',
+      '/setcfg <key> <value> — update persisted config',
+      '/screen — refresh deterministic candidate list',
+      '/candidates — show latest cached candidates',
+      '/deploy <n> — deploy candidate by cached index',
+      '/briefing — morning briefing',
+      '/hive — HiveMind sync status',
+      '/hive pull — manual HiveMind pull now',
+      '/pause — stop cron cycles',
+      '/resume — start cron cycles again',
+      '/stop — shut down agent',
+    ].join('\n');
   }
 
   private formatWalletStatus(wallet: any, positions: any): string {
     const deployAmount = computeDeployAmount(wallet.sol);
-    const hive = this.adapters.hivemind.isHiveMindEnabled() ? "on" : "off";
+    const hive = this.adapters.hivemind.isHiveMindEnabled() ? 'on' : 'off';
     return [
       `Wallet: ${wallet.sol} SOL ($${wallet.sol_usd})`,
       `SOL price: $${wallet.sol_price}`,
       `Open positions: ${positions.total_positions}/${config.risk.maxPositions}`,
       `Next deploy amount: ${deployAmount} SOL`,
-      `Dry run: ${process.env.DRY_RUN === "true" ? "yes" : "no"}`,
+      `Dry run: ${process.env.DRY_RUN === 'true' ? 'yes' : 'no'}`,
       `HiveMind: ${hive}`,
-    ].join("\n");
+    ].join('\n');
   }
 
   private describeLatestCandidates(limit = 5): string {
-    if (!this.latestCandidates.length) return "No cached candidates yet. Run /screen first.";
+    if (!this.latestCandidates.length) return 'No cached candidates yet. Run /screen first.';
     const lines = this.latestCandidates.slice(0, limit).map((pool: any, i: number) => {
-      const feeTvl = pool.fee_active_tvl_ratio ?? pool.fee_tvl_ratio ?? "?";
-      const vol = pool.volume_window ?? pool.volume_24h ?? "?";
-      const active = pool.active_pct ?? "?";
-      const organic = pool.organic_score ?? "?";
+      const feeTvl = pool.fee_active_tvl_ratio ?? pool.fee_tvl_ratio ?? '?';
+      const vol = pool.volume_window ?? pool.volume_24h ?? '?';
+      const active = pool.active_pct ?? '?';
+      const organic = pool.organic_score ?? '?';
       return `${i + 1}. ${pool.name} | fee/aTVL ${feeTvl}% | vol $${vol} | in-range ${active}% | organic ${organic}`;
     });
-    const age = this.latestCandidatesAt ? new Date(this.latestCandidatesAt).toLocaleString("en-US", { hour12: false }) : "unknown";
-    return `Latest candidates (${this.latestCandidates.length}) — updated ${age}\n\n${lines.join("\n")}`;
+    const age = this.latestCandidatesAt ? new Date(this.latestCandidatesAt).toLocaleString('en-US', { hour12: false }) : 'unknown';
+    return `Latest candidates (${this.latestCandidates.length}) — updated ${age}\n\n${lines.join('\n')}`;
   }
 
   private formatCandidates(candidates: any[]): string {
-    if (!candidates.length) return "  No eligible pools found right now.";
+    if (!candidates.length) return '  No eligible pools found right now.';
 
     const lines = candidates.map((p: any, i: number) => {
-      const name = (p.name || "unknown").padEnd(20);
+      const name = (p.name || 'unknown').padEnd(20);
       const ftvl = `${p.fee_active_tvl_ratio ?? p.fee_tvl_ratio}%`.padStart(8);
       const vol = `$${((p.volume_window || 0) / 1000).toFixed(1)}k`.padStart(8);
       const active = `${p.active_pct}%`.padStart(6);
@@ -1777,18 +1891,14 @@ IMPORTANT:
       return `  [${i + 1}]  ${name}  fee/aTVL:${ftvl}  vol:${vol}  in-range:${active}  organic:${org}`;
     });
 
-    return [
-      "  #   pool                  fee/aTVL     vol    in-range  organic",
-      "  " + "─".repeat(68),
-      ...lines,
-    ].join("\n");
+    return ['  #   pool                  fee/aTVL     vol    in-range  organic', '  ' + '─'.repeat(68), ...lines].join('\n');
   }
 
   // ─── Session History ───────────────────────────────────────────
 
   private appendHistory(userMsg: string, assistantMsg: string): void {
-    this.sessionHistory.push({ role: "user", content: userMsg });
-    this.sessionHistory.push({ role: "assistant", content: assistantMsg });
+    this.sessionHistory.push({ role: 'user', content: userMsg });
+    this.sessionHistory.push({ role: 'assistant', content: assistantMsg });
     if (this.sessionHistory.length > this.MAX_HISTORY) {
       this.sessionHistory.splice(0, this.sessionHistory.length - this.MAX_HISTORY);
     }
@@ -1824,8 +1934,8 @@ IMPORTANT:
   private async startTTY(): Promise<void> {
     const DEPLOY = config.management.deployAmountSol;
 
-    process.on("SIGINT", () => this.shutdown("SIGINT"));
-    process.on("SIGTERM", () => this.shutdown("SIGTERM"));
+    process.on('SIGINT', () => this.shutdown('SIGINT'));
+    process.on('SIGTERM', () => this.shutdown('SIGTERM'));
 
     const rl = readline.createInterface({
       input: process.stdin,
@@ -1848,18 +1958,30 @@ IMPORTANT:
         this.managementLastRun = Date.now();
         this.screeningLastRun = Date.now();
         this.startCronJobs();
-        console.log("Autonomous cycles are now running.\n");
+        console.log('Autonomous cycles are now running.\n');
         rl.setPrompt(this.buildPrompt());
         rl.prompt(true);
       }
     };
 
     const runBusy = async (fn: () => Promise<void>) => {
-      if (this.busy) { console.log("Agent is busy, please wait..."); rl.prompt(); return; }
-      this.busy = true; rl.pause();
-      try { await fn(); }
-      catch (e: any) { console.error(`Error: ${e.message}`); }
-      finally { this.busy = false; rl.setPrompt(this.buildPrompt()); rl.resume(); rl.prompt(); }
+      if (this.busy) {
+        console.log('Agent is busy, please wait...');
+        rl.prompt();
+        return;
+      }
+      this.busy = true;
+      rl.pause();
+      try {
+        await fn();
+      } catch (e: any) {
+        console.error(`Error: ${e.message}`);
+      } finally {
+        this.busy = false;
+        rl.setPrompt(this.buildPrompt());
+        rl.resume();
+        rl.prompt();
+      }
     };
 
     // ── Startup: show wallet + top candidates ──
@@ -1869,7 +1991,7 @@ IMPORTANT:
 ╚═══════════════════════════════════════════╝
 `);
 
-    console.log("Fetching wallet and top pool candidates...\n");
+    console.log('Fetching wallet and top pool candidates...\n');
 
     this.busy = true;
     try {
@@ -1885,9 +2007,9 @@ IMPORTANT:
       console.log(`Positions: ${positions.total_positions} open\n`);
 
       if (positions.total_positions > 0) {
-        console.log("Open positions:");
+        console.log('Open positions:');
         for (const p of positions.positions) {
-          const status = p.in_range ? "in-range ✓" : "OUT OF RANGE ⚠";
+          const status = p.in_range ? 'in-range ✓' : 'OUT OF RANGE ⚠';
           console.log(`  ${p.pair.padEnd(16)} ${status}  fees: $${p.unclaimed_fees_usd}`);
         }
         console.log();
@@ -1895,7 +2017,6 @@ IMPORTANT:
 
       console.log(`Top pools (${total_eligible} eligible from ${total_screened} screened):\n`);
       console.log(this.formatCandidates(candidates));
-
     } catch (e: any) {
       console.error(`Startup fetch failed: ${e.message}`);
     } finally {
@@ -1924,9 +2045,12 @@ Commands:
 
     rl.prompt();
 
-    rl.on("line", async (line) => {
+    rl.on('line', async (line) => {
       const input = line.trim();
-      if (!input) { rl.prompt(); return; }
+      if (!input) {
+        rl.prompt();
+        return;
+      }
 
       // ── Number pick: deploy into pool N ─────
       const pick = parseInt(input);
@@ -1939,7 +2063,7 @@ Commands:
             `Deploy ${DEPLOY} SOL into pool ${pool.pool} (${pool.name}). Call get_active_bin first then deploy_position. Report result.`,
             config.llm.maxSteps,
             [],
-            "SCREENER",
+            'SCREENER',
             null,
             null,
             { deps: this.adapters.agentLoopDeps },
@@ -1951,14 +2075,14 @@ Commands:
       }
 
       // ── auto: agent picks and deploys ───────
-      if (input.toLowerCase() === "auto") {
+      if (input.toLowerCase() === 'auto') {
         await runBusy(async () => {
-          console.log("\nAgent is picking and deploying...\n");
+          console.log('\nAgent is picking and deploying...\n');
           const { content: reply } = await agentLoop(
             `get_top_candidates and deploy only if a candidate is clearly worth it. If there is only one weak candidate, report NO DEPLOY. For a valid deploy, use amount_y=${DEPLOY}, amount_x=0, bins_above=0, and bins_below from positive volatility. Execute now, don't ask.`,
             config.llm.maxSteps,
             [],
-            "SCREENER",
+            'SCREENER',
             null,
             null,
             { deps: this.adapters.agentLoopDeps },
@@ -1970,38 +2094,44 @@ Commands:
       }
 
       // ── go: start cron without deploying ────
-      if (input.toLowerCase() === "go") {
+      if (input.toLowerCase() === 'go') {
         launchCron();
         rl.prompt();
         return;
       }
 
       // ── Slash commands ───────────────────────
-      if (input === "/stop") { await this.shutdown("user command"); return; }
+      if (input === '/stop') {
+        await this.shutdown('user command');
+        return;
+      }
 
-      if (input === "/status") {
+      if (input === '/status') {
         await runBusy(async () => {
-          const [wallet, positions] = await Promise.all([this.adapters.wallet.getWalletBalances(), this.adapters.meteora.getMyPositions({ force: true })]);
+          const [wallet, positions] = await Promise.all([
+            this.adapters.wallet.getWalletBalances(),
+            this.adapters.meteora.getMyPositions({ force: true }),
+          ]);
           console.log(`\nWallet: ${wallet.sol} SOL  ($${wallet.sol_usd})`);
           console.log(`Positions: ${positions.total_positions}`);
           for (const p of positions.positions) {
-            const status = p.in_range ? "in-range ✓" : "OUT OF RANGE ⚠";
-            console.log(`  ${p.pair.padEnd(16)} ${status}  fees: ${config.management.solMode ? "◎" : "$"}${p.unclaimed_fees_usd}`);
+            const status = p.in_range ? 'in-range ✓' : 'OUT OF RANGE ⚠';
+            console.log(`  ${p.pair.padEnd(16)} ${status}  fees: ${config.management.solMode ? '◎' : '$'}${p.unclaimed_fees_usd}`);
           }
           console.log();
         });
         return;
       }
 
-      if (input === "/briefing") {
+      if (input === '/briefing') {
         await runBusy(async () => {
           const briefing = await this.adapters.briefing.generateBriefing();
-          console.log(`\n${briefing.replace(/<[^>]*>/g, "")}\n`);
+          console.log(`\n${briefing.replace(/<[^>]*>/g, '')}\n`);
         });
         return;
       }
 
-      if (input === "/candidates") {
+      if (input === '/candidates') {
         await runBusy(async () => {
           const { candidates, total_eligible, total_screened } = await this.adapters.screening.getTopCandidates({ limit: 5 });
           this.setLatestCandidates(candidates);
@@ -2012,9 +2142,9 @@ Commands:
         return;
       }
 
-      if (input === "/thresholds") {
+      if (input === '/thresholds') {
         const s = config.screening;
-        console.log("\nCurrent screening thresholds:");
+        console.log('\nCurrent screening thresholds:');
         console.log(`  minFeeActiveTvlRatio: ${s.minFeeActiveTvlRatio}`);
         console.log(`  minOrganic:           ${s.minOrganic}`);
         console.log(`  minHolders:           ${s.minHolders}`);
@@ -2030,9 +2160,9 @@ Commands:
         return;
       }
 
-      if (input.startsWith("/learn")) {
+      if (input.startsWith('/learn')) {
         await runBusy(async () => {
-          const parts = input.split(" ");
+          const parts = input.split(' ');
           const poolArg = parts[1] || null;
 
           let poolsToStudy: any[] = [];
@@ -2040,10 +2170,10 @@ Commands:
           if (poolArg) {
             poolsToStudy = [{ pool: poolArg, name: poolArg }];
           } else {
-            console.log("\nFetching top pool candidates to study...\n");
+            console.log('\nFetching top pool candidates to study...\n');
             const { candidates } = await this.adapters.screening.getTopCandidates({ limit: 10 });
             if (!candidates.length) {
-              console.log("No eligible pools found to study.\n");
+              console.log('No eligible pools found to study.\n');
               return;
             }
             poolsToStudy = candidates.map((c: any) => ({ pool: c.pool, name: c.name }));
@@ -2053,9 +2183,7 @@ Commands:
           for (const p of poolsToStudy) console.log(`  • ${p.name || p.pool}`);
           console.log();
 
-          const poolList = poolsToStudy
-            .map((p: any, i: number) => `${i + 1}. ${p.name} (${p.pool})`)
-            .join("\n");
+          const poolList = poolsToStudy.map((p: any, i: number) => `${i + 1}. ${p.name} (${p.pool})`).join('\n');
 
           const { content: reply } = await agentLoop(
             `Study top LPers across these ${poolsToStudy.length} pools by calling study_top_lpers for each:
@@ -2071,7 +2199,7 @@ For each pool, call study_top_lpers then move to the next. After studying all po
 Focus on: hold duration, entry/exit timing, what win rates look like, whether scalpers or holders dominate.`,
             config.llm.maxSteps,
             [],
-            "GENERAL",
+            'GENERAL',
             null,
             null,
             { deps: this.adapters.agentLoopDeps },
@@ -2083,8 +2211,8 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
 
       // ── Free-form chat ───────────────────────
       await runBusy(async () => {
-        log("user", input);
-        const { content } = await agentLoop(input, config.llm.maxSteps, this.sessionHistory, "GENERAL", config.llm.generalModel, null, {
+        log('user', input);
+        const { content } = await agentLoop(input, config.llm.maxSteps, this.sessionHistory, 'GENERAL', config.llm.generalModel, null, {
           deps: this.adapters.agentLoopDeps,
           interactive: true,
         });
@@ -2093,16 +2221,13 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
       });
     });
 
-    rl.on("close", () => this.shutdown("stdin closed"));
+    rl.on('close', () => this.shutdown('stdin closed'));
   }
 }
 
 // ─── Self-Execution ──────────────────────────────────────────────
-const isMain = process.argv[1] && (
-  process.argv[1].endsWith("Daemon.ts") || 
-  process.argv[1].endsWith("Daemon.js") ||
-  process.argv[1].endsWith("index.js")
-);
+const isMain =
+  process.argv[1] && (process.argv[1].endsWith('Daemon.ts') || process.argv[1].endsWith('Daemon.js') || process.argv[1].endsWith('index.js'));
 
 if (isMain) {
   const agentLoopDeps: AgentLoopDeps = {
@@ -2117,8 +2242,8 @@ if (isMain) {
           mint: t.mint,
           symbol: t.symbol,
           amount: t.amount,
-          usd: t.usd
-        }))
+          usd: t.usd,
+        })),
       };
     },
     getMyPositions: meteora.getMyPositions,
@@ -2151,7 +2276,7 @@ if (isMain) {
 
   const hasRepl = process.stdout.isTTY && !process.env.PM2_HOME;
   daemon.start({ tty: hasRepl }).catch((err) => {
-    console.error("Daemon failed to start:", err);
+    console.error('Daemon failed to start:', err);
     process.exit(1);
   });
 }
