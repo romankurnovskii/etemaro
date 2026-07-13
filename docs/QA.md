@@ -54,3 +54,46 @@
 4. **Deploying single-sided Token Y with 30 upper bins**:  
    * **Not supported by DLMM mechanics.** In Meteora DLMM, if you set `bins_above > 0` (upper bins), your position is **dual-sided** (requiring both Token X and Token Y). A single-sided Token Y (SOL) position requires `bins_above = 0` (all bins set below the active bin).
    * **Not supported by screener logic.** The autonomous screener's deployment prompt hardcodes single-sided SOL-only deployments (i.e. `amount_x = 0`, `bins_above = 0`). It does not support dual-sided deployments or customized `bins_above` settings.
+
+---
+
+## Logging & Review
+
+### Q: Is there an existing mechanism to log the bot's full process (new screens, opens/closes, swaps) so I can review it? Is it only in `data/decision-log.json`?
+**A: Yes — and it is NOT only in `decision-log.json`.** The bot already writes the entire run to **three separate destinations**, all implemented in `packages/core/src/shared/logger.ts`:
+
+1. **`logs/agent-<YYYY-MM-DD>.log`** — human-readable text log of *every* event, including the operational tags you want to review:
+   * `[screening]` — each screening cycle, hard-filter rejections, PVP guards, indicator confirmations (`ScreeningAdapter.ts`)
+   * `[deploy]` / `[deploy_error]` — position opens, bin/amount/tx details (`MeteoraAdapter.ts:802`)
+   * `[close]` / `[claim]` — position closes, fee claims, auto-swap-back-to-SOL steps (`MeteoraAdapter.ts:1513`, `1471`)
+   * `[swap]` — manual and auto swaps
+   * `[positions]` / `[pnl_tick]` — portfolio/PnL polling during the management loop
+   * Also `info` / `warn` / `error` / `debug` standard lines.
+
+2. **`logs/actions-<YYYY-MM-DD>.jsonl`** — structured per-tool **audit trail** (`logAction`, `ToolExecutor.ts:724`). Every tool call (e.g. `deploy_position`, `close_position`, `swap_token`, `claim_fees`, `screen`/candidate tools) is appended as one JSON line with `tool`, `args`, `result`, `duration_ms`, `success`/`error`. This is the most machine-readable way to replay the exact actions taken.
+
+3. **`data/decision-log.json`** — append-only structured **decisions** (`appendDecision`, `domain/decision-log.ts`), capped at `MAX_DECISIONS`. Types observed: `deploy`, `close`, `skip`, `no_deploy`, `note` (actors: `SCREENER`, `MANAGER`, etc.). This is the summary feed used by the daily briefing (`getDecisionSummary`).
+
+Plus, if Telegram is configured, write operations also push **notifications**: `notifyDeploy` / `notifyClose` / `notifySwap` (`TelegramAdapter.ts:509/537/554`).
+
+**How to review the full process:**
+```bash
+# Live tail the operational text log (captures ALL events, every level)
+tail -f logs/agent-$(date +%F).log
+
+# Filter just the lifecycle events you care about
+grep -E "\[(screening|deploy|close|swap|claim)\]" logs/agent-$(date +%F).log
+
+# Replay exact tool calls as JSON
+cat logs/actions-$(date +%F).jsonl | jq 'select(.tool=="deploy_position" or .tool=="close_position" or .tool=="swap_token")'
+
+# Decision summary
+cat data/decision-log.json | jq '.decisions[0:10]'
+```
+
+### Q: I set `LOG_LEVEL=info`. Will the console show screens/opens/closes/swaps?
+**A: Be careful — `LOG_LEVEL` controls the console, not the files.**
+* The logger (`logger.ts:35`) **always** appends every event to the `logs/agent-<date>.log` file, regardless of `LOG_LEVEL`.
+* The console (`process.stdout`) only prints lines whose level is one of the *standard* levels (`debug`/`info`/`warn`/`error`) AND `>= LOG_LEVEL`. The operational tags (`screening`, `deploy`, `close`, `swap`, `claim`, `positions`, `pnl_tick`, `pnl_warn`, …) are **custom level strings**, so they are written to the file but are **never printed to the console** — even at `LOG_LEVEL=debug`.
+
+So on `LOG_LEVEL=info` the terminal will show `info`/`warn`/`error` lines but **not** the `deploy`/`close`/`swap`/`screening` events. To review those you must read the log **file** (`logs/agent-<date>.log`) or the `actions-<date>.jsonl` audit trail — not the live console. `LOG_LEVEL=info` is already the default (`.env.example:41`); set it to `debug` only if you also want the standard `debug` lines echoed to the terminal.

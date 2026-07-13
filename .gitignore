@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+tsconfig.tsbuildinfo
 
 # Environment & secrets
 .env
@@ -39,3 +40,4 @@ data/
 
 # Claude Code runtime lock
 .claude/scheduled_tasks.lock
+

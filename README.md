@@ -34,7 +34,24 @@ npm run setup
 This will configure your `.env` (API keys, private keys) and `config/user-config.json` (risk profile, thresholds).
 
 ### 3. Run
+
+**Option A: Direct (development / dry-run)**
 ```bash
 npm run dev      # Dry-run mode (safe simulation, no real transactions)
 npm start        # Live autonomous agent mode
+```
+
+**Option B: PM2 (production process manager)**
+```bash
+npm run pm2:start    # Start daemon under PM2 with auto-restart
+npm run pm2:logs     # Tail live logs
+```
+
+**Option C: Docker**
+```bash
+# Development (hot reload, mounts source)
+docker compose -f docker-compose.dev.yml up --build
+
+# Production (on remote server, .env.prod already present)
+docker compose -f docker-compose.prod.yml up -d --build
 ```
