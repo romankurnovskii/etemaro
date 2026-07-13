@@ -24,8 +24,8 @@ Detailed guides are available in the [docs/](docs) directory:
 ### 1. Install Dependencies
 
 ```bash
-git clone https://github.com/yunus-0x/meridian
-cd meridian
+git clone https://github.com/romankurnovskii/etemaro
+cd etemaro
 npm install
 ```
 

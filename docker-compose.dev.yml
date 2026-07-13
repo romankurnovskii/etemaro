@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     image: meridian:dev
-    command: pnpm run dev
+    command: pnpm run start
     env_file: .env
     volumes:
       - ./packages:/app/packages
