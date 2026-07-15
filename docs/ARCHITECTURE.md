@@ -3,6 +3,7 @@
 ## Codebase Organization (Hexagonal Design)
 
 The codebase is a pnpm monorepo. Config and runtime data live at the repository root; application code is split across three packages under `packages/`:
+
 ```
 config/
   user-config.json           # Active user configuration (written by `npm run setup`)
@@ -18,8 +19,9 @@ data/
   strategy-library.json      # Saved LP strategy profiles
   token-blacklist.json       # Hard-blocked token mints
   hivemind-cache.json        # Cached shared HiveMind lessons + presets
-logs/
+data/logs/
   agent-YYYY-MM-DD.log       # Rotating application logs
+  actions-YYYY-MM-DD.jsonl   # Structured audit trail
 packages/
   cli/src/
     Cli.ts                   # CLI entrypoint: one-shot command runner
@@ -68,36 +70,40 @@ packages/
       types.ts               # Shared TypeScript types and Zod schemas
 ```
 
-
 ---
 
 ## The ReAct Loop & Tools Logic
 
-Meridian relies on a **ReAct loop** (`agent-loop.ts`) to let the LLM autonomously inspect live data and call tools. 
+Meridian relies on a **ReAct loop** (`agent-loop.ts`) to let the LLM autonomously inspect live data and call tools.
 
 ### 1. Tool Definitions (`ToolDefinitions.ts`)
+
 Exposes Zod schemas converted to OpenAI-format JSON schemas. These schemas are what the LLM sees to understand available actions (e.g. `deploy_position`, `close_position`, `swap_token`, `get_position_pnl`, `get_top_candidates`).
 
 ### 2. Tool Executor (`ToolExecutor.ts`)
+
 Routes the tool call from the LLM to the corresponding adapter implementation. It enforces crucial safety checks:
-* **Pre-deploy checks**: Verifies the pool metrics are still valid on-chain immediately before executing a deploy transaction.
-* **Auto-swap base→SOL**: After successfully executing a `close_position` tool call, the executor automatically swaps the returned base token back to SOL via Jupiter Swap.
-* **Notifications**: Emits Telegram notifications for all key transactions.
+
+- **Pre-deploy checks**: Verifies the pool metrics are still valid on-chain immediately before executing a deploy transaction.
+- **Auto-swap base→SOL**: After successfully executing a `close_position` tool call, the executor automatically swaps the returned base token back to SOL via Jupiter Swap.
+- **Notifications**: Emits Telegram notifications for all key transactions.
 
 ---
 
 ## Strategy Library (`strategy-library.ts`)
 
 The strategy library defines preset configurations for Meteora DLMM pool deployments. These presets define:
-* **Bin Distribution**: How liquidity is distributed across the bins (e.g. `spot`, `bid_ask`, or `curve`).
-* **Bins Below/Above**: How many bins are placed below and above the active price bin.
-* **SOL/Token Ratio**: For screening-driven deployments, the bot hardcodes single-sided SOL-only deposits (`bins_above = 0`, `amount_x = 0`).
+
+- **Bin Distribution**: How liquidity is distributed across the bins (e.g. `spot`, `bid_ask`, or `curve`).
+- **Bins Below/Above**: How many bins are placed below and above the active price bin.
+- **SOL/Token Ratio**: For screening-driven deployments, the bot hardcodes single-sided SOL-only deposits (`bins_above = 0`, `amount_x = 0`).
 
 ---
 
 ## Dry-Run Mode & Transaction Interception
 
 When `DRY_RUN=true` is set in the environment:
-* **Interceptors**: Inside `MeteoraAdapter.ts`, the functions `deployPosition`, `claimFees`, and `closePosition` check for the dry-run flag.
-* **Mock Responses**: Instead of submitting a transaction payload to the Solana blockchain, the adapter intercepts the call and returns a mock object containing `dry_run: true` and a mock transaction ID.
-* *Note:* Mock positions are only saved to the local `state.json` registry during the deploy step; they are not simulated dynamically by the management loop since they do not exist on the Solana blockchain.
+
+- **Interceptors**: Inside `MeteoraAdapter.ts`, the functions `deployPosition`, `claimFees`, and `closePosition` check for the dry-run flag.
+- **Mock Responses**: Instead of submitting a transaction payload to the Solana blockchain, the adapter intercepts the call and returns a mock object containing `dry_run: true` and a mock transaction ID.
+- _Note:_ Mock positions are only saved to the local `state.json` registry during the deploy step; they are not simulated dynamically by the management loop since they do not exist on the Solana blockchain.
