@@ -12,8 +12,6 @@ services:
       - ./data:/app/data
     restart: unless-stopped
 
-volumes:
-
 networks:
   default:
     name: meridian-prod
