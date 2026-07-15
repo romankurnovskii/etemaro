@@ -14,9 +14,6 @@ tsconfig.tsbuildinfo
 # Stray Claude Code worktrees
 .claude/worktrees/
 
-# Logs
-logs/
-
 # OS
 .DS_Store
 
