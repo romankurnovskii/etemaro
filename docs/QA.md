@@ -76,7 +76,7 @@
 
 **A: Yes — and it is NOT only in `decision-log.json`.** The bot already writes the entire run to **three separate destinations**, all implemented in `packages/core/src/shared/logger.ts`:
 
-1. **`logs/agent-<YYYY-MM-DD>.log`** — human-readable text log of _every_ event, including the operational tags you want to review:
+1. **`data/logs/agent-<YYYY-MM-DD>.log`** — human-readable text log of _every_ event, including the operational tags you want to review:
    - `[screening]` — each screening cycle, hard-filter rejections, PVP guards, indicator confirmations (`ScreeningAdapter.ts`)
    - `[deploy]` / `[deploy_error]` — position opens, bin/amount/tx details (`MeteoraAdapter.ts:802`)
    - `[close]` / `[claim]` — position closes, fee claims, auto-swap-back-to-SOL steps (`MeteoraAdapter.ts:1513`, `1471`)
@@ -84,7 +84,7 @@
    - `[positions]` / `[pnl_tick]` — portfolio/PnL polling during the management loop
    - Also `info` / `warn` / `error` / `debug` standard lines.
 
-2. **`logs/actions-<YYYY-MM-DD>.jsonl`** — structured per-tool **audit trail** (`logAction`, `ToolExecutor.ts:724`). Every tool call (e.g. `deploy_position`, `close_position`, `swap_token`, `claim_fees`, `screen`/candidate tools) is appended as one JSON line with `tool`, `args`, `result`, `duration_ms`, `success`/`error`. This is the most machine-readable way to replay the exact actions taken.
+2. **`data/logs/actions-<YYYY-MM-DD>.jsonl`** — structured per-tool **audit trail** (`logAction`, `ToolExecutor.ts:724`). Every tool call (e.g. `deploy_position`, `close_position`, `swap_token`, `claim_fees`, `screen`/candidate tools) is appended as one JSON line with `tool`, `args`, `result`, `duration_ms`, `success`/`error`. This is the most machine-readable way to replay the exact actions taken.
 
 3. **`data/decision-log.json`** — append-only structured **decisions** (`appendDecision`, `domain/decision-log.ts`), capped at `MAX_DECISIONS`. Types observed: `deploy`, `close`, `skip`, `no_deploy`, `note` (actors: `SCREENER`, `MANAGER`, etc.). This is the summary feed used by the daily briefing (`getDecisionSummary`).
 
@@ -94,13 +94,13 @@ Plus, if Telegram is configured, write operations also push **notifications**: `
 
 ```bash
 # Live tail the operational text log (captures ALL events, every level)
-tail -f logs/agent-$(date +%F).log
+tail -f data/logs/agent-$(date +%F).log
 
 # Filter just the lifecycle events you care about
-grep -E "\[(screening|deploy|close|swap|claim)\]" logs/agent-$(date +%F).log
+grep -E "\[(screening|deploy|close|swap|claim)\]" data/logs/agent-$(date +%F).log
 
 # Replay exact tool calls as JSON
-cat logs/actions-$(date +%F).jsonl | jq 'select(.tool=="deploy_position" or .tool=="close_position" or .tool=="swap_token")'
+cat data/logs/actions-$(date +%F).jsonl | jq 'select(.tool=="deploy_position" or .tool=="close_position" or .tool=="swap_token")'
 
 # Decision summary
 cat data/decision-log.json | jq '.decisions[0:10]'
@@ -110,7 +110,7 @@ cat data/decision-log.json | jq '.decisions[0:10]'
 
 **A: Be careful — `LOG_LEVEL` controls the console, not the files.**
 
-- The logger (`logger.ts:35`) **always** appends every event to the `logs/agent-<date>.log` file, regardless of `LOG_LEVEL`.
+- The logger (`logger.ts:35`) **always** appends every event to the `data/logs/agent-<date>.log` file, regardless of `LOG_LEVEL`.
 - The console (`process.stdout`) only prints lines whose level is one of the _standard_ levels (`debug`/`info`/`warn`/`error`) AND `>= LOG_LEVEL`. The operational tags (`screening`, `deploy`, `close`, `swap`, `claim`, `positions`, `pnl_tick`, `pnl_warn`, …) are **custom level strings**, so they are written to the file but are **never printed to the console** — even at `LOG_LEVEL=debug`.
 
-So on `LOG_LEVEL=info` the terminal will show `info`/`warn`/`error` lines but **not** the `deploy`/`close`/`swap`/`screening` events. To review those you must read the log **file** (`logs/agent-<date>.log`) or the `actions-<date>.jsonl` audit trail — not the live console. `LOG_LEVEL=info` is already the default (`.env.example:41`); set it to `debug` only if you also want the standard `debug` lines echoed to the terminal.
+So on `LOG_LEVEL=info` the terminal will show `info`/`warn`/`error` lines but **not** the `deploy`/`close`/`swap`/`screening` events. To review those you must read the log **file** (`data/logs/agent-<date>.log`) or the `data/logs/actions-<date>.jsonl` audit trail — not the live console. `LOG_LEVEL=info` is already the default (`.env.example:41`); set it to `debug` only if you also want the standard `debug` lines echoed to the terminal.
