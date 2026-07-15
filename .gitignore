@@ -14,9 +14,6 @@ tsconfig.tsbuildinfo
 # Stray Claude Code worktrees
 .claude/worktrees/
 
-# Logs
-logs/
-
 # OS
 .DS_Store
 
@@ -29,6 +26,7 @@ AGENTS.local.md
 .agents/rules/*.local.md
 
 # Build and IDE files
+logs/
 dist/
 .memory-bank/
 .dev/

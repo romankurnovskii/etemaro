@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO_ROOT } from './constants.js';
+import { REPO_ROOT, dataPath } from './constants.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -14,7 +14,7 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 const currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
 const minLevel = LOG_LEVELS[currentLevel] ?? LOG_LEVELS.info;
 
-const logsDir = path.join(REPO_ROOT, 'logs');
+const logsDir = dataPath('logs');
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
