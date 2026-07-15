@@ -9,11 +9,10 @@ services:
     volumes:
       - ./packages:/app/packages
       - ./config:/app/config
-      - meridian_data:/app/data
+      - ./data:/app/data
     restart: unless-stopped
 
 volumes:
-  meridian_data:
 
 networks:
   default:
