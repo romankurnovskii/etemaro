@@ -13,7 +13,7 @@
 
   "risk": {
     "description": "Global capital limits that cap exposure regardless of how many positions look attractive.",
-    "maxPositions": 3,
+    "maxPositions": 1,
     "maxDeployAmount": 50
   },
 
