@@ -33,6 +33,13 @@ export function dataPath(...segments: string[]): string {
 
 /** Resolve a path relative to the config directory. */
 export function configPath(...segments: string[]): string {
+  // Honor USER_CONFIG_PATH env var for the main config file
+  if (segments.length === 1 && segments[0] === 'user-config.json') {
+    const envPath = process.env.USER_CONFIG_PATH;
+    if (envPath && fs.existsSync(envPath)) {
+      return envPath;
+    }
+  }
   return path.join(REPO_ROOT, 'config', ...segments);
 }
 
@@ -52,9 +59,9 @@ export const SOLANA_PUBKEY_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 export const DEFAULT_HIVEMIND_URL = 'https://api.agentmeridian.xyz';
 export const DEFAULT_AGENT_MERIDIAN_API_URL = 'https://api.agentmeridian.xyz/api';
-const DEFAULT_KEY = 'bWVyaWRpYW4taXMtdGhlLWJlc3QtYWdlbnRz';
-export const DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY = DEFAULT_KEY;
-export const DEFAULT_HIVEMIND_API_KEY = DEFAULT_KEY;
+// TODO 2026-09-30: add option to override this in user config, and/or read from env var
+export const DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY = 'bWVyaWRpYW4taXMtdGhlLWJlc3QtYWdlbnRz';
+export const DEFAULT_HIVEMIND_API_KEY = 'bWVyaWRpYW4taXMtdGhlLWJlc3QtYWdlbnRz';
 
 export const TOKEN_MINTS = {
   SOL: 'So11111111111111111111111111111111111111112',

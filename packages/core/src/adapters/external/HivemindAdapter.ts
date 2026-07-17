@@ -43,6 +43,14 @@ function readUserConfig(): Record<string, unknown> {
   return readJson<Record<string, unknown>>(USER_CONFIG_PATH, {});
 }
 
+function getUserConfigValue(userConfig: Record<string, unknown>, flatKey: string, category: string, nestedKey: string): unknown {
+  const nested = userConfig[category];
+  if (nested && typeof nested === 'object' && nestedKey in (nested as Record<string, unknown>)) {
+    return (nested as Record<string, unknown>)[nestedKey];
+  }
+  return userConfig[flatKey];
+}
+
 function writeUserConfig(nextConfig: Record<string, unknown>): void {
   writeJson(USER_CONFIG_PATH, nextConfig);
 }
@@ -82,9 +90,10 @@ export function isHiveMindEnabled(): boolean {
 
 export function ensureAgentId(): string {
   const userConfig = readUserConfig();
-  if (userConfig.agentId) {
-    config.hiveMind.agentId = userConfig.agentId as string;
-    return userConfig.agentId as string;
+  const existingId = getUserConfigValue(userConfig, 'agentId', 'hiveMind', 'agentId') as string | null;
+  if (existingId) {
+    config.hiveMind.agentId = existingId;
+    return existingId;
   }
 
   const agentId = `agt_${crypto.randomBytes(12).toString('hex')}`;
