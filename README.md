@@ -65,3 +65,20 @@ docker compose -f docker-compose.dev.yml up --build
 # Production (on remote server, .env already present)
 docker compose -f docker-compose.prod.yml up -d --build --force-recreate --remove-orphans
 ```
+
+---
+
+## 🖥️ Desktop App
+
+![Desktop](apps/desktop/assets/desktop-1.png)
+
+The **DesktopApp** is a cross-platform, free desktop application currently in active development — with a planned release on **September 1st**.
+
+### Key Features
+
+- **Multiple Agents** — Run and manage several autonomous agents simultaneously.
+- **Remote & Local Agents** — Deploy agents locally or connect to remote instances.
+- **Free AI Credits** — Built-in free credits for AI-powered analysis and decision-making.
+- **Cross-Platform & Free** — Available on Windows, macOS, and Linux at no cost.
+- **AI Auto-Generated Strategies** — Automatically generate trading strategies using AI-driven backtesting.
+- **Neuro-Bayesian Monte Carlo API** — Access probability calculations before opening positions, powered by the [Neuro-Bayesian Monte Carlo method](https://romankurnovskii.com/en/research/neuro-bayesian-architecture-in-economic-modeling/).
