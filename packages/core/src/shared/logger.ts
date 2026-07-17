@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { REPO_ROOT, dataPath } from './constants.js';
+import { getAgentIdForRequests } from '../adapters/external/AgentMeridianClient.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -19,22 +20,29 @@ if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
 
+function getAgentSlug(): string {
+  return (getAgentIdForRequests() || 'agent-local').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
 function getLogPath(): string {
   const date = new Date().toISOString().slice(0, 10);
-  return path.join(logsDir, `agent-${date}.log`);
+  return path.join(logsDir, `agent-${getAgentSlug()}-${date}.log`);
 }
 
 function getAuditPath(): string {
   const date = new Date().toISOString().slice(0, 10);
-  return path.join(logsDir, `actions-${date}.jsonl`);
+  return path.join(logsDir, `actions-${getAgentSlug()}-${date}.jsonl`);
 }
 
 /**
- * Core log function — writes to daily rotating log file.
+ * Core log function — writes to a per-agent daily rotating log file so that
+ * multiple agents/processes sharing the same data dir don't interleave lines.
+ * The agent id is embedded in every line for traceability.
  */
 export function log(level: string, message: string): void {
   const ts = new Date().toISOString();
-  const line = `[${ts}] [${level}] ${message}\n`;
+  const agentId = getAgentIdForRequests();
+  const line = `[${ts}] [${level}] [${agentId}] ${message}\n`;
   try {
     fs.appendFileSync(getLogPath(), line);
   } catch {
@@ -60,6 +68,7 @@ export interface LogActionEntry {
 export function logAction(entry: LogActionEntry): void {
   const record = {
     ts: new Date().toISOString(),
+    agentId: getAgentIdForRequests(),
     ...entry,
   };
   try {

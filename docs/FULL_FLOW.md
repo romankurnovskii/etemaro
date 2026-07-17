@@ -162,18 +162,18 @@ graph LR
 
 ### Key Files
 
-| File | Role |
-|------|------|
-| `packages/core/src/config/Config.ts` | Zod-validated config singleton from `user-config.json` + `.env` |
-| `packages/core/src/application/agent-loop.ts` | Core ReAct loop: LLM → tool call → repeat |
-| `packages/core/src/application/prompt-builder.ts` | Builds role-specific system prompts |
-| `packages/core/src/adapters/ToolExecutor.ts` | Dispatches tool calls to adapter implementations |
-| `packages/core/src/adapters/ToolDefinitions.ts` | OpenAI-format tool schemas |
-| `packages/core/src/domain/state.ts` | Position registry in `state.json` |
-| `packages/core/src/domain/lessons.ts` | Learning engine + threshold evolution |
-| `packages/core/src/domain/decision-log.ts` | Structured decision rationale log |
-| `packages/core/src/domain/signal-weights.ts` | Darwinian signal weighting system |
-| `packages/core/src/domain/pool-memory.ts` | Per-pool deploy history + snapshots |
+| File                                              | Role                                                            |
+| ------------------------------------------------- | --------------------------------------------------------------- |
+| `packages/core/src/config/Config.ts`              | Zod-validated config singleton from `user-config.json` + `.env` |
+| `packages/core/src/application/agent-loop.ts`     | Core ReAct loop: LLM → tool call → repeat                       |
+| `packages/core/src/application/prompt-builder.ts` | Builds role-specific system prompts                             |
+| `packages/core/src/adapters/ToolExecutor.ts`      | Dispatches tool calls to adapter implementations                |
+| `packages/core/src/adapters/ToolDefinitions.ts`   | OpenAI-format tool schemas                                      |
+| `packages/core/src/domain/state.ts`               | Position registry in `state.json`                               |
+| `packages/core/src/domain/lessons.ts`             | Learning engine + threshold evolution                           |
+| `packages/core/src/domain/decision-log.ts`        | Structured decision rationale log                               |
+| `packages/core/src/domain/signal-weights.ts`      | Darwinian signal weighting system                               |
+| `packages/core/src/domain/pool-memory.ts`         | Per-pool deploy history + snapshots                             |
 
 ---
 
@@ -256,18 +256,18 @@ graph TD
 
 ### Config Sections
 
-| Section | Purpose |
-|---------|---------|
-| `risk` | Max positions, max deploy amount |
-| `screening` | Fee/TVL ratio, organic score, holder count, mcap, bin step thresholds |
-| `management` | Deploy amount, stop loss, take profit, trailing TP, OOR wait time |
-| `strategy` | LP strategy (bid_ask/spot), bin range |
-| `schedule` | Management and screening interval (minutes) |
-| `llm` | Temperature, max tokens/steps, per-role model selection |
-| `darwin` | Signal weight evolution settings |
-| `hiveMind` | Shared learning sync settings |
-| `jupiter` | Swap referral settings |
-| `indicators` | RSI/supertrend entry/exit indicators |
+| Section      | Purpose                                                               |
+| ------------ | --------------------------------------------------------------------- |
+| `risk`       | Max positions, max deploy amount                                      |
+| `screening`  | Fee/TVL ratio, organic score, holder count, mcap, bin step thresholds |
+| `management` | Deploy amount, stop loss, take profit, trailing TP, OOR wait time     |
+| `strategy`   | LP strategy (bid_ask/spot), bin range                                 |
+| `schedule`   | Management and screening interval (minutes)                           |
+| `llm`        | Temperature, max tokens/steps, per-role model selection               |
+| `darwin`     | Signal weight evolution settings                                      |
+| `hiveMind`   | Shared learning sync settings                                         |
+| `jupiter`    | Swap referral settings                                                |
+| `indicators` | RSI/supertrend entry/exit indicators                                  |
 
 ---
 
@@ -315,16 +315,16 @@ sequenceDiagram
 
 ### Safety Mechanisms
 
-| Mechanism | Purpose |
-|-----------|---------|
-| **Once-per-session lock** | `deploy_position`, `close_position`, `swap_token` can only fire once per cycle |
-| **No-retry lock** | `deploy_position` locked after first attempt regardless of outcome |
-| **JSON repair** | Malformed tool arguments auto-repaired via `jsonrepair` |
-| **Provider fallback** | Falls back to `stepfun/step-3.5-flash:free` on provider errors |
-| **System role fallback** | Embeds system prompt in user message if provider rejects `role: system` |
-| **Tool choice fallback** | Retries without `tool_choice: required` if provider rejects it |
-| **Rate limit handling** | 30s wait on 429 errors |
-| **Tool-required enforcement** | For action intents, rejects answers without tool calls (up to 2 retries) |
+| Mechanism                     | Purpose                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------ |
+| **Once-per-session lock**     | `deploy_position`, `close_position`, `swap_token` can only fire once per cycle |
+| **No-retry lock**             | `deploy_position` locked after first attempt regardless of outcome             |
+| **JSON repair**               | Malformed tool arguments auto-repaired via `jsonrepair`                        |
+| **Provider fallback**         | Falls back to `stepfun/step-3.5-flash:free` on provider errors                 |
+| **System role fallback**      | Embeds system prompt in user message if provider rejects `role: system`        |
+| **Tool choice fallback**      | Retries without `tool_choice: required` if provider rejects it                 |
+| **Rate limit handling**       | 30s wait on 429 errors                                                         |
+| **Tool-required enforcement** | For action intents, rejects answers without tool calls (up to 2 retries)       |
 
 ### Role-Based Tool Access
 
@@ -562,17 +562,17 @@ stateDiagram-v2
 
 ### Data Files
 
-| File | Content | Updated By |
-|------|---------|------------|
-| `state.json` | Position registry, OOR tracking, peak PnL, trailing state | `trackPosition()`, `recordClose()`, `markOutOfRange()`, `confirmPeak()` |
-| `lessons.json` | Derived lessons + raw performance records | `recordPerformance()`, `addLesson()` |
-| `decision-log.json` | Structured deploy/close/skip rationale | `logDecision()` |
-| `signal-weights.json` | Darwinian signal weights | `recalculateWeights()` |
-| `pool-memory.json` | Per-pool deploy history + notes | `recordPoolDeploy()`, `addPoolNote()` |
-| `smart-wallets.json` | Tracked KOL/alpha wallets | `addSmartWallet()` |
-| `strategy-library.json` | Saved LP strategies | `addStrategy()` |
-| `token-blacklist.json` | Blacklisted token mints | `addToBlacklist()` |
-| `deployer-blacklist.json` | Blocked deployer wallets | `blockDev()` |
+| File                      | Content                                                   | Updated By                                                              |
+| ------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `state.json`              | Position registry, OOR tracking, peak PnL, trailing state | `trackPosition()`, `recordClose()`, `markOutOfRange()`, `confirmPeak()` |
+| `lessons.json`            | Derived lessons + raw performance records                 | `recordPerformance()`, `addLesson()`                                    |
+| `decision-log.json`       | Structured deploy/close/skip rationale                    | `logDecision()`                                                         |
+| `signal-weights.json`     | Darwinian signal weights                                  | `recalculateWeights()`                                                  |
+| `pool-memory.json`        | Per-pool deploy history + notes                           | `recordPoolDeploy()`, `addPoolNote()`                                   |
+| `smart-wallets.json`      | Tracked KOL/alpha wallets                                 | `addSmartWallet()`                                                      |
+| `strategy-library.json`   | Saved LP strategies                                       | `addStrategy()`                                                         |
+| `token-blacklist.json`    | Blacklisted token mints                                   | `addToBlacklist()`                                                      |
+| `deployer-blacklist.json` | Blocked deployer wallets                                  | `blockDev()`                                                            |
 
 ---
 
@@ -738,22 +738,22 @@ graph TD
 
 ### Tool Categories
 
-| Category | Tools | Used By |
-|----------|-------|---------|
-| **Pool Discovery** | `discover_pools`, `get_top_candidates`, `search_pools`, `get_pool_detail` | Screen |
-| **Token Research** | `get_token_info`, `get_token_holders`, `get_token_narrative` | Screen |
-| **Position Deploy** | `get_active_bin`, `deploy_position` | Screen |
-| **Position Management** | `get_my_positions`, `get_position_pnl`, `claim_fees`, `close_position` | Manager |
-| **Wallet** | `get_wallet_balance`, `swap_token` | Both |
-| **Learning** | `add_lesson`, `list_lessons`, `clear_lessons`, `pin_lesson` | Both |
-| **Memory** | `get_pool_memory`, `add_pool_note` | Both |
-| **Smart Wallets** | `add_smart_wallet`, `check_smart_wallets_on_pool` | Screen |
-| **Strategy** | `add_strategy`, `list_strategies`, `set_active_strategy` | Both |
-| **Config** | `update_config`, `self_update` | General |
-| **Blacklist** | `add_to_blacklist`, `block_deployer` | Both |
-| **Decisions** | `get_recent_decisions` | General |
-| **Performance** | `get_performance_history` | General |
-| **Study** | `study_top_lpers`, `get_top_lpers` | Screen |
+| Category                | Tools                                                                     | Used By |
+| ----------------------- | ------------------------------------------------------------------------- | ------- |
+| **Pool Discovery**      | `discover_pools`, `get_top_candidates`, `search_pools`, `get_pool_detail` | Screen  |
+| **Token Research**      | `get_token_info`, `get_token_holders`, `get_token_narrative`              | Screen  |
+| **Position Deploy**     | `get_active_bin`, `deploy_position`                                       | Screen  |
+| **Position Management** | `get_my_positions`, `get_position_pnl`, `claim_fees`, `close_position`    | Manager |
+| **Wallet**              | `get_wallet_balance`, `swap_token`                                        | Both    |
+| **Learning**            | `add_lesson`, `list_lessons`, `clear_lessons`, `pin_lesson`               | Both    |
+| **Memory**              | `get_pool_memory`, `add_pool_note`                                        | Both    |
+| **Smart Wallets**       | `add_smart_wallet`, `check_smart_wallets_on_pool`                         | Screen  |
+| **Strategy**            | `add_strategy`, `list_strategies`, `set_active_strategy`                  | Both    |
+| **Config**              | `update_config`, `self_update`                                            | General |
+| **Blacklist**           | `add_to_blacklist`, `block_deployer`                                      | Both    |
+| **Decisions**           | `get_recent_decisions`                                                    | General |
+| **Performance**         | `get_performance_history`                                                 | General |
+| **Study**               | `study_top_lpers`, `get_top_lpers`                                        | Screen  |
 
 ---
 

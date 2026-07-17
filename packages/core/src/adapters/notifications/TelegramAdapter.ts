@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { log } from '../../shared/logger.js';
 import { configPath } from '../../shared/constants.js';
+import { notify } from './NotificationSink.js';
 
 const USER_CONFIG_PATH = configPath('user-config.json');
 
@@ -164,6 +165,7 @@ async function postTelegramRaw(method: string, body: Record<string, unknown>): P
 }
 
 export async function sendMessage(text: string): Promise<TelegramApiResponse | null> {
+  notify('message', '💬', text.slice(0, 80), text);
   if (!TOKEN || !chatId) return null;
   return postTelegram('sendMessage', { text: String(text).slice(0, 4096) });
 }
@@ -183,6 +185,10 @@ export async function sendMessageWithButtons(text: string, inlineKeyboard: Inlin
 }
 
 export async function sendHTML(html: string): Promise<TelegramApiResponse | null> {
+  // Note: do NOT call notify() here — each notify* wrapper (notifyDeploy, notifyClose, etc.)
+  // already calls notify() with a typed, structured payload before invoking sendHTML.
+  // Adding a generic sink call here would double-emit structured notifications and
+  // also emit briefings, live messages, and other HTML that are not individual alerts.
   if (!TOKEN || !chatId) return null;
   return postTelegram('sendMessage', { text: html.slice(0, 4096), parse_mode: 'HTML' });
 }
@@ -525,6 +531,8 @@ export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, 
     ? `Range cover: ${fmtPct(rangeCoverage.downside_pct)} downside | ${fmtPct(rangeCoverage.upside_pct)} upside | ${fmtPct(rangeCoverage.width_pct)} total\n`
     : '';
   const poolStr = binStep || baseFee ? `Bin step: ${binStep ?? '?'}  |  Base fee: ${baseFee != null ? baseFee + '%' : '?'}\n` : '';
+  const body = `Amount: ${amountSol} SOL\n${priceStr}${coverageStr}${poolStr}Position: ${position?.slice(0, 8)}... | Tx: ${tx?.slice(0, 16)}...`;
+  notify('deploy', '✅', `Deployed ${pair}`, body);
   await sendHTML(
     `✅ <b>Deployed</b> ${pair}\n` +
       `Amount: ${amountSol} SOL\n` +
@@ -545,7 +553,9 @@ interface NotifyCloseArgs {
 export async function notifyClose({ pair, pnlUsd, pnlPct }: NotifyCloseArgs): Promise<void> {
   if (hasActiveLiveMessage()) return;
   const sign = pnlUsd >= 0 ? '+' : '';
-  await sendHTML(`🔒 <b>Closed</b> ${pair}\n` + `PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)`);
+  const body = `PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)`;
+  notify('close', '🔒', `Closed ${pair}`, body);
+  await sendHTML(`🔒 <b>Closed</b> ${pair}\n` + body);
 }
 
 interface NotifySwapArgs {
@@ -558,6 +568,8 @@ interface NotifySwapArgs {
 
 export async function notifySwap({ inputSymbol, outputSymbol, amountIn, amountOut, tx }: NotifySwapArgs): Promise<void> {
   if (hasActiveLiveMessage()) return;
+  const body = `In: ${amountIn ?? '?'} | Out: ${amountOut ?? '?'} | Tx: ${tx?.slice(0, 16)}...`;
+  notify('swap', '🔄', `Swapped ${inputSymbol} → ${outputSymbol}`, body);
   await sendHTML(
     `🔄 <b>Swapped</b> ${inputSymbol} → ${outputSymbol}\n` +
       `In: ${amountIn ?? '?'} | Out: ${amountOut ?? '?'}\n` +
@@ -572,7 +584,9 @@ interface NotifyOutOfRangeArgs {
 
 export async function notifyOutOfRange({ pair, minutesOOR }: NotifyOutOfRangeArgs): Promise<void> {
   if (hasActiveLiveMessage()) return;
-  await sendHTML(`⚠️ <b>Out of Range</b> ${pair}\n` + `Been OOR for ${minutesOOR} minutes`);
+  const body = `Been OOR for ${minutesOOR} minutes`;
+  notify('oor', '⚠️', `Out of Range: ${pair}`, body);
+  await sendHTML(`⚠️ <b>Out of Range</b> ${pair}\n` + body);
 }
 
 function sleep(ms: number): Promise<void> {

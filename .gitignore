@@ -40,3 +40,12 @@ data/
 # Claude Code runtime lock
 .claude/scheduled_tasks.lock
 
+# Tauri / Rust build artifacts
+# skipp during development
+apps/desktop
+
+apps/desktop/src-tauri/target/
+
+# Desktop notification sink (runtime data, not source)
+data/notifications.jsonl
+data/notifications.jsonl.old
