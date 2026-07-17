@@ -1731,31 +1731,8 @@ export async function closePosition({ position_address, reason }: { position_add
     const claimTxHashes: string[] = [];
     const closeTxHashes: string[] = [];
 
-    const recentlyClaimed = tracked?.last_claim_at && Date.now() - new Date(tracked.last_claim_at).getTime() < 60_000;
-    try {
-      if (recentlyClaimed) {
-        log(
-          'close',
-          `Step 1: Skipping claim — fees already claimed ${Math.round((Date.now() - new Date(tracked!.last_claim_at!).getTime()) / 1000)}s ago`,
-        );
-      } else {
-        log('close', `Step 1: Claiming fees for ${position_address}`);
-        const positionData = await pool.getPosition(positionPubKey);
-        const claimTxs = await pool.claimSwapFee({
-          owner: wallet.publicKey,
-          position: positionData,
-        });
-        if (claimTxs && claimTxs.length > 0) {
-          for (const tx of claimTxs) {
-            const claimHash = await sendAndConfirmTransaction(getConnection(), tx, [wallet]);
-            claimTxHashes.push(claimHash);
-          }
-          log('close', `Step 1 OK (claim only): ${claimTxHashes.join(', ')}`);
-        }
-      }
-    } catch (e: any) {
-      log('close_warn', `Step 1 (Claim) failed or nothing to claim: ${e.message}`);
-    }
+    // Fees are claimed atomically by removeLiquidity with shouldClaimAndClose: true below.
+    // No separate claimSwapFee call needed — the relay path already uses this pattern.
 
     let hasLiquidity = false;
     let closeFromBinId = -887272;
