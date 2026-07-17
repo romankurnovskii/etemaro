@@ -1,6 +1,6 @@
 # Agent Documentation System
 
-This repository uses local agent rules defined in `AGENTS.local.md`.
+First read `AGENTS.local.md` once you started every session.
 
 For instructions, guidelines, and project rules, please read:
 
