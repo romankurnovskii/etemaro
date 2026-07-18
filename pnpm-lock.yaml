@@ -124,10 +124,10 @@ importers:
 
   packages/cli:
     dependencies:
-      '@meridian/core':
+      '@etemaro/core':
         specifier: workspace:*
         version: link:../core
-      '@meridian/daemon':
+      '@etemaro/daemon':
         specifier: workspace:*
         version: link:../daemon
       dotenv:
@@ -189,7 +189,7 @@ importers:
 
   packages/daemon:
     dependencies:
-      '@meridian/core':
+      '@etemaro/core':
         specifier: workspace:*
         version: link:../core
       dotenv:

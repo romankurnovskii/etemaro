@@ -5,7 +5,7 @@ import path from 'node:path';
 import { reconcileTrackedPositions, getTrackedPositions, trackPosition, syncOpenPositions, __setStateFilePath } from './state.js';
 
 // Isolate the test from the real data/state.json via the test seam.
-const TMP_STATE = path.join(os.tmpdir(), `meridian-state-test-${process.pid}.json`);
+const TMP_STATE = path.join(os.tmpdir(), `etemaro-state-test-${process.pid}.json`);
 
 describe('reconcileTrackedPositions', () => {
   beforeAll(() => {

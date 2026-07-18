@@ -1,10 +1,10 @@
 {
-  "name": "@meridian/cli",
+  "name": "@etemaro/cli",
   "version": "2.0.0",
   "type": "module",
   "main": "dist/Cli.js",
   "bin": {
-    "meridian": "dist/Cli.js"
+    "etemaro": "dist/Cli.js"
   },
   "scripts": {
     "build": "tsc",
@@ -12,8 +12,8 @@
     "start": "node --import tsx src/Cli.ts"
   },
   "dependencies": {
-    "@meridian/core": "workspace:*",
-    "@meridian/daemon": "workspace:*",
+    "@etemaro/core": "workspace:*",
+    "@etemaro/daemon": "workspace:*",
     "dotenv": "^17.3.1"
   },
   "devDependencies": {

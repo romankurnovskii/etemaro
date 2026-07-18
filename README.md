@@ -1,8 +1,10 @@
-# Meridian
+# Etemaro
 
 **Autonomous Meteora DLMM liquidity management agent for Solana, powered by LLMs.**
 
-Meridian runs continuous screening and management cycles, deploying capital into high-quality Meteora DLMM pools and closing positions based on live PnL, yield, and range data.
+Etemaro runs continuous screening and management cycles, deploying capital into high-quality Meteora DLMM pools and closing positions based on live PnL, yield, and range data.
+
+*Note: This project was fork-renamed from Meridian due to a complete architecture redesign, scalability improvements, and lack of active support in the main repository. Etemaro remains fully compatible with shared Meridian agents, using the same public key to share collective lessons.*
 
 ---
 
@@ -70,7 +72,7 @@ docker compose -f docker-compose.prod.yml up -d --build --force-recreate --remov
 
 ## 🖥️ Desktop App
 
-![Desktop](apps/desktop/assets/desktop-1.png)
+![Desktop](assets/desktop-1.png)
 
 The **DesktopApp** is a cross-platform, free desktop application currently in active development — with a planned release on **September 1st**.
 

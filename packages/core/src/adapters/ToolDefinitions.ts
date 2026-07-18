@@ -641,7 +641,7 @@ Returns pool address, name, bin_step, fee %, TVL, volume, and token mints.`,
 Use this when the user asks "who are the top LPers in this pool?" or wants to
 know how others are performing in a specific pool without saving lessons.
 
-Returns: aggregate LPAgent-backed top-LPer patterns from the Agent Meridian
+Returns: aggregate LPAgent-backed top-LPer patterns from the Agent Etemaro
 \`/top-lp/:pool\` endpoint. Data is cached server-side and refreshed on a 30m cadence.`,
       parameters: {
         type: 'object',
@@ -666,7 +666,7 @@ Returns: aggregate LPAgent-backed top-LPer patterns from the Agent Meridian
       name: 'study_top_lpers',
       description: `Fetch and analyze top open LPers for a pool to learn from their behaviour.
 Returns LPAgent-backed owner aggregates and historical style/range samples from
-the Agent Meridian \`/study-top-lp/:pool\` endpoint.
+the Agent Etemaro \`/study-top-lp/:pool\` endpoint.
 
 Use this before deploying into a new pool to:
 - See if top performers are scalpers (< 1h holds) or long-term holders.

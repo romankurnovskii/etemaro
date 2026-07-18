@@ -1,5 +1,5 @@
 /**
- * Meridian Daemon — the main autonomous agent entry point.
+ * Etemaro Daemon — the main autonomous agent entry point.
  *
  * Wraps all cycle management (management, screening, health check, briefing),
  * PnL polling, deterministic close rules, REPL, Telegram handler, and graceful
@@ -39,7 +39,7 @@ import {
   domain,
   token,
   tools,
-} from '@meridian/core';
+} from '@etemaro/core';
 // These will be injected or resolved at runtime by the adapter layer.
 
 export interface DaemonAdapters {

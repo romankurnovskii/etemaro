@@ -1,6 +1,6 @@
-# Meridian — Configuration Guide
+# Etemaro — Configuration Guide
 
-Meridian uses a single-source configuration system: every field MUST be present in `user-config.json`. No fallback defaults exist at the code level.
+Etemaro uses a single-source configuration system: every field MUST be present in `user-config.json`. No fallback defaults exist at the code level.
 
 ```
                   ┌────────────────────────┐

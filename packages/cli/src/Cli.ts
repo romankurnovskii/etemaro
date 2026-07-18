@@ -1,8 +1,8 @@
 /**
- * Meridian CLI — one-shot command-line interface.
+ * Etemaro CLI — one-shot command-line interface.
  *
  * Exposes all tools as subcommands with JSON output. Writes a SKILL.md
- * to ~/.meridian/ for agent discovery. All adapter dependencies are
+ * to ~/.etemaro/ for agent discovery. All adapter dependencies are
  * injected for testability.
  */
 
@@ -27,8 +27,8 @@ import {
   briefing,
   hivemind,
   tools,
-} from '@meridian/core';
-import { Daemon } from '@meridian/daemon';
+} from '@etemaro/core';
+import { Daemon } from '@etemaro/daemon';
 
 // ─── Adapter Imports ────────────────────────────────────────────
 
@@ -84,178 +84,178 @@ export interface CliAdapters {
 
 // ─── SKILL.md ───────────────────────────────────────────────────
 
-const SKILL_MD = `# meridian — Solana DLMM LP Agent CLI
+const SKILL_MD = `# etemaro — Solana DLMM LP Agent CLI
 
-Data dir: ~/.meridian/
+Data dir: ~/.etemaro/
 
 ## Commands
 
-### meridian balance
+### etemaro balance
 Returns wallet SOL and token balances.
 \`\`\`
 Output: { wallet, sol, sol_usd, usdc, tokens: [{mint, symbol, balance, usd_value}], total_usd }
 \`\`\`
 
-### meridian positions
+### etemaro positions
 Returns all open DLMM positions.
 \`\`\`
 Output: { positions: [{position, pool, pair, in_range, age_minutes, ...}], total_positions }
 \`\`\`
 
-### meridian pnl <position_address>
+### etemaro pnl <position_address>
 Returns PnL for a specific position.
 \`\`\`
 Output: { pnl_pct, pnl_usd, unclaimed_fee_usd, all_time_fees_usd, current_value_usd, lower_bin, upper_bin, active_bin }
 \`\`\`
 
-### meridian screen [--dry-run] [--silent]
+### etemaro screen [--dry-run] [--silent]
 Runs one AI screening cycle to find and deploy new positions.
 \`\`\`
 Output: { done: true, report: "..." }
 \`\`\`
 
-### meridian manage [--dry-run] [--silent]
+### etemaro manage [--dry-run] [--silent]
 Runs one AI management cycle over open positions.
 \`\`\`
 Output: { done: true, report: "..." }
 \`\`\`
 
-### meridian deploy --pool <addr> --amount <sol> [--bins-below 69] [--bins-above 0] [--strategy bid_ask|spot] [--dry-run]
+### etemaro deploy --pool <addr> --amount <sol> [--bins-below 69] [--bins-above 0] [--strategy bid_ask|spot] [--dry-run]
 Deploys a new LP position. All safety checks apply.
 \`\`\`
 Output: { success, position, pool_name, txs, price_range, bin_step }
 \`\`\`
 
-### meridian claim --position <addr>
+### etemaro claim --position <addr>
 Claims accumulated swap fees for a position.
 \`\`\`
 Output: { success, position, txs, base_mint }
 \`\`\`
 
-### meridian close --position <addr> [--skip-swap] [--dry-run]
+### etemaro close --position <addr> [--skip-swap] [--dry-run]
 Closes a position. Auto-swaps base token to SOL unless --skip-swap.
 \`\`\`
 Output: { success, pnl_pct, pnl_usd, txs, base_mint }
 \`\`\`
 
-### meridian swap --from <mint> --to <mint> --amount <n> [--dry-run]
+### etemaro swap --from <mint> --to <mint> --amount <n> [--dry-run]
 Swaps tokens via Jupiter. Use "SOL" as mint shorthand.
 \`\`\`
 Output: { success, tx, input_amount, output_amount }
 \`\`\`
 
-### meridian candidates [--limit 5]
+### etemaro candidates [--limit 5]
 Returns top pool candidates fully enriched: pool metrics, token audit, holders, smart wallets, narrative, active bin, pool memory.
 \`\`\`
 Output: { candidates: [{name, pool, bin_step, fee_pct, volume, tvl, organic_score, active_bin, smart_wallets, token: {holders, audit, global_fees_sol, ...}, holders, narrative, pool_memory}] }
 \`\`\`
 
-### meridian study --pool <addr> [--limit 4]
+### etemaro study --pool <addr> [--limit 4]
 Studies top LPers on a pool. Returns behaviour patterns, hold times, win rates, strategies.
 \`\`\`
 Output: { pool, patterns: {top_lper_count, avg_hold_hours, avg_win_rate, ...}, lpers: [{owner, summary, positions}] }
 \`\`\`
 
-### meridian token-info --query <mint_or_symbol>
+### etemaro token-info --query <mint_or_symbol>
 Returns token audit, mcap, launchpad, price stats, fee data.
 \`\`\`
 Output: { results: [{mint, symbol, mcap, launchpad, audit, stats_1h, global_fees_sol, ...}] }
 \`\`\`
 
-### meridian token-holders --mint <addr> [--limit 20]
+### etemaro token-holders --mint <addr> [--limit 20]
 Returns holder distribution, bot %, top holder concentration.
 \`\`\`
 Output: { mint, holders, top_10_real_holders_pct, bundlers_pct_in_top_100, global_fees_sol, ... }
 \`\`\`
 
-### meridian token-narrative --mint <addr>
+### etemaro token-narrative --mint <addr>
 Returns AI-generated narrative about the token.
 \`\`\`
 Output: { mint, narrative }
 \`\`\`
 
-### meridian pool-detail --pool <addr> [--timeframe 5m]
+### etemaro pool-detail --pool <addr> [--timeframe 5m]
 Returns detailed pool metrics for a specific pool.
 \`\`\`
 Output: { pool, name, bin_step, fee_pct, volume, tvl, volatility, ... }
 \`\`\`
 
-### meridian search-pools --query <name_or_symbol> [--limit 10]
+### etemaro search-pools --query <name_or_symbol> [--limit 10]
 Searches pools by name or token symbol.
 \`\`\`
 Output: { pools: [{pool, name, bin_step, fee_pct, tvl, volume, ...}] }
 \`\`\`
 
-### meridian active-bin --pool <addr>
+### etemaro active-bin --pool <addr>
 Returns the current active bin for a pool.
 \`\`\`
 Output: { pool, binId, price }
 \`\`\`
 
-### meridian wallet-positions --wallet <addr>
+### etemaro wallet-positions --wallet <addr>
 Returns DLMM positions for any wallet address.
 \`\`\`
 Output: { wallet, positions: [...], total_positions }
 \`\`\`
 
-### meridian config get
+### etemaro config get
 Returns the full runtime config.
 
-### meridian config set <key> <value>
+### etemaro config set <key> <value>
 Updates a config key. Parses value as JSON when possible.
 \`\`\`
 Valid keys: minTvl, maxTvl, minVolume, maxPositions, deployAmountSol, managementIntervalMin, screeningIntervalMin, managementModel, screeningModel, generalModel, autoSwapAfterClaim, minClaimAmount, outOfRangeWaitMinutes
 \`\`\`
 
-### meridian lessons [--limit 50]
+### etemaro lessons [--limit 50]
 Lists all lessons from lessons.json. Shows rule, tags, pinned status, outcome, role.
 \`\`\`
 Output: { total, lessons: [{id, rule, tags, outcome, pinned, role, created_at}] }
 \`\`\`
 
-### meridian lessons add <text>
+### etemaro lessons add <text>
 Adds a manual lesson with outcome=manual, role=null (applies to all roles).
 \`\`\`
 Output: { saved: true, rule, outcome, role }
 \`\`\`
 
-### meridian pool-memory --pool <addr>
+### etemaro pool-memory --pool <addr>
 Returns deploy history for a specific pool from pool-memory.json.
 \`\`\`
 Output: { pool_address, known, name, total_deploys, win_rate, avg_pnl_pct, last_outcome, notes, history }
 \`\`\`
 
-### meridian evolve
+### etemaro evolve
 Runs evolveThresholds() over all closed position data and updates user-config.json.
 \`\`\`
 Output: { evolved, changes, rationale }
 \`\`\`
 
-### meridian blacklist add --mint <addr> --reason <text>
+### etemaro blacklist add --mint <addr> --reason <text>
 Permanently blacklists a token mint so it is never deployed into.
 \`\`\`
 Output: { blacklisted, mint, reason }
 \`\`\`
 
-### meridian blacklist list
+### etemaro blacklist list
 Lists all blacklisted token mints with reasons and timestamps.
 \`\`\`
 Output: { count, blacklist: [{mint, symbol, reason, added_at}] }
 \`\`\`
 
-### meridian performance [--limit 200]
+### etemaro performance [--limit 200]
 Shows all closed position performance history with summary stats.
 \`\`\`
 Output: { summary: { total_positions_closed, total_pnl_usd, avg_pnl_pct, win_rate_pct, total_lessons }, count, positions: [...] }
 \`\`\`
 
-### meridian discord-signals [clear]
+### etemaro discord-signals [clear]
 Shows pending Discord signal queue from the discord-listener process.
 \`\`\`
 Output: { count, pending, processed, signals: [{id, symbol, pool, author, channel, queued_at, rug_score, status}] }
 \`\`\`
 
-### meridian start [--dry-run]
+### etemaro start [--dry-run]
 Starts the autonomous agent with cron jobs (management + screening).
 
 ## Flags
@@ -279,11 +279,11 @@ function die(msg: string, extra: Record<string, unknown> = {}): never {
 
 export class Cli {
   private adapters: CliAdapters;
-  private meridianDir: string;
+  private etemaroDir: string;
 
   constructor(adapters: CliAdapters) {
     this.adapters = adapters;
-    this.meridianDir = path.join(process.env.HOME || '', '.meridian');
+    this.etemaroDir = path.join(process.env.HOME || '', '.etemaro');
   }
 
   // ─── Lifecycle ─────────────────────────────────────────────────
@@ -385,15 +385,15 @@ export class Cli {
       case 'discord-signals':
         return this.handleDiscordSignals(sub2);
       default:
-        die(`Unknown command: ${subcommand}. Run 'meridian help' for usage.`);
+        die(`Unknown command: ${subcommand}. Run 'etemaro help' for usage.`);
     }
   }
 
   // ─── SKILL.md ──────────────────────────────────────────────────
 
   private writeSkillMd(): void {
-    fs.mkdirSync(this.meridianDir, { recursive: true });
-    fs.writeFileSync(path.join(this.meridianDir, 'SKILL.md'), SKILL_MD);
+    fs.mkdirSync(this.etemaroDir, { recursive: true });
+    fs.writeFileSync(path.join(this.etemaroDir, 'SKILL.md'), SKILL_MD);
   }
 
   // ─── Command Handlers ──────────────────────────────────────────
@@ -409,7 +409,7 @@ export class Cli {
   private async handlePnl(argv: string[], flags: Record<string, any>): Promise<void> {
     const posAddr = argv.find((a, i) => !a.startsWith('-') && i > 0 && argv[i - 1] !== '--position' && a !== 'pnl');
     const positionAddress = flags.position || posAddr;
-    if (!positionAddress) die('Usage: meridian pnl <position_address>');
+    if (!positionAddress) die('Usage: etemaro pnl <position_address>');
 
     let poolAddress: string;
     const tracked = getTrackedPosition(positionAddress);
@@ -488,25 +488,25 @@ export class Cli {
 
   private async handleTokenInfo(argv: string[], flags: Record<string, any>): Promise<void> {
     const query = flags.query || flags.mint || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'token-info');
-    if (!query) die('Usage: meridian token-info --query <mint_or_symbol>');
+    if (!query) die('Usage: etemaro token-info --query <mint_or_symbol>');
     out(await this.adapters.domain.getTokenInfo({ query }));
   }
 
   private async handleTokenHolders(argv: string[], flags: Record<string, any>): Promise<void> {
     const mint = flags.mint || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'token-holders');
-    if (!mint) die('Usage: meridian token-holders --mint <addr>');
+    if (!mint) die('Usage: etemaro token-holders --mint <addr>');
     const limit = flags.limit ? parseInt(flags.limit) : 20;
     out(await this.adapters.domain.getTokenHolders({ mint, limit }));
   }
 
   private async handleTokenNarrative(argv: string[], flags: Record<string, any>): Promise<void> {
     const mint = flags.mint || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'token-narrative');
-    if (!mint) die('Usage: meridian token-narrative --mint <addr>');
+    if (!mint) die('Usage: etemaro token-narrative --mint <addr>');
     out(await this.adapters.domain.getTokenNarrative({ mint }));
   }
 
   private async handlePoolDetail(flags: Record<string, any>): Promise<void> {
-    if (!flags.pool) die('Usage: meridian pool-detail --pool <addr> [--timeframe 5m]');
+    if (!flags.pool) die('Usage: etemaro pool-detail --pool <addr> [--timeframe 5m]');
     out(
       await this.adapters.screening.getPoolDetail({
         pool_address: flags.pool,
@@ -517,24 +517,24 @@ export class Cli {
 
   private async handleSearchPools(argv: string[], flags: Record<string, any>): Promise<void> {
     const query = flags.query || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'search-pools');
-    if (!query) die('Usage: meridian search-pools --query <name_or_symbol>');
+    if (!query) die('Usage: etemaro search-pools --query <name_or_symbol>');
     const limit = flags.limit ? parseInt(flags.limit) : 10;
     out(await this.adapters.meteora.searchPools({ query, limit }));
   }
 
   private async handleActiveBin(flags: Record<string, any>): Promise<void> {
-    if (!flags.pool) die('Usage: meridian active-bin --pool <addr>');
+    if (!flags.pool) die('Usage: etemaro active-bin --pool <addr>');
     out(await this.adapters.meteora.getActiveBin({ pool_address: flags.pool }));
   }
 
   private async handleWalletPositions(argv: string[], flags: Record<string, any>): Promise<void> {
     const wallet = flags.wallet || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'wallet-positions');
-    if (!wallet) die('Usage: meridian wallet-positions --wallet <addr>');
+    if (!wallet) die('Usage: etemaro wallet-positions --wallet <addr>');
     out(await this.adapters.meteora.getWalletPositions({ wallet_address: wallet }));
   }
 
   private async handleDeploy(argv: string[], flags: Record<string, any>): Promise<void> {
-    if (!flags.pool) die('Usage: meridian deploy --pool <addr> --amount <sol>');
+    if (!flags.pool) die('Usage: etemaro deploy --pool <addr> --amount <sol>');
     const amountX = flags['amount-x'] ? parseFloat(flags['amount-x']) : undefined;
     if (!flags.amount && !amountX) die('--amount or --amount-x is required');
 
@@ -553,12 +553,12 @@ export class Cli {
   }
 
   private async handleClaim(flags: Record<string, any>): Promise<void> {
-    if (!flags.position) die('Usage: meridian claim --position <addr>');
+    if (!flags.position) die('Usage: etemaro claim --position <addr>');
     out(await this.adapters.toolExecutor.executeTool('claim_fees', { position_address: flags.position }));
   }
 
   private async handleClose(flags: Record<string, any>): Promise<void> {
-    if (!flags.position) die('Usage: meridian close --position <addr>');
+    if (!flags.position) die('Usage: etemaro close --position <addr>');
     out(
       await this.adapters.toolExecutor.executeTool('close_position', {
         position_address: flags.position,
@@ -568,7 +568,7 @@ export class Cli {
   }
 
   private async handleSwap(flags: Record<string, any>): Promise<void> {
-    if (!flags.from || !flags.to || !flags.amount) die('Usage: meridian swap --from <mint> --to <mint> --amount <n>');
+    if (!flags.from || !flags.to || !flags.amount) die('Usage: etemaro swap --from <mint> --to <mint> --amount <n>');
     out(
       await this.adapters.toolExecutor.executeTool('swap_token', {
         input_mint: flags.from,
@@ -596,7 +596,7 @@ export class Cli {
     } else if (sub2 === 'set') {
       const key = argv.filter((a) => !a.startsWith('-'))[2];
       const rawVal = argv.filter((a) => !a.startsWith('-'))[3];
-      if (!key || rawVal === undefined) die('Usage: meridian config set <key> <value>');
+      if (!key || rawVal === undefined) die('Usage: etemaro config set <key> <value>');
       let value: unknown = rawVal;
       try {
         value = JSON.parse(rawVal);
@@ -615,14 +615,14 @@ export class Cli {
   }
 
   private async handleStudy(flags: Record<string, any>): Promise<void> {
-    if (!flags.pool) die('Usage: meridian study --pool <addr> [--limit 4]');
+    if (!flags.pool) die('Usage: etemaro study --pool <addr> [--limit 4]');
     const limit = flags.limit ? parseInt(flags.limit) : 4;
     out(await this.adapters.domain.studyTopLPers({ pool_address: flags.pool, limit }));
   }
 
   private handleStart(): void {
     if (!this.adapters.daemon) die('Start command requires daemon adapter');
-    process.stderr.write('[meridian] Starting autonomous agent...\n');
+    process.stderr.write('[etemaro] Starting autonomous agent...\n');
     this.adapters.daemon.startCronJobs();
   }
 
@@ -632,7 +632,7 @@ export class Cli {
         .filter((a) => !a.startsWith('-'))
         .slice(2)
         .join(' ');
-      if (!text) die('Usage: meridian lessons add <text>');
+      if (!text) die('Usage: etemaro lessons add <text>');
       this.adapters.domain.addLesson(text, [], { pinned: false, role: null });
       out({ saved: true, rule: text, outcome: 'manual', role: null });
     } else {
@@ -642,7 +642,7 @@ export class Cli {
   }
 
   private handlePoolMemory(flags: Record<string, any>): void {
-    if (!flags.pool) die('Usage: meridian pool-memory --pool <addr>');
+    if (!flags.pool) die('Usage: etemaro pool-memory --pool <addr>');
     out(this.adapters.domain.getPoolMemory({ pool_address: flags.pool }));
   }
 
@@ -666,7 +666,7 @@ export class Cli {
 
   private handleBlacklist(argv: string[], sub2: string | undefined, flags: Record<string, any>): void {
     if (sub2 === 'add') {
-      if (!flags.mint) die('Usage: meridian blacklist add --mint <addr> --reason <text>');
+      if (!flags.mint) die('Usage: etemaro blacklist add --mint <addr> --reason <text>');
       if (!flags.reason) die('--reason is required');
       out(this.adapters.domain.addToBlacklist({ mint: flags.mint, reason: flags.reason }));
     } else if (sub2 === 'list' || !sub2) {

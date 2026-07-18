@@ -1,9 +1,9 @@
 services:
-  meridian:
+  etemaro:
     build:
       context: .
       dockerfile: Dockerfile
-    image: meridian:dev
+    image: etemaro:dev
     command: pnpm run dev
     env_file: .env
     volumes:
@@ -14,4 +14,4 @@ services:
 
 networks:
   default:
-    name: meridian-dev
+    name: etemaro-dev

@@ -5,7 +5,7 @@
   "description": "Autonomous DLMM LP agent for Meteora on Solana",
   "main": "packages/daemon/dist/Daemon.js",
   "bin": {
-    "meridian": "packages/cli/dist/Cli.js"
+    "etemaro": "packages/cli/dist/Cli.js"
   },
   "scripts": {
     "build": "pnpm -r run build",
@@ -28,10 +28,10 @@
     "test:coverage": "vitest run --coverage",
     "lint": "pnpm -r run typecheck",
     "pm2:start": "pm2 start config/ecosystem.config.cjs",
-    "pm2:restart": "pm2 restart meridian --update-env",
-    "pm2:logs": "pm2 logs meridian --lines 100",
-    "desktop": "pnpm --filter @meridian/desktop tauri dev",
-    "desktop:build": "pnpm --filter @meridian/desktop tauri build",
+    "pm2:restart": "pm2 restart etemaro --update-env",
+    "pm2:logs": "pm2 logs etemaro --lines 100",
+    "desktop": "pnpm --filter @etemaro/desktop tauri dev",
+    "desktop:build": "pnpm --filter @etemaro/desktop tauri build",
     "postinstall": "node scripts/patch-anchor.js"
   },
   "knip": {

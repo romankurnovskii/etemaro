@@ -8,11 +8,11 @@ interface RetryOptions {
   perAttemptTimeoutMs?: number;
 }
 
-interface AgentMeridianRequestOptions extends Omit<RequestInit, 'signal'> {
+interface AgentEtemaroRequestOptions extends Omit<RequestInit, 'signal'> {
   retry?: RetryOptions;
 }
 
-interface AgentMeridianError extends Error {
+interface AgentEtemaroError extends Error {
   status?: number;
   payload?: Record<string, unknown>;
   retryAfter?: string | null;
@@ -43,7 +43,7 @@ function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
 }
 
-function retryDelayMs(error: AgentMeridianError, attempt: number): number {
+function retryDelayMs(error: AgentEtemaroError, attempt: number): number {
   const retryAfter = Number(error?.retryAfter);
   if (Number.isFinite(retryAfter) && retryAfter > 0) {
     return Math.min(retryAfter * 1000, 10_000);
@@ -83,7 +83,7 @@ async function agentMeridianJsonOnce(pathname: string, options: RequestInit = {}
     payload = { raw: text };
   }
   if (!res.ok) {
-    const error: AgentMeridianError = new Error((payload?.error as string) || `${pathname} ${res.status}`);
+    const error: AgentEtemaroError = new Error((payload?.error as string) || `${pathname} ${res.status}`);
     error.status = res.status;
     error.payload = payload;
     error.retryAfter = res.headers.get('retry-after');
@@ -94,7 +94,7 @@ async function agentMeridianJsonOnce(pathname: string, options: RequestInit = {}
 
 // ─── Public API ────────────────────────────────────────────────
 
-export async function agentMeridianJson(pathname: string, options: AgentMeridianRequestOptions = {}): Promise<Record<string, unknown>> {
+export async function agentMeridianJson(pathname: string, options: AgentEtemaroRequestOptions = {}): Promise<Record<string, unknown>> {
   const { retry, ...fetchOptions } = options;
   if (!retry) {
     return agentMeridianJsonOnce(pathname, fetchOptions);
@@ -104,7 +104,7 @@ export async function agentMeridianJson(pathname: string, options: AgentMeridian
   const maxAttempts = Number(retry.maxAttempts || 10);
   const startedAt = Date.now();
   let attempt = 0;
-  let lastError: AgentMeridianError | null = null;
+  let lastError: AgentEtemaroError | null = null;
 
   while (Date.now() - startedAt < maxElapsedMs && attempt < maxAttempts) {
     const elapsedMs = Date.now() - startedAt;
@@ -112,7 +112,7 @@ export async function agentMeridianJson(pathname: string, options: AgentMeridian
     try {
       return await agentMeridianJsonOnce(pathname, fetchOptions, Math.min(Number(retry.perAttemptTimeoutMs || 10_000), remainingMs));
     } catch (error) {
-      lastError = error as AgentMeridianError;
+      lastError = error as AgentEtemaroError;
       const status = Number(lastError?.status || 0);
       if (!isRetryableStatus(status) || attempt >= maxAttempts - 1) {
         throw error;
