@@ -23,6 +23,7 @@ CONTEXT.md
 dev-blocklist.json
 # Local agent documentation
 .agents/rules/*.local.md
+.kilo/
 
 # Build and IDE files
 logs/

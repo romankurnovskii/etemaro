@@ -385,6 +385,7 @@ export async function agentLoop(
         throw new Error(`API returned no choices: ${response.error?.message || JSON.stringify(response)}`);
       }
       const msg = response.choices[0].message;
+      log('llm', `Model ${usedModel} response: ${JSON.stringify(msg).slice(0, 4000)}`);
       const invalidToolArgErrors = new Map<string, string>();
       // Keep tool-call history API-valid, but never execute unrecoverable args.
       if (msg.tool_calls) {
@@ -420,6 +421,7 @@ export async function agentLoop(
           noToolRetryCount += 1;
           messages.pop();
           log('agent', `Rejected no-tool final answer (${noToolRetryCount}/2) for tool-required request`);
+          log('agent', `No-tool content was: ${msg.content?.slice(0, 1000)}`);
           if (noToolRetryCount >= 2) {
             return {
               content: "I couldn't complete that reliably because no tool call was made. Please retry after checking the logs.",
