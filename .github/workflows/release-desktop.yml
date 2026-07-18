@@ -38,7 +38,7 @@ jobs:
           token: ${{ secrets.SUBMODULE_PAT }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -81,7 +81,7 @@ jobs:
           token: ${{ secrets.TOKEN_PR }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -121,7 +121,7 @@ jobs:
           token: ${{ secrets.TOKEN_PR }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
