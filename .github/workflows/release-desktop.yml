@@ -67,7 +67,7 @@ jobs:
         run: pnpm run build
 
       - name: Build Tauri App
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
@@ -108,7 +108,7 @@ jobs:
         run: pnpm run build
 
       - name: Build Tauri App
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
@@ -153,7 +153,7 @@ jobs:
         run: pnpm run build
 
       - name: Build Tauri App
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
