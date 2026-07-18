@@ -6,21 +6,30 @@ on:
       - 'v*'
 
 jobs:
-  build:
+  create_release:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'macos-latest'
-            args: '--target universal-apple-darwin'
-          - platform: 'windows-latest'
-            args: ''
-          - platform: 'ubuntu-22.04'
-            args: ''
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: 'Etemaro Desktop ${{ github.ref_name }}'
+          body: |
+            Release binaries for Etemaro Desktop version ${{ github.ref_name }}.
+          draft: true
+          prerelease: false
 
-    runs-on: ${{ matrix.platform }}
+  build_macos:
+    needs: create_release
+    permissions:
+      contents: write
+    continue-on-error: true
+    runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -31,7 +40,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install pnpm
         uses: pnpm/action-setup@v3
@@ -41,10 +50,90 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
 
-      - name: Install Linux dependencies (Ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: Install frontend dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm run build
+
+      - name: Build Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          TOKEN_PR: ${{ secrets.TOKEN_PR }}
+        with:
+          releaseId: ${{ needs.create_release.outputs.upload_url }}
+          args: '--target universal-apple-darwin'
+          projectPath: './apps/desktop'
+
+  build_windows:
+    needs: create_release
+    permissions:
+      contents: write
+    continue-on-error: true
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+          token: ${{ secrets.TOKEN_PR }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm run build
+
+      - name: Build Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          TOKEN_PR: ${{ secrets.TOKEN_PR }}
+        with:
+          releaseId: ${{ needs.create_release.outputs.upload_url }}
+          projectPath: './apps/desktop'
+
+  build_linux:
+    needs: create_release
+    permissions:
+      contents: write
+    continue-on-error: true
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+          token: ${{ secrets.TOKEN_PR }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
@@ -55,22 +144,106 @@ jobs:
       - name: Build frontend
         run: pnpm run build
 
-      - name: Build and Publish Tauri Desktop App
+      - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Apple signing keys (omit or leave empty if unsigned macOS builds are preferred)
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          TOKEN_PR: ${{ secrets.TOKEN_PR }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Etemaro Desktop ${{ github.ref_name }}'
-          releaseBody: 'Release binaries for Etemaro Desktop version ${{ github.ref_name }}.'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
+          releaseId: ${{ needs.create_release.outputs.upload_url }}
           projectPath: './apps/desktop'
+
+  aggregate_results:
+    needs: [create_release, build_macos, build_windows, build_linux]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Evaluate workflow result
+        run: |
+          set +e
+          RESULT="success"
+
+          if [ "${{ needs.build_macos.result }}" != "success" ] && [ "${{ needs.build_macos.result }}" != "skipped" ]; then
+            echo "macOS build failed"
+            RESULT="failure"
+          fi
+
+          if [ "${{ needs.build_windows.result }}" != "success" ] && [ "${{ needs.build_windows.result }}" != "skipped" ]; then
+            echo "Windows build failed"
+            RESULT="failure"
+          fi
+
+          if [ "${{ needs.build_linux.result }}" != "success" ] && [ "${{ needs.build_linux.result }}" != "skipped" ]; then
+            echo "Linux build failed"
+            RESULT="failure"
+          fi
+
+          if [ "$RESULT" = "success" ]; then
+            echo "At least one platform succeeded"
+            exit 0
+          else
+            echo "All platforms failed"
+            exit 1
+          fi
+
+      - name: Update release body
+        if: needs.create_release.result == 'success'
+        env:
+          MACOS_STATUS: ${{ needs.build_macos.result }}
+          WINDOWS_STATUS: ${{ needs.build_windows.result }}
+          LINUX_STATUS: ${{ needs.build_linux.result }}
+        run: |
+          BODY="Release binaries for Etemaro Desktop version ${{ github.ref_name }}.\n\n"
+
+          PLATFORMS=""
+          WARNINGS=""
+
+          if [ "$MACOS_STATUS" = "success" ]; then
+            PLATFORMS="$PLATFORMS, macOS"
+          fi
+          if [ "$WINDOWS_STATUS" = "success" ]; then
+            PLATFORMS="$PLATFORMS, Windows"
+          fi
+          if [ "$LINUX_STATUS" = "success" ]; then
+            PLATFORMS="$PLATFORMS, Linux"
+          fi
+
+          if [ -n "$PLATFORMS" ]; then
+            BODY="${BODY}Platforms Built: ${PLATFORMS#,}\n"
+          else
+            BODY="${BODY}Platforms Built: None\n"
+          fi
+
+          if [ "$MACOS_STATUS" = "failure" ]; then
+            WARNINGS="$WARNINGS- ⚠️ macOS build failed\n"
+          fi
+          if [ "$WINDOWS_STATUS" = "failure" ]; then
+            WARNINGS="$WARNINGS- ⚠️ Windows build failed\n"
+          fi
+          if [ "$LINUX_STATUS" = "failure" ]; then
+            WARNINGS="$WARNINGS- ⚠️ Linux build failed\n"
+          fi
+
+          if [ -n "$WARNINGS" ]; then
+            BODY="${BODY}\nWarnings:\n$WARNINGS"
+          fi
+
+          echo "$BODY" >> release_body.txt
+
+      - name: Publish release update
+        if: needs.create_release.result == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('release_body.txt', 'utf8');
+
+            github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id,
+              body: body
+            }).catch(() => {
+              console.log('Release update skipped');
+            });
