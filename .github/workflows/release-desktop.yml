@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_id: ${{ steps.create_release.outputs.id }}
     steps:
       - name: Create Release
         id: create_release
@@ -71,7 +72,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
-          releaseId: ${{ needs.create_release.outputs.upload_url }}
+          releaseId: ${{ needs.create_release.outputs.release_id }}
           args: '--target universal-apple-darwin'
           projectPath: './apps/desktop'
 
@@ -250,8 +251,8 @@ jobs:
             github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              release_id: context.payload.release.id,
+              release_id: '${{ needs.create_release.outputs.release_id }}',
               body: body
-            }).catch(() => {
-              console.log('Release update skipped');
+            }).catch((e) => {
+              console.log('Release update skipped:', e.message);
             });
