@@ -9,10 +9,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@meteora-ag/dlmm": "1.9.4",
+    "@meteora-ag/dlmm": "1.9.13",
     "@solana/web3.js": "^1.95.0",
     "bn.js": "^5.2.1",
-    "bs58": "^5.0.0",
+    "bs58": "^6.0.0",
     "dotenv": "^17.3.1",
     "jsonrepair": "^3.13.3",
     "node-cron": "^3.0.3",
@@ -21,8 +21,8 @@
   },
   "devDependencies": {
     "@types/bn.js": "^5.2.0",
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.1.1",
     "@types/node-cron": "^3.0.11",
-    "typescript": "^5.7.0"
+    "typescript": "^7.0.2"
   }
 }
