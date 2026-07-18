@@ -22,7 +22,6 @@ context.md
 CONTEXT.md
 dev-blocklist.json
 # Local agent documentation
-AGENTS.local.md
 .agents/rules/*.local.md
 
 # Build and IDE files
