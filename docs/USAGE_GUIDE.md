@@ -1,6 +1,6 @@
-# Meridian — Usage Guide
+# Etemaro — Usage Guide
 
-> **How to run and operate Meridian.** For the detailed data-flow diagrams (screening, management, agent loop, lifecycle, tool safety, external integrations), see [FULL_FLOW.md](FULL_FLOW.md). For config fields see [CONFIGURATION.md](CONFIGURATION.md), for collective learning see [HIVEMIND.md](HIVEMIND.md), and for the code layout see [ARCHITECTURE.md](ARCHITECTURE.md).
+> **How to run and operate Etemaro.** For the detailed data-flow diagrams (screening, management, agent loop, lifecycle, tool safety, external integrations), see [FULL_FLOW.md](FULL_FLOW.md). For config fields see [CONFIGURATION.md](CONFIGURATION.md), for collective learning see [HIVEMIND.md](HIVEMIND.md), and for the code layout see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
@@ -49,8 +49,8 @@ The agent loop, role-based tool access, and tool-execution safety checks are doc
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/yunus-0x/meridian
-cd meridian
+git clone https://github.com/romankurnovskii/etemaro
+cd etemaro
 npm install
 
 # 2. Run the interactive wizard (creates .env + user-config.json)
@@ -118,7 +118,7 @@ claude              # Start Claude Code in repo dir
 /candidates         # Enriched candidate research
 ```
 
-### The Decision Flow — When Does Meridian Deploy?
+### The Decision Flow — When Does Etemaro Deploy?
 
 ```
 Cron fires screening cycle
@@ -136,7 +136,7 @@ Cron fires screening cycle
               └── deploy_position() → trackPosition() → Telegram notify
 ```
 
-### The Decision Flow — When Does Meridian Close?
+### The Decision Flow — When Does Etemaro Close?
 
 ```
 Cron fires management cycle
@@ -170,7 +170,7 @@ Cron fires management cycle
 | List positions         | `npm run positions`                                          |
 | Deploy manually        | `npm run cli deploy -- --pool <addr> --amount 0.5 --dry-run` |
 | Close manually         | `npm run cli close -- --position <addr> --dry-run`           |
-| Remote control         | Telegram `/positions`, `/close`, `/screen`                   |
+| Remote control         | Telegram`/positions`, `/close`, `/screen`                    |
 | Learn from history     | `npm run lessons`                                            |
 | Auto-evolve thresholds | `npm run evolve`                                             |
-| Pull shared lessons    | Telegram `/hive pull` (see [HIVEMIND.md](HIVEMIND.md))       |
+| Pull shared lessons    | Telegram`/hive pull` (see [HIVEMIND.md](HIVEMIND.md))        |

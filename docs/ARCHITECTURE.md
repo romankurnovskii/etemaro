@@ -1,4 +1,4 @@
-# Meridian — Architecture Guide
+# Etemaro — Architecture Guide
 
 ## Codebase Organization (Hexagonal Design)
 
@@ -44,7 +44,7 @@ packages/
         TelegramAdapter.ts   # Telegram bot interaction & notification handler
       external/
         HivemindAdapter.ts   # HiveMind collective intelligence agent sync
-        AgentMeridianClient.ts # Agent Meridian API client
+        AgentMeridianClient.ts # Agent Etemaro API client
         GmgnClient.ts        # GMGN token tracking API client
       BriefingAdapter.ts     # Daily HTML/text briefing generator
       PnLAdapter.ts          # Closed positions PnL tracker
@@ -74,7 +74,7 @@ packages/
 
 ## The ReAct Loop & Tools Logic
 
-Meridian relies on a **ReAct loop** (`agent-loop.ts`) to let the LLM autonomously inspect live data and call tools.
+Etemaro relies on a **ReAct loop** (`agent-loop.ts`) to let the LLM autonomously inspect live data and call tools.
 
 ### 1. Tool Definitions (`ToolDefinitions.ts`)
 

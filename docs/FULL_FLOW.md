@@ -1,6 +1,6 @@
-# Meridian — Full Application Flow
+# Etemaro — Full Application Flow
 
-> **Meridian** is an autonomous Meteora DLMM liquidity management agent for Solana, powered by LLMs. It runs continuous screening and management cycles, deploying capital into high-quality Meteora DLMM pools and closing positions based on live PnL, yield, and range data.
+> **Etemaro** is an autonomous Meteora DLMM liquidity management agent for Solana, powered by LLMs. It runs continuous screening and management cycles, deploying capital into high-quality Meteora DLMM pools and closing positions based on live PnL, yield, and range data.
 >
 > This is the **canonical flow reference** (architecture, startup, screening/management flows, learning, integrations). For day-to-day operation and commands, see [USAGE_GUIDE.md](USAGE_GUIDE.md). For config fields see [CONFIGURATION.md](CONFIGURATION.md); for HiveMind shared learning see [HIVEMIND.md](HIVEMIND.md).
 
@@ -190,7 +190,7 @@ sequenceDiagram
     participant Telegram as TelegramAdapter
     participant Cron as Cron Scheduler
 
-    User->>CLI: npm start / meridian start
+    User->>CLI: npm start / etemaro start
     CLI->>Config: loadConfig()
     Note right of Config: Reads user-config.json<br/>Reads .env (secrets)<br/>Merges with defaults via Zod schema
 
@@ -273,7 +273,7 @@ graph TD
 
 ## 5. The Agent Loop (ReAct)
 
-The core of Meridian is a **ReAct (Reason + Act) loop** — the LLM reasons over live data, calls tools, observes results, and repeats until it produces a final answer.
+The core of Etemaro is a **ReAct (Reason + Act) loop** — the LLM reasons over live data, calls tools, observes results, and repeats until it produces a final answer.
 
 ```mermaid
 sequenceDiagram
@@ -663,7 +663,7 @@ graph TB
         JUPITER_API["Jupiter API<br/>(token audit, swaps)"]
         GMGN_API["GMGN API<br/>(smart wallet data)"]
         LP_AGENT["LPAgent API<br/>(top LPer study)"]
-        AGENT_MERIDIAN["Agent Meridian API<br/>(HiveMind sync)"]
+        AGENT_ETEMARO["Agent Etemaro API<br/>(HiveMind sync)"]
     end
 
     subgraph "Internal"
@@ -684,7 +684,7 @@ graph TB
     WALLET_ADV --> JUPITER_API
     TOKEN_ADV --> JUPITER_API
     STUDY_ADV --> LP_AGENT
-    HIVE_ADV --> AGENT_MERIDIAN
+    HIVE_ADV --> AGENT_ETEMARO
 ```
 
 ### Discord Signal Pipeline
@@ -723,7 +723,7 @@ graph TD
         T4["Free-form chat"]
     end
 
-    subgraph "CLI (meridian <cmd>)"
+    subgraph "CLI (etemaro <cmd>)"
         C1["Direct tool invocation"]
         C2["JSON output for scripting"]
         C3["Every tool as subcommand"]

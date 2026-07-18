@@ -243,7 +243,7 @@ export async function studyTopLPers({ pool_address, limit = 4 }: { pool_address:
   return {
     pool: pool_address,
     pool_name: String(overview.name || '') || `${tokenXSymbol}-${tokenYSymbol}`,
-    message: 'LPAgent-backed top LP study from Agent Meridian 30m cached owner aggregates plus owner historical positions.',
+    message: 'LPAgent-backed top LP study from Agent Etemaro 30m cached owner aggregates plus owner historical positions.',
     patterns,
     lpers,
   };

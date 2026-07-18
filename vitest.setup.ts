@@ -23,3 +23,5 @@ process.env.PNL_RPC_URL = 'https://rpc.test.com';
 process.env.JUPITER_API_KEY = 'test_jupiter_key';
 process.env.JUPITER_REFERRAL_ACCOUNT = 'test_referral_account';
 process.env.JUPITER_REFERRAL_FEE_BPS = '50';
+process.env.TELEGRAM_CHAT_ID = 'test_telegram_chat_id';
+process.env.DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY = 'bWVyaWRpYW4taXMtdGhlLWJlc3QtYWdlbnRz';

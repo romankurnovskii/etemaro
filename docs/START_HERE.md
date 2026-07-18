@@ -1,6 +1,6 @@
 # Documentation Index
 
-Welcome to the Meridian project documentation. This index lists all architectural and project documentation.
+Welcome to the Etemaro project documentation. This index lists all architectural and project documentation.
 
 ## Architecture & Guides
 

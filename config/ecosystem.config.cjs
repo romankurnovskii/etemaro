@@ -5,7 +5,7 @@ const repoRoot = path.resolve(__dirname, '..');
 module.exports = {
   apps: [
     {
-      name: 'meridian',
+      name: 'etemaro',
       script: path.join(repoRoot, 'packages/daemon/dist/Daemon.js'),
       cwd: repoRoot,
       interpreter: 'node',

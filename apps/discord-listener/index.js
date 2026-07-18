@@ -1,5 +1,5 @@
 /**
- * meridian Discord listener — selfbot
+ * etemaro Discord listener — selfbot
  * Watches LP Army channels for Solana addresses and runs pre-check pipeline.
  * Uses discord.js-selfbot-v13 (personal automation, not a bot token).
  *
@@ -15,7 +15,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 
-// Load .env from parent directory (meridian root)
+// Load .env from parent directory (etemaro root)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const require = createRequire(import.meta.url);
@@ -103,7 +103,7 @@ if (CHANNEL_IDS.length === 0) {
 const client = new Client({ checkUpdate: false });
 
 client.on("ready", () => {
-  console.log(`\n[meridian discord-listener] Connected as ${client.user?.tag}`);
+  console.log(`\n[etemaro discord-listener] Connected as ${client.user?.tag}`);
   const guild = client.guilds.cache.get(GUILD_ID);
   if (!guild) {
     console.warn(`WARNING: Guild ${GUILD_ID} not found in cache. Check DISCORD_GUILD_ID.`);

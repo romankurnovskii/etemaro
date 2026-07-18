@@ -1,6 +1,6 @@
 # Meridian — HiveMind Shared Lessons (Collective Learning)
 
-HiveMind is Meridian's **collective learning sync**. Agents register with a shared backend, periodically **pull** lessons and strategy presets contributed by the wider fleet, and **push** their own derived lessons + closed-position performance back to the pool. Pulled lessons are injected into the agent's system prompt so every instance benefits from what others have learned.
+HiveMind uses Meridian's **collective learning sync**. Agents register with a shared backend, periodically **pull** lessons and strategy presets contributed by the wider fleet, and **push** their own derived lessons + closed-position performance back to the pool. Pulled lessons are injected into the agent's system prompt so every instance benefits from what others have learned.
 
 > Source of truth: `packages/core/src/adapters/external/HivemindAdapter.ts`. Lifecycle wiring: `packages/daemon/src/Daemon.ts`.
 
@@ -83,7 +83,7 @@ Only the top lessons by score reach the LLM, so noisy/contributed lessons compet
 
 ## 6. Push Flow (Contributing Back)
 
-When Meridian derives a lesson locally, it pushes it to the fleet:
+When Etemaro derives a lesson locally, it pushes it to the fleet:
 
 - `pushHiveLesson()` POSTs to `/api/hivemind/lessons/push` — `HivemindAdapter.ts:426-441`.
 - Triggered from the lessons domain the moment a lesson is derived — `packages/core/src/domain/lessons.ts:103`, `699-701`.

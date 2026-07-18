@@ -479,7 +479,7 @@ const toolMap: Record<string, ToolFn> = {
       hiveMindApiKey: ['hiveMind', 'apiKey'],
       agentId: ['hiveMind', 'agentId'],
       hiveMindPullMode: ['hiveMind', 'pullMode'],
-      // meridian api / relay
+      // Etemaro API / relay
       publicApiKey: ['api', 'publicApiKey'],
       agentMeridianApiUrl: ['api', 'url'],
       lpAgentRelayEnabled: ['api', 'lpAgentRelayEnabled'],
