@@ -8,7 +8,7 @@
 
 import 'dotenv/config';
 import cron from 'node-cron';
-import readline from 'readline';
+import * as readline from 'readline';
 import {
   config,
   computeDeployAmount,
@@ -2044,7 +2044,7 @@ Commands:
 
     rl.prompt();
 
-    rl.on('line', async (line) => {
+    rl.on('line', async (line: string) => {
       const input = line.trim();
       if (!input) {
         rl.prompt();
