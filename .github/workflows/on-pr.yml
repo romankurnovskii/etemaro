@@ -1,0 +1,57 @@
+name: PR Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      PROJECT_ROOT_PATH: ${{ github.workspace }}
+      TELEGRAM_CHAT_ID: dummy
+      WALLET_PRIVATE_KEY: dummy
+      LLM_API_KEY: dummy
+      LLM_BASE_URL: dummy
+      LLM_MODEL: dummy
+      JUPITER_API_KEY: dummy
+      DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY: dummy
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+          run_install: false
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pnpm-store
+            .pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Build
+        run: pnpm run build
