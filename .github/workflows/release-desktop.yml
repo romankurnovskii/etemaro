@@ -16,6 +16,8 @@ jobs:
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
           tag_name: ${{ github.ref_name }}
           release_name: 'Etemaro Desktop ${{ github.ref_name }}'
@@ -35,7 +37,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: 'recursive'
-          token: ${{ secrets.SUBMODULE_PAT }}
+          token: ${{ secrets.TOKEN_PR }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -61,7 +63,7 @@ jobs:
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
-          TOKEN_PR: ${{ secrets.TOKEN_PR }}
+          GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
           releaseId: ${{ needs.create_release.outputs.upload_url }}
           args: '--target universal-apple-darwin'
@@ -102,7 +104,7 @@ jobs:
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
-          TOKEN_PR: ${{ secrets.TOKEN_PR }}
+          GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
           releaseId: ${{ needs.create_release.outputs.upload_url }}
           projectPath: './apps/desktop'
@@ -147,7 +149,7 @@ jobs:
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
-          TOKEN_PR: ${{ secrets.TOKEN_PR }}
+          GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
           releaseId: ${{ needs.create_release.outputs.upload_url }}
           projectPath: './apps/desktop'
