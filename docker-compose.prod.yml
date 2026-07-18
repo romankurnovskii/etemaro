@@ -7,7 +7,6 @@ services:
     command: pnpm run start
     env_file: .env
     volumes:
-      - ./packages:/app/packages
       - ./config:/app/config
       - ./data:/app/data
     restart: unless-stopped

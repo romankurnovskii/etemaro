@@ -8,6 +8,10 @@ services:
     env_file: .env
     volumes:
       - ./packages:/app/packages
+      - /app/node_modules
+      - /app/packages/core/node_modules
+      - /app/packages/daemon/node_modules
+      - /app/packages/cli/node_modules
       - ./config:/app/config
       - ./data:/app/data
     restart: unless-stopped

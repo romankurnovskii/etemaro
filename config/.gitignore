@@ -5,3 +5,4 @@
 !*.example.json
 !.gitignore
 !ecosystem.config.cjs
+trader-notes.md
