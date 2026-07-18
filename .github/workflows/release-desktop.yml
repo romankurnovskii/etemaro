@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      test_tag:
+        description: 'Tag name for the test release'
+        required: true
+        default: 'test-release'
 
 jobs:
   create_release:
@@ -12,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_id: ${{ steps.create_release.outputs.id }}
     steps:
       - name: Create Release
         id: create_release
@@ -19,10 +26,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
-          tag_name: ${{ github.ref_name }}
-          release_name: 'Etemaro Desktop ${{ github.ref_name }}'
+          tag_name: ${{ github.event.inputs.test_tag || github.ref_name }}
+          release_name: 'Etemaro Desktop ${{ github.event.inputs.test_tag || github.ref_name }}'
           body: |
-            Release binaries for Etemaro Desktop version ${{ github.ref_name }}.
+            Release binaries for Etemaro Desktop version ${{ github.event.inputs.test_tag || github.ref_name }}.
           draft: true
           prerelease: false
 
@@ -61,11 +68,11 @@ jobs:
         run: pnpm run build
 
       - name: Build Tauri App
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
-          releaseId: ${{ needs.create_release.outputs.upload_url }}
+          releaseId: ${{ needs.create_release.outputs.release_id }}
           args: '--target universal-apple-darwin'
           projectPath: './apps/desktop'
 
@@ -102,7 +109,7 @@ jobs:
         run: pnpm run build
 
       - name: Build Tauri App
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
@@ -147,7 +154,7 @@ jobs:
         run: pnpm run build
 
       - name: Build Tauri App
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
@@ -196,7 +203,7 @@ jobs:
           WINDOWS_STATUS: ${{ needs.build_windows.result }}
           LINUX_STATUS: ${{ needs.build_linux.result }}
         run: |
-          BODY="Release binaries for Etemaro Desktop version ${{ github.ref_name }}.\n\n"
+          BODY="Release binaries for Etemaro Desktop version ${{ github.event.inputs.test_tag || github.ref_name }}.\n\n"
 
           PLATFORMS=""
           WARNINGS=""
@@ -244,8 +251,8 @@ jobs:
             github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              release_id: context.payload.release.id,
+              release_id: '${{ needs.create_release.outputs.release_id }}',
               body: body
-            }).catch(() => {
-              console.log('Release update skipped');
+            }).catch((e) => {
+              console.log('Release update skipped:', e.message);
             });
