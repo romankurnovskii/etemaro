@@ -1,56 +1,30 @@
 # Etemaro
 
-**Autonomous Meteora DLMM liquidity management agent for Solana, powered by LLMs.**
+An LLM-powered agent that autonomously manages liquidity positions on Meteora DLMM for Solana.
 
-Etemaro runs continuous screening and management cycles, deploying capital into high-quality Meteora DLMM pools and closing positions based on live PnL, yield, and range data.
+![Desktop](assets/desktop-1.png)
 
-*Note: This project was fork-renamed from Meridian due to a complete architecture redesign, scalability improvements, and lack of active support in the main repository. Etemaro remains fully compatible with shared Meridian agents, using the same public key to share collective lessons.*
+Etemaro runs continuous screening and management cycles, deploying capital into high-quality Meteora DLMM pools and closing positions based on live PnL, yield, and range data — all driven by an LLM reasoning over real on-chain state instead of following a fixed rule set.
 
----
+## Features
 
-## 📚 Documentation
+- **LLM-driven ReAct loop** — The agent inspects live pool and position data, reasons about risk and yield, then calls tools to deploy, manage, or close positions.
+- **HiveMind collective learning** — Agents share lessons and performance events across a fleet, so every instance benefits from what others have learned.
+- **Dry-run safe simulation** — Test strategies against real on-chain data without spending gas; mock positions are tracked locally.
+- **Multi-surface interface** — CLI for one-shot commands, a Telegram bot for remote control, and a cross-platform desktop app.
+- **Strategy library + signal adaptation** — Preset LP strategies with configurable bin distribution; signal weights evolve based on closed-position performance.
 
-Detailed guides are available in the [docs/](docs) directory:
-
-- **[Start Here (Index)](docs/START_HERE.md)** — List of all documents.
-- **[Architecture Guide](docs/ARCHITECTURE.md)** — Core TypeScript hexagonal design, ReAct loop, and tools.
-- **[Configuration Reference](docs/CONFIGURATION.md)** — Precedence, settings, and the full `user-config.json` [field reference](docs/CONFIGURATION.md#2-user-configuration-user-configjson).
-- **[Usage Guide](docs/USAGE_GUIDE.md)** — Step-by-step instructions, REPL commands, and flowcharts.
-- **[HiveMind Shared Lessons](docs/HIVEMIND.md)** — Collective-learning sync (shared-lesson pull/push).
-- **[Q&A / FAQ](docs/QA.md)** — Frequently asked questions.
-
----
-
-## 🚀 Quick Start
-
-### 1. Install Dependencies
+## Quick start
 
 ```bash
 git clone https://github.com/romankurnovskii/etemaro
 cd etemaro
 npm install
-```
-
-### 2. Configure Environment
-
-Run the interactive setup wizard:
-
-```bash
 npm run setup
+npm run dev
 ```
 
-This will configure your `.env` (API keys, private keys) and `config/user-config.json` (risk profile, thresholds).
-
-### 3. Run
-
-**Option A: Direct (development / dry-run)**
-
-```bash
-npm run dev      # Dry-run mode (safe simulation, no real transactions)
-npm start        # Live autonomous agent mode
-```
-
-**Option B: PM2 (production process manager)**
+**Option A: PM2 (production process manager)**
 
 ```bash
 npm run build
@@ -58,7 +32,7 @@ npm run pm2:start    # Start daemon under PM2 with auto-restart
 npm run pm2:logs     # Tail live logs
 ```
 
-**Option C: Docker**
+**Option B: Docker**
 
 ```bash
 # Development (hot reload, mounts source)
@@ -68,19 +42,9 @@ docker compose -f docker-compose.dev.yml up --build
 docker compose -f docker-compose.prod.yml up -d --build --force-recreate --remove-orphans
 ```
 
----
+## Links
 
-## 🖥️ Desktop App
-
-![Desktop](assets/desktop-1.png)
-
-The **DesktopApp** is a cross-platform, free desktop application currently in active development — with a planned release on **September 1st**.
-
-### Key Features
-
-- **Multiple Agents** — Run and manage several autonomous agents simultaneously.
-- **Remote & Local Agents** — Deploy agents locally or connect to remote instances.
-- **Free AI Credits** — Built-in free credits for AI-powered analysis and decision-making.
-- **Cross-Platform & Free** — Available on Windows, macOS, and Linux at no cost.
-- **AI Auto-Generated Strategies** — Automatically generate trading strategies using AI-driven backtesting.
-- **Neuro-Bayesian Monte Carlo API** — Access probability calculations before opening positions, powered by the [Neuro-Bayesian Monte Carlo method](https://romankurnovskii.com/en/research/neuro-bayesian-architecture-in-economic-modeling/).
+- [Architecture Guide](docs/ARCHITECTURE.md)
+- [Configuration Reference](docs/CONFIGURATION.md)
+- [Usage Guide](docs/USAGE_GUIDE.md)
+- [Desktop App](apps/desktop)
