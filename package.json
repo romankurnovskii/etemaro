@@ -31,7 +31,6 @@
     "pm2:restart": "pm2 restart etemaro --update-env",
     "pm2:logs": "pm2 logs etemaro --lines 100",
     "desktop": "pnpm --filter @etemaro/desktop tauri dev",
-    "desktop:build": "pnpm --filter @etemaro/desktop tauri build",
     "postinstall": "node scripts/patch-anchor.js"
   },
   "knip": {
