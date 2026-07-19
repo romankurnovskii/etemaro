@@ -15,9 +15,9 @@
     "bs58": "^6.0.0",
     "dotenv": "^17.3.1",
     "jsonrepair": "^3.13.3",
-    "node-cron": "^3.0.3",
+    "node-cron": "^4.6.0",
     "openai": "^6.48.0",
-    "zod": "^3.24.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bn.js": "^5.2.0",
