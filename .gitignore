@@ -49,3 +49,4 @@ apps/desktop/node_modules/
 # Desktop notification sink (runtime data, not source)
 data/notifications.jsonl
 data/notifications.jsonl.old
+docs/marketing

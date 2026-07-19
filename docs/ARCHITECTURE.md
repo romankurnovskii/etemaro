@@ -6,6 +6,7 @@ The codebase is a pnpm monorepo. Config and runtime data live at the repository 
 
 ```
 config/
+  agents.json
   user-config.json           # Active user configuration (written by `npm run setup`)
   user-config.example.json   # Template user configuration
   gmgn-config.example.json   # GMGN fee provider config template
