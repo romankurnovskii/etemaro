@@ -69,7 +69,7 @@
     "minAgeBeforeYieldCheck": 60,
     "minSolToOpen": 0.55,
     "deployAmountSol": 0.1,
-    "gasReserve": 0.2,
+    "gasReserve": 0.1,
     "positionSizePct": 0.35,
     "trailingTakeProfit": true,
     "trailingTriggerPct": 3,
