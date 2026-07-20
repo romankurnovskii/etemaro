@@ -173,7 +173,7 @@ This returns all stored strategies with their `id`, `name`, `author`, `lp_strate
 
 ### Q: Is there an existing mechanism to log the bot's full process (new screens, opens/closes, swaps) so I can review it? Is it only in `data/decision-log.json`?
 
-**A: Yes — and it is NOT only in `decision-log.json`.** The bot already writes the entire run to **three separate destinations**, all implemented in `packages/core/src/shared/logger.ts`:
+**A:** Yes — and it is NOT only in `decision-log.json`. The bot already writes the entire run to **three separate destinations**, all implemented in `packages/core/src/shared/logger.ts`:
 
 1. **`data/logs/agent-<YYYY-MM-DD>.log`** — human-readable text log of _every_ event, including the operational tags you want to review:
    - `[screening]` — each screening cycle, hard-filter rejections, PVP guards, indicator confirmations (`ScreeningAdapter.ts`)
@@ -183,7 +183,7 @@ This returns all stored strategies with their `id`, `name`, `author`, `lp_strate
    - `[positions]` / `[pnl_tick]` — portfolio/PnL polling during the management loop
    - Also `info` / `warn` / `error` / `debug` standard lines.
 
-2. **`data/logs/actions-<YYYY-MM-DD>.jsonl`** — structured per-tool **audit trail** (`logAction`, `ToolExecutor.ts:724`). Every tool call (e.g. `deploy_position`, `close_position`, `swap_token`, `claim_fees`, `screen`/candidate tools) is appended as one JSON line with `tool`, `args`, `result`, `duration_ms`, `success`/`error`. This is the most machine-readable way to replay the exact actions taken.
+2. **`data/logs/actions-<YYYY-MM-DD>.jsonl`** — structured per-tool **audit trail** (`logAction`, `ToolExecutor.ts:724`). Every tool call (e.g. `deploy_position`, `close_position`, `swap_token`, `claim_fees`, `screen`/candidate tools) is appended as one JSON line with `tool`, `args`, `args`, `duration_ms`, `success`/`error`. This is the most machine-readable way to replay the exact actions taken.
 
 3. **`data/decision-log.json`** — append-only structured **decisions** (`appendDecision`, `domain/decision-log.ts`), capped at `MAX_DECISIONS`. Types observed: `deploy`, `close`, `skip`, `no_deploy`, `note` (actors: `SCREENER`, `MANAGER`, etc.). This is the summary feed used by the daily briefing (`getDecisionSummary`).
 
@@ -207,9 +207,60 @@ cat data/decision-log.json | jq '.decisions[0:10]'
 
 ### Q: I set `LOG_LEVEL=info`. Will the console show screens/opens/closes/swaps?
 
-**A: Be careful — `LOG_LEVEL` controls the console, not the files.**
+**A:** Be careful — `LOG_LEVEL` controls the console, not the files.
 
 - The logger (`logger.ts:35`) **always** appends every event to the `data/logs/agent-<date>.log` file, regardless of `LOG_LEVEL`.
 - The console (`process.stdout`) only prints lines whose level is one of the _standard_ levels (`debug`/`info`/`warn`/`error`) AND `>= LOG_LEVEL`. The operational tags (`screening`, `deploy`, `close`, `swap`, `claim`, `positions`, `pnl_tick`, `pnl_warn`, …) are **custom level strings**, so they are written to the file but are **never printed to the console** — even at `LOG_LEVEL=debug`.
 
 So on `LOG_LEVEL=info` the terminal will show `info`/`warn`/`error` lines but **not** the `deploy`/`close`/`swap`/`screening` events. To review those you must read the log **file** (`data/logs/agent-<date>.log`) or the `data/logs/actions-<date>.jsonl` audit trail — not the live console. `LOG_LEVEL=info` is already the default (`.env.example:41`); set it to `debug` only if you also want the standard `debug` lines echoed to the terminal.
+
+---
+
+## Unsupported / Feature Requests
+
+**Below is a list of frequently‑asked capabilities that are **not** currently implemented.**  
+If you need any of these, feel free to open a GitHub issue with the label `feature-request` and reference the relevant Q&A entry.
+
+| #   | Request                                                                                                  | Why it’s not supported (or needs code change)                                                                                                     | Suggested workaround                                                                                              |
+| --- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 1   | **Run two different active strategies simultaneously** (e.g., one for screening, another for management) | The agent is designed to have a **single active strategy** at any time to keep decision‑making deterministic.                                     | Create two separate agent instances, each with its own `user-config‑<ID>.json`, and run them in parallel.         |
+| 2   | **Override `MIN_SAFE_BINS_BELOW` via `user-config.json`**                                                | This constant is a safety floor baked into the code (`packages/core/src/shared/constants.ts`). Changing it via JSON would require a code change.  | Fork the repo and adjust the constant, or request the feature via a GitHub issue (`enhancement`).                 |
+| 3   | **Automatic strategy generation from a free‑form prompt without using `/add_strategy`**                  | The `/add_strategy` command is the only supported pathway to persist a strategy; natural‑language parsing is done inside that command.            | Use `/add_strategy` and supply a plain‑English description; the AI will translate it into the required fields.    |
+| 4   | **Deploy dual‑sided liquidity from the autonomous screener**                                             | The screener’s deployment prompt is hard‑coded to single‑sided SOL (`amount_x = 0`, `bins_above = 0`).                                            | Deploy manually via CLI (`npm run cli deploy`) with custom `amount_x`, `bins_above`, etc.                         |
+| 5   | **Change the wide‑range detection threshold (69 bins) via JSON**                                         | The threshold is hard‑coded in `MeteoraAdapter.ts`.                                                                                               | Same as #2 – adjust the constant or open an issue.                                                                |
+| 6   | **Persist lessons / performance data when running in dry‑run mode**                                      | Lesson generation requires actual closed positions with on‑chain PnL; dry‑run returns mock positions that are not tracked by the management loop. | Run on a testnet or a local fork with real token data, or accept that lessons are only gathered from live trades. |
+
+---
+
+## Learning Without Real Trades
+
+### Q: I want my agent to **learn from strategy simulations** but not make real on‑chain deals. Can I run it in a mode that lets it test strategies, collect performance data, and later use those findings for live trading?
+
+**A:** Currently, **dry‑run mode does not generate lessons** because the learning engine only processes actual closed positions (see the Dry Run & Operations section). To simulate trading and collect learnable data without risking real funds, you have two practical options:
+
+1. **Run on a public testnet** (e.g., Solana devnet) with a funded test wallet. The bot will treat trades as real (they incur real transaction fees on the testnet) and will record lessons that you can later analyze.
+2. **Use a local Solana validator (e.g., `solana-test-validator`)** and fund accounts with airdropped test SOL. This gives you a fully isolated environment where you can run the bot in live mode (`DRY_RUN=false`) but without any risk to mainnet funds.
+
+Both approaches let the bot execute real on‑chain transactions (albeit on a test network) and therefore populate `lessons.json` with data you can review and later apply to mainnet strategies.
+
+If you need a **pure‑simulation** mode where the bot evaluates strategies against historical price data without any on‑chain interaction, that feature is **not yet implemented**. Please open a GitHub issue with the label `feature-request` if you’d like to see a back‑testing / simulation engine added.
+
+---
+
+## How to Request New Features or Report Issues
+
+When you encounter a limitation or have an idea for improvement:
+
+1. **Search existing issues** to avoid duplicates.
+2. **Create a new GitHub issue** using the appropriate label:
+   - `bug` – for unexpected behavior or errors.
+   - `feature-request` – for new capabilities or enhancements.
+   - `question` – if you need clarification on how something works.
+3. **Reference the relevant documentation** (e.g., “See QA.md entry #3 on unsupported requests”) to help maintainers understand the context.
+4. **Include reproduction steps** (for bugs) or a clear description of the desired behavior (for feature requests).
+
+The maintainers will triage the issue and may ask for follow‑up information before proceeding.
+
+---
+
+_End of document._

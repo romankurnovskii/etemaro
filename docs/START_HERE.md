@@ -21,4 +21,4 @@ Welcome to the Etemaro project documentation. This index lists all architectural
 
 ## Q&A & FAQ
 
-- [QA.md](QA.md) — Frequently asked questions about environment, models, dry-run behavior, and DLMM mechanics.
+- [QA.md](QA.md) — Frequently asked questions about environment, models, dry-run behavior, strategy management, unsupported features, and learning without real trades.
