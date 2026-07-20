@@ -576,6 +576,89 @@ stateDiagram-v2
 
 ---
 
+## 8A. Strategy Library & Bin Configuration
+
+### Strategy Management
+
+The Strategy Library (`strategy-library.ts`) provides persistent storage for LP pool strategies. Users can add, modify, and remove strategies via Telegram commands or the REPL.
+
+**Default Strategies:**
+
+- `custom_ratio_spot`: Directional bias with configurable ratios
+- `single_sided_reseed`: Token-only bid-ask with re-seed on OOR
+- `fee_compounding`: Compounding fees on stable pools
+- `multi_layer`: Multi-layer composite positions
+- `partial_harvest`: Incremental profit-taking
+
+**Adding a Custom Strategy:**
+
+1. Via Telegram:
+
+   ```
+   /add_strategy my_strategy "My Custom Strategy" --lp_strategy bid_ask
+   ```
+
+2. Via CLI:
+   ```bash
+   npm run cli add-strategy -- --id my_strategy --name "My Custom Strategy" --lp_strategy bid_ask
+   ```
+
+**Strategy Structure:**
+
+- `id`: Unique identifier (slugified)
+- `name`: Human-readable name
+- `lp_strategy`: Bin distribution type (`spot`, `bid_ask`, `curve`, `mixed`)
+- `token_criteria`: Filtering rules (min market cap, age, notes)
+- `entry`: Entry conditions (single-sided, price thresholds)
+- `range`: Bin placement (bins below/above, ratios)
+- `exit`: Exit rules (take profit %, stop loss, re-seed logic)
+- `best_for`: Description of ideal conditions
+
+### Bin Range Configuration
+
+**Configurable in `user-config.json`:**
+
+```json
+"strategy": {
+  "strategy": "bid_ask",
+  "minBinsBelow": 10,
+  "maxBinsBelow": 69,
+  "defaultBinsBelow": 35
+}
+```
+
+**Hardcoded Safety Limits:**
+
+- `MIN_SAFE_BINS_BELOW = 10`: Minimum bins below active price (defined in `constants.ts`)
+- Wide-range detection: Positions with >69 total bins are marked as `wide_range: true`
+- Single-sided SOL deployments require `bins_above = 0` and no `upside_pct`
+
+**Bin Placement Rules:**
+
+- `spot`: Equal bins above and below active price
+- `bid_ask`: Liquidity concentrated at edges
+- `curve`: More liquidity near active bin, decreasing outward
+- `mixed`: Combine multiple distributions in one position
+
+### Autonomous vs. Manual Deployment
+
+**Autonomous Screener:**
+
+- Uses single-sided SOL only (`amount_x = 0`, `bins_above = 0`)
+- Strategy determined by active strategy in library
+- Bin range computed from `defaultBinsBelow` or LLM recommendation
+
+**Manual Deployment (CLI):**
+
+- Supports dual-sided positions (both Token X and Token Y)
+- Custom `bins_below`, `bins_above`, `amount_x`, `amount_y`
+- Available via:
+  ```bash
+  npm run cli deploy -- --pool <address> --amount-y 0.5 --bins-below 50 --bins-above 20
+  ```
+
+---
+
 ## 9. Learning & Evolution
 
 ### Lesson Pipeline

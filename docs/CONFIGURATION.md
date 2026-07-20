@@ -175,7 +175,9 @@ Conventional environment variables that the daemon reads:
 | Field                                                | Purpose                                | Example / what to expect                                          |
 | ---------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------- |
 | `strategy`                                           | LP strategy preset.                    | `"bid_ask"` → liquidity both sides of price. `"spot"` → centered. |
-| `minBinsBelow` / `maxBinsBelow` / `defaultBinsBelow` | Bin range placed below the active bin. | `35`/`69`/`69` → stack 69 bins below active price.                |
+| `minBinsBelow` / `maxBinsBelow` / `defaultBinsBelow` | Bin range placed below the active bin. | `10`/`69`/`69` → stack 69 bins below active price.                |
+
+> **Note:** The absolute minimum for `minBinsBelow` is hardcoded to **10** for safety reasons (defined in `packages/core/src/shared/constants.ts` as `MIN_SAFE_BINS_BELOW`). You cannot set it lower than 10.
 
 #### Schedule
 

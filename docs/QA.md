@@ -51,6 +51,105 @@
 
 ---
 
+## Strategy Library & Bin Configuration
+
+### Q: How do I add a custom strategy?
+
+**A:** You can add a strategy using the `/add_strategy` Telegram command or via the REPL. The strategy defines LP pool characteristics such as bin distribution, token criteria, entry/exit conditions, and best-use cases.
+
+**Via Telegram:**
+
+```
+/add_strategy my_strategy "My Custom Strategy" --lp_strategy bid_ask --token_criteria '{"min_mcap": 100000}' --entry '{"single_side": "token"}' --range '{"type": "default"}' --exit '{"take_profit_pct": 10}' --best_for "High volatility tokens"
+```
+
+**Via REPL (CLI):**
+
+```bash
+npm run cli add-strategy -- --id my_strategy --name "My Custom Strategy" --lp_strategy bid_ask
+```
+
+**Structure:** A strategy consists of:
+
+- `id`: Unique identifier (slugified)
+- `name`: Human-readable name
+- `lp_strategy`: Bin distribution type — `spot` (centered), `bid_ask` (edges), `curve` (exponential), or `mixed`
+- `token_criteria`: Filtering rules for token selection (min market cap, min age, KOL requirements, notes)
+- `entry`: Entry conditions (single-sided, price change thresholds, directional bias)
+- `range`: Bin placement (bins below/above, custom ratios)
+- `exit`: Exit rules (take profit %, stop loss, re-seed logic)
+- `best_for`: Short description of ideal market conditions
+
+See `data/strategy-library.json` for stored strategies.
+
+### Q: What strategy options are available?
+
+**A:** Etemaro supports four bin-distribution strategies:
+
+| Strategy  | Description        | Bin Distribution                                   | Use Case                          |
+| --------- | ------------------ | -------------------------------------------------- | --------------------------------- |
+| `spot`    | Centered liquidity | Equal bins around active price                     | Range-bound tokens, stable pairs  |
+| `bid_ask` | Bid/Ask edges      | Liquidity concentrated at lower and upper edges    | Volatile tokens, directional bias |
+| `curve`   | Exponential        | More liquidity near active bin, decreasing outward | Tight range, high fees            |
+| `mixed`   | Multi-layer        | Combine multiple distributions in one position     | Custom sculpting                  |
+
+**Example bin configurations:**
+
+```json
+{
+  "strategy": "bid_ask",
+  "minBinsBelow": 10,
+  "maxBinsBelow": 50,
+  "defaultBinsBelow": 35
+}
+```
+
+- `minBinsBelow`: Minimum allowed bins below (hardcoded floor: **10**)
+- `maxBinsBelow`: Maximum allowed bins below
+- `defaultBinsBelow`: Default bins below when deploying
+
+### Q: Can I customize the bin range via JSON config?
+
+**A:** **Yes, partially.** The `strategy` section in `user-config.json` controls bin ranges:
+
+```json
+"strategy": {
+  "strategy": "bid_ask",
+  "minBinsBelow": 10,
+  "maxBinsBelow": 50,
+  "defaultBinsBelow": 35
+}
+```
+
+However, some constraints are **hardcoded for safety**:
+
+- **`MIN_SAFE_BINS_BELOW = 10`**: Minimum bins below the active price. This is a safety floor — positions with fewer bins are rejected as too risky.
+- **Wide-range detection**: Positions with >69 total bins are marked as `wide_range: true`.
+
+You cannot override `MIN_SAFE_BINS_BELOW` via JSON — it is defined in `packages/core/src/shared/constants.ts`.
+
+### Q: What is single-sided SOL deployment?
+
+**A:** The autonomous screener uses **single-sided SOL** deployments by default:
+
+- Only `amount_y` (SOL) is deposited; `amount_x = 0`
+- `bins_above` is forced to `0` for single-sided positions
+- This creates a "bid" or "buy limit wall" below the active price
+
+Dual-sided deployments (both Token X and Token Y) are **not** supported by the autonomous screener. If you need dual-sided liquidity, you must deploy manually via CLI.
+
+### Q: How do I list available strategies?
+
+**A:** Use the Telegram command `/list_strategies` or the REPL:
+
+```bash
+npm run cli list-strategies
+```
+
+This returns all stored strategies with their `id`, `name`, `author`, `lp_strategy`, and whether each is active.
+
+---
+
 ## Rebalancing & Strategy Scenarios
 
 ### Q: Can I run a strategy that deploys 0.1 SOL, checks for out-of-range every 2 minutes, and rebalances with single-sided Token Y (SOL) and 30 upper bins?
