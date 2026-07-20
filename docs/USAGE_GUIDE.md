@@ -92,6 +92,16 @@ npm run lessons                              # View learned lessons
 npm run evolve                               # Auto-adjust thresholds
 ```
 
+**Strategy management** (via CLI):
+
+```bash
+npm run cli list-strategies                              # List all strategies
+npm run cli add-strategy -- --id my_strat --name "My Strategy" --lp_strategy bid_ask
+npm run cli get-strategy -- --id my_strat                # View strategy details
+npm run cli set-active-strategy -- --id my_strat         # Set active strategy
+npm run cli remove-strategy -- --id my_strat             # Remove a strategy
+```
+
 **Telegram commands** (remote control):
 
 ```
