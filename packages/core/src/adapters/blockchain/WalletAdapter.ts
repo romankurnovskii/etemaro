@@ -20,10 +20,9 @@ function getWallet(): Keypair {
 }
 
 const JUPITER_SWAP_V2_API = 'https://api.jup.ag/swap/v2';
-const DEFAULT_JUPITER_API_KEY = 'b15d42e9-e0e4-4f90-a424-ae41ceeaa382';
 
-function getJupiterApiKey(): string {
-  return config.jupiter.apiKey || process.env.JUPITER_API_KEY || DEFAULT_JUPITER_API_KEY;
+function getJupiterApiKey(): string | undefined {
+  return config.jupiter.apiKey || process.env.JUPITER_API_KEY;
 }
 
 interface JupiterReferralParams {

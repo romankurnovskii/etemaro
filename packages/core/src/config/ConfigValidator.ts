@@ -173,6 +173,7 @@ function getMissingFields(flat: Record<string, unknown>): string[] {
   return [];
 }
 
+// Note: jupiterApiKey / JUPITER_API_KEY is required for Jupiter swap operations. Get a free key at https://developers.jup.ag/portal/
 function resolveEnvRefs(config: Record<string, unknown>): Record<string, unknown> {
   const resolved: Record<string, unknown> = { ...config };
   for (const [key, value] of Object.entries(resolved)) {
@@ -181,10 +182,11 @@ function resolveEnvRefs(config: Record<string, unknown>): Record<string, unknown
       const envVar = value.slice(4);
       const envValue = process.env[envVar];
       if (envValue === undefined) {
-        throw new Error(
-          `Environment variable ${envVar} is not set but is referenced by ${key} in user-config.json.\n` +
-            `Set ${envVar} in your .env file or environment.`,
-        );
+        let helpNote = `Set ${envVar} in your .env file or environment.`;
+        if (envVar === 'JUPITER_API_KEY' || key === 'jupiterApiKey') {
+          helpNote += `\nJupiter API key is required for swap operations. Get a free API key at https://developers.jup.ag/portal/`;
+        }
+        throw new Error(`Environment variable ${envVar} is not set but is referenced by ${key} in user-config.json.\n${helpNote}`);
       }
       resolved[key] = envValue;
     }
