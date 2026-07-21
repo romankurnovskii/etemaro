@@ -21,7 +21,7 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0
       dotenv:
-        specifier: ^17.3.1
+        specifier: ^17.4.2
         version: 17.4.2
       jsonrepair:
         specifier: ^3.13.3
@@ -88,7 +88,7 @@ importers:
         specifier: workspace:*
         version: link:../daemon
       dotenv:
-        specifier: ^17.3.1
+        specifier: ^17.4.2
         version: 17.4.2
     devDependencies:
       '@types/node':
@@ -116,7 +116,7 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       dotenv:
-        specifier: ^17.3.1
+        specifier: ^17.4.2
         version: 17.4.2
       jsonrepair:
         specifier: ^3.13.3
@@ -150,15 +150,15 @@ importers:
         specifier: workspace:*
         version: link:../core
       dotenv:
-        specifier: ^17.3.1
+        specifier: ^17.4.2
         version: 17.4.2
     devDependencies:
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
       tsx:
-        specifier: ^4.19.0
-        version: 4.23.0
+        specifier: ^4.23.1
+        version: 4.23.1
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
