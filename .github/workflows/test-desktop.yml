@@ -16,6 +16,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
+          token: ${{ secrets.TOKEN_PR }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -40,6 +41,14 @@ jobs:
 
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: './apps/desktop'
 
@@ -60,6 +69,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
+          token: ${{ secrets.TOKEN_PR }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -84,6 +94,8 @@ jobs:
 
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
           projectPath: './apps/desktop'
 
@@ -104,6 +116,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
+          token: ${{ secrets.TOKEN_PR }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -131,6 +144,8 @@ jobs:
 
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
         with:
           projectPath: './apps/desktop'
 
