@@ -107,7 +107,8 @@ npm run cli remove-strategy -- --id my_strat             # Remove a strategy
 ```
 /status          — wallet balance + open positions
 /positions       — detailed position list with PnL
-/close <n>       — close position by index
+/close <n>       — close a position by index
+/closeall        — close all open positions
 /set <n> <text>  — set instruction on a position
 /screen          — trigger screening cycle
 /candidates      — show top candidates
@@ -180,7 +181,7 @@ Cron fires management cycle
 | List positions         | `npm run positions`                                          |
 | Deploy manually        | `npm run cli deploy -- --pool <addr> --amount 0.5 --dry-run` |
 | Close manually         | `npm run cli close -- --position <addr> --dry-run`           |
-| Remote control         | Telegram`/positions`, `/close`, `/screen`                    |
+| Remote control         | Telegram`/positions`, `/close <n>`, `/closeall`, `/screen`   |
 | Learn from history     | `npm run lessons`                                            |
 | Auto-evolve thresholds | `npm run evolve`                                             |
 | Pull shared lessons    | Telegram`/hive pull` (see [HIVEMIND.md](HIVEMIND.md))        |
