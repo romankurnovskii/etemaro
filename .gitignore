@@ -4,6 +4,7 @@
 
 # Dependencies
 node_modules/
+.pnpm/
 tsconfig.tsbuildinfo
 **/tsconfig.tsbuildinfo
 
