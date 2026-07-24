@@ -76,6 +76,8 @@ function buildConfig(): AppConfig {
       autoSwapAfterClaim: u.autoSwapAfterClaim as boolean,
       autoSwapRetryAttempts: u.autoSwapRetryAttempts as number,
       autoSwapRetryDelayMs: u.autoSwapRetryDelayMs as number,
+      haltOnSwapFailure: u.haltOnSwapFailure as boolean,
+      maxFailedSwapsBeforeHalt: u.maxFailedSwapsBeforeHalt as number,
       outOfRangeBinsToClose: u.outOfRangeBinsToClose as number,
       outOfRangeWaitMinutes: u.outOfRangeWaitMinutes as number,
       oorCooldownTriggerCount: u.oorCooldownTriggerCount as number,

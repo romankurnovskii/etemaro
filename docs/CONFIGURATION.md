@@ -141,34 +141,36 @@ Conventional environment variables that the daemon reads:
 
 #### Management & Exits
 
-| Field                                          | Purpose                                                          | Example / what to expect                                                          |
-| ---------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `minClaimAmount`                               | Min fees (USD) before auto-claiming.                             | `5` → claim only when ≥$5 fees accrued.                                           |
-| `autoSwapAfterClaim`                           | Swap claimed base token back to SOL after claiming.              | `false` → leave base token; `true` → auto-swap to SOL.                            |
-| `autoSwapRetryAttempts`                        | Number of retries if auto-swap fails.                            | `3` → retry up to 3 times.                                                        |
-| `autoSwapRetryDelayMs`                         | Delay between auto-swap retries (ms).                            | `3000` → wait 3s between attempts.                                                |
-| `outOfRangeBinsToClose`                        | Bins a position can drift out-of-range before it counts.         | `10` → position must exceed active bin by >10 bins to be "OOR".                   |
-| `outOfRangeWaitMinutes`                        | Minutes out-of-range before closing.                             | `30` → after 30m OOR, the deterministic rule closes it. `2` = fast exit on drift. |
-| `oorCooldownTriggerCount` / `oorCooldownHours` | After N OOR closes, cooldown redeploys to that pool for H hours. | `3`/`12` → 3rd OOR close blocks re-entry for 12h.                                 |
-| `repeatDeployCooldownEnabled`                  | Enable cooldown after repeat deploys to the same pool.           | `true` → prevents immediate re-deploy to the same pool.                           |
-| `repeatDeployCooldownTriggerCount`             | Number of deploys before cooldown activates.                     | `3` → cooldown after 3 deploys.                                                   |
-| `repeatDeployCooldownHours`                    | Cooldown duration (hours) after repeat deploys.                  | `12` → block re-deploy for 12h.                                                   |
-| `repeatDeployCooldownScope`                    | Scope of repeat-deploy cooldown.                                 | `"token"` → same token; `"pool"` → same pool.                                     |
-| `repeatDeployCooldownMinFeeEarnedPct`          | Minimum fee earned (%) to reset the repeat-deploy cooldown.      | `0` → any positive fee resets cooldown.                                           |
-| `minVolumeToRebalance`                         | Volume threshold that permits rebalance logic.                   | `1000`                                                                            |
-| `stopLossPct`                                  | Close when PnL ≤ this. Negative number.                          | `-50` → closes at −50% loss. `-15` = tighter risk.                                |
-| `takeProfitPct`                                | Close when PnL ≥ this.                                           | `5` → closes at +5% gain. `2` = quicker profit-taking.                            |
-| `minFeePerTvl24h`                              | Min 24h fee/TVL (%) to avoid "low-yield" close.                  | `7` → yields under 7%/24h (after 60m age) trigger close.                          |
-| `minAgeBeforeYieldCheck`                       | Age (min) before the low-yield rule applies.                     | `60` → protects brand-new positions from early low-yield close.                   |
-| `trailingTakeProfit`                           | Enable trailing take-profit.                                     | `true` → locks in gains as price rises.                                           |
-| `trailingTriggerPct` / `trailingDropPct`       | Trailing activation / retrace thresholds.                        | `3`/`1.5` → arm at +3%, close on 1.5% drop from peak.                             |
-| `pnlSanityMaxDiffPct`                          | Max allowed PnL discrepancy between sources.                     | `5` → bigger gaps are flagged/sanitized.                                          |
-| `solMode`                                      | SOL-only operation mode.                                         | `false` → normal; `true` → restricts to SOL-centric flows.                        |
-| `deployAmountSol`                              | SOL deployed per position.                                       | `0.1` → small size; `0.5` = larger.                                               |
-| `minSolToOpen`                                 | Min SOL balance required to open.                                | `0.55` → skips deploy if wallet < 0.55 SOL.                                       |
-| `maxDeployAmount`                              | Cap on deploy size.                                              | `50` → never deploy more than 50 SOL.                                             |
-| `gasReserve`                                   | SOL kept in reserve for fees.                                    | `0.2` → never let balance dip below this for gas.                                 |
-| `positionSizePct`                              | Fraction of available SOL per position.                          | `0.35` → ~35% of free SOL per deploy.                                             |
+| Field                                          | Purpose                                                                 | Example / what to expect                                                          |
+| ---------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `minClaimAmount`                               | Min fees (USD) before auto-claiming.                                    | `5` → claim only when ≥$5 fees accrued.                                           |
+| `autoSwapAfterClaim`                           | Swap claimed base token back to SOL after claiming.                     | `false` → leave base token; `true` → auto-swap to SOL.                            |
+| `autoSwapRetryAttempts`                        | Number of retries if auto-swap fails.                                   | `3` → retry up to 3 times.                                                        |
+| `autoSwapRetryDelayMs`                         | Delay between auto-swap retries (ms).                                   | `3000` → wait 3s between attempts.                                                |
+| `haltOnSwapFailure`                            | Enable circuit-breaker: block new deploys after repeated swap failures. | `true` → fail-safe (block deploys). `false` → log only, keep deploying.           |
+| `maxFailedSwapsBeforeHalt`                     | Consecutive failed swaps before circuit-breaker trips.                  | `5` → after 5 failed swaps, new deploys are blocked until operator resets.        |
+| `outOfRangeBinsToClose`                        | Bins a position can drift out-of-range before it counts.                | `10` → position must exceed active bin by >10 bins to be "OOR".                   |
+| `outOfRangeWaitMinutes`                        | Minutes out-of-range before closing.                                    | `30` → after 30m OOR, the deterministic rule closes it. `2` = fast exit on drift. |
+| `oorCooldownTriggerCount` / `oorCooldownHours` | After N OOR closes, cooldown redeploys to that pool for H hours.        | `3`/`12` → 3rd OOR close blocks re-entry for 12h.                                 |
+| `repeatDeployCooldownEnabled`                  | Enable cooldown after repeat deploys to the same pool.                  | `true` → prevents immediate re-deploy to the same pool.                           |
+| `repeatDeployCooldownTriggerCount`             | Number of deploys before cooldown activates.                            | `3` → cooldown after 3 deploys.                                                   |
+| `repeatDeployCooldownHours`                    | Cooldown duration (hours) after repeat deploys.                         | `12` → block re-deploy for 12h.                                                   |
+| `repeatDeployCooldownScope`                    | Scope of repeat-deploy cooldown.                                        | `"token"` → same token; `"pool"` → same pool.                                     |
+| `repeatDeployCooldownMinFeeEarnedPct`          | Minimum fee earned (%) to reset the repeat-deploy cooldown.             | `0` → any positive fee resets cooldown.                                           |
+| `minVolumeToRebalance`                         | Volume threshold that permits rebalance logic.                          | `1000`                                                                            |
+| `stopLossPct`                                  | Close when PnL ≤ this. Negative number.                                 | `-50` → closes at −50% loss. `-15` = tighter risk.                                |
+| `takeProfitPct`                                | Close when PnL ≥ this.                                                  | `5` → closes at +5% gain. `2` = quicker profit-taking.                            |
+| `minFeePerTvl24h`                              | Min 24h fee/TVL (%) to avoid "low-yield" close.                         | `7` → yields under 7%/24h (after 60m age) trigger close.                          |
+| `minAgeBeforeYieldCheck`                       | Age (min) before the low-yield rule applies.                            | `60` → protects brand-new positions from early low-yield close.                   |
+| `trailingTakeProfit`                           | Enable trailing take-profit.                                            | `true` → locks in gains as price rises.                                           |
+| `trailingTriggerPct` / `trailingDropPct`       | Trailing activation / retrace thresholds.                               | `3`/`1.5` → arm at +3%, close on 1.5% drop from peak.                             |
+| `pnlSanityMaxDiffPct`                          | Max allowed PnL discrepancy between sources.                            | `5` → bigger gaps are flagged/sanitized.                                          |
+| `solMode`                                      | SOL-only operation mode.                                                | `false` → normal; `true` → restricts to SOL-centric flows.                        |
+| `deployAmountSol`                              | SOL deployed per position.                                              | `0.1` → small size; `0.5` = larger.                                               |
+| `minSolToOpen`                                 | Min SOL balance required to open.                                       | `0.55` → skips deploy if wallet < 0.55 SOL.                                       |
+| `maxDeployAmount`                              | Cap on deploy size.                                                     | `50` → never deploy more than 50 SOL.                                             |
+| `gasReserve`                                   | SOL kept in reserve for fees.                                           | `0.2` → never let balance dip below this for gas.                                 |
+| `positionSizePct`                              | Fraction of available SOL per position.                                 | `0.35` → ~35% of free SOL per deploy.                                             |
 
 #### Strategy
 
