@@ -176,8 +176,9 @@ Conventional environment variables that the daemon reads:
 | ---------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------- |
 | `strategy`                                           | LP strategy preset.                    | `"bid_ask"` → liquidity both sides of price. `"spot"` → centered. |
 | `minBinsBelow` / `maxBinsBelow` / `defaultBinsBelow` | Bin range placed below the active bin. | `10`/`69`/`69` → stack 69 bins below active price.                |
+| `minSafeBinsBelow`                                   | Safety floor for minBinsBelow.         | `10` → default floor. Can be lowered (e.g., `5`) for sparse data. |
 
-> **Note:** The absolute minimum for `minBinsBelow` is hardcoded to **10** for safety reasons (defined in `packages/core/src/shared/constants.ts` as `MIN_SAFE_BINS_BELOW`). You cannot set it lower than 10.
+> **Note:** The default safety floor for `minBinsBelow` is **10**. You can override it via `minSafeBinsBelow` in the config. Setting a lower value (e.g., `5`) allows fewer bins in sparse datasets; raising it adds extra safety margin.
 
 #### Schedule
 

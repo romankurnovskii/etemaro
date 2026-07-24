@@ -70,6 +70,8 @@ const REQUIRED_FLAT_KEYS = new Set([
   'minBinsBelow',
   'maxBinsBelow',
   'defaultBinsBelow',
+  'minSafeBinsBelow',
+
   'managementIntervalMin',
   'screeningIntervalMin',
   'healthCheckIntervalMin',

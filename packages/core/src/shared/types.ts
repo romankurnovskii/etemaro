@@ -602,6 +602,7 @@ export interface StrategyConfig {
   minBinsBelow: number;
   maxBinsBelow: number;
   defaultBinsBelow: number;
+  minSafeBinsBelow: number;
 }
 
 export interface ScheduleConfig {

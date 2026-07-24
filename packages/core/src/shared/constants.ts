@@ -49,7 +49,18 @@ export const MAX_MANUAL_LESSON_LENGTH = 400;
 export const MAX_RECENT_EVENTS = 20;
 export const MAX_DECISIONS = 100;
 export const SYNC_GRACE_MS = 5 * 60_000;
-export const MIN_SAFE_BINS_BELOW = 10; // Safe hardcoded minimum bins below for this project
+export const MIN_SAFE_BINS_BELOW = 10; // Safe default minimum bins below (fallback if not configured)
+
+// Runtime override set by Config.ts after loading user-config.json
+let _minSafeBinsBelowOverride: number | null = null;
+
+export function setMinSafeBinsBelowOverride(value: number): void {
+  _minSafeBinsBelowOverride = value;
+}
+
+export function getMinSafeBinsBelow(): number {
+  return _minSafeBinsBelowOverride ?? MIN_SAFE_BINS_BELOW;
+}
 export const MIN_EVOLVE_POSITIONS = 5;
 export const MAX_CHANGE_PER_STEP = 0.2;
 export const STAGE_TTL_MS = 10 * 60_1000;

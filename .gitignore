@@ -1,52 +1,5 @@
-# Dependencies
 node_modules/
-tsconfig.tsbuildinfo
-**/tsconfig.tsbuildinfo
-
-# Environment & secrets
-.env
-.env.*
-!.env.example
-.envrypt
-
-# Configuration files (ignored via config/.gitignore)
-
-# Stray Claude Code worktrees
-.claude/worktrees/
-
-# OS
-.DS_Store
-
-# Dev context
-context.md
-CONTEXT.md
-dev-blocklist.json
-# Local agent documentation
-.agents/rules/*.local.md
-.kilo/
-
-# Build and IDE files
-logs/
 dist/
-.memory-bank/
-.dev/
-data/
-
-# Environment overrides
-
-# Playwright MCP browser logs
-.playwright-mcp/
-
-# Claude Code runtime lock
-.claude/scheduled_tasks.lock
-
-# Tauri / Rust build artifacts
-# apps/desktop is a private submodule (tracked), but ignore its build output
-apps/desktop/src-tauri/target/
-apps/desktop/target/
-apps/desktop/node_modules/
-
-# Desktop notification sink (runtime data, not source)
-data/notifications.jsonl
-data/notifications.jsonl.old
-docs/marketing
+*.tsbuildinfo
+.vite/
+.pnpm-store/

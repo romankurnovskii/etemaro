@@ -83,7 +83,8 @@
     "strategy": "bid_ask",
     "minBinsBelow": 35,
     "maxBinsBelow": 69,
-    "defaultBinsBelow": 69
+    "defaultBinsBelow": 69,
+    "minSafeBinsBelow": 10
   },
 
   "schedule": {
