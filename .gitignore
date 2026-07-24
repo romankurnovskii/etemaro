@@ -1,3 +1,7 @@
+.kilo/
+.opencode/
+.credentials/
+
 # Dependencies
 node_modules/
 tsconfig.tsbuildinfo
@@ -50,3 +54,8 @@ apps/desktop/node_modules/
 data/notifications.jsonl
 data/notifications.jsonl.old
 docs/marketing
+
+# Debug log files & dumps
+jobs_*.json
+logs.zip
+*_log.txt
