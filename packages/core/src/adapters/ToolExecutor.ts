@@ -48,7 +48,14 @@ import {
   unpinLesson,
   listLessons,
 } from '../domain/lessons.js';
-import { setPositionInstruction } from '../domain/state.js';
+import {
+  setPositionInstruction,
+  getConsecutiveSwapFailures,
+  recordSwapFailure,
+  recordSwapSuccess,
+  isHalted,
+  resetConsecutiveSwapFailures,
+} from '../domain/state.js';
 import { getPoolMemory, addPoolNote } from '../domain/pool-memory.js';
 import { addStrategy, listStrategies, getStrategy, setActiveStrategy, removeStrategy } from '../domain/strategy-library.js';
 import { addToBlacklist, removeFromBlacklist, listBlacklist } from '../domain/token-blacklist.js';
@@ -215,6 +222,10 @@ async function validateDeployPoolThresholds(args: Record<string, unknown>): Prom
 
 let _cronRestarter: (() => void) | null = null;
 
+export { getConsecutiveSwapFailures, recordSwapFailure, resetConsecutiveSwapFailures, __setStateFilePath } from '../domain/state.js';
+
+export { _runSafetyChecks as runSafetyChecks };
+
 export function registerCronRestarter(fn: () => void): void {
   _cronRestarter = fn;
 }
@@ -258,6 +269,7 @@ function normalizeConfigValue(key: string, value: unknown): unknown {
     'solMode',
     'darwinEnabled',
     'lpAgentRelayEnabled',
+    'haltOnSwapFailure',
   ]);
   const arrayKeys = new Set(['allowedLaunchpads', 'blockedLaunchpads']);
   const stringKeys = new Set([
@@ -419,6 +431,8 @@ const toolMap: Record<string, ToolFn> = {
       autoSwapAfterClaim: ['management', 'autoSwapAfterClaim'],
       autoSwapRetryAttempts: ['management', 'autoSwapRetryAttempts'],
       autoSwapRetryDelayMs: ['management', 'autoSwapRetryDelayMs'],
+      haltOnSwapFailure: ['management', 'haltOnSwapFailure'],
+      maxFailedSwapsBeforeHalt: ['management', 'maxFailedSwapsBeforeHalt'],
       outOfRangeBinsToClose: ['management', 'outOfRangeBinsToClose'],
       outOfRangeWaitMinutes: ['management', 'outOfRangeWaitMinutes'],
       oorCooldownTriggerCount: ['management', 'oorCooldownTriggerCount'],
@@ -650,6 +664,8 @@ async function swapBaseToSolWithRetry(
 }> {
   const attempts = Math.max(1, Number(config.management.autoSwapRetryAttempts ?? 3));
   const delayMs = Math.max(0, Number(config.management.autoSwapRetryDelayMs ?? 3000));
+  const haltOnSwapFailure = config.management.haltOnSwapFailure ?? true;
+  const maxFailedSwapsBeforeHalt = config.management.maxFailedSwapsBeforeHalt ?? 5;
   let lastErr: string | null = null;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
@@ -665,7 +681,10 @@ async function swapBaseToSolWithRetry(
       const swapResult = await swapToken({ input_mint: baseMint, output_mint: 'SOL', amount: token.balance });
       const sr = swapResult as any;
       const ok = swapResult && sr.success !== false && !sr.error && (sr.tx || sr.amount_out);
-      if (ok) return { swapped: true, result: swapResult as unknown as Record<string, unknown>, token: token as unknown as Record<string, unknown> };
+      if (ok) {
+        recordSwapSuccess();
+        return { swapped: true, result: swapResult as unknown as Record<string, unknown>, token: token as unknown as Record<string, unknown> };
+      }
       lastErr = sr?.error || sr?.reason || 'swap returned no tx';
     } catch (e: any) {
       lastErr = e.message;
@@ -674,6 +693,7 @@ async function swapBaseToSolWithRetry(
     if (attempt < attempts) await sleep(delayMs);
   }
   log('executor_warn', `Auto-swap ${label} failed after ${attempts} attempts — base token left unsold (${baseMint.slice(0, 8)})`);
+  recordSwapFailure({ maxFailedSwapsBeforeHalt, haltOnSwapFailure });
   return { swapped: false, result: null, token: null };
 }
 
@@ -696,7 +716,7 @@ export async function executeTool(name: string, args: Record<string, unknown> = 
 
   // ─── Pre-execution safety checks ──────────
   if (PROTECTED_TOOLS.has(name)) {
-    const safetyCheck = await runSafetyChecks(name, args);
+    const safetyCheck = await _runSafetyChecks(name, args);
     if (!safetyCheck.pass) {
       log('safety_block', `${name} blocked: ${safetyCheck.reason}`);
       return {
@@ -792,7 +812,7 @@ export async function executeTool(name: string, args: Record<string, unknown> = 
 /**
  * Run safety checks before executing write operations.
  */
-async function runSafetyChecks(
+async function _runSafetyChecks(
   name: string,
   args: Record<string, unknown>,
 ): Promise<{
@@ -801,6 +821,22 @@ async function runSafetyChecks(
 }> {
   switch (name) {
     case 'deploy_position': {
+      // Circuit-breaker: if recent swap failures have crossed the threshold,
+      // refuse to open new positions until the operator resets the counter.
+      const haltOpts = {
+        maxFailedSwapsBeforeHalt: config.management.maxFailedSwapsBeforeHalt ?? 5,
+        haltOnSwapFailure: config.management.haltOnSwapFailure ?? true,
+      };
+      if (isHalted(haltOpts)) {
+        const count = getConsecutiveSwapFailures();
+        return {
+          pass: false,
+          reason:
+            `Circuit-breaker: ${count} consecutive swap failures (threshold ${haltOpts.maxFailedSwapsBeforeHalt}). ` +
+            `New deploys are blocked. Manual review required. Reset the counter to resume.`,
+        };
+      }
+
       const poolThresholds = await validateDeployPoolThresholds(args);
       if (!poolThresholds.pass) return poolThresholds;
       if (poolThresholds.entryMarketData) Object.assign(args, poolThresholds.entryMarketData);
