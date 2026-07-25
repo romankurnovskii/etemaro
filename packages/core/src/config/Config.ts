@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import type { AppConfig } from '../shared/types.js';
-import { repoPath, dataPath, configPath, MIN_SAFE_BINS_BELOW, TOKEN_MINTS } from '../shared/constants.js';
+import { repoPath, dataPath, configPath, MIN_SAFE_BINS_BELOW, TOKEN_MINTS, setMinSafeBinsBelowOverride } from '../shared/constants.js';
 import { numericConfig } from '../shared/utils.js';
 import { loadAndValidateConfig } from './ConfigValidator.js';
 
@@ -105,6 +105,7 @@ function buildConfig(): AppConfig {
       minBinsBelow: u.minBinsBelow as number,
       maxBinsBelow: u.maxBinsBelow as number,
       defaultBinsBelow: u.defaultBinsBelow as number,
+      minSafeBinsBelow: u.minSafeBinsBelow as number,
     },
     schedule: {
       managementIntervalMin: u.managementIntervalMin as number,
@@ -186,6 +187,9 @@ function buildConfig(): AppConfig {
 }
 
 export const config: AppConfig = buildConfig();
+
+// Initialize the minSafeBinsBelow override from config
+setMinSafeBinsBelowOverride(config.strategy.minSafeBinsBelow);
 
 export function computeDeployAmount(walletSol: number): number {
   const reserve = config.management.gasReserve;
