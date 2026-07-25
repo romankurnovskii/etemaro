@@ -623,13 +623,14 @@ The Strategy Library (`strategy-library.ts`) provides persistent storage for LP 
   "strategy": "bid_ask",
   "minBinsBelow": 10,
   "maxBinsBelow": 69,
-  "defaultBinsBelow": 35
+  "defaultBinsBelow": 35,
+  "minSafeBinsBelow": 10
 }
 ```
 
-**Hardcoded Safety Limits:**
+**Safety Limits (configurable via `minSafeBinsBelow`):**
 
-- `MIN_SAFE_BINS_BELOW = 10`: Minimum bins below active price (defined in `constants.ts`)
+- Default `MIN_SAFE_BINS_BELOW = 10`: Minimum bins below active price (defined in `constants.ts`, overridable via `minSafeBinsBelow` in config)
 - Wide-range detection: Positions with >69 total bins are marked as `wide_range: true`
 - Single-sided SOL deployments require `bins_above = 0` and no `upside_pct`
 

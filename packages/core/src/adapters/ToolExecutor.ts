@@ -17,7 +17,7 @@ import { execSync, spawn } from 'node:child_process';
 
 // ─── Shared imports ────────────────────────────────────────────
 import { config, reloadScreeningThresholds } from '../config/Config.js';
-import { REPO_ROOT, configPath, MIN_SAFE_BINS_BELOW } from '../shared/constants.js';
+import { REPO_ROOT, configPath, getMinSafeBinsBelow } from '../shared/constants.js';
 import { log, logAction } from '../shared/logger.js';
 import type { AppConfig, AgentRole } from '../shared/types.js';
 
@@ -528,7 +528,7 @@ const toolMap: Record<string, ToolFn> = {
           if (!Number.isFinite(numericVal)) {
             throw new Error(`${match[0]} must be a finite number`);
           }
-          normalizedVal = Math.max(MIN_SAFE_BINS_BELOW, Math.round(numericVal));
+          normalizedVal = Math.max(getMinSafeBinsBelow(), Math.round(numericVal));
         } else {
           normalizedVal = normalizeConfigValue(match[0], val);
         }
@@ -574,7 +574,7 @@ const toolMap: Record<string, ToolFn> = {
       log('config', `update_config: config.${section}.${field} ${before} → ${val} (verify: ${(config as any)[section][field]})`);
     }
     if (applied.binsBelow != null || applied.minBinsBelow != null || applied.maxBinsBelow != null || applied.defaultBinsBelow != null) {
-      config.strategy.minBinsBelow = Math.max(MIN_SAFE_BINS_BELOW, Math.round(Number(config.strategy.minBinsBelow ?? MIN_SAFE_BINS_BELOW)));
+      config.strategy.minBinsBelow = Math.max(getMinSafeBinsBelow(), Math.round(Number(config.strategy.minBinsBelow ?? getMinSafeBinsBelow())));
       config.strategy.maxBinsBelow = Math.max(
         config.strategy.minBinsBelow,
         Math.round(Number(config.strategy.maxBinsBelow ?? config.strategy.minBinsBelow)),
@@ -825,7 +825,7 @@ async function runSafetyChecks(
       }
       const requestedBinsBelow = Number(args.bins_below ?? config.strategy.defaultBinsBelow ?? config.strategy.minBinsBelow);
       const requestedBinsAbove = Number(args.bins_above ?? 0);
-      const minBinsBelow = Math.max(MIN_SAFE_BINS_BELOW, Number(config.strategy.minBinsBelow ?? MIN_SAFE_BINS_BELOW));
+      const minBinsBelow = Math.max(getMinSafeBinsBelow(), Number(config.strategy.minBinsBelow ?? getMinSafeBinsBelow()));
       const isSingleSidedSol = deployAmountY > 0 && deployAmountX <= 0;
       const requestedTotalBins = requestedBinsBelow + requestedBinsAbove;
       const requestedVolatility = args.volatility == null ? null : Number(args.volatility);

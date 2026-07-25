@@ -6,11 +6,13 @@
  * - Validates scaleScreeningToTimeframe produces correct thresholds per timeframe
  * - Asserts default screening.minFeeActiveTvlRatio matches scaled floor for 5m
  * - Spot-checks a known pool ratio against the current default gate
+ * - Verifies minSafeBinsBelow config override works
  *
  * @dependencies vitest
  */
 import { describe, it, expect } from 'vitest';
 import { config } from './Config.js';
+import { getMinSafeBinsBelow } from '../shared/constants.js';
 import { scaleScreeningToTimeframe } from '../shared/utils.js';
 
 // Pool febu-SOL (2CVn...) fee/active-TVL from the Meteora Pool Discovery API.
@@ -32,5 +34,21 @@ describe('fee/active-TVL gate timeframe scaling', () => {
 
   it('passes a profitable 5m pool (0.0254%) against the scaled 0.02 floor', () => {
     expect(FEE_ACTIVE_TVL_RATIO_5M).toBeGreaterThanOrEqual(config.screening.minFeeActiveTvlRatio);
+  });
+});
+
+describe('minSafeBinsBelow config override', () => {
+  it('exposes minSafeBinsBelow in strategy config', () => {
+    expect(config.strategy.minSafeBinsBelow).toBeDefined();
+    expect(typeof config.strategy.minSafeBinsBelow).toBe('number');
+  });
+
+  it('getMinSafeBinsBelow returns the configured value', () => {
+    expect(getMinSafeBinsBelow()).toBe(config.strategy.minSafeBinsBelow);
+  });
+
+  it('default minSafeBinsBelow is 10 (matches example config)', () => {
+    expect(config.strategy.minSafeBinsBelow).toBe(10);
+    expect(getMinSafeBinsBelow()).toBe(10);
   });
 });
