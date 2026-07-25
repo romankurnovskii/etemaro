@@ -228,6 +228,13 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
     const orderUrl = `${JUPITER_SWAP_V2_API}/order?${search.toString()}`;
     const jupiterApiKey = getJupiterApiKey();
 
+    // ─── Guard: Jupiter API key required for Swap V2 ──────────
+    if (!jupiterApiKey) {
+      const msg = 'JUPITER_API_KEY is not set — cannot execute swap. Get a free key at https://developers.jup.ag/portal/';
+      log('swap_error', msg);
+      throw new Error(msg);
+    }
+
     const orderRes = await fetch(orderUrl, {
       headers: jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {},
     });
