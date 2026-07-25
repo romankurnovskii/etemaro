@@ -1601,26 +1601,34 @@ IMPORTANT:
       return;
     }
 
-    const closeMatch = text.match(/^\/close\s+(\d+)$/i);
+    const closeMatch = text.match(/^\/close\s+(\d+)(\s+--skip-swap)?$/i);
     if (closeMatch) {
       try {
         const idx = parseInt(closeMatch[1]) - 1;
+        const skipSwap = Boolean(closeMatch[2]);
         const { positions } = await this.adapters.meteora.getMyPositions({ force: true });
         if (idx < 0 || idx >= positions.length) {
           await this.adapters.telegram.sendMessage('Invalid number. Use /positions first.');
           return;
         }
         const pos = positions[idx];
-        await this.adapters.telegram.sendMessage(`Closing ${pos.pair}...`);
-        const result = await this.adapters.meteora.closePosition({ position_address: pos.position });
+        await this.adapters.telegram.sendMessage(`Closing ${pos.pair}${skipSwap ? ' (skipping auto-swap)' : ''}...`);
+        const result = await this.adapters.toolExecutor.executeTool('close_position', {
+          position_address: pos.position,
+          skip_swap: skipSwap,
+          reason: 'Telegram /close command',
+        });
         if (result.success) {
           const closeTxs = result.close_txs?.length ? result.close_txs : result.txs;
           const claimNote = result.claim_txs?.length ? `\nClaim txs: ${result.claim_txs.join(', ')}` : '';
+          const swapNote = result.auto_swapped
+            ? `\nAuto-swapped base token → ${result.sol_received ? `◎${result.sol_received.toFixed(4)} SOL` : 'SOL'}`
+            : '';
           await this.adapters.telegram.sendMessage(
-            `✅ Closed ${pos.pair}\nPnL: ${config.management.solMode ? '◎' : '$'}${result.pnl_usd ?? '?'} | close txs: ${closeTxs?.join(', ') || 'n/a'}${claimNote}`,
+            `✅ Closed ${pos.pair}\nPnL: ${config.management.solMode ? '◎' : '$'}${result.pnl_usd ?? '?'}${swapNote} | close txs: ${closeTxs?.join(', ') || 'n/a'}${claimNote}`,
           );
         } else {
-          await this.adapters.telegram.sendMessage(`❌ Close failed: ${JSON.stringify(result)}`);
+          await this.adapters.telegram.sendMessage(`❌ Close failed: ${result.error || JSON.stringify(result)}`);
         }
       } catch (e: any) {
         await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
@@ -1628,8 +1636,9 @@ IMPORTANT:
       return;
     }
 
-    if (text === '/closeall') {
+    if (text === '/closeall' || text === '/closeall --skip-swap') {
       try {
+        const skipSwap = text.includes('--skip-swap');
         const { positions } = await this.adapters.meteora.getMyPositions({ force: true });
         if (!positions.length) {
           await this.adapters.telegram.sendMessage('No open positions.');
@@ -1639,8 +1648,13 @@ IMPORTANT:
         const results: string[] = [];
         for (const pos of positions) {
           try {
-            const result = await this.adapters.meteora.closePosition({ position_address: pos.position });
-            results.push(`${pos.pair}: ${result.success ? 'closed' : `failed (${result.error || 'unknown'})`}`);
+            const result = await this.adapters.toolExecutor.executeTool('close_position', {
+              position_address: pos.position,
+              skip_swap: skipSwap,
+              reason: 'Telegram /closeall command',
+            });
+            const swapStatus = result.auto_swapped ? ' (swapped to SOL)' : '';
+            results.push(`${pos.pair}: ${result.success ? `closed${swapStatus}` : `failed (${result.error || 'unknown'})`}`);
           } catch (error: any) {
             results.push(`${pos.pair}: failed (${error.message})`);
           }
