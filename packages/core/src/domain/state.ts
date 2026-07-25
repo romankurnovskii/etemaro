@@ -31,6 +31,7 @@ interface StateData {
   recentEvents?: StateEvent[];
   lastUpdated: string | null;
   _lastBriefingDate?: string;
+  _consecutiveSwapFailures?: number;
 }
 
 function load(): StateData {
@@ -487,6 +488,77 @@ export function setLastBriefingDate(): void {
   const state = load();
   state._lastBriefingDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
   save(state);
+}
+
+// ─── Swap Failure Circuit Breaker ──────────────────────────────
+
+/**
+ * Current count of consecutive swap failures (failed auto-swap after close, or
+ * close_position returning success:false while the position is still on-chain).
+ * Persisted in state.json so the circuit survives daemon restarts.
+ */
+export function getConsecutiveSwapFailures(): number {
+  const state = load();
+  return state._consecutiveSwapFailures ?? 0;
+}
+
+/**
+ * Increment the consecutive swap-failure counter. Returns the new value.
+ * Emits an `executor_halt` log line once the counter reaches the configured
+ * `maxFailedSwapsBeforeHalt` so operators see the breaker trip clearly.
+ */
+export function recordSwapFailure(opts: { maxFailedSwapsBeforeHalt: number; haltOnSwapFailure: boolean }): number {
+  const state = load();
+  const next = (state._consecutiveSwapFailures ?? 0) + 1;
+  state._consecutiveSwapFailures = next;
+  save(state);
+  if (opts.haltOnSwapFailure && next >= opts.maxFailedSwapsBeforeHalt) {
+    log(
+      'executor_halt',
+      `Consecutive swap failures = ${next} (threshold ${opts.maxFailedSwapsBeforeHalt}). ` +
+        `deploy_position will be blocked until the operator resets the circuit.`,
+    );
+  }
+  return next;
+}
+
+/**
+ * Decrement the counter on a successful swap, floor at 0. Does NOT clear the
+ * circuit on a single success — a single swap may succeed on retry while the
+ * underlying issue is still there.
+ */
+export function recordSwapSuccess(): number {
+  const state = load();
+  const current = state._consecutiveSwapFailures ?? 0;
+  if (current <= 0) return 0;
+  const next = Math.max(0, current - 1);
+  state._consecutiveSwapFailures = next;
+  save(state);
+  return next;
+}
+
+/**
+ * Manually clear the circuit-breaker counter. Used by `/reset-halt` REPL /
+ * Telegram command and by `update_config` when the operator tunes the
+ * threshold back up.
+ */
+export function resetConsecutiveSwapFailures(): void {
+  const state = load();
+  if ((state._consecutiveSwapFailures ?? 0) > 0) {
+    state._consecutiveSwapFailures = 0;
+    save(state);
+    log('executor', 'Consecutive swap-failure counter reset by operator.');
+  }
+}
+
+/**
+ * Is the deploy circuit currently latched? True when
+ * `haltOnSwapFailure` is enabled AND the counter is at or above
+ * `maxFailedSwapsBeforeHalt`.
+ */
+export function isHalted(opts: { maxFailedSwapsBeforeHalt: number; haltOnSwapFailure: boolean }): boolean {
+  if (!opts.haltOnSwapFailure) return false;
+  return getConsecutiveSwapFailures() >= opts.maxFailedSwapsBeforeHalt;
 }
 
 /**
