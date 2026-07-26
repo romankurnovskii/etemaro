@@ -321,9 +321,15 @@ const toolMap: Record<string, ToolFn> = {
   check_smart_wallets_on_pool: checkSmartWalletsOnPool as unknown as ToolFn,
   claim_fees: claimFees as unknown as ToolFn,
   close_position: closePosition as unknown as ToolFn,
-  close_all_positions: closeAllPositions as unknown as ToolFn,
+  close_all_positions: ((args: Record<string, unknown> = {}) => {
+    const skipSwap = Boolean(args.skipSwap || args.skip_swap);
+    return closeAllPositions(skipSwap);
+  }) as ToolFn,
   get_wallet_balance: getWalletBalances as unknown as ToolFn,
-  swap_all_tokens_to_sol: swapAllTokensToSol as unknown as ToolFn,
+  swap_all_tokens_to_sol: ((args: Record<string, unknown> = {}) => {
+    const skipMints = (args.skipMints as string[]) || (args.skip_mints as string[]) || [];
+    return swapAllTokensToSol(Array.isArray(skipMints) ? skipMints : []);
+  }) as ToolFn,
   swap_token: swapToken as unknown as ToolFn,
   get_top_lpers: studyTopLPers as unknown as ToolFn,
   study_top_lpers: studyTopLPers as unknown as ToolFn,
@@ -702,20 +708,31 @@ async function swapBaseToSolWithRetry(
 /**
  * Orchestrate swapping all non-SOL/USDC tokens to SOL.
  */
-export async function swapAllTokensToSol(skipMints: string[] = []): Promise<{
+export async function swapAllTokensToSol(skipMintsInput: string[] | { skipMints?: string[] } = []): Promise<{
   total: number;
   skipped: number;
   successful: number;
   failed: number;
   results: any[];
 }> {
+  let skipMints: string[] = [];
+  if (Array.isArray(skipMintsInput)) {
+    skipMints = skipMintsInput;
+  } else if (skipMintsInput && typeof skipMintsInput === 'object') {
+    const raw = (skipMintsInput as any).skipMints || (skipMintsInput as any).skip_mints;
+    if (Array.isArray(raw)) {
+      skipMints = raw;
+    }
+  }
+
   const balances = await getWalletBalances();
   if (!balances || !balances.tokens) {
     return { total: 0, skipped: 0, successful: 0, failed: 0, results: [] };
   }
 
   const SOL_MINT = 'So11111111111111111111111111111111111111112';
-  const skips = new Set([SOL_MINT, ...skipMints]);
+  const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+  const skips = new Set([SOL_MINT, USDC_MINT, ...skipMints]);
 
   let total = 0;
   let skipped = 0;
@@ -760,12 +777,18 @@ export async function swapAllTokensToSol(skipMints: string[] = []): Promise<{
 /**
  * Orchestrate closing all open positions.
  */
-export async function closeAllPositions(skipSwap: boolean = false): Promise<{
+export async function closeAllPositions(skipSwapInput: boolean | { skipSwap?: boolean; skip_swap?: boolean } = false): Promise<{
   total: number;
   successful: number;
   failed: number;
   results: any[];
 }> {
+  let skipSwap = false;
+  if (typeof skipSwapInput === 'boolean') {
+    skipSwap = skipSwapInput;
+  } else if (skipSwapInput && typeof skipSwapInput === 'object') {
+    skipSwap = Boolean((skipSwapInput as any).skipSwap || (skipSwapInput as any).skip_swap);
+  }
   const positionsRes = await getMyPositions({ force: true });
   if (!positionsRes || !positionsRes.positions) {
     return { total: 0, successful: 0, failed: 0, results: [] };
