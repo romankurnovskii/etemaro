@@ -321,7 +321,9 @@ const toolMap: Record<string, ToolFn> = {
   check_smart_wallets_on_pool: checkSmartWalletsOnPool as unknown as ToolFn,
   claim_fees: claimFees as unknown as ToolFn,
   close_position: closePosition as unknown as ToolFn,
+  close_all_positions: closeAllPositions as unknown as ToolFn,
   get_wallet_balance: getWalletBalances as unknown as ToolFn,
+  swap_all_tokens_to_sol: swapAllTokensToSol as unknown as ToolFn,
   swap_token: swapToken as unknown as ToolFn,
   get_top_lpers: studyTopLPers as unknown as ToolFn,
   study_top_lpers: studyTopLPers as unknown as ToolFn,
@@ -695,6 +697,114 @@ async function swapBaseToSolWithRetry(
   log('executor_warn', `Auto-swap ${label} failed after ${attempts} attempts — base token left unsold (${baseMint.slice(0, 8)})`);
   recordSwapFailure({ maxFailedSwapsBeforeHalt, haltOnSwapFailure });
   return { swapped: false, result: null, token: null };
+}
+
+/**
+ * Orchestrate swapping all non-SOL/USDC tokens to SOL.
+ */
+export async function swapAllTokensToSol(skipMints: string[] = []): Promise<{
+  total: number;
+  skipped: number;
+  successful: number;
+  failed: number;
+  results: any[];
+}> {
+  const balances = await getWalletBalances();
+  if (!balances || !balances.tokens) {
+    return { total: 0, skipped: 0, successful: 0, failed: 0, results: [] };
+  }
+
+  const SOL_MINT = 'So11111111111111111111111111111111111111112';
+  const skips = new Set([SOL_MINT, ...skipMints]);
+
+  let total = 0;
+  let skipped = 0;
+  let successful = 0;
+  let failed = 0;
+  const results = [];
+
+  for (const token of balances.tokens as any[]) {
+    total++;
+    const isDust = (token.usd ?? 0) < 0.1;
+    if (skips.has(token.mint) || isDust) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      const res = await swapBaseToSolWithRetry(token.mint, 'batch cleanup');
+      if (res.swapped) {
+        successful++;
+        results.push({ mint: token.mint, success: true, result: res.result });
+      } else {
+        failed++;
+        results.push({ mint: token.mint, success: false, reason: 'auto-swap failed' });
+      }
+    } catch (e: any) {
+      failed++;
+      results.push({ mint: token.mint, success: false, reason: e.message });
+    }
+  }
+
+  logAction({
+    tool: 'swapAllTokensToSol',
+    args: { skipMints },
+    result: { total, skipped, successful, failed },
+    duration_ms: 0,
+    success: failed === 0,
+  });
+
+  return { total, skipped, successful, failed, results };
+}
+
+/**
+ * Orchestrate closing all open positions.
+ */
+export async function closeAllPositions(skipSwap: boolean = false): Promise<{
+  total: number;
+  successful: number;
+  failed: number;
+  results: any[];
+}> {
+  const positionsRes = await getMyPositions({ force: true });
+  if (!positionsRes || !positionsRes.positions) {
+    return { total: 0, successful: 0, failed: 0, results: [] };
+  }
+
+  const positions = positionsRes.positions as any[];
+  let successful = 0;
+  let failed = 0;
+  const results = [];
+
+  for (const pos of positions) {
+    try {
+      const res = (await executeTool('close_position', {
+        position_address: pos.position,
+        skip_swap: skipSwap,
+        reason: 'close all',
+      })) as any;
+      if (res && res.success !== false && !res.error) {
+        successful++;
+        results.push({ position: pos.position, success: true, result: res });
+      } else {
+        failed++;
+        results.push({ position: pos.position, success: false, reason: res?.error || 'failed to close' });
+      }
+    } catch (e: any) {
+      failed++;
+      results.push({ position: pos.position, success: false, reason: e.message });
+    }
+  }
+
+  logAction({
+    tool: 'closeAllPositions',
+    args: { skipSwap },
+    result: { total: positions.length, successful, failed },
+    duration_ms: 0,
+    success: failed === 0,
+  });
+
+  return { total: positions.length, successful, failed, results };
 }
 
 /**
