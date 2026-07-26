@@ -730,9 +730,10 @@ export async function swapAllTokensToSol(skipMintsInput: string[] | { skipMints?
     return { total: 0, skipped: 0, successful: 0, failed: 0, results: [] };
   }
 
-  const SOL_MINT = 'So11111111111111111111111111111111111111112';
+  const SOL_MINT_1 = 'So11111111111111111111111111111111111111111';
+  const SOL_MINT_2 = 'So11111111111111111111111111111111111111112';
   const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-  const skips = new Set([SOL_MINT, USDC_MINT, ...skipMints]);
+  const skips = new Set([SOL_MINT_1, SOL_MINT_2, USDC_MINT, ...skipMints]);
 
   let total = 0;
   let skipped = 0;
@@ -742,8 +743,11 @@ export async function swapAllTokensToSol(skipMintsInput: string[] | { skipMints?
 
   for (const token of balances.tokens as any[]) {
     total++;
+    const symbolUpper = (token.symbol || '').toUpperCase();
+    const isSolOrUsdc = symbolUpper === 'SOL' || symbolUpper === 'WSOL' || symbolUpper === 'USDC';
     const isDust = (token.usd ?? 0) < 0.1;
-    if (skips.has(token.mint) || isDust) {
+
+    if (skips.has(token.mint) || isSolOrUsdc || isDust) {
       skipped++;
       continue;
     }
