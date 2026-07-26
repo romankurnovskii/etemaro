@@ -333,6 +333,10 @@ export class Cli {
 
     switch (subcommand) {
       case 'balance':
+      case 'wallet':
+        if (sub2 === 'swap-all') {
+          return this.handleSwapAllTokensToSol(flags);
+        }
         return this.handleBalance();
       case 'positions':
         return this.handlePositions();
@@ -558,11 +562,28 @@ export class Cli {
   }
 
   private async handleClose(flags: Record<string, any>): Promise<void> {
-    if (!flags.position) die('Usage: etemaro close --position <addr>');
+    if (flags.all) {
+      out(
+        await this.adapters.toolExecutor.executeTool('close_all_positions', {
+          skipSwap: flags['skip-swap'] ?? false,
+        }),
+      );
+      return;
+    }
+    if (!flags.position) die('Usage: etemaro close --position <addr> or etemaro close --all');
     out(
       await this.adapters.toolExecutor.executeTool('close_position', {
         position_address: flags.position,
         skip_swap: flags['skip-swap'] ?? false,
+      }),
+    );
+  }
+
+  private async handleSwapAllTokensToSol(flags: Record<string, any>): Promise<void> {
+    const skipMints = typeof flags.skip === 'string' ? flags.skip.split(',') : [];
+    out(
+      await this.adapters.toolExecutor.executeTool('swap_all_tokens_to_sol', {
+        skipMints,
       }),
     );
   }
