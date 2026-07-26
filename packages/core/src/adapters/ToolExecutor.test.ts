@@ -50,4 +50,12 @@ describe('ToolExecutor - swapAllTokensToSol', () => {
       amount: 1000000,
     });
   });
+
+  it('should accept object input { skipMints: [] } without throwing error', async () => {
+    const mockBalances = { tokens: [] };
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue(mockBalances as any);
+
+    const result = await swapAllTokensToSol({ skipMints: [] } as any);
+    expect(result.total).toBe(0);
+  });
 });
