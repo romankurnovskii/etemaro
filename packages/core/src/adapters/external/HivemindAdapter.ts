@@ -218,7 +218,7 @@ export async function registerHiveMindAgent({ reason = 'heartbeat' }: { reason?:
   }
 }
 
-export async function pullHiveMindLessons(limit = 12): Promise<NormalizedSharedLesson[] | null> {
+export async function pullHiveMindLessons(limit = 24): Promise<NormalizedSharedLesson[] | null> {
   if (!isHiveMindEnabled()) return null;
   try {
     const payload = await requestJson('/api/hivemind/lessons/pull', {
