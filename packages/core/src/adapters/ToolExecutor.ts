@@ -17,7 +17,7 @@ import { execSync, spawn } from 'node:child_process';
 
 // ─── Shared imports ────────────────────────────────────────────
 import { config, reloadScreeningThresholds } from '../config/Config.js';
-import { REPO_ROOT, configPath, getMinSafeBinsBelow } from '../shared/constants.js';
+import { REPO_ROOT, configPath, USER_CONFIG_PATH, getMinSafeBinsBelow } from '../shared/constants.js';
 import { log, logAction } from '../shared/logger.js';
 import type { AppConfig, AgentRole } from '../shared/types.js';
 
@@ -67,7 +67,6 @@ import { notifyDeploy, notifyClose, notifySwap } from './notifications/TelegramA
 
 // ─── Constants ─────────────────────────────────────────────────
 
-const USER_CONFIG_PATH = configPath('user-config.json');
 const POOL_DISCOVERY_BASE = 'https://pool-discovery-api.datapi.meteora.ag';
 const MIN_VOLATILITY_TIMEFRAME = '30m';
 const TIMEFRAME_MINUTES: Record<string, number> = {
