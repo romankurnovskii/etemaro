@@ -739,6 +739,8 @@ export async function swapAllTokensToSol(skipMintsInput: string[] | { skipMints?
   let successful = 0;
   let failed = 0;
   const results = [];
+  const interSwapDelayMs = Math.max(0, Number(config.management.autoSwapInterSwapDelayMs ?? 1500));
+  let swapAttempted = false;
 
   for (const token of balances.tokens as any[]) {
     total++;
@@ -750,6 +752,13 @@ export async function swapAllTokensToSol(skipMintsInput: string[] | { skipMints?
       skipped++;
       continue;
     }
+
+    // Pace swaps to respect Jupiter rate limits (Free tier: 60 RPM main bucket).
+    // /order counts against the main bucket; /execute has its own bucket.
+    if (swapAttempted && interSwapDelayMs > 0) {
+      await sleep(interSwapDelayMs);
+    }
+    swapAttempted = true;
 
     try {
       const res = await swapBaseToSolWithRetry(token.mint, 'batch cleanup');

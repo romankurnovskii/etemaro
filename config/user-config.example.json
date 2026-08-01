@@ -55,6 +55,7 @@
     "autoSwapRetryDelayMs": 3000,
     "haltOnSwapFailure": true,
     "maxFailedSwapsBeforeHalt": 5,
+    "autoSwapInterSwapDelayMs": 1500,
     "outOfRangeBinsToClose": 10,
     "outOfRangeWaitMinutes": 30,
     "oorCooldownTriggerCount": 3,

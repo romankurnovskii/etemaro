@@ -43,6 +43,7 @@ const REQUIRED_FLAT_KEYS = new Set([
   'autoSwapAfterClaim',
   'autoSwapRetryAttempts',
   'autoSwapRetryDelayMs',
+  'autoSwapInterSwapDelayMs',
   'haltOnSwapFailure',
   'maxFailedSwapsBeforeHalt',
   'outOfRangeBinsToClose',
