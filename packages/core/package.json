@@ -16,7 +16,7 @@
     "dotenv": "^17.4.2",
     "jsonrepair": "^3.15.0",
     "node-cron": "^4.6.0",
-    "openai": "^6.49.0",
+    "openai": "^7.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
