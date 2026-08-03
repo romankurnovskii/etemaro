@@ -204,7 +204,7 @@ Returns the full runtime config.
 ### etemaro config set <key> <value>
 Updates a config key. Parses value as JSON when possible.
 \`\`\`
-Valid keys: minTvl, maxTvl, minVolume, maxPositions, deployAmountSol, managementIntervalMin, screeningIntervalMin, managementModel, screeningModel, generalModel, autoSwapAfterClaim, minClaimAmount, outOfRangeWaitMinutes
+Valid keys: minTvl, maxTvl, minVolume, maxPositions, deployAmountSol, managementIntervalMin, screeningIntervalMin, managementModel, screeningModel, generalModel, autoSwapAfterClaim, autoSwapRetryAttempts, autoSwapRetryDelayMs, autoSwapInterSwapDelayMs, minClaimAmount, outOfRangeWaitMinutes
 \`\`\`
 
 ### etemaro lessons [--limit 50]
