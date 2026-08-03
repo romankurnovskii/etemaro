@@ -33,7 +33,6 @@ dev-blocklist.json
 # Build and IDE files
 logs/
 dist/
-.memory-bank/
 .dev/
 data/
 
