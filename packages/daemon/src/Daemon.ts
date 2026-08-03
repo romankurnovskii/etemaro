@@ -124,17 +124,29 @@ export function getDeterministicCloseRule(position: any, managementConfig: typeo
   })();
 
   if (!pnlSuspect && position.pnl_pct != null && position.pnl_pct <= managementConfig.stopLossPct) {
-    return { action: 'CLOSE', rule: 1, reason: 'stop loss' };
+    return {
+      action: 'CLOSE',
+      rule: 1,
+      reason: `stop loss (pnl=${position.pnl_pct.toFixed(2)}% threshold=${managementConfig.stopLossPct}%)`,
+    };
   }
   if (!pnlSuspect && position.pnl_pct != null && position.pnl_pct >= managementConfig.takeProfitPct) {
-    return { action: 'CLOSE', rule: 2, reason: 'take profit' };
+    return {
+      action: 'CLOSE',
+      rule: 2,
+      reason: `take profit (pnl=${position.pnl_pct.toFixed(2)}% threshold=${managementConfig.takeProfitPct}%)`,
+    };
   }
   if (
     position.active_bin != null &&
     position.upper_bin != null &&
     position.active_bin > position.upper_bin + managementConfig.outOfRangeBinsToClose
   ) {
-    return { action: 'CLOSE', rule: 3, reason: 'pumped far above range' };
+    return {
+      action: 'CLOSE',
+      rule: 3,
+      reason: `pumped far above range (active_bin=${position.active_bin} upper_bin=${position.upper_bin} threshold=+${managementConfig.outOfRangeBinsToClose} bins)`,
+    };
   }
   if (
     position.active_bin != null &&
@@ -142,10 +154,18 @@ export function getDeterministicCloseRule(position: any, managementConfig: typeo
     position.active_bin > position.upper_bin &&
     (position.minutes_out_of_range ?? 0) >= managementConfig.outOfRangeWaitMinutes
   ) {
-    return { action: 'CLOSE', rule: 4, reason: 'OOR' };
+    return {
+      action: 'CLOSE',
+      rule: 4,
+      reason: `OOR (active_bin=${position.active_bin} upper_bin=${position.upper_bin} oor_minutes=${position.minutes_out_of_range ?? 0} threshold=${managementConfig.outOfRangeWaitMinutes}m)`,
+    };
   }
   if (position.fee_per_tvl_24h != null && position.fee_per_tvl_24h < managementConfig.minFeePerTvl24h && (position.age_minutes ?? 0) >= 60) {
-    return { action: 'CLOSE', rule: 5, reason: 'low yield' };
+    return {
+      action: 'CLOSE',
+      rule: 5,
+      reason: `low yield (fee/tvl_24h=${position.fee_per_tvl_24h.toFixed(2)}% threshold=${managementConfig.minFeePerTvl24h}% age=${position.age_minutes ?? '?'}m min_age=${managementConfig.minAgeBeforeYieldCheck ?? 60}m)`,
+    };
   }
   return null;
 }

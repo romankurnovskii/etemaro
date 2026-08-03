@@ -1,9 +1,7 @@
 import fs from 'node:fs';
 import { log } from '../../shared/logger.js';
-import { configPath } from '../../shared/constants.js';
+import { USER_CONFIG_PATH } from '../../shared/constants.js';
 import { notify } from './NotificationSink.js';
-
-const USER_CONFIG_PATH = configPath('user-config.json');
 
 const TOKEN: string | null = process.env.TELEGRAM_BOT_TOKEN || null;
 const BASE: string | null = TOKEN ? `https://api.telegram.org/bot${TOKEN}` : null;

@@ -50,11 +50,12 @@
   "management": {
     "description": "Rules for managing open positions: claims, rebalances, stop-loss, take-profit, trailing stops, and cooldowns.",
     "minClaimAmount": 5,
-    "autoSwapAfterClaim": false,
+    "autoSwapAfterClaim": true,
     "autoSwapRetryAttempts": 3,
     "autoSwapRetryDelayMs": 3000,
     "haltOnSwapFailure": true,
     "maxFailedSwapsBeforeHalt": 5,
+    "autoSwapInterSwapDelayMs": 1500,
     "outOfRangeBinsToClose": 10,
     "outOfRangeWaitMinutes": 30,
     "oorCooldownTriggerCount": 3,
@@ -99,7 +100,7 @@
   "llm": {
     "description": "LLM inference parameters and per-role model overrides. llmModel in connection acts as the global fallback.",
     "temperature": 0.373,
-    "maxTokens": 4096,
+    "maxTokens": 10000,
     "maxSteps": 20,
     "managementModel": "env.LLM_MODEL",
     "screeningModel": "env.LLM_MODEL",

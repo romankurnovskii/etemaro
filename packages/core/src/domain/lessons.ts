@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import { log } from '../shared/logger.js';
 import {
   dataPath,
-  configPath,
+  USER_CONFIG_PATH,
   MIN_EVOLVE_POSITIONS,
   MAX_CHANGE_PER_STEP,
   PERFORMANCE_SIGNAL_FIELDS,
@@ -365,7 +365,6 @@ export function evolveThresholds(perfData: PerformanceRecord[], cfg: AppConfig):
   if (Object.keys(changes).length === 0) return { changes: {}, rationale: {} };
 
   // ── Persist changes to user-config.json ───────────────────────
-  const USER_CONFIG_PATH = configPath('user-config.json');
   let userConfig: Record<string, unknown> = {};
   if (fs.existsSync(USER_CONFIG_PATH)) {
     try {

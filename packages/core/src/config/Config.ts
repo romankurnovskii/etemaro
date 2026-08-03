@@ -1,10 +1,17 @@
 import fs from 'node:fs';
 import type { AppConfig } from '../shared/types.js';
-import { repoPath, dataPath, configPath, MIN_SAFE_BINS_BELOW, TOKEN_MINTS, setMinSafeBinsBelowOverride } from '../shared/constants.js';
+import {
+  repoPath,
+  dataPath,
+  configPath,
+  USER_CONFIG_PATH,
+  MIN_SAFE_BINS_BELOW,
+  TOKEN_MINTS,
+  setMinSafeBinsBelowOverride,
+} from '../shared/constants.js';
 import { numericConfig } from '../shared/utils.js';
 import { loadAndValidateConfig } from './ConfigValidator.js';
 
-const USER_CONFIG_PATH = configPath('user-config.json');
 const GMGN_CONFIG_PATH = configPath('gmgn-config.json');
 
 function readGmgnConfig(): Record<string, unknown> {
@@ -76,6 +83,7 @@ function buildConfig(): AppConfig {
       autoSwapAfterClaim: u.autoSwapAfterClaim as boolean,
       autoSwapRetryAttempts: u.autoSwapRetryAttempts as number,
       autoSwapRetryDelayMs: u.autoSwapRetryDelayMs as number,
+      autoSwapInterSwapDelayMs: u.autoSwapInterSwapDelayMs as number,
       haltOnSwapFailure: u.haltOnSwapFailure as boolean,
       maxFailedSwapsBeforeHalt: u.maxFailedSwapsBeforeHalt as number,
       outOfRangeBinsToClose: u.outOfRangeBinsToClose as number,

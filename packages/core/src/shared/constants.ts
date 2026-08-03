@@ -43,6 +43,9 @@ export function configPath(...segments: string[]): string {
   return path.join(REPO_ROOT, 'config', ...segments);
 }
 
+/** Canonical path to user-config.json (honors USER_CONFIG_PATH env override). */
+export const USER_CONFIG_PATH = configPath('user-config.json');
+
 export const MAX_INSTRUCTION_LENGTH = 280;
 export const MAX_NOTE_LENGTH = 280;
 export const MAX_MANUAL_LESSON_LENGTH = 400;
