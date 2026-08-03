@@ -147,6 +147,7 @@ Conventional environment variables that the daemon reads:
 | `autoSwapAfterClaim`                           | Swap claimed base token back to SOL after claiming.                     | `false` → leave base token; `true` → auto-swap to SOL.                            |
 | `autoSwapRetryAttempts`                        | Number of retries if auto-swap fails.                                   | `3` → retry up to 3 times.                                                        |
 | `autoSwapRetryDelayMs`                         | Delay between auto-swap retries (ms).                                   | `3000` → wait 3s between attempts.                                                |
+| `autoSwapInterSwapDelayMs`                     | Delay between sequential token swaps in a batch (ms).                   | `1500` → ~40 swaps/min, safe for Free Jupiter tier (60 RPM).                      |
 | `haltOnSwapFailure`                            | Enable circuit-breaker: block new deploys after repeated swap failures. | `true` → fail-safe (block deploys). `false` → log only, keep deploying.           |
 | `maxFailedSwapsBeforeHalt`                     | Consecutive failed swaps before circuit-breaker trips.                  | `5` → after 5 failed swaps, new deploys are blocked until operator resets.        |
 | `outOfRangeBinsToClose`                        | Bins a position can drift out-of-range before it counts.                | `10` → position must exceed active bin by >10 bins to be "OOR".                   |
