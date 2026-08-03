@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { configPath } from '../shared/constants.js';
+import { configPath, USER_CONFIG_PATH } from '../shared/constants.js';
 import { flattenUserConfig } from '../shared/utils.js';
 
 const REQUIRED_FLAT_KEYS = new Set([
@@ -43,6 +43,7 @@ const REQUIRED_FLAT_KEYS = new Set([
   'autoSwapAfterClaim',
   'autoSwapRetryAttempts',
   'autoSwapRetryDelayMs',
+  'autoSwapInterSwapDelayMs',
   'haltOnSwapFailure',
   'maxFailedSwapsBeforeHalt',
   'outOfRangeBinsToClose',
@@ -273,7 +274,6 @@ function mergeIntoExample(exampleRaw: Record<string, unknown>, userRaw: Record<s
 }
 
 export function loadAndValidateConfig(): ValidatedConfig {
-  const USER_CONFIG_PATH = configPath('user-config.json');
   const EXAMPLE_CONFIG_PATH = configPath('user-config.example.json');
 
   if (process.env.TEST_MODE || process.env.VITEST) {

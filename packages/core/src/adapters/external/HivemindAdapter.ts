@@ -2,12 +2,12 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { log } from '../../shared/logger.js';
 import { config } from '../../config/Config.js';
-import { repoPath, dataPath, configPath, sanitizeStoredText } from '../../shared/utils.js';
+import { repoPath, dataPath, sanitizeStoredText } from '../../shared/utils.js';
+import { USER_CONFIG_PATH } from '../../shared/constants.js';
 import type { HiveMindCache, AgentRole, HiveMindSharedLesson } from '../../shared/types.js';
 
 // ─── Constants ─────────────────────────────────────────────────
 
-const USER_CONFIG_PATH = configPath('user-config.json');
 const CACHE_PATH = dataPath('hivemind-cache.json');
 const PACKAGE_JSON_PATH = repoPath('package.json');
 const HEARTBEAT_INTERVAL_MS = 15 * 60 * 1000;
@@ -218,7 +218,7 @@ export async function registerHiveMindAgent({ reason = 'heartbeat' }: { reason?:
   }
 }
 
-export async function pullHiveMindLessons(limit = 12): Promise<NormalizedSharedLesson[] | null> {
+export async function pullHiveMindLessons(limit = 24): Promise<NormalizedSharedLesson[] | null> {
   if (!isHiveMindEnabled()) return null;
   try {
     const payload = await requestJson('/api/hivemind/lessons/pull', {

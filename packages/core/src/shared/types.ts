@@ -574,6 +574,7 @@ export interface ManagementConfig {
   autoSwapRetryDelayMs: number;
   haltOnSwapFailure: boolean;
   maxFailedSwapsBeforeHalt: number;
+  autoSwapInterSwapDelayMs: number;
   outOfRangeBinsToClose: number;
   outOfRangeWaitMinutes: number;
   oorCooldownTriggerCount: number;

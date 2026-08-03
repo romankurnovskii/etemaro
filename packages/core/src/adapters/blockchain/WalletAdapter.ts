@@ -21,6 +21,35 @@ function getWallet(): Keypair {
 
 const JUPITER_SWAP_V2_API = 'https://api.jup.ag/swap/v2';
 
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+interface RateLimitRetryOptions {
+  attempts?: number;
+  fallbackDelayMs?: number;
+}
+
+/**
+ * Fetch with retry on transient Jupiter rate-limit responses (429) and
+ * misdirected-request (421) responses. Jupiter exposes `x-ratelimit-reset`
+ * (Unix seconds) on 429 responses — wait until that moment so the sliding
+ * window frees a slot, falling back to a fixed delay when the header is absent.
+ */
+async function fetchWithRateLimitRetry(url: string, init: RequestInit = {}, opts: RateLimitRetryOptions = {}): Promise<Response> {
+  const attempts = Math.max(1, opts.attempts ?? 3);
+  const fallbackDelayMs = Math.max(0, opts.fallbackDelayMs ?? 2000);
+  let lastResponse: Response | null = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 && res.status !== 421) return res;
+    lastResponse = res;
+    const resetHeader = res.headers.get('x-ratelimit-reset');
+    const waitMs = resetHeader ? Math.max(0, Number(resetHeader) * 1000 - Date.now()) : fallbackDelayMs;
+    log('swap_warn', `Jupiter responded ${res.status} (attempt ${attempt}/${attempts}) — waiting ${waitMs}ms before retry`);
+    if (attempt < attempts) await sleep(waitMs);
+  }
+  return lastResponse!;
+}
+
 function getJupiterApiKey(): string | undefined {
   return config.jupiter.apiKey || process.env.JUPITER_API_KEY;
 }
@@ -235,7 +264,7 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
       throw new Error(msg);
     }
 
-    const orderRes = await fetch(orderUrl, {
+    const orderRes = await fetchWithRateLimitRetry(orderUrl, {
       headers: jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {},
     });
     if (!orderRes.ok) {
@@ -256,7 +285,7 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
     const signedTx = Buffer.from(tx.serialize()).toString('base64');
 
     // ─── Execute ───────────────────────────────────────────────
-    const execRes = await fetch(`${JUPITER_SWAP_V2_API}/execute`, {
+    const execRes = await fetchWithRateLimitRetry(`${JUPITER_SWAP_V2_API}/execute`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
