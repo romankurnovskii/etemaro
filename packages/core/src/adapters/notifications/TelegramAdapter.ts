@@ -168,6 +168,18 @@ export async function sendMessage(text: string): Promise<TelegramApiResponse | n
   return postTelegram('sendMessage', { text: String(text).slice(0, 4096) });
 }
 
+/**
+ * Send a plain-text message to Telegram without emitting a desktop-sink entry.
+ *
+ * Used by the notify* wrappers (notifyDeploy, notifyClose, ...) which already emit
+ * typed desktop notifications via notify() and must not double-emit the generic
+ * 'message' sink entry that sendMessage() produces.
+ */
+async function sendPlain(text: string): Promise<TelegramApiResponse | null> {
+  if (!TOKEN || !chatId) return null;
+  return postTelegram('sendMessage', { text: String(text).slice(0, 4096) });
+}
+
 interface InlineKeyboardButton {
   text: string;
   callback_data?: string;
@@ -180,15 +192,6 @@ export async function sendMessageWithButtons(text: string, inlineKeyboard: Inlin
     text: String(text).slice(0, 4096),
     reply_markup: { inline_keyboard: inlineKeyboard },
   });
-}
-
-export async function sendHTML(html: string): Promise<TelegramApiResponse | null> {
-  // Note: do NOT call notify() here — each notify* wrapper (notifyDeploy, notifyClose, etc.)
-  // already calls notify() with a typed, structured payload before invoking sendHTML.
-  // Adding a generic sink call here would double-emit structured notifications and
-  // also emit briefings, live messages, and other HTML that are not individual alerts.
-  if (!TOKEN || !chatId) return null;
-  return postTelegram('sendMessage', { text: html.slice(0, 4096), parse_mode: 'HTML' });
 }
 
 export async function editMessage(text: string, messageId: number): Promise<TelegramApiResponse | null> {
@@ -531,14 +534,14 @@ export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, 
   const poolStr = binStep || baseFee ? `Bin step: ${binStep ?? '?'}  |  Base fee: ${baseFee != null ? baseFee + '%' : '?'}\n` : '';
   const body = `Amount: ${amountSol} SOL\n${priceStr}${coverageStr}${poolStr}Position: ${position?.slice(0, 8)}... | Tx: ${tx?.slice(0, 16)}...`;
   notify('deploy', '✅', `Deployed ${pair}`, body);
-  await sendHTML(
-    `✅ <b>Deployed</b> ${pair}\n` +
+  await sendPlain(
+    `✅ Deployed ${pair}\n` +
       `Amount: ${amountSol} SOL\n` +
       priceStr +
       coverageStr +
       poolStr +
-      `Position: <code>${position?.slice(0, 8)}...</code>\n` +
-      `Tx: <code>${tx?.slice(0, 16)}...</code>`,
+      `Position: ${position?.slice(0, 8)}...\n` +
+      `Tx: ${tx?.slice(0, 16)}...`,
   );
 }
 
@@ -553,7 +556,7 @@ export async function notifyClose({ pair, pnlUsd, pnlPct }: NotifyCloseArgs): Pr
   const sign = pnlUsd >= 0 ? '+' : '';
   const body = `PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)`;
   notify('close', '🔒', `Closed ${pair}`, body);
-  await sendHTML(`🔒 <b>Closed</b> ${pair}\n` + body);
+  await sendPlain(`🔒 Closed ${pair}\n` + body);
 }
 
 interface NotifySwapArgs {
@@ -568,10 +571,8 @@ export async function notifySwap({ inputSymbol, outputSymbol, amountIn, amountOu
   if (hasActiveLiveMessage()) return;
   const body = `In: ${amountIn ?? '?'} | Out: ${amountOut ?? '?'} | Tx: ${tx?.slice(0, 16)}...`;
   notify('swap', '🔄', `Swapped ${inputSymbol} → ${outputSymbol}`, body);
-  await sendHTML(
-    `🔄 <b>Swapped</b> ${inputSymbol} → ${outputSymbol}\n` +
-      `In: ${amountIn ?? '?'} | Out: ${amountOut ?? '?'}\n` +
-      `Tx: <code>${tx?.slice(0, 16)}...</code>`,
+  await sendPlain(
+    `🔄 Swapped ${inputSymbol} → ${outputSymbol}\n` + `In: ${amountIn ?? '?'} | Out: ${amountOut ?? '?'}\n` + `Tx: ${tx?.slice(0, 16)}...`,
   );
 }
 
@@ -584,7 +585,7 @@ export async function notifyOutOfRange({ pair, minutesOOR }: NotifyOutOfRangeArg
   if (hasActiveLiveMessage()) return;
   const body = `Been OOR for ${minutesOOR} minutes`;
   notify('oor', '⚠️', `Out of Range: ${pair}`, body);
-  await sendHTML(`⚠️ <b>Out of Range</b> ${pair}\n` + body);
+  await sendPlain(`⚠️ Out of Range ${pair}\n` + body);
 }
 
 function sleep(ms: number): Promise<void> {

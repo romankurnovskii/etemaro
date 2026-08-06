@@ -47,7 +47,7 @@ packages/
         HivemindAdapter.ts   # HiveMind collective intelligence agent sync
         AgentMeridianClient.ts # Agent Etemaro API client
         GmgnClient.ts        # GMGN token tracking API client
-      BriefingAdapter.ts     # Daily HTML/text briefing generator
+      BriefingAdapter.ts     # Daily plain-text briefing generator
       PnLAdapter.ts          # Closed positions PnL tracker
       ToolDefinitions.ts     # ReAct agent tools JSON schemas (source of truth for LLM)
       ToolExecutor.ts        # ReAct agent tools execution router & safety checks

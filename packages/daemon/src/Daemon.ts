@@ -65,7 +65,6 @@ export interface DaemonAdapters {
     stopPolling: () => void;
     sendMessage: (text: string) => Promise<any>;
     sendMessageWithButtons: (text: string, buttons: any[]) => Promise<any>;
-    sendHTML: (html: string) => Promise<any>;
     editMessage: (text: string, messageId: number) => Promise<any>;
     editMessageWithButtons: (text: string, messageId: number, buttons: any[]) => Promise<any>;
     answerCallbackQuery: (queryId: string, text?: string) => Promise<any>;
@@ -540,9 +539,15 @@ Summarize the current portfolio health, total fees earned, and performance of al
     try {
       const briefing = await this.adapters.briefing.generateBriefing();
       if (this.adapters.telegram.isEnabled()) {
-        await this.adapters.telegram.sendHTML(briefing);
+        const res = await this.adapters.telegram.sendMessage(briefing);
+        if (res && res.ok !== false) {
+          setLastBriefingDate();
+        } else {
+          log('cron_error', 'Morning briefing telegram delivery failed — last briefing date not updated to allow retry');
+        }
+      } else {
+        setLastBriefingDate();
       }
-      setLastBriefingDate();
     } catch (error: any) {
       log('cron_error', `Morning briefing failed: ${error.message}`);
     }
@@ -1537,7 +1542,7 @@ IMPORTANT:
     if (text === '/briefing') {
       try {
         const briefing = await this.adapters.briefing.generateBriefing();
-        await this.adapters.telegram.sendHTML(briefing);
+        await this.adapters.telegram.sendMessage(briefing);
       } catch (e: any) {
         await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
       }
@@ -2159,7 +2164,7 @@ Commands:
       if (input === '/briefing') {
         await runBusy(async () => {
           const briefing = await this.adapters.briefing.generateBriefing();
-          console.log(`\n${briefing.replace(/<[^>]*>/g, '')}\n`);
+          console.log(`\n${briefing}\n`);
         });
         return;
       }

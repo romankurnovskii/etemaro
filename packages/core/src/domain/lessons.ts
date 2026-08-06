@@ -101,6 +101,10 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
   // Derive and store a lesson
   const lesson = derivLesson(entry as PerformanceRecord & { recorded_at?: string });
   if (lesson) {
+    if (lesson.rule) {
+      const sanitized = sanitizeLessonText(lesson.rule);
+      if (sanitized) lesson.rule = sanitized;
+    }
     data.lessons.push(lesson);
     log('lessons', `New lesson: ${lesson.rule}`);
   }
