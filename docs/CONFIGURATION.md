@@ -1,22 +1,22 @@
 # Etemaro — Configuration Guide
 
-Etemaro uses a single-source configuration system: every field MUST be present in `user-config.json`. No fallback defaults exist at the code level.
+Etemaro uses a single-source configuration system: every field MUST be present in the active JSON configuration file. By default, the application reads `config/user-config.json`, but a custom configuration file path can be passed via the `USER_CONFIG_PATH` environment variable (or per-agent `userConfigPath` in Desktop App's `config/agents.json`).
 
 ```
                   ┌────────────────────────┐
                   │          .env          │ ─── Referenced via "env.VAR_NAME"
-                  └───────────┬────────────┘     in user-config.json values
+                  └───────────┬────────────┘     in JSON config values
                               ▼
                   ┌────────────────────────┐
-                  │    user-config.json    │ ─── Canonical source of truth.
-                  └───────────┬────────────┘     Categorized & validated.
+                  │    user-config.json    │ ─── Default config (or custom via
+                  └───────────┬────────────┘     USER_CONFIG_PATH env var)
                               ▼
                   ┌────────────────────────┐
-                  │  ConfigValidator.ts    │ ─── Startup validation:
+                  │  ConfigValidator.ts    │ ─── Startup validation & auto-migration:
                   └────────────────────────┘     ALL fields must be present.
 ```
 
-> The canonical template is [`config/user-config.example.json`](../../config/user-config.example.json). `npm run setup` writes a `user-config.json` from a preset; you can also copy the example and edit by hand.
+> The canonical template is [`config/user-config.example.json`](../../config/user-config.example.json). `npm run setup` writes `user-config.json` from a preset; you can also copy the example or specify custom files via `USER_CONFIG_PATH`.
 
 ---
 
@@ -316,15 +316,15 @@ The tool maps these flat keys to their nested categories on write. Fields modifi
 
 ## 5. Automatic Configuration Upgrades & Schema Migrations
 
-Etemaro automatically tracks and upgrades your `user-config.json` when new app versions introduce new fields or schema changes.
+Etemaro automatically tracks and upgrades your active configuration file (`config/user-config.json` or any custom JSON config specified via `USER_CONFIG_PATH`) when new app versions introduce new fields or schema changes.
 
 ### How It Works
 
-1. **Schema Versioning**: `user-config.json` includes a top-level `_version` field (e.g. `"_version": 1`). Legacy unversioned configurations are recognized as `_version: 0`.
+1. **Schema Versioning**: The active config file includes a top-level `_version` field (e.g. `"_version": 1`). Legacy unversioned configurations are recognized as `_version: 0`.
 2. **Auto-Migration Runner**: On app startup, `loadAndValidateConfig()` invokes `ConfigMigrator.ts` prior to strict schema validation.
 3. **Default Auto-Filling**: If an upgrade introduces new configuration fields (such as `autoSwapInterSwapDelayMs`), the runner auto-fills missing default values from `config/user-config.example.json` into their respective categories.
 4. **Preserves Custom Settings**: Your existing custom threshold overrides and API keys are strictly preserved.
-5. **Automatic Backup (`.bak`)**: Before updating `user-config.json` on disk, a backup copy is automatically created as `user-config.json.bak` to prevent data loss.
+5. **Automatic Backup (`.bak`)**: Before updating the target configuration file on disk, a backup copy is automatically created (e.g., `user-config.json.bak` or `custom-config.json.bak`) to prevent data loss.
 
 ### Logging Example
 
