@@ -6,7 +6,8 @@ module.exports = {
   apps: [
     {
       name: 'etemaro',
-      script: path.join(repoRoot, 'packages/daemon/dist/Daemon.js'),
+      script: path.join(repoRoot, 'packages/daemon/src/Daemon.ts'),
+      node_args: '--import tsx',
       cwd: repoRoot,
       interpreter: 'node',
       instances: 1,
