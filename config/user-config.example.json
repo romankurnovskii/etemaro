@@ -1,4 +1,5 @@
 {
+  "_version": 1,
   "preset": "custom",
   "connection": {
     "description": "Network endpoints, API credentials, wallet key, LLM provider settings, and runtime mode. These values are also propagated to environment variables on startup.",
