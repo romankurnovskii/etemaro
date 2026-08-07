@@ -36,6 +36,8 @@ dist/
 .dev/
 data/
 
+.worktrees/
+
 # Environment overrides
 
 # Playwright MCP browser logs
