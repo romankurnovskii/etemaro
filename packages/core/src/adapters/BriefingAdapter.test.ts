@@ -70,9 +70,50 @@ describe('generateBriefing', () => {
 
     const briefing = await generateBriefing();
 
-    expect(briefing).toContain('Morning Briefing');
+    expect(briefing).toContain('Daily Briefing');
     expect(briefing).toContain('No new lessons recorded overnight.');
     expect(briefing).toContain('Open Positions: 0');
     expect(briefing).not.toMatch(/<[^>]+>/);
+  });
+
+  it('renders PnL and fees with SOL conversion when solPrice is provided', async () => {
+    const now = new Date();
+    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    writeData(
+      { positions: {} },
+      {
+        lessons: [],
+        performance: [
+          {
+            position: 'pos1',
+            pool: 'pool1',
+            pool_name: 'TEST-SOL',
+            strategy: 'classic',
+            bin_range: 20,
+            bin_step: 10,
+            volatility: 0.1,
+            fee_tvl_ratio: 0.05,
+            organic_score: 80,
+            amount_sol: 1.0,
+            initial_value_usd: 150,
+            final_value_usd: 165,
+            fees_earned_usd: 5.0,
+            minutes_in_range: 30,
+            minutes_held: 30,
+            close_reason: 'manual',
+            pnl_usd: 20.0,
+            pnl_pct: 13.33,
+            recorded_at: hourAgo,
+          },
+        ],
+      },
+    );
+
+    const briefing = await generateBriefing({ solPrice: 150 });
+
+    expect(briefing).toContain('Daily Briefing');
+    expect(briefing).toContain('💰 Net PnL: +$20.00 (+0.133 SOL)');
+    expect(briefing).toContain('💎 Fees Earned: $5.00 (+0.033 SOL)');
+    expect(briefing).toContain('📊 All-time PnL: $20.00 (+0.133 SOL)');
   });
 });

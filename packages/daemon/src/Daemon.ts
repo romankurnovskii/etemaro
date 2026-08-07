@@ -73,7 +73,7 @@ export interface DaemonAdapters {
     createLiveMessage: (title: string, body: string) => Promise<any>;
   };
   briefing: {
-    generateBriefing: () => Promise<string>;
+    generateBriefing: (opts?: { solPrice?: number }) => Promise<string>;
   };
   hivemind: {
     bootstrapHiveMind: () => Promise<any>;
@@ -534,22 +534,35 @@ Summarize the current portfolio health, total fees earned, and performance of al
 
   // ─── Briefing ──────────────────────────────────────────────────
 
-  async runBriefing(): Promise<void> {
-    log('cron', 'Starting morning briefing');
+  private async getBriefingWithSolPrice(): Promise<string> {
+    let solPrice: number | undefined;
     try {
-      const briefing = await this.adapters.briefing.generateBriefing();
+      const wallet = await this.adapters.wallet.getWalletBalances();
+      if (wallet?.sol_price && Number(wallet.sol_price) > 0) {
+        solPrice = Number(wallet.sol_price);
+      }
+    } catch {
+      // Best-effort: fall back to deriving SOL price inside the briefing adapter
+    }
+    return this.adapters.briefing.generateBriefing({ solPrice });
+  }
+
+  async runBriefing(): Promise<void> {
+    log('cron', 'Starting briefing generation');
+    try {
+      const briefing = await this.getBriefingWithSolPrice();
       if (this.adapters.telegram.isEnabled()) {
         const res = await this.adapters.telegram.sendMessage(briefing);
         if (res && res.ok !== false) {
           setLastBriefingDate();
         } else {
-          log('cron_error', 'Morning briefing telegram delivery failed — last briefing date not updated to allow retry');
+          log('cron_error', 'Briefing telegram delivery failed — last briefing date not updated to allow retry');
         }
       } else {
         setLastBriefingDate();
       }
     } catch (error: any) {
-      log('cron_error', `Morning briefing failed: ${error.message}`);
+      log('cron_error', `Briefing failed: ${error.message}`);
     }
   }
 
@@ -1541,7 +1554,7 @@ IMPORTANT:
 
     if (text === '/briefing') {
       try {
-        const briefing = await this.adapters.briefing.generateBriefing();
+        const briefing = await this.getBriefingWithSolPrice();
         await this.adapters.telegram.sendMessage(briefing);
       } catch (e: any) {
         await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
@@ -2163,7 +2176,7 @@ Commands:
 
       if (input === '/briefing') {
         await runBusy(async () => {
-          const briefing = await this.adapters.briefing.generateBriefing();
+          const briefing = await this.getBriefingWithSolPrice();
           console.log(`\n${briefing}\n`);
         });
         return;
