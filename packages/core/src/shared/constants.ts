@@ -26,9 +26,32 @@ export function repoPath(...segments: string[]): string {
   return path.join(REPO_ROOT, ...segments);
 }
 
-/** Resolve a path relative to the data directory. */
+function getAgentSuffix(): string {
+  const envPath = process.env.USER_CONFIG_PATH;
+  if (envPath) {
+    const base = path.basename(envPath, path.extname(envPath));
+    if (base && !['user-config', 'user-config.v2', 'user-config.prod', 'user-config.example'].includes(base.toLowerCase())) {
+      return base.replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+  }
+  return '';
+}
+
+/** Resolve a path relative to the data directory, automatically adding agent suffix for custom config runs. */
 export function dataPath(...segments: string[]): string {
-  return path.join(REPO_ROOT, 'data', ...segments);
+  const baseDir = path.join(REPO_ROOT, 'data');
+
+  const suffix = getAgentSuffix();
+  if (suffix && segments.length > 0) {
+    const last = segments[segments.length - 1];
+    if (last && (last.endsWith('.json') || last.endsWith('.jsonl'))) {
+      const ext = path.extname(last);
+      const name = path.basename(last, ext);
+      const suffixedFile = `${name}-${suffix}${ext}`;
+      return path.join(baseDir, ...segments.slice(0, -1), suffixedFile);
+    }
+  }
+  return path.join(baseDir, ...segments);
 }
 
 /** Resolve a path relative to the config directory. */
