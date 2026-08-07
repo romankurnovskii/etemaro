@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import { configPath, USER_CONFIG_PATH } from '../shared/constants.js';
 import { flattenUserConfig } from '../shared/utils.js';
+import { runConfigMigrations, backupAndSaveUserConfig } from './ConfigMigrator.js';
 
 const REQUIRED_FLAT_KEYS = new Set([
+  '_version',
   'preset',
   'rpcUrl',
   'walletKey',
@@ -296,6 +298,25 @@ export function loadAndValidateConfig(): ValidatedConfig {
     raw = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'));
   } catch (e) {
     throw new Error(`Failed to parse user-config.json: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  if (fs.existsSync(EXAMPLE_CONFIG_PATH)) {
+    try {
+      const exampleRaw = JSON.parse(fs.readFileSync(EXAMPLE_CONFIG_PATH, 'utf8')) as Record<string, unknown>;
+      const migrationResult = runConfigMigrations(raw, exampleRaw);
+      if (migrationResult.changed) {
+        console.log(`[config] Migrated user-config.json schema from v${migrationResult.fromVersion} to v${migrationResult.toVersion}`);
+        for (const log of migrationResult.logs) {
+          if (log.addedKeys.length > 0) {
+            console.log(`[config]   + Auto-filled ${log.addedKeys.length} new field(s): ${log.addedKeys.join(', ')}`);
+          }
+        }
+        backupAndSaveUserConfig(USER_CONFIG_PATH, migrationResult.migrated);
+        raw = migrationResult.migrated;
+      }
+    } catch (e) {
+      console.warn(`[config] Auto-migration warning: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   if (process.env.TEST_MODE || process.env.VITEST) {
