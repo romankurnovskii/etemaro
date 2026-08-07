@@ -52,3 +52,11 @@ describe('minSafeBinsBelow config override', () => {
     expect(getMinSafeBinsBelow()).toBe(10);
   });
 });
+
+describe('schema versioning', () => {
+  it('exposes schema _version in AppConfig', () => {
+    expect(config._version).toBeDefined();
+    expect(typeof config._version).toBe('number');
+    expect(config._version).toBeGreaterThanOrEqual(1);
+  });
+});

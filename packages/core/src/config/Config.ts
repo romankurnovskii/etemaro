@@ -46,6 +46,7 @@ function buildConfig(): AppConfig {
   }
 
   return {
+    _version: (u._version as number) ?? 1,
     risk: {
       maxPositions: u.maxPositions as number,
       maxDeployAmount: u.maxDeployAmount as number,

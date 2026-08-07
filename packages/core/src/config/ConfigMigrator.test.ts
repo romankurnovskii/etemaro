@@ -28,6 +28,10 @@ describe('ConfigMigrator', () => {
       maxPositions: 2,
       maxDeployAmount: 50,
     },
+    screening: {
+      timeframe: '5m',
+      allowedLaunchpads: [],
+    },
     management: {
       autoSwapInterSwapDelayMs: 1500,
       minClaimAmount: 5,
@@ -35,6 +39,7 @@ describe('ConfigMigrator', () => {
     chartIndicators: {
       enabled: false,
       entryPreset: 'supertrend_break',
+      candles: 298,
     },
   };
 
@@ -75,7 +80,9 @@ describe('ConfigMigrator', () => {
         preset: 'custom',
         connection: { rpcUrl: 'https://rpc.com', dryRun: true },
         risk: { maxPositions: 2, maxDeployAmount: 50 },
+        screening: { timeframe: '5m', allowedLaunchpads: [] },
         management: { autoSwapInterSwapDelayMs: 1500, minClaimAmount: 5 },
+        chartIndicators: { enabled: false, entryPreset: 'supertrend_break', candles: 298 },
       },
       mockExampleConfig,
     );
@@ -85,6 +92,47 @@ describe('ConfigMigrator', () => {
     expect(result.fromVersion).toBe(CURRENT_CONFIG_VERSION);
     expect(result.toVersion).toBe(CURRENT_CONFIG_VERSION);
     expect(result.migrated._version).toBe(CURRENT_CONFIG_VERSION);
+  });
+
+  it('returns list of missing added fields during auto-fill', () => {
+    const incompleteUserConfig = {
+      preset: 'custom',
+      connection: { rpcUrl: 'https://rpc.com', dryRun: true },
+    };
+
+    const { added } = autoFillMissingDefaults(incompleteUserConfig, mockExampleConfig);
+    expect(added).toContain('maxPositions');
+    expect(added).toContain('maxDeployAmount');
+    expect(added).toContain('autoSwapInterSwapDelayMs');
+    expect(added).toContain('chartIndicators');
+  });
+
+  it('preserves user chartIndicators custom settings while filling missing default indicator fields', () => {
+    const userConfigWithCustomIndicators = {
+      preset: 'custom',
+      connection: { rpcUrl: 'https://rpc.com', dryRun: true },
+      chartIndicators: {
+        enabled: true,
+        entryPreset: 'custom_rsi',
+      },
+    };
+
+    const { data } = autoFillMissingDefaults(userConfigWithCustomIndicators, mockExampleConfig);
+    const ci = data.chartIndicators as Record<string, unknown>;
+
+    expect(ci.enabled).toBe(true);
+    expect(ci.entryPreset).toBe('custom_rsi');
+    expect(ci.candles).toBe(298); // Filled from default
+  });
+
+  it('handles empty config object gracefully and auto-fills all example defaults', () => {
+    const emptyConfig = {};
+    const { data, added } = autoFillMissingDefaults(emptyConfig, mockExampleConfig);
+
+    expect(data.preset).toBe('custom');
+    expect(added.length).toBeGreaterThan(0);
+    const risk = data.risk as Record<string, unknown>;
+    expect(risk.maxPositions).toBe(2);
   });
 
   it('creates a .bak file prior to writing updated configuration to disk', () => {

@@ -518,6 +518,7 @@ export interface AgentLoopResult {
 // ─── Config (derived from Zod schema) ─────────────────────────
 
 export interface AppConfig {
+  _version?: number;
   risk: {
     maxPositions: number;
     maxDeployAmount: number;

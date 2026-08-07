@@ -311,3 +311,34 @@ Example:
 ```
 
 The tool maps these flat keys to their nested categories on write. Fields modified at runtime appear as flat keys at the top level of `user-config.json` and take precedence over nested category values on subsequent reads.
+
+---
+
+## 5. Automatic Configuration Upgrades & Schema Migrations
+
+Etemaro automatically tracks and upgrades your `user-config.json` when new app versions introduce new fields or schema changes.
+
+### How It Works
+
+1. **Schema Versioning**: `user-config.json` includes a top-level `_version` field (e.g. `"_version": 1`). Legacy unversioned configurations are recognized as `_version: 0`.
+2. **Auto-Migration Runner**: On app startup, `loadAndValidateConfig()` invokes `ConfigMigrator.ts` prior to strict schema validation.
+3. **Default Auto-Filling**: If an upgrade introduces new configuration fields (such as `autoSwapInterSwapDelayMs`), the runner auto-fills missing default values from `config/user-config.example.json` into their respective categories.
+4. **Preserves Custom Settings**: Your existing custom threshold overrides and API keys are strictly preserved.
+5. **Automatic Backup (`.bak`)**: Before updating `user-config.json` on disk, a backup copy is automatically created as `user-config.json.bak` to prevent data loss.
+
+### Logging Example
+
+When an upgrade occurs, the daemon logs clear migration information:
+
+```text
+[config] Migrated user-config.json schema from v0 to v1
+[config]   + Auto-filled 1 new field(s): autoSwapInterSwapDelayMs
+```
+
+### Adding New Migrations (For Developers)
+
+When adding new configuration options in a PR:
+
+1. Update `config/user-config.example.json` with the new field and default value.
+2. Increment `CURRENT_CONFIG_VERSION` in `packages/core/src/config/ConfigMigrator.ts` if a structural transformation or key rename is required.
+3. Add a new migration step to the `MIGRATIONS` array in `ConfigMigrator.ts`.
