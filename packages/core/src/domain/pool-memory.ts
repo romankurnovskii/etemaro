@@ -13,14 +13,22 @@ import type { PoolMemoryEntry, PoolMemoryDeploy, PoolSnapshot } from '../shared/
 
 const POOL_MEMORY_FILE = dataPath('pool-memory.json');
 
+let _poolMemoryFilePath: string | null = null;
+
+export function __setPoolMemoryFilePath(path: string | null): void {
+  _poolMemoryFilePath = path;
+}
+
 type PoolMemoryDb = Record<string, PoolMemoryEntry>;
 
 function load(): PoolMemoryDb {
-  return loadJsonFile<PoolMemoryDb>(POOL_MEMORY_FILE, {});
+  const file = _poolMemoryFilePath || POOL_MEMORY_FILE;
+  return loadJsonFile<PoolMemoryDb>(file, {});
 }
 
 function save(data: PoolMemoryDb): void {
-  saveJsonFile(POOL_MEMORY_FILE, data);
+  const file = _poolMemoryFilePath || POOL_MEMORY_FILE;
+  saveJsonFile(file, data);
 }
 
 function isFeeGeneratingDeploy(deploy: PoolMemoryDeploy): boolean {
@@ -154,6 +162,21 @@ export function recordPoolDeploy(poolAddress: string, deployData: RecordPoolDepl
     const cooldownHours = 4;
     const cooldownUntil = setPoolCooldown(entry, cooldownHours, 'low yield');
     log('pool-memory', `Cooldown set for ${entry.name} until ${cooldownUntil} (low yield close)`);
+  }
+
+  // Set cooldown for stop-loss closes — pool and token should not be redeployed immediately
+  if (
+    String(deploy.close_reason || '')
+      .toLowerCase()
+      .includes('stop loss')
+  ) {
+    const cooldownHours = Math.max(0, Number(config.management.repeatDeployCooldownHours ?? 12));
+    const poolCooldownUntil = setPoolCooldown(entry, cooldownHours, 'stop loss');
+    const mintCooldownUntil = setBaseMintCooldown(db, entry.base_mint, cooldownHours, 'stop loss');
+    log('pool-memory', `Cooldown set for ${entry.name} until ${poolCooldownUntil} (stop loss close)`);
+    if (entry.base_mint && mintCooldownUntil) {
+      log('pool-memory', `Base mint cooldown set for ${entry.base_mint.slice(0, 8)} until ${mintCooldownUntil} (stop loss close)`);
+    }
   }
 
   const oorTriggerCount = config.management.oorCooldownTriggerCount ?? 3;
