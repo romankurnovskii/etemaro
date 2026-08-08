@@ -115,6 +115,9 @@ npm run cli remove-strategy -- --id my_strat             # Remove a strategy
 /hive pull       — pull shared HiveMind lessons now (see HIVEMIND.md)
 /pause           — pause cron jobs
 /resume          — resume cron jobs
+/add smart wallet <address> name=<label> category=alpha type=lp   — track a KOL/whale wallet
+/remove smart wallet <address>                                    — stop tracking a wallet
+/list smart wallets                                               — show tracked wallets
 ```
 
 **Claude Code** (AI-powered terminal):
@@ -180,7 +183,10 @@ Cron fires management cycle
 | List positions         | `npm run positions`                                          |
 | Deploy manually        | `npm run cli deploy -- --pool <addr> --amount 0.5 --dry-run` |
 | Close manually         | `npm run cli close -- --position <addr> --dry-run`           |
-| Remote control         | Telegram`/positions`, `/close`, `/screen`                    |
+| Remote control         | Telegram `/positions`, `/close`, `/screen`                   |
+| Track a smart wallet   | Telegram: `add smart wallet <addr> name=<label>`             |
+| List tracked wallets   | Telegram: `list smart wallets`                               |
+| Stop tracking a wallet | Telegram: `remove smart wallet <addr>`                       |
 | Learn from history     | `npm run lessons`                                            |
 | Auto-evolve thresholds | `npm run evolve`                                             |
-| Pull shared lessons    | Telegram`/hive pull` (see [HIVEMIND.md](HIVEMIND.md))        |
+| Pull shared lessons    | Telegram `/hive pull` (see [HIVEMIND.md](HIVEMIND.md))       |
