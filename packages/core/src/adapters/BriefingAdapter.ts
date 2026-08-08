@@ -100,7 +100,7 @@ export async function generateBriefing(options?: GenerateBriefingOptions): Promi
     `💰 Net PnL: ${totalPnLUsd >= 0 ? '+' : ''}$${totalPnLUsd.toFixed(2)}${fmtSol(totalPnLUsd)}`,
     `💎 Fees Earned: $${totalFeesUsd.toFixed(2)}${fmtSol(totalFeesUsd)}`,
     perfLast24h.length > 0
-      ? `📈 Win Rate (24h): ${Math.round((perfLast24h.filter((p) => (p.pnl_usd ?? 0) > 0).length / perfLast24h.length) * 100)}%`
+      ? `📈 Win Rate (24h): ${Math.round((perfLast24h.filter((p) => (p.pnl_pct ?? 0) >= 0).length / perfLast24h.length) * 100)}%`
       : '📈 Win Rate (24h): N/A',
     '',
     'Lessons Learned:',
@@ -108,7 +108,9 @@ export async function generateBriefing(options?: GenerateBriefingOptions): Promi
     '',
     'Current Portfolio:',
     `📂 Open Positions: ${openPositions.length}`,
-    perfSummary ? `📊 All-time PnL: $${allTimePnlUsd.toFixed(2)}${fmtSol(allTimePnlUsd)} (${perfSummary.win_rate_pct as number}% win)` : '',
+    perfSummary
+      ? `📊 All-time PnL: $${allTimePnlUsd.toFixed(2)}${fmtSol(allTimePnlUsd)} | ${perfSummary.win_rate_pct as number}% win | avg ${(perfSummary.avg_pnl_pct as number) >= 0 ? '+' : ''}${(perfSummary.avg_pnl_pct as number).toFixed(2)}%`
+      : '',
     '────────────────',
   ];
 

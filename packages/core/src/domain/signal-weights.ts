@@ -120,8 +120,8 @@ export function recalculateWeights(
   }
 
   // Classify wins and losses
-  const wins = recent.filter((p) => (p.pnl_usd ?? 0) > 0);
-  const losses = recent.filter((p) => (p.pnl_usd ?? 0) <= 0);
+  const wins = recent.filter((p) => (p.pnl_pct ?? 0) >= 0);
+  const losses = recent.filter((p) => (p.pnl_pct ?? 0) < 0);
 
   if (wins.length === 0 || losses.length === 0) {
     log('signal_weights', `Need both wins (${wins.length}) and losses (${losses.length}) to compute lift, skipping`);
