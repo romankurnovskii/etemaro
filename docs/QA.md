@@ -13,55 +13,77 @@
 
 - Precedence order: Specific Model in `user-config.json` > `LLM_MODEL` in `.env` > system fallback defaults (`openrouter/healer-alpha`).
 
+## Desktop App & Setup
+
+### Q: How do I get started with the Desktop App (GUI) on first run?
+
+**A:** Getting started with the Desktop App requires only a couple of clicks:
+
+1. **Launch App**: Open the Etemaro Desktop App. The first-run wizard automatically sets up local directories (`~/.etemaro/config` and `~/.etemaro/data`) and prepares the agent engine.
+2. **Configure Environment & Strategy**:
+   - The app automatically verifies your configuration on launch (`validate_agent_config`). If `connection.walletKey` is set to `"env.WALLET_PRIVATE_KEY"` but no key is found in `.env`, the GUI displays a warning notice.
+   - **Environment Manager (Settings Tab)**: Go to **Settings** $\rightarrow$ **Environment Variables (.env)**. You can view, add, edit, or remove process environment variables (`WALLET_PRIVATE_KEY`, `LLM_API_KEY`, etc.) directly in the app. If `.env` does not exist yet, the app automatically copies default entries from `.env.example`.
+   - **Direct Wallet Key Entry**: Alternatively, paste your Solana Private Key (Base58 string) directly into `"walletKey"` in the agent config settings.
+3. **Start Agent**: Click **"Start Agent"**. The daemon runs in the background and streams live logs, open positions, PnL metrics, and notifications directly to the desktop dashboard.
+
 ---
 
 ## Multi-Instance & Deployment
 
-### Q: How do I run different strategies with different wallets?
+### Q: How do I run different strategies with different wallets on one host?
 
-**A:** Each bot instance pairs **one wallet key** with **one strategy configuration file** (`user-config.json`) and an isolated `data/` directory. To run multiple strategies across different wallets, launch multiple instances via Desktop App, PM2, or Docker Compose.
+**A:** To run multiple strategies and wallets simultaneously on one machine:
 
-1. **Strategy Parameters per Instance (`user-config.json`)**:
-   - Set `"walletKey": "env.WALLET_PRIVATE_KEY"` to resolve private keys safely from environment variables (no plaintext keys in JSON).
-   - Customize risk, sizing, and exits per wallet: `"strategy"`, `"deployAmountSol"`, `"stopLossPct"`, `"takeProfitPct"`, `"outOfRangeWaitMinutes"`, `"minTvl"`.
-2. **Direct TypeScript Execution**:
-   - Etemaro runs `.ts` files directly via `tsx` (`node --import tsx packages/daemon/src/Daemon.ts`). No build step (`pnpm run build`) is required.
-3. **Deployment Options**:
-   - **Desktop App**: Native multi-agent support via [`config/agents.json`](../config/agents.json) with custom `userConfigPath` and `dataDir` per agent.
-   - **PM2**: Defined in [`config/ecosystem.config.cjs`](../config/ecosystem.config.cjs):
-     ```javascript
-     module.exports = {
-       apps: [
-         {
-           name: 'etemaro-conservative',
-           script: 'packages/daemon/src/Daemon.ts',
-           node_args: '--import tsx',
-           cwd: '/path/to/etemaro',
-           env: {
-             NODE_ENV: 'production',
-             WALLET_PRIVATE_KEY: 'your_private_key_1',
-             USER_CONFIG_PATH: '/path/to/config_conservative.json',
-             DATA_DIR: '/path/to/data_wallet1',
-           },
+#### Option A: Desktop App (GUI)
+
+1. **Add Agent**: Click **"Add Agent"** in the Desktop App UI. A new agent instance is created automatically.
+2. **Configure Settings**: Set the agent's strategy parameters (risk, sizing, stop-loss, filters) and paste its dedicated wallet private key string directly into the agent's wallet field in the GUI settings.
+3. **Run**: Click **"Start"** on each agent. State files and logs are automatically isolated inside `data/` (e.g., `data/state-agt_my-agent-1.json`).
+
+---
+
+#### Option B: PM2 or Docker Compose (Headless Server)
+
+1. **Create Config Files**:
+   Copy `config/user-config.example.json` to create a custom config for each agent:
+   ```bash
+   cp config/user-config.example.json config/agt_my-agent-1.json
+   cp config/user-config.example.json config/agt_my-agent-2.json
+   ```
+2. **Configure Parameters**:
+   Edit each JSON file to set your risk, deploy amount, and strategy settings. Keep `"walletKey": "env.WALLET_PRIVATE_KEY"` so each daemon process reads `WALLET_PRIVATE_KEY` from its own process environment.
+3. **Run via PM2**:
+   In `config/ecosystem.config.cjs`, pass `USER_CONFIG_PATH` and the process-specific `WALLET_PRIVATE_KEY`:
+   ```javascript
+   module.exports = {
+     apps: [
+       {
+         name: 'agent-conservative',
+         script: 'packages/daemon/src/Daemon.ts',
+         node_args: '--import tsx',
+         cwd: '/path/to/etemaro',
+         env: {
+           USER_CONFIG_PATH: 'config/agt_my-agent-1.json',
+           WALLET_PRIVATE_KEY: 'your_private_key_base58_for_agent_1',
          },
-         {
-           name: 'etemaro-degen',
-           script: 'packages/daemon/src/Daemon.ts',
-           node_args: '--import tsx',
-           cwd: '/path/to/etemaro',
-           env: {
-             NODE_ENV: 'production',
-             WALLET_PRIVATE_KEY: 'your_private_key_2',
-             USER_CONFIG_PATH: '/path/to/config_degen.json',
-             DATA_DIR: '/path/to/data_wallet2',
-           },
+       },
+       {
+         name: 'agent-degen',
+         script: 'packages/daemon/src/Daemon.ts',
+         node_args: '--import tsx',
+         cwd: '/path/to/etemaro',
+         env: {
+           USER_CONFIG_PATH: 'config/agt_my-agent-2.json',
+           WALLET_PRIVATE_KEY: 'your_private_key_base58_for_agent_2',
          },
-       ],
-     };
-     ```
-   - **Docker Compose**: Define distinct services with isolated `.env` files, config mounts, and `./data/walletX` directories.
+       },
+     ],
+   };
+   ```
+4. **Run via Docker Compose**:
+   Define distinct container services sharing a `./data:/app/data` volume and setting `USER_CONFIG_PATH` and `WALLET_PRIVATE_KEY` per container.
 
-_Note:_ Always keep `data/` directories isolated per instance to prevent concurrent lock conflicts on `./data/state.json`.
+_Note:_ State files (`state-*.json`, `lessons-*.json`, `pool-memory-*.json`) automatically acquire each agent's configuration filename suffix. Multiple processes safely share the `./data` directory without filename collisions or lock contention.
 
 ### Q: Can I load my private key from an environment variable instead of writing it in `user-config.json`?
 

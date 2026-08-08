@@ -14,7 +14,20 @@ Etemaro runs continuous screening and management cycles, deploying capital into 
 - **Multi-surface interface** — CLI for one-shot commands, a Telegram bot for remote control, and a cross-platform desktop app.
 - **Strategy library + signal adaptation** — Preset LP strategies with configurable bin distribution; signal weights evolve based on closed-position performance.
 
-## Quick start
+## Installation & Downloads
+
+### Desktop App (GUI)
+
+- **macOS (via Homebrew)**:
+  ```bash
+  brew tap romankurnovskii/awesome-brew
+  brew trust --cask romankurnovskii/awesome-brew/etemaro
+  brew install romankurnovskii/awesome-brew/etemaro --cask
+  ```
+- **Windows / Linux / macOS (Direct Download)**:
+  Download the latest installer or bundle from [GitHub Releases](https://github.com/romankurnovskii/etemaro/releases).
+
+### Source & Server Setup (CLI / Daemon)
 
 ```bash
 git clone https://github.com/romankurnovskii/etemaro
