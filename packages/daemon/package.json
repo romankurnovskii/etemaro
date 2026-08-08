@@ -1,0 +1,21 @@
+{
+  "name": "@etemaro/daemon",
+  "version": "2.0.0",
+  "type": "module",
+  "main": "dist/Daemon.js",
+  "types": "dist/Daemon.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node --import tsx src/Daemon.ts"
+  },
+  "dependencies": {
+    "@etemaro/core": "workspace:*",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2"
+  }
+}

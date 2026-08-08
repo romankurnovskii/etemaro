@@ -1,0 +1,78 @@
+{
+  "name": "etemaro-dlmm-agent",
+  "version": "3.2.0",
+  "type": "module",
+  "description": "Autonomous DLMM LP agent for Meteora on Solana",
+  "main": "packages/daemon/dist/Daemon.js",
+  "bin": {
+    "etemaro": "packages/cli/dist/Cli.js"
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "start": "node --import tsx packages/daemon/src/Daemon.ts",
+    "dev": "DRY_RUN=true node --import tsx packages/daemon/src/Daemon.ts",
+    "cli": "node --import tsx packages/cli/src/Cli.ts",
+    "setup": "node --import tsx packages/cli/src/Cli.ts setup",
+    "balance": "node --import tsx packages/cli/src/Cli.ts balance",
+    "positions": "node --import tsx packages/cli/src/Cli.ts positions",
+    "candidates": "node --import tsx packages/cli/src/Cli.ts candidates",
+    "screen": "node --import tsx packages/cli/src/Cli.ts screen",
+    "manage": "node --import tsx packages/cli/src/Cli.ts manage",
+    "performance": "node --import tsx packages/cli/src/Cli.ts performance",
+    "evolve": "node --import tsx packages/cli/src/Cli.ts evolve",
+    "blacklist": "node --import tsx packages/cli/src/Cli.ts blacklist",
+    "lessons": "node --import tsx packages/cli/src/Cli.ts lessons",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest --passWithNoTests",
+    "test:coverage": "vitest run --coverage",
+    "lint": "pnpm -r run typecheck",
+    "pm2:start": "pm2 start config/ecosystem.config.cjs",
+    "pm2:restart": "pm2 restart etemaro --update-env",
+    "pm2:logs": "pm2 logs etemaro --lines 100",
+    "desktop": "pnpm --filter @etemaro/desktop tauri dev",
+    "postinstall": "node scripts/patch-anchor.js"
+  },
+  "knip": {
+    "ignore": [
+      "discord-listener/**",
+      "dist/**"
+    ]
+  },
+  "dependencies": {
+    "@meteora-ag/dlmm": "1.9.14",
+    "@solana/web3.js": "^1.98.4",
+    "bn.js": "^5.2.5",
+    "bs58": "^6.0.0",
+    "dotenv": "^17.4.2",
+    "jsonrepair": "^3.15.0",
+    "node-cron": "^3.0.3",
+    "openai": "^6.49.0",
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/bn.js": "^5.2.0",
+    "@types/node": "^22.20.1",
+    "@types/node-cron": "^3.0.11",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.10",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.66.0",
+    "vitest": "^4.1.10"
+  },
+  "lint-staged": {
+    "**/*.{ts,tsx,js,jsx}": [
+      "eslint --fix --no-warn-ignored",
+      "prettier --write"
+    ],
+    "**/*.{json,md,html,css,sh}": [
+      "prettier --write"
+    ]
+  }
+}
