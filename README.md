@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/favicon.svg" alt="Etemaro Logo" width="100" height="100" />
+</p>
+
 # Etemaro
 
 An LLM-powered agent that autonomously manages liquidity positions on Meteora DLMM for Solana.

@@ -144,6 +144,46 @@ _Note:_ State files (`state-*.json`, `lessons-*.json`, `pool-memory-*.json`) aut
 
 ---
 
+## Copy Trading & LPAgent Relay
+
+### Q: Does the app provide copy trading (copytrade)?
+
+**A: No.** Etemaro does not currently provide copy-trading functionality. The app never automatically mirrors or follows another trader's/wallet's positions with your capital. It is an autonomous LP manager: it makes its own deploy/close decisions based on its screening, scoring, and management rules.
+
+There is no `copytrade` / `copy trade` / `mirror` / `follow` feature anywhere in the codebase, docs, config, CLI/Telegram/REPL commands, or Desktop UI.
+
+### Q: What about smart wallet tracking — isn't that copytrade?
+
+**A: No — smart wallet tracking is signal-only, not copytrade.** The feature (`packages/core/src/domain/smart-wallets.ts`) does the following:
+
+- `add_smart_wallet` / `remove_smart_wallet` / `list_smart_wallets` — maintain a watch list of KOL/alpha wallets (types: `lp` for LPers/whales, `holder` for token holders).
+- `check_smart_wallets_on_pool` — checks whether any tracked wallet has an active position in a candidate pool and returns a **confidence signal** (`smart-wallets.ts:75-129`). If tracked wallets are in the pool, the pool gets a score boost (`opportunitySmartWalletBonus`, default +20, `config/user-config.example.json:153`).
+
+The app never opens a position **because** a tracked wallet did. The LLM screener still has to judge the candidate on fundamentals (fees, volume, organic score, holders) before deploying (`ToolDefinitions.ts:521-533`).
+
+### Q: What does the LPAgent relay (`lpAgentRelayEnabled`) do? Can I see other wallets'/agents' positions, or does it only push my own? Do these calls require an API key?
+
+**A: It works in both directions, but neither is copytrade:**
+
+1. **Your positions exposed (outbound, read-only for others).** When `lpAgentRelayEnabled: true`, the relay is a public endpoint that allows other agents to query your open positions and performance (`config/user-config.example.json:131-136`).
+
+2. **See others' data (inbound, read-only research).** The app can query aggregated data about other wallets through the LPAgent / Study API:
+   - `study_top_lpers` / `get_top_lpers` — fetch top LPer aggregates for a pool: their positions, PnL, fees, strategies, historical performance (`StudyAdapter.ts:101-111`, endpoints `/top-lp/{pool}` and `/study-top-lp/{pool}`).
+   - Open-position lookup — `fetchRawOpenPositionsFromMeridian` queries `/positions/open/raw?owner={wallet}` and the endpoint accepts any owner wallet address (`MeteoraAdapter.ts:1097-1120`); the app uses it for your own wallet via `getMyPositions`.
+   - Smart-wallet check — fetches tracked wallets' LP positions to detect presence in a pool (`smart-wallets.ts:98-118`).
+
+3. **Execution relay (outbound, your own orders).** With `lpAgentRelayEnabled: true`, the app can submit its **own** deploy/close orders through the relay service using external providers (e.g. OKX, JUPITER_ULTRA): `/execution/zap-in/order|submit` (`MeteoraAdapter.ts:670-699`) and `/execution/zap-out/order|submit` (`MeteoraAdapter.ts:1486-1535`). This is an execution path for your own transactions, not copying.
+
+**API keys — what is actually required:**
+
+- **Agent Meridian API calls** (study, open-position lookup, and relay execution) send an `x-api-key` header **only when** `api.publicApiKey` is configured — from `env.DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY` per `config/user-config.example.json:134`. The header is added conditionally (`AgentMeridianClient.ts:30`); if the key is missing the app still makes the request without it, so there is **no client-side hard requirement**.
+- **LPAgent open-positions lookup** (`api.lpagent.io`, `MeteoraAdapter.ts:916-943`) is different: it is gated on the `LPAGENT_API_KEY` environment variable. Without that key the call is **skipped entirely** and returns no data (`MeteoraAdapter.ts:917`).
+- **HiveMind auth is separate** — it uses `hiveMindApiKey`, not the relay key (`HivemindAdapter.ts:138`).
+
+**Bottom line:** you can **read** aggregated data about other wallets, and you can **expose** your own positions to others — but the app will never execute a trade to mirror what another wallet does.
+
+---
+
 ## Logging & Review
 
 ### Q: Is there an existing mechanism to log the bot's full process (new screens, opens/closes, swaps) so I can review it? Is it only in `data/decision-log.json`?
