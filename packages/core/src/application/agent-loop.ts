@@ -443,9 +443,34 @@ export async function agentLoop(
       }
       sawToolCall = true;
 
+      // Pre-filter duplicate deploy_position calls within the same assistant message
+      // to avoid race conditions in parallel execution.
+      const deploySeenInMessage = new Set<string>();
+      const blockedInMessage: Array<{ toolCall: any; functionName: string; functionArgs: Record<string, unknown> }> = [];
+
+      for (const tc of msg.tool_calls) {
+        const fn = tc.function.name.replace(/<.*$/, '').trim();
+        if (fn === 'deploy_position') {
+          if (deploySeenInMessage.has(fn)) {
+            let args: Record<string, unknown> = {};
+            try {
+              args = JSON.parse(tc.function.arguments);
+            } catch {
+              /* best-effort */
+            }
+            blockedInMessage.push({ toolCall: tc, functionName: fn, functionArgs: args });
+          } else {
+            deploySeenInMessage.add(fn);
+          }
+        }
+      }
+
+      const blockedIds = new Set(blockedInMessage.map((b) => b.toolCall.id));
+      const toolCallsToExecute = msg.tool_calls.filter((tc: any) => !blockedIds.has(tc.id));
+
       // Execute each tool call in parallel
       const toolResults = await Promise.all(
-        msg.tool_calls.map(async (toolCall: any) => {
+        toolCallsToExecute.map(async (toolCall: any) => {
           const functionName = toolCall.function.name.replace(/<.*$/, '').trim();
           let functionArgs: Record<string, unknown>;
 
@@ -529,7 +554,35 @@ export async function agentLoop(
         }),
       );
 
-      messages.push(...toolResults);
+      // Build results in original tool_call order, inserting blocked duplicates
+      const resultsById = new Map<string, any>();
+      for (const r of toolResults) resultsById.set(r.tool_call_id, r);
+
+      const orderedResults = msg.tool_calls.map((tc: any) => {
+        if (blockedIds.has(tc.id)) {
+          const block = blockedInMessage.find((b) => b.toolCall.id === tc.id)!;
+          log('agent', `Blocked duplicate ${block.functionName} call in same message — already executed this turn`);
+          const blockedResult = {
+            blocked: true,
+            reason: 'Only one deploy_position per message is allowed. If you need to deploy to multiple pools, send separate messages.',
+          };
+          onToolFinish?.({
+            name: block.functionName,
+            args: block.functionArgs,
+            result: blockedResult,
+            success: false,
+            step,
+          });
+          return {
+            role: 'tool' as const,
+            tool_call_id: tc.id,
+            content: JSON.stringify(blockedResult),
+          };
+        }
+        return resultsById.get(tc.id)!;
+      });
+
+      messages.push(...orderedResults);
     } catch (error: any) {
       log('error', `Agent loop error at step ${step}: ${error.message}`);
 
