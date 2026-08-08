@@ -188,3 +188,70 @@ cat data/decision-log.json | jq '.decisions[0:10]'
 - The console (`process.stdout`) only prints lines whose level is one of the _standard_ levels (`debug`/`info`/`warn`/`error`) AND `>= LOG_LEVEL`. The operational tags (`screening`, `deploy`, `close`, `swap`, `claim`, `positions`, `pnl_tick`, `pnl_warn`, …) are **custom level strings**, so they are written to the file but are **never printed to the console** — even at `LOG_LEVEL=debug`.
 
 So on `LOG_LEVEL=info` the terminal will show `info`/`warn`/`error` lines but **not** the `deploy`/`close`/`swap`/`screening` events. To review those you must read the log **file** (`data/logs/agent-<date>.log`) or the `data/logs/actions-<date>.jsonl` audit trail — not the live console. `LOG_LEVEL=info` is already the default (`.env.example:41`); set it to `debug` only if you also want the standard `debug` lines echoed to the terminal.
+
+---
+
+## Smart Wallets (KOL / Alpha Tracking)
+
+Etemaro can track known smart wallets (top LPers, whales, KOLs) and use their presence in a pool as a confidence signal during screening.
+
+### What it does
+
+- **LP wallets** (`type: "lp"`): The agent checks whether these wallets have active DLMM positions in candidate pools before deploying.
+- **Holder wallets** (`type: "holder"`): The agent only checks token holdings (no position check). Useful for KOLs who don't LP but whose holdings indicate conviction.
+- When tracked smart wallets are found inside a pool, the screener treats this as a **CONFIDENCE BOOST** and may lower the degen-score threshold (see `opportunitySmartWalletBonus` in `user-config.json`).
+- When no smart wallets are present, the agent relies purely on fundamentals (fees, volume, organic score, narrative).
+
+### Data file
+
+- Path: `data/smart-wallets.json`
+- **Auto-created** on the first add/remove operation. If the file does not exist, the system silently treats the list as empty (neutral signal).
+- The entire `data/` directory is gitignored, so this file is local-only runtime state. A committed template exists at `data/smart-wallets.example.json`.
+
+### Schema
+
+```json
+{
+  "wallets": [
+    {
+      "name": "alpha-1",
+      "address": "7xKp...",
+      "category": "alpha",
+      "type": "lp",
+      "addedAt": "2026-08-08T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+| Field      | Purpose                                                      |
+| ---------- | ------------------------------------------------------------ |
+| `name`     | Label you choose (e.g. `whale-sol`, `top-lper-1`)            |
+| `address`  | Solana base58 wallet address                                 |
+| `category` | One of: `alpha`, `smart`, `fast`, `multi` (default: `alpha`) |
+| `type`     | `lp` = track positions, `holder` = track holdings only       |
+| `addedAt`  | ISO timestamp (auto-filled)                                  |
+
+### How to add / remove / list
+
+**Via Telegram or Claude Code** (natural language):
+
+- `add smart wallet <address> name=<label> category=alpha type=lp`
+- `remove smart wallet <address>`
+- `list smart wallets`
+
+**Via direct JSON edit**:
+
+```bash
+# Edit data/smart-wallets.json directly, then save.
+# The file is loaded lazily on the next screening cycle.
+```
+
+### What to expect
+
+1. **During screening**: For each candidate pool, the agent calls `check_smart_wallets_on_pool`. Results appear in the screening report as:
+   ```
+   smart_wallets: 2 present → CONFIDENCE BOOST (alpha-1, whale-sol)
+   ```
+2. **Opportunity poller**: If enabled (`opportunityPollEnabled: true`), the background poller checks smart wallets on high-degen candidates and may trigger an early screening cycle when smart wallets are present.
+3. **No wallets tracked**: If the list is empty or the file is missing, the agent reports `No smart wallets tracked yet — neutral signal` and falls back to fundamentals.
