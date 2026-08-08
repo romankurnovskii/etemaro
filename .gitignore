@@ -35,6 +35,7 @@ logs/
 dist/
 .dev/
 data/
+!data/smart-wallets.example.json
 
 .worktrees/
 
