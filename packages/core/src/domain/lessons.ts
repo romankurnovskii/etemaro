@@ -654,7 +654,7 @@ export function getPerformanceHistory({ hours = 24, limit = 50 }: GetPerformance
     }));
 
   const totalPnl = filtered.reduce((s, r) => s + (r.pnl_usd ?? 0), 0);
-  const wins = filtered.filter((r) => r.pnl_usd! > 0).length;
+  const wins = filtered.filter((r) => r.pnl_pct! >= 0).length;
 
   return {
     hours,
@@ -677,7 +677,7 @@ export function getPerformanceSummary(): Record<string, unknown> | null {
   const totalPnl = p.reduce((s, x) => s + x.pnl_usd!, 0);
   const avgPnlPct = p.reduce((s, x) => s + x.pnl_pct!, 0) / p.length;
   const avgRangeEfficiency = p.reduce((s, x) => s + x.range_efficiency!, 0) / p.length;
-  const wins = p.filter((x) => x.pnl_usd! > 0).length;
+  const wins = p.filter((x) => x.pnl_pct! >= 0).length;
 
   return {
     total_positions_closed: p.length,
