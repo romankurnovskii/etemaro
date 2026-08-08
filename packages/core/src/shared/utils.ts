@@ -134,7 +134,24 @@ export function loadJsonFile<T>(filePath: string, fallback: T): T {
 }
 
 export function saveJsonFile(filePath: string, data: unknown): void {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2));
+    fs.renameSync(tmpPath, filePath);
+  } catch (err) {
+    if (fs.existsSync(tmpPath)) {
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {
+        // Best-effort cleanup of the temp file; ignore failures
+      }
+    }
+    throw err;
+  }
 }
 
 // ─── Cooldown Utilities ────────────────────────────────────────
