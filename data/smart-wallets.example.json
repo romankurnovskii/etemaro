@@ -1,0 +1,25 @@
+{
+  "wallets": [
+    {
+      "name": "alpha-1",
+      "address": "7xKp9QZ6mN2vR5wX8yA1bC3dE4fG6hJ9kL2mV4nW7z",
+      "category": "alpha",
+      "type": "lp",
+      "addedAt": "2026-08-08T12:00:00.000Z"
+    },
+    {
+      "name": "whale-sol",
+      "address": "9mN3pR8sW2vK5xY7bA4cD6eF9gH1jL4kM8nP3qS6t",
+      "category": "smart",
+      "type": "lp",
+      "addedAt": "2026-08-08T12:00:00.000Z"
+    },
+    {
+      "name": "kol-trader",
+      "address": "2wX7nK9mP3rS5vY8aB1cD4eF6gH9jK2lM5nP8qR3t",
+      "category": "fast",
+      "type": "holder",
+      "addedAt": "2026-08-08T12:00:00.000Z"
+    }
+  ]
+}

@@ -254,6 +254,8 @@ See [HIVEMIND.md](HIVEMIND.md) for the full pull/push lifecycle.
 | `degenTargetFeeRatio`         | Target fee / TVL ratio.                   | `0.2` → fees ≥20% of TVL.          |
 | `degenTargetLiquidity`        | Minimum liquidity (USD).                  | `20000`                            |
 
+The opportunity poller checks whether tracked smart wallets (configured in `data/smart-wallets.json`) are present in high-degen candidate pools. If smart wallets are found, the effective degen-score threshold is lowered by `opportunitySmartWalletBonus` points, allowing the agent to act on pools it would otherwise skip. See [QA.md — Smart Wallets](QA.md#smart-wallets-kol--alpha-tracking) for how to maintain the tracked-wallet list.
+
 #### GMGN
 
 | Field                | Purpose                      | Example / what to expect     |
