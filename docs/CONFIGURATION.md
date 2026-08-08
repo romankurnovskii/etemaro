@@ -49,7 +49,7 @@ Conventional environment variables that the daemon reads:
 - `WALLET_PRIVATE_KEY`: Your Solana wallet's base58 private key.
 - `RPC_URL`: Main Solana RPC endpoint.
 - `HELIUS_API_KEY`: API key for Helius (used for wallet balances and token holders).
-- `OPENROUTER_API_KEY`: OpenRouter API key for LLM calls.
+- `LLM_API_KEY`: API key for LLM provider.
 - `DRY_RUN`: Set to `true` (default) for safe simulation, `false` for live on-chain operations.
 
 ---
@@ -103,7 +103,7 @@ Conventional environment variables that the daemon reads:
 | `rpcUrl`         | Solana RPC endpoint used for chain reads.                      | `"https://pump.helius-rpc.com"` or `"env.MY_RPC_URL"`            |
 | `walletKey`      | Wallet private key (base58).                                   | `"env.WALLET_PRIVATE_KEY"` → use `WALLET_PRIVATE_KEY` env var.   |
 | `llmBaseUrl`     | Custom OpenAI-compatible LLM endpoint (optional).              | `""` → use OpenRouter default, or `"env.MY_LLM_BASE_URL"`        |
-| `llmApiKey`      | LLM provider API key (alternative to `OPENROUTER_API_KEY`).    | `""` or `"env.MY_LLM_API_KEY"`                                   |
+| `llmApiKey`      | LLM provider API key.                                          | `""` or `"env.LLM_API_KEY"`                                      |
 | `llmModel`       | Default model for all roles unless a per-role override is set. | `"minimax/minimax-m2.7"` or `"env.LLM_MODEL"`                    |
 | `dryRun`         | `true` = simulate, never sign transactions. `false` = live.    | `true` → safe mode, no on-chain writes.                          |
 | `telegramChatId` | Chat id for bot notifications/commands.                        | `""` → no Telegram.                                              |
