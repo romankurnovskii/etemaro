@@ -1,0 +1,16 @@
+services:
+  etemaro:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: etemaro:prod
+    command: pnpm run start
+    env_file: .env
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+    restart: unless-stopped
+
+networks:
+  default:
+    name: etemaro-prod
