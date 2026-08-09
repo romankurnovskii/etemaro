@@ -4,12 +4,13 @@ import * as screening from './adapters/blockchain/ScreeningAdapter.js';
 import * as token from './adapters/blockchain/TokenDataAdapter.js';
 import * as study from './adapters/blockchain/StudyAdapter.js';
 import * as telegram from './adapters/notifications/TelegramAdapter.js';
+import * as desktop from './adapters/chat/DesktopAdapter.js';
 import * as briefing from './adapters/BriefingAdapter.js';
 import * as hivemind from './adapters/external/HivemindAdapter.js';
 import * as toolExecutor from './adapters/ToolExecutor.js';
 import * as domain from './domain/index.js';
 
-export { meteora, wallet, screening, token, study, telegram, briefing, hivemind, toolExecutor, domain };
+export { meteora, wallet, screening, token, study, telegram, desktop, briefing, hivemind, toolExecutor, domain };
 
 // Flat exports for standard utilities, types, and configs
 export * from './config/Config.js';
