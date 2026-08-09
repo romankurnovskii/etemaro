@@ -34,6 +34,7 @@ import {
   screening,
   toolExecutor,
   telegram,
+  desktop,
   briefing,
   hivemind,
   domain,
@@ -70,6 +71,13 @@ export interface DaemonAdapters {
     answerCallbackQuery: (queryId: string, text?: string) => Promise<any>;
     notifyOutOfRange: (data: { pair: string; minutesOOR: number }) => Promise<any>;
     isEnabled: () => boolean;
+    createLiveMessage: (title: string, body: string) => Promise<any>;
+  };
+  desktop?: {
+    startServer: (handler: (msg: any) => Promise<any>, port?: number) => void;
+    stopServer: () => void;
+    isEnabled: () => boolean;
+    sendMessage: (text: string) => Promise<any>;
     createLiveMessage: (title: string, body: string) => Promise<any>;
   };
   briefing: {
@@ -276,6 +284,10 @@ export class Daemon {
       if (this.cronStarted) this.startCronJobs();
     });
 
+    if (this.adapters.desktop) {
+      this.adapters.desktop.startServer((msg: any) => this.desktopHandler(msg));
+    }
+
     if (options.tty) {
       await this.startTTY();
     } else {
@@ -304,6 +316,9 @@ export class Daemon {
 
     log('shutdown', `Received ${signal}. Shutting down...`);
     this.adapters.telegram.stopPolling();
+    if (this.adapters.desktop) {
+      this.adapters.desktop.stopServer();
+    }
     this.stopCronJobs();
 
     const positions = await this.withTimeout(
@@ -1875,6 +1890,83 @@ IMPORTANT:
     }
   }
 
+  // ─── Desktop Handler ───────────────────────────────────────────
+
+  private async desktopHandler(msg: { text: string }): Promise<string> {
+    const text = msg?.text?.trim();
+    if (!text) return 'Empty message';
+
+    // Quick Command Handlers
+    if (text === '/help' || text === '/start') {
+      return this.formatHelpText();
+    }
+    if (text === '/wallet') {
+      try {
+        const [w, p] = await Promise.all([this.adapters.wallet.getWalletBalances(), this.adapters.meteora.getMyPositions({ silent: true })]);
+        return this.formatWalletStatus(w, p);
+      } catch (e: any) {
+        return `Wallet error: ${e.message}`;
+      }
+    }
+    if (text === '/screen') {
+      try {
+        return await this.runDeterministicScreen(5);
+      } catch (e: any) {
+        return `Screen error: ${e.message}`;
+      }
+    }
+    if (text === '/candidates') {
+      return this.describeLatestCandidates(5);
+    }
+    if (text === '/config') {
+      return this.formatConfigSnapshot();
+    }
+    if (text === '/briefing') {
+      try {
+        return await this.adapters.briefing.generateBriefing();
+      } catch (e: any) {
+        return `Briefing error: ${e.message}`;
+      }
+    }
+
+    // Free-form LLM chat via agentLoop
+    this.busy = true;
+    let liveMessage: any = null;
+    try {
+      log('desktop_chat', `Incoming desktop chat: ${text}`);
+      const hasCloseIntent = /\bclose\b|\bsell\b|\bexit\b|\bwithdraw\b/i.test(text);
+      const isDeployRequest = !hasCloseIntent && /\bdeploy\b|\bopen position\b|\blp into\b|\badd liquidity\b/i.test(text);
+      const agentRole = isDeployRequest ? 'SCREENER' : 'GENERAL';
+      const agentModel = agentRole === 'SCREENER' ? config.llm.screeningModel : config.llm.generalModel;
+
+      if (this.adapters.desktop) {
+        liveMessage = await this.adapters.desktop.createLiveMessage('🤖 Desktop Agent Update', `Request: ${text.slice(0, 240)}`);
+      }
+
+      const { content } = await agentLoop(text, config.llm.maxSteps, this.sessionHistory, agentRole, agentModel, null, {
+        deps: this.adapters.agentLoopDeps,
+        interactive: true,
+        onToolStart: async ({ name }: any) => {
+          await liveMessage?.toolStart(name);
+        },
+        onToolFinish: async ({ name, result, success }: any) => {
+          await liveMessage?.toolFinish(name, result, success);
+        },
+      });
+
+      this.appendHistory(text, content);
+      const cleanContent = stripThink(content);
+      if (liveMessage) await liveMessage.finalize(cleanContent);
+      return cleanContent;
+    } catch (e: any) {
+      if (liveMessage) await liveMessage.fail(e.message).catch(() => {});
+      return `Error: ${e.message}`;
+    } finally {
+      this.busy = false;
+      this.refreshPrompt();
+    }
+  }
+
   // ─── Helper Formatters ─────────────────────────────────────────
 
   private formatHelpText(): string {
@@ -2314,7 +2406,9 @@ if (isMain) {
     screening,
     toolExecutor,
     telegram,
+    desktop,
     briefing,
+
     hivemind,
     domain: {
       ...domain,
