@@ -294,3 +294,49 @@ export function getActiveStrategy(): Strategy | null {
   if (!db.active || !db.strategies[db.active]) return null;
   return db.strategies[db.active] ?? null;
 }
+
+/**
+ * Merge fleet presets into the local private library.
+ * This preserves local modifications and does not touch the active pointer.
+ */
+export function mergePresets(presets: unknown[]): void {
+  if (!presets || !Array.isArray(presets)) return;
+  const privateDb = loadPrivate();
+  let changed = false;
+
+  for (const preset of presets) {
+    const rawStrategy = preset as Record<string, unknown>;
+    const id = rawStrategy.id as string;
+    const name = rawStrategy.name as string;
+    if (!id || !name) continue;
+    
+    const slug = id
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, '');
+
+    // Never overwrite an existing local strategy
+    if (!privateDb.strategies[slug]) {
+      privateDb.strategies[slug] = {
+        id: slug,
+        name,
+        author: (rawStrategy.author as string) || 'hivemind',
+        lp_strategy: (rawStrategy.lp_strategy as string) || 'bid_ask',
+        token_criteria: (rawStrategy.token_criteria as Record<string, unknown>) || {},
+        entry: (rawStrategy.entry as Record<string, unknown>) || {},
+        range: (rawStrategy.range as Record<string, unknown>) || {},
+        exit: (rawStrategy.exit as Record<string, unknown>) || {},
+        best_for: (rawStrategy.best_for as string) || '',
+        raw: (rawStrategy.raw as string) || '',
+        added_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      changed = true;
+      log('strategy', `Merged HiveMind preset: ${name} (${slug})`);
+    }
+  }
+
+  if (changed) {
+    savePrivate(privateDb);
+  }
+}
