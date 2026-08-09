@@ -7,18 +7,37 @@
  */
 
 import { log } from '../shared/logger.js';
-import { dataPath } from '../shared/constants.js';
+import { dataPath, repoPath } from '../shared/constants.js';
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js';
 import type { Strategy, StrategyLibraryData } from '../shared/types.js';
 
 const STRATEGY_FILE = dataPath('strategy-library.json');
+const SHARED_STRATEGY_FILE = repoPath('data', 'strategy-library.shared.json');
 
-function load(): StrategyLibraryData {
+function loadPrivate(): StrategyLibraryData {
   return loadJsonFile<StrategyLibraryData>(STRATEGY_FILE, { active: null, strategies: {} });
 }
 
-function save(data: StrategyLibraryData): void {
+function savePrivate(data: StrategyLibraryData): void {
   saveJsonFile(STRATEGY_FILE, data);
+}
+
+function load(): StrategyLibraryData {
+  const sharedDb = loadJsonFile<StrategyLibraryData>(SHARED_STRATEGY_FILE, { active: null, strategies: {} });
+
+  if (Object.keys(sharedDb.strategies).length === 0) {
+    sharedDb.strategies = DEFAULT_STRATEGIES;
+  }
+
+  const privateDb = loadPrivate();
+
+  return {
+    active: privateDb.active || sharedDb.active,
+    strategies: {
+      ...sharedDb.strategies,
+      ...privateDb.strategies,
+    },
+  };
 }
 
 // ─── Default Strategies ─────────────────────────────────────────
@@ -112,22 +131,17 @@ const DEFAULT_STRATEGIES: Record<string, Strategy> = {
 };
 
 function ensureDefaultStrategies(): void {
-  const db = load();
-  let added = false;
-  for (const [id, strategy] of Object.entries(DEFAULT_STRATEGIES)) {
-    if (!db.strategies[id]) {
-      db.strategies[id] = {
-        ...strategy,
-        added_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      added = true;
-    }
+  const privateDb = loadPrivate();
+  let changed = false;
+
+  if (!privateDb.active) {
+    privateDb.active = 'custom_ratio_spot';
+    changed = true;
   }
-  if (added) {
-    if (!db.active) db.active = 'custom_ratio_spot';
-    save(db);
-    log('strategy', 'Preloaded default strategies');
+
+  if (changed) {
+    savePrivate(privateDb);
+    log('strategy', 'Initialized private strategy library');
   }
 }
 
@@ -166,7 +180,7 @@ export function addStrategy({
 }: AddStrategyOpts): Record<string, unknown> {
   if (!id || !name) return { error: 'id and name are required' };
 
-  const db = load();
+  const privateDb = loadPrivate();
 
   // Slugify id
   const slug = id
@@ -174,7 +188,7 @@ export function addStrategy({
     .replace(/\s+/g, '_')
     .replace(/[^a-z0-9_]/g, '');
 
-  db.strategies[slug] = {
+  privateDb.strategies[slug] = {
     id: slug,
     name,
     author,
@@ -190,11 +204,11 @@ export function addStrategy({
   };
 
   // Auto-set as active if it's the first strategy
-  if (!db.active) db.active = slug;
+  if (!privateDb.active) privateDb.active = slug;
 
-  save(db);
+  savePrivate(privateDb);
   log('strategy', `Strategy saved: ${name} (${slug})`);
-  return { saved: true, id: slug, name, active: db.active === slug };
+  return { saved: true, id: slug, name, active: privateDb.active === slug };
 }
 
 /**
@@ -230,12 +244,14 @@ export function getStrategy({ id }: { id: string }): Record<string, unknown> {
  */
 export function setActiveStrategy({ id }: { id: string }): Record<string, unknown> {
   if (!id) return { error: 'id required' };
-  const db = load();
-  if (!db.strategies[id]) return { error: `Strategy "${id}" not found`, available: Object.keys(db.strategies) };
-  db.active = id;
-  save(db);
-  log('strategy', `Active strategy set to: ${db.strategies[id].name}`);
-  return { active: id, name: db.strategies[id].name };
+  const mergedDb = load();
+  if (!mergedDb.strategies[id]) return { error: `Strategy "${id}" not found`, available: Object.keys(mergedDb.strategies) };
+
+  const privateDb = loadPrivate();
+  privateDb.active = id;
+  savePrivate(privateDb);
+  log('strategy', `Active strategy set to: ${mergedDb.strategies[id].name}`);
+  return { active: id, name: mergedDb.strategies[id].name };
 }
 
 /**
@@ -243,14 +259,31 @@ export function setActiveStrategy({ id }: { id: string }): Record<string, unknow
  */
 export function removeStrategy({ id }: { id: string }): Record<string, unknown> {
   if (!id) return { error: 'id required' };
-  const db = load();
-  if (!db.strategies[id]) return { error: `Strategy "${id}" not found` };
-  const name = db.strategies[id].name;
-  delete db.strategies[id];
-  if (db.active === id) db.active = Object.keys(db.strategies)[0] || null;
-  save(db);
+  const privateDb = loadPrivate();
+
+  if (!privateDb.strategies[id]) {
+    const sharedDb = loadJsonFile<StrategyLibraryData>(SHARED_STRATEGY_FILE, { active: null, strategies: {} });
+    if (sharedDb.strategies[id] || DEFAULT_STRATEGIES[id]) {
+      return { error: `Strategy "${id}" is a shared open-source strategy and cannot be removed locally.` };
+    }
+    return { error: `Strategy "${id}" not found` };
+  }
+
+  const name = privateDb.strategies[id].name;
+  delete privateDb.strategies[id];
+
+  const sharedDb = loadJsonFile<StrategyLibraryData>(SHARED_STRATEGY_FILE, { active: null, strategies: {} });
+  const hasSharedFallback = !!(sharedDb.strategies[id] || DEFAULT_STRATEGIES[id]);
+
+  if (privateDb.active === id && !hasSharedFallback) {
+    const available = new Set([...Object.keys(privateDb.strategies), ...Object.keys(sharedDb.strategies), ...Object.keys(DEFAULT_STRATEGIES)]);
+    available.delete(id);
+    privateDb.active = Array.from(available)[0] || null;
+  }
+
+  savePrivate(privateDb);
   log('strategy', `Strategy removed: ${name}`);
-  return { removed: true, id, name, new_active: db.active };
+  return { removed: true, id, name, new_active: privateDb.active };
 }
 
 /**

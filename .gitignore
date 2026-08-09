@@ -36,6 +36,7 @@ dist/
 .dev/
 data/
 !data/smart-wallets.example.json
+!data/strategy-library.shared.json
 
 .worktrees/
 
