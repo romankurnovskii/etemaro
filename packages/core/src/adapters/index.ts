@@ -4,6 +4,17 @@ export * from './blockchain/WalletAdapter.js';
 export * from './blockchain/TokenDataAdapter.js';
 export * from './blockchain/StudyAdapter.js';
 export * from './notifications/TelegramAdapter.js';
+export {
+  startServer as startDesktopChatServer,
+  stopServer as stopDesktopChatServer,
+  isEnabled as isDesktopChatEnabled,
+  sendMessage as sendDesktopChatMessage,
+  createLiveMessage as createDesktopLiveMessage,
+  getServerPort as getDesktopChatServerPort,
+  getChatHistory as getDesktopChatHistory,
+  clearChatHistory as clearDesktopChatHistory,
+} from './chat/DesktopAdapter.js';
+
 export * from './external/AgentMeridianClient.js';
 export * from './external/GmgnClient.js';
 export * from './external/HivemindAdapter.js';
