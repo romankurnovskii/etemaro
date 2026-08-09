@@ -38,7 +38,7 @@
 
 1. **Add Agent**: Click **"Add Agent"** in the Desktop App UI. A new agent instance is created automatically.
 2. **Configure Settings**: Set the agent's strategy parameters (risk, sizing, stop-loss, filters) and paste its dedicated wallet private key string directly into the agent's wallet field in the GUI settings.
-3. **Run**: Click **"Start"** on each agent. State files and logs are automatically isolated inside `data/` (e.g., `data/state-agt_my-agent-1.json`).
+3. **Run**: Click **"Start"** on each agent. Desktop injects `USER_CONFIG_PATH` and `ETEMARO_DATA_DIR` (from the agent’s `dataDir`, default `~/.etemaro/data`). State and logs land under that data dir with an agent suffix (e.g. `state-agt_my-agent-1.json`, `logs/agent-agt_…-YYYY-MM-DD.log`).
 
 ---
 
@@ -64,6 +64,8 @@
          cwd: '/path/to/etemaro',
          env: {
            USER_CONFIG_PATH: 'config/agt_my-agent-1.json',
+           // Optional: separate data root (default is <cwd>/data)
+           // ETEMARO_DATA_DIR: '/var/lib/etemaro/agent-1',
            WALLET_PRIVATE_KEY: 'your_private_key_base58_for_agent_1',
          },
        },
@@ -81,9 +83,9 @@
    };
    ```
 4. **Run via Docker Compose**:
-   Define distinct container services sharing a `./data:/app/data` volume and setting `USER_CONFIG_PATH` and `WALLET_PRIVATE_KEY` per container.
+   Define distinct container services sharing a `./data:/app/data` volume (or set `ETEMARO_DATA_DIR` per service) and setting `USER_CONFIG_PATH` and `WALLET_PRIVATE_KEY` per container.
 
-_Note:_ State files (`state-*.json`, `lessons-*.json`, `pool-memory-*.json`) automatically acquire each agent's configuration filename suffix. Multiple processes safely share the `./data` directory without filename collisions or lock contention.
+_Note:_ State files (`state-*.json`, `lessons-*.json`, `pool-memory-*.json`) automatically acquire each agent's configuration filename suffix under the active data dir (`ETEMARO_DATA_DIR` / `DATA_DIR` / `<repo>/data`). Multiple processes can share one data directory without filename collisions when each has a distinct `USER_CONFIG_PATH` basename.
 
 ### Q: Can I load my private key from an environment variable instead of writing it in `user-config.json`?
 
