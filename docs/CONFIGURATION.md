@@ -51,6 +51,8 @@ Conventional environment variables that the daemon reads:
 - `HELIUS_API_KEY`: API key for Helius (used for wallet balances and token holders).
 - `LLM_API_KEY`: API key for LLM provider.
 - `DRY_RUN`: Set to `true` (default) for safe simulation, `false` for live on-chain operations.
+- `USER_CONFIG_PATH`: Absolute path to the active JSON config (Desktop / multi-agent). When the basename is not a generic `user-config*`, state files under the data dir are auto-suffixed (e.g. `state-agt_….json`).
+- `ETEMARO_DATA_DIR` (preferred) or `DATA_DIR`: Absolute path for runtime data (state, logs, lessons, notifications, pool memory). Default is `<repo>/data`. Desktop sets `ETEMARO_DATA_DIR` from each agent's `dataDir` so the UI log viewer and the daemon write to the same tree. Must be present in the process environment **before** Node starts (not switched mid-process).
 
 ---
 
