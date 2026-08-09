@@ -5,6 +5,7 @@ import { config } from '../../config/Config.js';
 import { repoPath, dataPath, sanitizeStoredText } from '../../shared/utils.js';
 import { USER_CONFIG_PATH } from '../../shared/constants.js';
 import type { HiveMindCache, AgentRole, HiveMindSharedLesson } from '../../shared/types.js';
+import { mergePresets } from '../../domain/strategy-library.js';
 
 // ─── Constants ─────────────────────────────────────────────────
 
@@ -263,7 +264,12 @@ export async function bootstrapHiveMind(): Promise<{
   ensureAgentId();
   const tasks: Promise<unknown>[] = [registerHiveMindAgent({ reason: 'startup' })];
   if (getPullMode() === 'auto') {
-    tasks.push(pullHiveMindLessons(), pullHiveMindPresets());
+    tasks.push(
+      pullHiveMindLessons(),
+      pullHiveMindPresets().then(presets => {
+        if (presets) mergePresets(presets);
+      })
+    );
   }
   await Promise.allSettled(tasks);
   return { enabled: true, agentId: getAgentId(), pullMode: getPullMode() };
@@ -274,7 +280,12 @@ export function startHiveMindBackgroundSync(): ReturnType<typeof setInterval> | 
   _heartbeatTimer = setInterval(() => {
     const tasks: Promise<unknown>[] = [registerHiveMindAgent({ reason: 'heartbeat' })];
     if (getPullMode() === 'auto') {
-      tasks.push(pullHiveMindLessons(), pullHiveMindPresets());
+      tasks.push(
+        pullHiveMindLessons(),
+        pullHiveMindPresets().then(presets => {
+          if (presets) mergePresets(presets);
+        })
+      );
     }
     Promise.allSettled(tasks).catch(() => null);
   }, HEARTBEAT_INTERVAL_MS);
