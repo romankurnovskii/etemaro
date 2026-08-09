@@ -26,6 +26,42 @@ export function repoPath(...segments: string[]): string {
   return path.join(REPO_ROOT, ...segments);
 }
 
+/**
+ * Expand a leading `~/` (or bare `~`) to the user home directory.
+ * Absolute and relative paths are returned resolved.
+ */
+function expandUserPath(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  if (trimmed === '~') {
+    return process.env.HOME || process.env.USERPROFILE || trimmed;
+  }
+  if (trimmed.startsWith('~/') || trimmed.startsWith('~\\')) {
+    const home = process.env.HOME || process.env.USERPROFILE;
+    if (home) return path.resolve(home, trimmed.slice(2));
+  }
+  return path.resolve(trimmed);
+}
+
+/**
+ * Runtime data directory for state, logs, lessons, notifications, etc.
+ *
+ * Resolution order (first non-empty wins):
+ * 1. `ETEMARO_DATA_DIR` — preferred, namespaced override (Desktop sets this from agent.dataDir)
+ * 2. `DATA_DIR` — short alias for headless/PM2/docker
+ * 3. `<REPO_ROOT>/data` — default for CLI / single-repo installs
+ *
+ * Must be set in the process environment *before* the Node process starts
+ * (module-level path caches in domain modules evaluate at import time).
+ */
+export function getDataDir(): string {
+  const fromEnv = process.env.ETEMARO_DATA_DIR || process.env.DATA_DIR;
+  if (fromEnv && fromEnv.trim()) {
+    return expandUserPath(fromEnv);
+  }
+  return path.join(REPO_ROOT, 'data');
+}
+
 function getAgentSuffix(): string {
   const envPath = process.env.USER_CONFIG_PATH;
   if (envPath) {
@@ -39,7 +75,7 @@ function getAgentSuffix(): string {
 
 /** Resolve a path relative to the data directory, automatically adding agent suffix for custom config runs. */
 export function dataPath(...segments: string[]): string {
-  const baseDir = path.join(REPO_ROOT, 'data');
+  const baseDir = getDataDir();
 
   const suffix = getAgentSuffix();
   if (suffix && segments.length > 0) {

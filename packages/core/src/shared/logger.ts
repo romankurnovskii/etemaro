@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO_ROOT, dataPath } from './constants.js';
+import { dataPath } from './constants.js';
 import { getAgentIdForRequests } from '../adapters/external/AgentMeridianClient.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -15,9 +15,13 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 const currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
 const minLevel = LOG_LEVELS[currentLevel] ?? LOG_LEVELS.info;
 
-const logsDir = dataPath('logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
+/** Resolve logs dir on each write so ETEMARO_DATA_DIR/DATA_DIR is always honored. */
+function ensureLogsDir(): string {
+  const logsDir = dataPath('logs');
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+  }
+  return logsDir;
 }
 
 function getAgentSlug(): string {
@@ -26,12 +30,12 @@ function getAgentSlug(): string {
 
 function getLogPath(): string {
   const date = new Date().toISOString().slice(0, 10);
-  return path.join(logsDir, `agent-${getAgentSlug()}-${date}.log`);
+  return path.join(ensureLogsDir(), `agent-${getAgentSlug()}-${date}.log`);
 }
 
 function getAuditPath(): string {
   const date = new Date().toISOString().slice(0, 10);
-  return path.join(logsDir, `actions-${getAgentSlug()}-${date}.jsonl`);
+  return path.join(ensureLogsDir(), `actions-${getAgentSlug()}-${date}.jsonl`);
 }
 
 /**

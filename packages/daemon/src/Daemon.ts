@@ -13,6 +13,7 @@ import {
   config,
   computeDeployAmount,
   reloadScreeningThresholds,
+  getDataDir,
   log,
   agentLoop,
   type AgentLoopDeps,
@@ -272,6 +273,14 @@ export class Daemon {
   async start(options: { tty?: boolean } = {}): Promise<void> {
     log('startup', 'DLMM LP Agent starting...');
     log('startup', `Repo: ${process.cwd()}`);
+    // Surface ETEMARO_DATA_DIR|DATA_DIR so Desktop log paths and daemon writes stay aligned
+    const dataDir = getDataDir();
+    const dataDirSource = process.env.ETEMARO_DATA_DIR
+      ? 'ETEMARO_DATA_DIR'
+      : process.env.DATA_DIR
+        ? 'DATA_DIR'
+        : 'default <repo>/data';
+    log('startup', `Data: ${dataDir} (${dataDirSource})`);
     log('startup', `Mode: ${process.env.DRY_RUN === 'true' ? 'DRY RUN' : 'LIVE'}`);
     log('startup', `Model: ${process.env.LLM_MODEL || 'hermes-3-405b'}`);
 
