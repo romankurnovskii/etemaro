@@ -53,14 +53,15 @@ git clone https://github.com/romankurnovskii/etemaro
 cd etemaro
 npm install
 
-# 2. Run the interactive wizard (creates .env + user-config.json)
-npm run setup
-# You'll choose a preset (degen/moderate/safe) and enter:
-#   - Solana wallet private key
-#   - RPC URL (Helius recommended)
-#   - OpenRouter API key
-#   - Telegram bot token (optional)
-#   - Strategy preferences
+# 2. Copy config templates (.env + user-config.json)
+cp .env.example .env
+cp config/user-config.example.json config/user-config.json
+
+# 3. Edit .env and enter your credentials:
+#   - WALLET_PRIVATE_KEY (Solana wallet private key)
+#   - LLM_API_KEY (OpenAI / OpenRouter API key)
+#   - JUPITER_API_KEY (Jupiter swap API key)
+#   - TELEGRAM_BOT_TOKEN & TELEGRAM_CHAT_ID (optional)
 
 # 3. Test in dry-run mode
 npm run dev

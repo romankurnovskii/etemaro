@@ -13,7 +13,6 @@
     "start": "node --import tsx packages/daemon/src/Daemon.ts",
     "dev": "DRY_RUN=true node --import tsx packages/daemon/src/Daemon.ts",
     "cli": "node --import tsx packages/cli/src/Cli.ts",
-    "setup": "node --import tsx packages/cli/src/Cli.ts setup",
     "balance": "node --import tsx packages/cli/src/Cli.ts balance",
     "positions": "node --import tsx packages/cli/src/Cli.ts positions",
     "candidates": "node --import tsx packages/cli/src/Cli.ts candidates",
