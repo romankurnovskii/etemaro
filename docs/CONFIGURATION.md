@@ -16,7 +16,7 @@ Etemaro uses a single-source configuration system: every field MUST be present i
                   └────────────────────────┘     ALL fields must be present.
 ```
 
-> The canonical template is [`config/user-config.example.json`](../../config/user-config.example.json). `npm run setup` writes `user-config.json` from a preset; you can also copy the example or specify custom files via `USER_CONFIG_PATH`.
+> The canonical template is [`config/user-config.example.json`](../../config/user-config.example.json). Copy this template to `config/user-config.json` (`cp config/user-config.example.json config/user-config.json`) or specify custom files via `USER_CONFIG_PATH`.
 
 ---
 
@@ -139,7 +139,7 @@ Conventional environment variables that the daemon reads:
 | `maxTop10Pct`                             | Max % of supply held by the top 10 wallets.              | `60` → if top-10 wallets hold >60% of supply, the token is skipped (supply-concentration guard).                              |
 | `loneCandidateMinDegen`                   | Minimum degen score for a lone (single) candidate.       | `50` → lone candidates below 50 degen score are skipped.                                                                      |
 | `allowedLaunchpads` / `blockedLaunchpads` | Launchpad allow/deny lists.                              | `[]` → no restriction. `["pump"]` in `blockedLaunchpads` → skip pump.fun tokens.                                              |
-| `minTokenAgeHours` / `maxTokenAgeHours`   | Token age window. `null` = no limit.                     | `null`/`null` → any age. `1`/`24` → only 1–24h-old tokens.                                                                    |
+| `minTokenAgeHours` / `maxTokenAgeHours`   | Token age window.`null` = no limit.                      | `null`/`null` → any age. `1`/`24` → only 1–24h-old tokens.                                                                    |
 
 #### Management & Exits
 
@@ -195,12 +195,12 @@ Conventional environment variables that the daemon reads:
 
 #### LLM
 
-| Field                                                 | Purpose                                 | Example / what to expect                                                   |
-| ----------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------- |
-| `temperature`                                         | Sampling temperature.                   | `0.37` → fairly deterministic.                                             |
-| `maxTokens`                                           | Max tokens per LLM response.            | `4096`                                                                     |
-| `maxSteps`                                            | Max ReAct steps per loop.               | `20`                                                                       |
-| `managementModel` / `screeningModel` / `generalModel` | Per-role model overrides of `llmModel`. | `"minimax/minimax-m2.5"` for screening; `"minimax/minimax-m2.7"` for chat. |
+| Field                                                 | Purpose                                | Example / what to expect                                                   |
+| ----------------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------- |
+| `temperature`                                         | Sampling temperature.                  | `0.37` → fairly deterministic.                                             |
+| `maxTokens`                                           | Max tokens per LLM response.           | `4096`                                                                     |
+| `maxSteps`                                            | Max ReAct steps per loop.              | `20`                                                                       |
+| `managementModel` / `screeningModel` / `generalModel` | Per-role model overrides of`llmModel`. | `"minimax/minimax-m2.5"` for screening; `"minimax/minimax-m2.7"` for chat. |
 
 #### Darwin (Signal Evolution)
 
@@ -217,12 +217,12 @@ Conventional environment variables that the daemon reads:
 
 See [HIVEMIND.md](HIVEMIND.md) for the full pull/push lifecycle.
 
-| Field              | Purpose                                                             | Example / what to expect                                                      |
-| ------------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `hiveMindUrl`      | HiveMind backend base URL. Empty = disabled.                        | `"https://api.agentmeridian.xyz"` → on. Set empty to disable.                 |
-| `hiveMindApiKey`   | Auth key.                                                           | `"env.HIVEMIND_API_KEY"` → recommended via env var.                           |
-| `agentId`          | Stable HiveMind instance id. Leave `""` to auto-generate `agt_...`. | `""` → written back on first startup.                                         |
-| `hiveMindPullMode` | `auto` (default) or `manual`.                                       | `"auto"` → pull on startup + every 15 min. `"manual"` → only on `/hive pull`. |
+| Field              | Purpose                                                            | Example / what to expect                                                      |
+| ------------------ | ------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `hiveMindUrl`      | HiveMind backend base URL. Empty = disabled.                       | `"https://api.agentmeridian.xyz"` → on. Set empty to disable.                 |
+| `hiveMindApiKey`   | Auth key.                                                          | `"env.HIVEMIND_API_KEY"` → recommended via env var.                           |
+| `agentId`          | Stable HiveMind instance id. Leave`""` to auto-generate `agt_...`. | `""` → written back on first startup.                                         |
+| `hiveMindPullMode` | `auto` (default) or `manual`.                                      | `"auto"` → pull on startup + every 15 min. `"manual"` → only on `/hive pull`. |
 
 #### API (Meridian & Relay)
 

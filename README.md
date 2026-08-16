@@ -18,7 +18,44 @@ Etemaro runs continuous screening and management cycles, deploying capital into 
 - **Multi-surface interface** — CLI for one-shot commands, a Telegram bot for remote control, and a cross-platform desktop app.
 - **Strategy library + signal adaptation** — Preset LP strategies with configurable bin distribution; signal weights evolve based on closed-position performance.
 
-## Installation & Downloads
+---
+
+## Prerequisites & Credentials
+
+Before running Etemaro, ensure you have:
+
+- **Node.js**: `>= 22.0.0`
+- **Required Credentials**:
+  - `WALLET_PRIVATE_KEY` — Solana wallet base58 private key (for deploying/closing positions)
+  - `LLM_API_KEY` — API key for OpenAI, OpenRouter, or an OpenAI-compatible provider
+  - `JUPITER_API_KEY` — Jupiter swap API key ([get one here](https://developers.jup.ag/portal/))
+
+---
+
+## Getting Started
+
+For a complete step-by-step walkthrough, environment variable setup, and strategy selection guide, see **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**.
+
+### Quick Setup (CLI / Daemon)
+
+```bash
+# 1. Clone repo & install dependencies
+git clone https://github.com/romankurnovskii/etemaro
+cd etemaro
+npm install
+
+# 2. Copy config templates (.env and user-config.json)
+cp .env.example .env
+cp config/user-config.example.json config/user-config.json
+
+# 3. Configure your API keys in .env (WALLET_PRIVATE_KEY, LLM_API_KEY, JUPITER_API_KEY)
+
+# 4. Start in dry-run mode (safe testing, no real transactions)
+npm run dev
+
+# 5. When ready for live trading
+npm start
+```
 
 ### Desktop App (GUI)
 
@@ -31,17 +68,11 @@ Etemaro runs continuous screening and management cycles, deploying capital into 
 - **Windows / Linux / macOS (Direct Download)**:
   Download the latest installer or bundle from [GitHub Releases](https://github.com/romankurnovskii/etemaro/releases).
 
-### Source & Server Setup (CLI / Daemon)
+---
 
-```bash
-git clone https://github.com/romankurnovskii/etemaro
-cd etemaro
-npm install
-npm run setup
-npm run dev
-```
+## Server Deployment
 
-**Option A: PM2 (production process manager)**
+**Option A: PM2 (Production Process Manager)**
 
 ```bash
 npm run build
@@ -59,9 +90,13 @@ docker compose -f docker-compose.dev.yml up --build
 docker compose -f docker-compose.prod.yml up -d --build --force-recreate --remove-orphans
 ```
 
-## Links
+---
 
-- [Architecture Guide](docs/ARCHITECTURE.md)
-- [Configuration Reference](docs/CONFIGURATION.md)
-- [Usage Guide](docs/USAGE_GUIDE.md)
-- [Desktop App](apps/desktop)
+## Documentation & Guides
+
+- 🚀 **[Getting Started Guide](docs/GETTING_STARTED.md)** — Step-by-step first-time setup, environment variables, strategy selection.
+- 📖 **[Usage Guide](docs/USAGE_GUIDE.md)** — Daily operations, CLI commands, Telegram bot controls, REPL, and decision flows.
+- 🏗️ **[Architecture Guide](docs/ARCHITECTURE.md)** — System layout, domain boundaries, adapter layer, and state management.
+- ⚙️ **[Configuration Reference](docs/CONFIGURATION.md)** — Exhaustive configuration reference for `user-config.json`.
+- 🧠 **[HiveMind Guide](docs/HIVEMIND.md)** — Fleet learning, lesson sharing, and shared presets.
+- 💻 **[Desktop App](apps/desktop)** — Tauri-based cross-platform desktop UI.
