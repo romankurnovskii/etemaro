@@ -1,3 +1,16 @@
+/**
+ * @file ChartIndicatorsAdapter.ts
+ * @description Technical indicator evaluation engine (RSI, Supertrend, Bollinger Bands, Fibonacci) for token charts.
+ *
+ * @features
+ * - Evaluates technical presets (rsi_reversal, supertrend_break, bollinger_reversion, etc.)
+ * - Normalizes and verifies multi-timeframe chart indicators
+ * - Provides graceful fallback when indicator API is unavailable
+ *
+ * @dependencies fetch, AgentMeridianClient, Config
+ * @sideEffects Network requests to chart indicator API
+ */
+
 import { config } from '../../config/Config.js';
 import { log } from '../../shared/logger.js';
 import { agentMeridianJson, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js';

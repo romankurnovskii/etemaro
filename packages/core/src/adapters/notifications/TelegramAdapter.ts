@@ -1,12 +1,27 @@
+/**
+ * @file TelegramAdapter.ts
+ * @description Telegram bot interface for outbound alerts, live action progress, and inbound command/control.
+ *
+ * @features
+ * - Sends trade deployment, position closure, and swap notifications
+ * - Manages interactive live progress messages and command polling
+ * - Provides environment-safe chat ID persistence and authorization checks
+ *
+ * @dependencies fetch, NotificationSink, Config
+ * @sideEffects Long polling and HTTP requests to Telegram Bot API
+ */
+
 import fs from 'node:fs';
 import { log } from '../../shared/logger.js';
 import { USER_CONFIG_PATH } from '../../shared/constants.js';
 import { notify } from './NotificationSink.js';
 
-const TOKEN: string | null = process.env.TELEGRAM_BOT_TOKEN || null;
+const getEnv = (key: string): string | null => (typeof process !== 'undefined' ? process.env?.[key] || null : null);
+
+const TOKEN: string | null = getEnv('TELEGRAM_BOT_TOKEN');
 const BASE: string | null = TOKEN ? `https://api.telegram.org/bot${TOKEN}` : null;
 const ALLOWED_USER_IDS = new Set(
-  String(process.env.TELEGRAM_ALLOWED_USER_IDS || '')
+  String(getEnv('TELEGRAM_ALLOWED_USER_IDS') || '')
     .split(',')
     .map((id) => id.trim())
     .filter(Boolean),
@@ -27,10 +42,10 @@ function nonEmptyChatId(value: unknown): string | null {
 
 // ─── chatId persistence ──────────────────────────────────────────
 function resolveChatId(): string | null {
-  const fromEnv = nonEmptyChatId(process.env.TELEGRAM_CHAT_ID);
+  const fromEnv = nonEmptyChatId(getEnv('TELEGRAM_CHAT_ID'));
   let fromConfig: string | null = null;
   try {
-    if (fs.existsSync(USER_CONFIG_PATH)) {
+    if (typeof fs?.existsSync === 'function' && fs.existsSync(USER_CONFIG_PATH)) {
       const cfg = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'));
       fromConfig = nonEmptyChatId(cfg.telegramChatId);
     }
@@ -47,6 +62,7 @@ function loadChatId(): void {
 
 function saveChatId(id: string): void {
   try {
+    if (typeof fs?.existsSync !== 'function' || typeof fs?.writeFileSync !== 'function') return;
     const cfg: Record<string, unknown> = fs.existsSync(USER_CONFIG_PATH) ? JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8')) : {};
     cfg.telegramChatId = id;
     fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(cfg, null, 2));
