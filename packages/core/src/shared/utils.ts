@@ -1,3 +1,13 @@
+/**
+ * @file utils.ts
+ * @description Shared math, text sanitization, path resolution, and array formatting utilities.
+ *
+ * @features
+ * - Mathematical formatting (`safeNumber`, `roundNum`, `clampNum`)
+ * - Path resolution (`repoPath`, `dataPath`, `configPath`)
+ * - Text sanitization and prompt truncation helpers
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { REPO_ROOT } from './constants.js';

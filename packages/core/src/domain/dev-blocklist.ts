@@ -1,9 +1,12 @@
 /**
- * Dev (deployer) blocklist — deployer wallet addresses that should never be deployed into.
+ * @file dev-blocklist.ts
+ * @description Domain manager for maintaining blocked developer/deployer wallet addresses (dev-blocklist.json).
  *
- * Agent/user can add deployers via Telegram ("block this deployer").
- * Screening hard-filters any pool whose base token was deployed by a blocked wallet
- * before the pool list reaches the LLM.
+ * @features
+ * - Filters candidate pools deployed by serial rug/PVP developer wallets
+ * - Provides add/remove/check methods for developer blocklist entries
+ *
+ * @sideEffects Reads and writes `data/dev-blocklist.json`
  */
 
 import { log } from '../shared/logger.js';

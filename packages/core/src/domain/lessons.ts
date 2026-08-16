@@ -1,9 +1,13 @@
 /**
- * Agent learning system.
+ * @file lessons.ts
+ * @description Domain manager for trade performance logging, rule derivation, and lesson management (lessons.json).
  *
- * After each position closes, performance is analyzed and lessons are
- * derived. These lessons are injected into the system prompt so the
- * agent avoids repeating mistakes and doubles down on what works.
+ * @features
+ * - Records performance metrics (`pnl_usd`, `fees_earned_usd`, hold time) upon position close
+ * - Derives automated trade lessons and rules from win/loss patterns
+ * - Formats active lessons for prompt injection and syncs with HiveMind
+ *
+ * @sideEffects Reads and writes `data/lessons.json` and pushes events to HiveMind
  */
 
 import fs from 'node:fs';

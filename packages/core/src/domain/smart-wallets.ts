@@ -1,3 +1,14 @@
+/**
+ * @file smart-wallets.ts
+ * @description Domain manager for tracking KOL and whale LP wallet addresses and pool overlap detection (smart-wallets.json).
+ *
+ * @features
+ * - Manages list of tracked smart wallets with category and label tags
+ * - Checks candidate pools for active smart wallet LP position overlaps
+ *
+ * @sideEffects Reads and writes `data/smart-wallets.json`
+ */
+
 import { log } from '../shared/logger.js';
 import { dataPath, SOLANA_PUBKEY_RE, CACHE_TTL_MS } from '../shared/constants.js';
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js';

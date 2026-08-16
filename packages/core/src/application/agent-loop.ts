@@ -1,9 +1,14 @@
 /**
- * Core ReAct agent loop.
+ * @file agent-loop.ts
+ * @description Core ReAct autonomous agent loop orchestrating LLM reasoning, tool definitions, tool execution, and session state.
  *
- * Builds a system prompt, sends messages to an OpenAI-compatible LLM,
- * processes tool calls, handles provider fallback, JSON repair, and
- * once-per-session tool locks.
+ * @features
+ * - Sends system and user messages to OpenAI-compatible LLM providers
+ * - Parses and executes tool calls with JSON repair, retry fallback, and role permissions
+ * - Emits real-time live progress updates to Telegram and Desktop UI sinks
+ *
+ * @dependencies OpenAI, jsonrepair, Config, ToolDefinitions, ToolExecutor
+ * @sideEffects LLM inference network requests and automated tool action execution
  */
 
 import OpenAI from 'openai';

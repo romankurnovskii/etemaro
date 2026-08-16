@@ -1,3 +1,16 @@
+/**
+ * @file MeteoraAdapter.ts
+ * @description Primary blockchain adapter wrapping Meteora DLMM SDK for position deployment, liquidity removal, fee claims, and live PnL calculations.
+ *
+ * @features
+ * - Deploys DLMM liquidity positions across bid-ask, spot, and custom bin distributions
+ * - Closes positions, claims LP fees, and executes zap-out relay transactions
+ * - Calculates live position PnL, active bin coverage, and out-of-range status
+ *
+ * @dependencies @meteora-ag/dlmm, @solana/web3.js, Config, ToolExecutor
+ * @sideEffects Solana RPC calls and on-chain transaction broadcasts
+ */
+
 import {
   Connection,
   Keypair,

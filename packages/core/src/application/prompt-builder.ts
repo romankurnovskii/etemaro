@@ -1,15 +1,13 @@
 /**
- * Build a specialized system prompt based on the agent's current role.
+ * @file prompt-builder.ts
+ * @description Dynamic system prompt builder constructing specialized LLM prompts for SCREENER, MANAGER, and GENERAL agent roles.
  *
- * @param agentType - "SCREENER" | "MANAGER" | "GENERAL"
- * @param portfolio - Current wallet balances
- * @param positions - Current open positions
- * @param stateSummary - Local state summary
- * @param lessons - Formatted lessons
- * @param perfSummary - Performance summary
- * @param weightsSummary - Signal weights summary (SCREENER only)
- * @param decisionSummary - Recent decisions summary
- * @returns Complete system prompt string
+ * @features
+ * - Builds role-tailored system prompts with live portfolio, position, and risk state
+ * - Injects learned strategy lessons, signal weights, and HiveMind collective intelligence
+ * - Enforces JSON tool-calling response format guidelines for ReAct reasoning loop
+ *
+ * @dependencies Config, Domain state managers, HivemindAdapter
  */
 
 import { config } from '../config/Config.js';

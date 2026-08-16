@@ -1,3 +1,16 @@
+/**
+ * @file StudyAdapter.ts
+ * @description Adapter for fetching and analyzing top LPer performance data, strategies, and bin distributions.
+ *
+ * @features
+ * - Fetches top LP wallet behaviors and historical trade PnLs via Relay APIs
+ * - Derives bin range distributions and strategy lessons from profitable LPers
+ * - Synthesizes actionable trade rules for HiveMind incorporation
+ *
+ * @dependencies AgentMeridianClient
+ * @sideEffects HTTP requests to Relay analytics API
+ */
+
 import { agentMeridianJson, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js';
 
 // ─── Types ─────────────────────────────────────────────────────

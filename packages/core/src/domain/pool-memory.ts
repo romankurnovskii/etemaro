@@ -1,8 +1,13 @@
 /**
- * Pool memory — persistent deploy history per pool.
+ * @file pool-memory.ts
+ * @description Domain manager for persistent per-pool deployment history, trade notes, and win rates (pool-memory.json).
  *
- * Keyed by pool address. Automatically updated when positions close
- * (via recordPerformance in lessons.js). Agent can query before deploying.
+ * @features
+ * - Tracks trade outcomes, PnL stats, and cooldowns per pool address
+ * - Stores agent notes and historical performance per pool
+ * - Formats pool recall summaries for LLM prompt context
+ *
+ * @sideEffects Reads and writes `data/pool-memory.json`
  */
 
 import { log } from '../shared/logger.js';

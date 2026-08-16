@@ -1,3 +1,15 @@
+/**
+ * @file ConfigValidator.ts
+ * @description Zod schema and flat key validator for runtime application configuration files.
+ *
+ * @features
+ * - Verifies presence of all required configuration keys
+ * - Auto-migrates legacy config files to latest schema version
+ * - Validates types and numerical range thresholds
+ *
+ * @dependencies ConfigMigrator
+ */
+
 import fs from 'node:fs';
 import { configPath, USER_CONFIG_PATH } from '../shared/constants.js';
 import { flattenUserConfig } from '../shared/utils.js';

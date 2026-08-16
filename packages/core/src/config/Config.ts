@@ -1,3 +1,15 @@
+/**
+ * @file Config.ts
+ * @description Single-source configuration loader, environment resolver, and runtime settings manager.
+ *
+ * @features
+ * - Loads user-config.json and resolves env variable references
+ * - Validates schema and migrates obsolete configurations
+ * - Exposes singleton `config` object and config mutation helpers
+ *
+ * @dependencies ConfigValidator, ConfigMigrator
+ */
+
 import fs from 'node:fs';
 import type { AppConfig } from '../shared/types.js';
 import {
