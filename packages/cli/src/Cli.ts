@@ -24,6 +24,7 @@ import {
   token,
   study,
   telegram,
+  desktop,
   briefing,
   hivemind,
   tools,
@@ -782,6 +783,7 @@ if (isMain) {
     screening,
     toolExecutor,
     telegram,
+    desktop,
     briefing,
     hivemind,
     domain: {
