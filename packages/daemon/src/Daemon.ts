@@ -1,9 +1,14 @@
 /**
- * Etemaro Daemon — the main autonomous agent entry point.
+ * @file Daemon.ts
+ * @description Long-running background daemon managing autonomous cron cycles, REPL prompt, Telegram bot, and PnL polling.
  *
- * Wraps all cycle management (management, screening, health check, briefing),
- * PnL polling, deterministic close rules, REPL, Telegram handler, and graceful
- * shutdown into a class-based design.
+ * @features
+ * - Orchestrates cron cycles (screening every 30m, management every 10m, health checks)
+ * - Manages interactive REPL terminal prompt with cycle countdowns
+ * - Initializes Telegram bot polling and HiveMind background sync
+ *
+ * @dependencies node-cron, Config, Adapters, TelegramAdapter, HivemindAdapter
+ * @sideEffects Long-running process, background cron jobs, and socket/polling listeners
  */
 
 import 'dotenv/config';
@@ -275,11 +280,7 @@ export class Daemon {
     log('startup', `Repo: ${process.cwd()}`);
     // Surface ETEMARO_DATA_DIR|DATA_DIR so Desktop log paths and daemon writes stay aligned
     const dataDir = getDataDir();
-    const dataDirSource = process.env.ETEMARO_DATA_DIR
-      ? 'ETEMARO_DATA_DIR'
-      : process.env.DATA_DIR
-        ? 'DATA_DIR'
-        : 'default <repo>/data';
+    const dataDirSource = process.env.ETEMARO_DATA_DIR ? 'ETEMARO_DATA_DIR' : process.env.DATA_DIR ? 'DATA_DIR' : 'default <repo>/data';
     log('startup', `Data: ${dataDir} (${dataDirSource})`);
     log('startup', `Mode: ${process.env.DRY_RUN === 'true' ? 'DRY RUN' : 'LIVE'}`);
     log('startup', `Model: ${process.env.LLM_MODEL || 'hermes-3-405b'}`);

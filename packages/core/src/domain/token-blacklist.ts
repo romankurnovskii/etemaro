@@ -1,8 +1,12 @@
 /**
- * Token blacklist — mints the agent should never deploy into.
+ * @file token-blacklist.ts
+ * @description Domain manager for maintaining blocked token mints (token-blacklist.json).
  *
- * Agent can blacklist via Telegram ("blacklist this token, it rugged").
- * Screening filters blacklisted tokens before passing pools to the LLM.
+ * @features
+ * - Blacklists token mints from screening deployment
+ * - Provides add/remove/check methods for token blacklist entries
+ *
+ * @sideEffects Reads and writes `data/token-blacklist.json`
  */
 
 import { log } from '../shared/logger.js';

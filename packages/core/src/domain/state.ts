@@ -1,11 +1,13 @@
 /**
- * Persistent agent state — stored in state.json.
+ * @file state.ts
+ * @description Domain manager for persistent position tracking, entry metrics, and state reconciliation (state.json).
  *
- * Tracks position metadata that isn't available on-chain:
- * - When a position was deployed
- * - Strategy and bin config used
- * - When it first went out of range
- * - Actions taken (claims, rebalances)
+ * @features
+ * - Tracks position metadata (entry price, bin range, deployment timestamp, strategy)
+ * - Tracks out-of-range timestamps, pending instructions, and external closures
+ * - Reconciles tracked local positions against live on-chain wallet positions
+ *
+ * @sideEffects Reads and writes `data/state.json`
  */
 
 import { log } from '../shared/logger.js';

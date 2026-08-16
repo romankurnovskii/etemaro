@@ -1,8 +1,10 @@
 /**
- * signal-tracker.js — Stages screening signals for later attribution.
+ * @file signal-tracker.ts
+ * @description Transient signal snapshot staging module for candidate evaluation and attribution.
  *
- * Deploy-time persistence is not currently wired, so staged signals are
- * short-lived context rather than durable performance data.
+ * @features
+ * - Stages candidate pool signal snapshots during screening
+ * - Attaches signal context to position deployment records
  */
 
 import { log } from '../shared/logger.js';

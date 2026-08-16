@@ -1,9 +1,14 @@
 /**
- * Etemaro CLI — one-shot command-line interface.
+ * @file Cli.ts
+ * @description Command-line entrypoint executing one-shot agent subcommands with JSON output format.
  *
- * Exposes all tools as subcommands with JSON output. Writes a SKILL.md
- * to ~/.etemaro/ for agent discovery. All adapter dependencies are
- * injected for testability.
+ * @features
+ * - Parses subcommands (balance, positions, candidates, screen, manage, deploy, close, swap)
+ * - Outputs structured JSON for CLI automation and agent integration
+ * - Writes discovery SKILL.md for local agent tools
+ *
+ * @dependencies Config, Adapters, ToolExecutor
+ * @sideEffects One-shot tool execution and console JSON output
  */
 
 import 'dotenv/config';

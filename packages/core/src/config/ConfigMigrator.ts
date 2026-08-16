@@ -1,3 +1,13 @@
+/**
+ * @file ConfigMigrator.ts
+ * @description Migration pipeline for upgrading legacy user-config.json versions to the latest schema format.
+ *
+ * @features
+ * - Executes versioned schema migration steps
+ * - Creates timestamped config backups before mutating JSON files
+ * - Logs detailed migration history
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { flattenUserConfig } from '../shared/utils.js';

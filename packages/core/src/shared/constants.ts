@@ -1,3 +1,13 @@
+/**
+ * @file constants.ts
+ * @description System-wide constants, default mint addresses, and monorepo path resolution.
+ *
+ * @features
+ * - Resolves monorepo repository root directory dynamically
+ * - Defines known token mint addresses (SOL, USDC, USDT)
+ * - Defines default path constants (`configPath`, `dataPath`, `USER_CONFIG_PATH`)
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
