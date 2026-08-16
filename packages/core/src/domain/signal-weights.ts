@@ -1,12 +1,13 @@
 /**
- * Darwinian signal weighting system.
+ * @file signal-weights.ts
+ * @description Darwinian signal weighting engine adjusting screening criteria based on trade win/loss outcomes (signal-weights.json).
  *
- * Tracks which screening signals actually predict profitable positions
- * and adjusts their weights over time. Signals that consistently appear
- * in winners get boosted; those associated with losers get decayed.
+ * @features
+ * - Tracks signal correlation with trade outcomes (fees, volume, organic score, holders)
+ * - Evolves candidate scoring weights over trade performance cycles
+ * - Formats active signal weight summaries for LLM prompt injection
  *
- * Weights are persisted in signal-weights.json and injected into the
- * LLM prompt so the agent can prioritize the right screening criteria.
+ * @sideEffects Reads and writes `data/signal-weights.json`
  */
 
 import { log } from '../shared/logger.js';

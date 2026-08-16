@@ -1,3 +1,16 @@
+/**
+ * @file TokenDataAdapter.ts
+ * @description Adapter for fetching token metadata, holder distributions, narratives, and fee audits from Jupiter & GMGN APIs.
+ *
+ * @features
+ * - Fetches token holder distributions and top holder concentration metrics
+ * - Audits token transfer fees and trading taxes via GMGN client
+ * - Resolves token narrative descriptions and launchpad tags
+ *
+ * @dependencies fetch, Config, GmgnClient
+ * @sideEffects External HTTP API requests to Jupiter and GMGN endpoints
+ */
+
 import { config } from '../../config/Config.js';
 import { getGmgnTokenFees, hasGmgnApiKey } from '../external/GmgnClient.js';
 import type { SmartWallet } from '../../shared/types.js';

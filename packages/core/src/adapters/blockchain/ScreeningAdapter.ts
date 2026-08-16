@@ -1,6 +1,14 @@
 /**
- * Screening adapter — pool discovery, filtering, scoring, PVP detection.
- * Ported from tools/screening.js with full TypeScript types.
+ * @file ScreeningAdapter.ts
+ * @description Pool discovery, hard-filtering, scoring, and candidate ranking engine for Meteora DLMM pools.
+ *
+ * @features
+ * - Fetches candidate pools from Meteora Discovery & API endpoints
+ * - Applies deterministic hard filters (TVL, volume, organic score, holder concentration, bin steps)
+ * - Scores candidates using Darwin-weighted signal parameters
+ *
+ * @dependencies Config, TokenBlacklist, DevBlocklist, TokenDataAdapter
+ * @sideEffects Network HTTP requests to Meteora pool discovery APIs
  */
 
 import { config } from '../../config/Config.js';

@@ -1,9 +1,13 @@
 /**
- * Strategy Library — persistent store of LP strategies.
+ * @file strategy-library.ts
+ * @description Domain manager for saving, retrieving, and merging active LP strategy profiles (strategy-library.json).
  *
- * Users paste a tweet or description via Telegram.
- * The agent extracts structured criteria and saves it here.
- * During screening, the active strategy's criteria guide token selection and position config.
+ * @features
+ * - Manages named LP strategy profiles (bid-ask, spot, custom bin distributions)
+ * - Sets active deployment strategy profile
+ * - Merges preset profiles pulled from HiveMind fleet
+ *
+ * @sideEffects Reads and writes `data/strategy-library.json`
  */
 
 import { log } from '../shared/logger.js';
@@ -309,7 +313,7 @@ export function mergePresets(presets: unknown[]): void {
     const id = rawStrategy.id as string;
     const name = rawStrategy.name as string;
     if (!id || !name) continue;
-    
+
     const slug = id
       .toLowerCase()
       .replace(/\s+/g, '_')

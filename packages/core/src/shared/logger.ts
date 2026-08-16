@@ -1,3 +1,13 @@
+/**
+ * @file logger.ts
+ * @description Centralized application logging module with console output and rotating file log sinks.
+ *
+ * @features
+ * - Categorized log levels (`log(cat, msg, level)`)
+ * - Writes rotating daily log files (`data/logs/agent-YYYY-MM-DD.log`)
+ * - Formats timestamps and log categories for readability
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { dataPath } from './constants.js';

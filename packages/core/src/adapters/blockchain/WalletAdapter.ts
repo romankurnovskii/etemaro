@@ -1,3 +1,16 @@
+/**
+ * @file WalletAdapter.ts
+ * @description Wallet management adapter for SOL/SPL token balance queries and Jupiter DEX swaps.
+ *
+ * @features
+ * - Resolves keypairs from base58 strings and connects to Solana RPC
+ * - Fetches SOL and token balances with pricing conversions
+ * - Executes Jupiter Ultra swap transactions
+ *
+ * @dependencies @solana/web3.js, Jupiter API, Config
+ * @sideEffects Solana RPC queries and DEX swap transactions
+ */
+
 import { Connection, PublicKey, VersionedTransaction, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { log } from '../../shared/logger.js';
