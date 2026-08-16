@@ -746,7 +746,7 @@ export async function swapAllTokensToSol(skipMintsInput: string[] | { skipMints?
     total++;
     const symbolUpper = (token.symbol || '').toUpperCase();
     const isSolOrUsdc = symbolUpper === 'SOL' || symbolUpper === 'WSOL' || symbolUpper === 'USDC';
-    const isDust = (token.usd ?? 0) < 0.04; // 4 usd cents is still more than SOL network fee
+    const isDust = (token.usd ?? 0) < 0.02; // 2 usd cents is still more than SOL network fee
 
     if (skips.has(token.mint) || isSolOrUsdc || isDust) {
       skipped++;
