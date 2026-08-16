@@ -1,10 +1,41 @@
-import { randomUUID } from 'crypto';
-import { setDefaultResultOrder } from 'dns';
+/**
+ * @file GmgnClient.ts
+ * @description Client for GMGN token fee and metrics API with rate limiting and retry logic.
+ *
+ * @features
+ * - Fetches on-chain token fees (total_fee, trade_fee) for Solana mints
+ * - Handles rate-limiting, delay pacing, and exponential backoff
+ * - Provides environment-safe UUID and IPv4 configuration helpers
+ *
+ * @dependencies fetch, Config
+ * @sideEffects Network API requests to GMGN OpenAPI
+ */
+
 import { config } from '../../config/Config.js';
 import { log } from '../../shared/logger.js';
 
-// Force IPv4 — GMGN OpenAPI does not support IPv6
-setDefaultResultOrder('ipv4first');
+// Safely force IPv4 in Node environments without breaking browser/Vite bundling
+if (typeof process !== 'undefined' && process.versions?.node) {
+  import('dns')
+    .then((dns) => {
+      if (typeof dns.setDefaultResultOrder === 'function') {
+        dns.setDefaultResultOrder('ipv4first');
+      }
+    })
+    .catch(() => {
+      /* non-Node environment */
+    });
+}
+
+function safeUUID(): string {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
 
 let lastGmgnRequestAt = 0;
 
@@ -21,13 +52,13 @@ async function paceGmgnRequest(): Promise<void> {
 }
 
 function getApiKey(): string {
-  const key = config.gmgn?.apiKey || process.env.GMGN_API_KEY;
+  const key = config.gmgn?.apiKey || (typeof process !== 'undefined' ? process.env?.GMGN_API_KEY : undefined);
   if (!key) throw new Error('GMGN_API_KEY is required for the GMGN fee source.');
   return key;
 }
 
 export function hasGmgnApiKey(): boolean {
-  return !!(config.gmgn?.apiKey || process.env.GMGN_API_KEY);
+  return !!(config.gmgn?.apiKey || (typeof process !== 'undefined' ? process.env?.GMGN_API_KEY : undefined));
 }
 
 function appendParams(url: URL, params: Record<string, unknown> = {}): void {
@@ -60,7 +91,7 @@ async function gmgnFetch(
   appendParams(url, {
     ...params,
     timestamp: Math.floor(Date.now() / 1000),
-    client_id: randomUUID(),
+    client_id: safeUUID(),
   });
 
   const maxRetries = Math.max(0, Number(config.gmgn?.maxRetries ?? 2));

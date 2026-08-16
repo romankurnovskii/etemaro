@@ -1,3 +1,16 @@
+/**
+ * @file HivemindAdapter.ts
+ * @description Adapter for collective intelligence sync (registration, lesson sharing, preset pulling, performance events).
+ *
+ * @features
+ * - Registers agent heartbeats and syncs shared fleet lessons/presets
+ * - Pushes performance events and derived trade lessons to HiveMind API
+ * - Maintains local cache with environment-safe storage & ID generation
+ *
+ * @dependencies fetch, Config, StrategyLibrary
+ * @sideEffects Network requests to HiveMind API and local cache persistence
+ */
+
 import fs from 'fs';
 import crypto from 'crypto';
 import { log } from '../../shared/logger.js';
@@ -17,8 +30,35 @@ let _heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 // ─── Helpers ───────────────────────────────────────────────────
 
+function safeRandomBytesHex(byteCount: number): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomBytes === 'function') {
+    return crypto.randomBytes(byteCount).toString('hex');
+  }
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues) {
+    const array = new Uint8Array(byteCount);
+    globalThis.crypto.getRandomValues(array);
+    return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  return Math.random()
+    .toString(36)
+    .substring(2, 2 + byteCount * 2);
+}
+
+function safeRandomUUID(): string {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 function readJson<T>(filePath: string, fallback: T): T {
-  if (!fs.existsSync(filePath)) return fallback;
+  if (typeof fs?.existsSync !== 'function' || !fs.existsSync(filePath)) return fallback;
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T;
   } catch {
@@ -27,15 +67,23 @@ function readJson<T>(filePath: string, fallback: T): T {
 }
 
 function writeJson(filePath: string, value: unknown): void {
-  fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
+  if (typeof fs?.writeFileSync !== 'function') return;
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
+  } catch {
+    /* non-node/browser safe fallback */
+  }
 }
 
 function getVersion(): string {
   try {
-    return JSON.parse(fs.readFileSync(PACKAGE_JSON_PATH, 'utf8')).version || '1.0.0';
+    if (typeof fs?.existsSync === 'function' && fs.existsSync(PACKAGE_JSON_PATH)) {
+      return JSON.parse(fs.readFileSync(PACKAGE_JSON_PATH, 'utf8')).version || '1.0.0';
+    }
   } catch {
-    return '1.0.0';
+    /* fallback */
   }
+  return '1.0.0';
 }
 
 const AGENT_VERSION = getVersion();
@@ -97,7 +145,7 @@ export function ensureAgentId(): string {
     return existingId;
   }
 
-  const agentId = `agt_${crypto.randomBytes(12).toString('hex')}`;
+  const agentId = `agt_${safeRandomBytesHex(12)}`;
   userConfig.agentId = agentId;
   writeUserConfig(userConfig);
   config.hiveMind.agentId = agentId;
@@ -266,9 +314,9 @@ export async function bootstrapHiveMind(): Promise<{
   if (getPullMode() === 'auto') {
     tasks.push(
       pullHiveMindLessons(),
-      pullHiveMindPresets().then(presets => {
+      pullHiveMindPresets().then((presets) => {
         if (presets) mergePresets(presets);
-      })
+      }),
     );
   }
   await Promise.allSettled(tasks);
@@ -282,9 +330,9 @@ export function startHiveMindBackgroundSync(): ReturnType<typeof setInterval> | 
     if (getPullMode() === 'auto') {
       tasks.push(
         pullHiveMindLessons(),
-        pullHiveMindPresets().then(presets => {
+        pullHiveMindPresets().then((presets) => {
           if (presets) mergePresets(presets);
-        })
+        }),
       );
     }
     Promise.allSettled(tasks).catch(() => null);
@@ -367,7 +415,7 @@ function buildLessonEvent(lesson: Record<string, unknown>): LessonEvent | null {
   const market = buildMarketFields(lesson as Record<string, unknown>);
   const context = sanitizeStoredText(lesson?.context, 600);
   return {
-    eventId: `lesson:${getAgentId()}:${lesson.id || crypto.randomUUID()}`,
+    eventId: `lesson:${getAgentId()}:${lesson.id || safeRandomUUID()}`,
     agentId: getAgentId(),
     version: AGENT_VERSION,
     timestamp: (lesson.created_at as string) || new Date().toISOString(),

@@ -1,3 +1,16 @@
+/**
+ * @file AgentMeridianClient.ts
+ * @description HTTP client for Agent Meridian API with retry budget, exponential backoff, and timeout handling.
+ *
+ * @features
+ * - Encapsulates API requests with JSON parsing and header injection
+ * - Implements attempt timeouts and retry budgeting for transient failures
+ * - Provides helper functions for base URL and request headers
+ *
+ * @dependencies fetch, AbortController, Config
+ * @sideEffects HTTP requests to Agent Meridian API
+ */
+
 import { config } from '../../config/Config.js';
 
 // ─── Types ─────────────────────────────────────────────────────
