@@ -325,7 +325,6 @@ export interface Strategy {
 }
 
 export interface StrategyLibraryData {
-  active: string | null;
   strategies: Record<string, Strategy>;
 }
 
@@ -616,7 +615,8 @@ export interface ManagementConfig {
 }
 
 export interface StrategyConfig {
-  strategy: string;
+  activeStrategyId: string;
+  strategyMeteora: 'spot' | 'curve' | 'bid_ask';
   minBinsBelow: number;
   maxBinsBelow: number;
   defaultBinsBelow: number;

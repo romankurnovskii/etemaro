@@ -286,6 +286,12 @@ export class Daemon {
     log('startup', `Model: ${process.env.LLM_MODEL || 'hermes-3-405b'}`);
 
     this.adapters.hivemind.ensureAgentId();
+
+    const activeStrat = this.adapters.domain.getActiveStrategy();
+    if (!activeStrat) {
+      throw new Error(`Startup failed: Strategy '${config.strategy.activeStrategyId}' specified in config is not found in the strategy library.`);
+    }
+
     this.adapters.hivemind.bootstrapHiveMind().catch((error: any) => log('hivemind_warn', `Bootstrap failed: ${error.message}`));
     this.adapters.hivemind.startHiveMindBackgroundSync();
 
