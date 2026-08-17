@@ -100,6 +100,7 @@ export interface DaemonAdapters {
     startHiveMindBackgroundSync: () => void;
   };
   domain: {
+    validateActiveStrategy: () => void;
     getActiveStrategy: () => any;
     recordPositionSnapshot: (pool: string, position: any) => void;
     recallForPool: (pool: string) => string | null;
@@ -1541,7 +1542,7 @@ IMPORTANT:
     return [
       'Config snapshot',
       '',
-      `Strategy: ${config.strategy.strategy} | binsBelow: ${config.strategy.minBinsBelow}-${config.strategy.maxBinsBelow} | default ${config.strategy.defaultBinsBelow}`,
+      `Strategy: ${config.strategy.strategyMeteora} | binsBelow: ${config.strategy.minBinsBelow}-${config.strategy.maxBinsBelow} | default ${config.strategy.defaultBinsBelow}`,
       `Deploy: ${config.management.deployAmountSol} SOL | gasReserve: ${config.management.gasReserve} | maxPositions: ${config.risk.maxPositions}`,
       `Stop loss: ${config.management.stopLossPct}% | take profit: ${config.management.takeProfitPct}%`,
       `Trailing: ${config.management.trailingTakeProfit ? 'on' : 'off'} | trigger ${config.management.trailingTriggerPct}% | drop ${config.management.trailingDropPct}%`,
@@ -1793,7 +1794,7 @@ IMPORTANT:
         const { candidate, result, deployAmount, binsBelow } = await this.deployLatestCandidate(idx);
         const coverage = result.range_coverage
           ? `Range: ${fmtPct(result.range_coverage.downside_pct)} downside | ${fmtPct(result.range_coverage.upside_pct)} upside`
-          : `Strategy: ${config.strategy.strategy} | binsBelow: ${binsBelow}`;
+          : `Strategy: ${config.strategy.strategyMeteora} | binsBelow: ${binsBelow}`;
         await this.adapters.telegram
           .sendMessage(
             [

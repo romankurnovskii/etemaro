@@ -59,6 +59,7 @@ export interface CliAdapters {
     executeTool: (name: string, args: Record<string, unknown>) => Promise<any>;
   };
   domain: {
+    validateActiveStrategy: () => void;
     getActiveStrategy: () => any;
     recallForPool: (pool: string) => string | null;
     addPoolNote: (pool: string, note: string) => void;

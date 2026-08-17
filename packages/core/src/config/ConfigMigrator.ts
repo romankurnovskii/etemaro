@@ -10,6 +10,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { dataPath } from '../shared/constants.js';
 import { flattenUserConfig } from '../shared/utils.js';
 
 export const CURRENT_CONFIG_VERSION = 2;
@@ -145,7 +146,7 @@ const MIGRATIONS: Migration[] = [
         if (!strat.activeStrategyId) {
           let active = 'single_sided_reseed';
           try {
-            const privatePath = path.join(process.cwd(), 'data', 'strategy-library.json');
+            const privatePath = dataPath('strategy-library.json');
             if (fs.existsSync(privatePath)) {
               const privateDb = JSON.parse(fs.readFileSync(privatePath, 'utf8'));
               if (privateDb.active) {
