@@ -607,12 +607,14 @@ export class Cli {
 
   private async handleScreen(flags: Record<string, any>): Promise<void> {
     if (!this.adapters.daemon) die('Screen command requires daemon adapter');
+    this.adapters.domain.validateActiveStrategy();
     const report = await this.adapters.daemon.runScreeningCycle({ silent: flags.silent });
     out({ done: true, report: report || 'No action taken' });
   }
 
   private async handleManage(flags: Record<string, any>): Promise<void> {
     if (!this.adapters.daemon) die('Manage command requires daemon adapter');
+    this.adapters.domain.validateActiveStrategy();
     const report = await this.adapters.daemon.runManagementCycle({ silent: flags.silent });
     out({ done: true, report: report || 'No action taken' });
   }

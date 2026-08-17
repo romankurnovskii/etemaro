@@ -207,14 +207,13 @@ export function addStrategy({
   };
 
   // Auto-set as active if it's the first strategy
-  const mergedDb = load();
+  savePrivate(privateDb);
   let isActive = false;
-  if (Object.keys(mergedDb.strategies).length === 1) {
+  if (Object.keys(privateDb.strategies).length === 1) {
     setActiveStrategy({ id: slug });
     isActive = true;
   }
 
-  savePrivate(privateDb);
   log('strategy', `Strategy saved: ${name} (${slug})`);
   return { saved: true, id: slug, name, active: isActive };
 }
@@ -263,9 +262,13 @@ export function setActiveStrategy({ id }: { id: string }): Record<string, unknow
       if (!raw.strategy) raw.strategy = {};
       raw.strategy.activeStrategyId = id;
       fs.writeFileSync(userConfigPath, JSON.stringify(raw, null, 2) + '\n');
+    } else {
+      throw new Error(`user-config.json not found at ${userConfigPath}`);
     }
   } catch (err) {
-    log('strategy', `Failed to update user config: ${err}`);
+    const errorMsg = `Failed to update user config: ${err}`;
+    log('strategy', errorMsg);
+    return { error: errorMsg };
   }
 
   config.strategy.activeStrategyId = id;
@@ -300,6 +303,20 @@ export function removeStrategy({ id }: { id: string }): Record<string, unknown> 
     const newActive = Array.from(available)[0] || null;
     if (newActive) {
       setActiveStrategy({ id: newActive });
+    } else {
+      // Clear the active strategy pointer if no strategies exist at all
+      const userConfigPath = configPath('user-config.json');
+      try {
+        if (fs.existsSync(userConfigPath)) {
+          const raw = JSON.parse(fs.readFileSync(userConfigPath, 'utf8'));
+          if (!raw.strategy) raw.strategy = {};
+          raw.strategy.activeStrategyId = null;
+          fs.writeFileSync(userConfigPath, JSON.stringify(raw, null, 2) + '\n');
+        }
+      } catch (err) {
+        log('strategy', `Failed to update user config during removal: ${err}`);
+      }
+      config.strategy.activeStrategyId = ''; // empty string represents null
     }
   }
 
@@ -316,6 +333,21 @@ export function getActiveStrategy(): Strategy | null {
   const activeId = config.strategy.activeStrategyId;
   if (!activeId || !db.strategies[activeId]) return null;
   return db.strategies[activeId] ?? null;
+}
+
+/**
+ * Validate that the configured active strategy is present in the strategy library.
+ * Throws an error with a clear message if the validation fails.
+ */
+export function validateActiveStrategy(): void {
+  const activeId = config.strategy.activeStrategyId;
+  if (!activeId || activeId.trim() === '') {
+    throw new Error(`Startup failed: 'activeStrategyId' is missing or empty in config.`);
+  }
+  const db = load();
+  if (!db.strategies[activeId]) {
+    throw new Error(`Startup failed: Strategy '${activeId}' specified in config is not found in the strategy library.`);
+  }
 }
 
 /**

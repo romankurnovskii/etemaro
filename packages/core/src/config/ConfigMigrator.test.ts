@@ -147,4 +147,26 @@ describe('ConfigMigrator', () => {
     expect(fs.readFileSync(`${configPath}.bak`, 'utf8')).toBe(originalContent);
     expect(JSON.parse(fs.readFileSync(configPath, 'utf8'))).toEqual(updatedConfig);
   });
+
+  it('migrates v1 to v2 by renaming strategy and seeding activeStrategyId', () => {
+    const v1Config = {
+      _version: 1,
+      strategy: {
+        strategy: 'spot',
+        minBinsBelow: 2,
+      },
+    };
+
+    const result = runConfigMigrations(v1Config, mockExampleConfig);
+
+    expect(result.fromVersion).toBe(1);
+    expect(result.toVersion).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.changed).toBe(true);
+
+    const strat = result.migrated.strategy as Record<string, unknown>;
+    expect(strat.strategy).toBeUndefined();
+    expect(strat.strategyMeteora).toBe('spot');
+    expect(strat.activeStrategyId).toBe('single_sided_reseed'); // fallback because file won't exist
+    expect(strat.minBinsBelow).toBe(2);
+  });
 });

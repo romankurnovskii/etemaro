@@ -287,10 +287,7 @@ export class Daemon {
 
     this.adapters.hivemind.ensureAgentId();
 
-    const activeStrat = this.adapters.domain.getActiveStrategy();
-    if (!activeStrat) {
-      throw new Error(`Startup failed: Strategy '${config.strategy.activeStrategyId}' specified in config is not found in the strategy library.`);
-    }
+    this.adapters.domain.validateActiveStrategy();
 
     this.adapters.hivemind.bootstrapHiveMind().catch((error: any) => log('hivemind_warn', `Bootstrap failed: ${error.message}`));
     this.adapters.hivemind.startHiveMindBackgroundSync();
@@ -388,6 +385,7 @@ export class Daemon {
 
   startCronJobs(): void {
     this.stopCronJobs(); // stop any running tasks before (re)starting
+    this.adapters.domain.validateActiveStrategy();
 
     const mgmtTask = cron.schedule(`*/${Math.max(1, config.schedule.managementIntervalMin)} * * * *`, async () => {
       if (this.managementBusy) return;
@@ -932,7 +930,7 @@ After evaluating, write a brief one-line result per position.
       log('cron', `Computed deploy amount: ${deployAmount} SOL (wallet: ${currentBalance.sol} SOL)`);
 
       const activeStrategy = this.adapters.domain.getActiveStrategy();
-      const deployStrategy = config.strategy.strategy;
+      const deployStrategy = config.strategy.strategyMeteora;
       const strategyBlock =
         `DEPLOY STRATEGY: ${deployStrategy} (from config) | bins_above: 0 (FIXED — never change) | deposit: SOL only (amount_y, amount_x=0)` +
         (activeStrategy
@@ -1280,7 +1278,7 @@ IMPORTANT:
     const result = await this.adapters.toolExecutor.executeTool('deploy_position', {
       pool_address: candidate.pool,
       amount_y: deployAmount,
-      strategy: config.strategy.strategy,
+      strategy: config.strategy.strategyMeteora,
       bins_below: binsBelow,
       bins_above: 0,
       pool_name: candidate.name,
@@ -1308,7 +1306,7 @@ IMPORTANT:
       trailingTakeProfit: config.management.trailingTakeProfit,
       useDiscordSignals: config.screening.useDiscordSignals,
       blockPvpSymbols: config.screening.blockPvpSymbols,
-      strategy: config.strategy.strategy,
+      strategy: config.strategy.strategyMeteora,
       minBinsBelow: config.strategy.minBinsBelow,
       maxBinsBelow: config.strategy.maxBinsBelow,
       defaultBinsBelow: config.strategy.defaultBinsBelow,
@@ -1365,7 +1363,7 @@ IMPORTANT:
       title,
       '',
       `Mode: ${config.management.solMode ? 'SOL' : 'USD'} | Relay: ${config.api.lpAgentRelayEnabled ? 'on' : 'off'}`,
-      `Strategy: ${config.strategy.strategy} | bins ${config.strategy.minBinsBelow}-${config.strategy.maxBinsBelow} | deploy ${config.management.deployAmountSol} SOL`,
+      `Strategy: ${config.strategy.strategyMeteora} | bins ${config.strategy.minBinsBelow}-${config.strategy.maxBinsBelow} | deploy ${config.management.deployAmountSol} SOL`,
       `TP/SL: ${config.management.takeProfitPct}% / ${config.management.stopLossPct}% | trailing ${config.management.trailingTakeProfit ? 'on' : 'off'}`,
       `Indicators: ${config.indicators.enabled ? 'on' : 'off'} | entry ${config.indicators.entryPreset} | ${this.fmtSettingValue(config.indicators.intervals)}`,
     ].join('\n');
