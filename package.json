@@ -26,6 +26,7 @@
     "test:watch": "vitest --passWithNoTests",
     "test:coverage": "vitest run --coverage",
     "lint": "pnpm -r run typecheck",
+    "prepare": "husky install",
     "pm2:start": "pm2 start config/ecosystem.config.cjs",
     "pm2:restart": "pm2 restart etemaro --update-env",
     "pm2:logs": "pm2 logs etemaro --lines 100",
