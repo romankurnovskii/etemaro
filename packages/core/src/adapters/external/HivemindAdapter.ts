@@ -478,7 +478,12 @@ export async function pushHivePerformanceEvent(perf: Record<string, unknown>): P
           baseMint: sanitizeStoredText(perf.base_mint, 64) || null,
           strategy: sanitizeStoredText(perf.strategy, 32) || null,
           closeReason: sanitizeStoredText(perf.close_reason, 200) || 'unknown',
-          pnlUsd: Number(perf.pnl_usd || 0),
+          // pnlUsd & netPnlUsd: Net return = price change + fees earned
+          pnlUsd: Number(perf.net_pnl_usd ?? perf.pnl_usd ?? 0),
+          netPnlUsd: Number(perf.net_pnl_usd ?? perf.pnl_usd ?? 0),
+          // pricePnlUsd: Capital gain/loss strictly from token price movement (final_value - initial_value), excluding fees
+          pricePnlUsd: Number(perf.price_pnl_usd ?? Number(perf.pnl_usd ?? 0) - Number(perf.fees_earned_usd ?? 0)),
+          pricePnlPct: Number(perf.price_pnl_pct ?? 0),
           pnlPct: Number(perf.pnl_pct || 0),
           feesUsd: Number(perf.fees_earned_usd || 0),
           feesSol: Number(perf.fees_earned_sol || 0),

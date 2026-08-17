@@ -220,7 +220,15 @@ export interface PerformanceRecord {
   close_reason: string;
   deployed_at?: string;
   signal_snapshot?: SignalSnapshot;
+  /** Price-only PnL in USD (final_value_usd - initial_value_usd), excluding fees */
+  price_pnl_usd?: number;
+  /** Percentage price-only PnL */
+  price_pnl_pct?: number;
+  /** Net return in USD (price_pnl_usd + fees_earned_usd) */
+  net_pnl_usd?: number;
+  /** Legacy alias for net_pnl_usd (net return including fees) */
   pnl_usd?: number;
+  /** Legacy alias for net percentage return */
   pnl_pct?: number;
   range_efficiency?: number;
   recorded_at?: string;
@@ -328,6 +336,12 @@ export interface PoolMemoryDeploy {
   closed_at: string;
   pnl_pct: number | null;
   pnl_usd: number | null;
+  /** Price-only PnL in USD (final_value_usd - initial_value_usd) */
+  price_pnl_usd?: number | null;
+  /** Percentage price-only PnL */
+  price_pnl_pct?: number | null;
+  /** Net return in USD (price_pnl_usd + fees_earned_usd) */
+  net_pnl_usd?: number | null;
   fees_earned_usd: number | null;
   fees_earned_sol: number | null;
   fee_earned_pct: number | null;

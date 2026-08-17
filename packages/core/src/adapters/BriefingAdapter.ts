@@ -58,7 +58,8 @@ export async function generateBriefing(options?: GenerateBriefingOptions): Promi
 
   // 2. Performance Activity (from performance log)
   const perfLast24h = (lessonsData.performance || []).filter((p) => p.recorded_at && new Date(p.recorded_at) > last24h);
-  const totalPnLUsd = perfLast24h.reduce((sum, p) => sum + (p.pnl_usd || 0), 0);
+  const totalNetPnLUsd = perfLast24h.reduce((sum, p) => sum + (p.net_pnl_usd ?? p.pnl_usd ?? 0), 0);
+  const totalPricePnLUsd = perfLast24h.reduce((sum, p) => sum + (p.price_pnl_usd ?? (p.pnl_usd || 0) - (p.fees_earned_usd || 0)), 0);
   const totalFeesUsd = perfLast24h.reduce((sum, p) => sum + (p.fees_earned_usd || 0), 0);
 
   // Derive solPrice if not explicitly passed
@@ -97,8 +98,9 @@ export async function generateBriefing(options?: GenerateBriefingOptions): Promi
     `📤 Positions Closed: ${closedLast24h.length}`,
     '',
     'Performance:',
-    `💰 Net PnL: ${totalPnLUsd >= 0 ? '+' : ''}$${totalPnLUsd.toFixed(2)}${fmtSol(totalPnLUsd)}`,
+    `📉 Price PnL: ${totalPricePnLUsd >= 0 ? '+' : ''}$${totalPricePnLUsd.toFixed(2)}${fmtSol(totalPricePnLUsd)}`,
     `💎 Fees Earned: $${totalFeesUsd.toFixed(2)}${fmtSol(totalFeesUsd)}`,
+    `💰 Net PnL: ${totalNetPnLUsd >= 0 ? '+' : ''}$${totalNetPnLUsd.toFixed(2)}${fmtSol(totalNetPnLUsd)}`,
     perfLast24h.length > 0
       ? `📈 Win Rate (24h): ${Math.round((perfLast24h.filter((p) => (p.pnl_pct ?? 0) >= 0).length / perfLast24h.length) * 100)}%`
       : '📈 Win Rate (24h): N/A',

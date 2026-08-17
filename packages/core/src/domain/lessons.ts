@@ -74,7 +74,10 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
     return;
   }
 
-  const pnl_usd = perf.final_value_usd + perf.fees_earned_usd - perf.initial_value_usd;
+  const price_pnl_usd = perf.final_value_usd - perf.initial_value_usd;
+  const price_pnl_pct = perf.initial_value_usd > 0 ? (price_pnl_usd / perf.initial_value_usd) * 100 : 0;
+  const net_pnl_usd = price_pnl_usd + perf.fees_earned_usd;
+  const pnl_usd = net_pnl_usd;
   const pnl_pct = perf.initial_value_usd > 0 ? (pnl_usd / perf.initial_value_usd) * 100 : 0;
   const range_efficiency = perf.minutes_held > 0 ? (perf.minutes_in_range / perf.minutes_held) * 100 : 0;
 
@@ -94,6 +97,9 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
   const entry = {
     ...perf,
     signal_snapshot: signalSnapshot as SignalSnapshot | null as unknown as SignalSnapshot | undefined,
+    price_pnl_usd: Math.round(price_pnl_usd * 100) / 100,
+    price_pnl_pct: Math.round(price_pnl_pct * 100) / 100,
+    net_pnl_usd: Math.round(net_pnl_usd * 100) / 100,
     pnl_usd: Math.round(pnl_usd * 100) / 100,
     pnl_pct: Math.round(pnl_pct * 100) / 100,
     range_efficiency: Math.round(range_efficiency * 10) / 10,
@@ -126,6 +132,9 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
       base_mint: perf.base_mint,
       deployed_at: perf.deployed_at,
       closed_at: entry.recorded_at,
+      price_pnl_usd: entry.price_pnl_usd,
+      price_pnl_pct: entry.price_pnl_pct,
+      net_pnl_usd: entry.net_pnl_usd,
       pnl_pct: entry.pnl_pct,
       pnl_usd: entry.pnl_usd,
       range_efficiency: entry.range_efficiency,
@@ -648,6 +657,10 @@ export function getPerformanceHistory({ hours = 24, limit = 50 }: GetPerformance
       pool_name: r.pool_name,
       pool: r.pool,
       strategy: r.strategy,
+      price_pnl_usd:
+        r.price_pnl_usd ?? (r.pnl_usd != null && r.fees_earned_usd != null ? Math.round((r.pnl_usd - r.fees_earned_usd) * 100) / 100 : null),
+      price_pnl_pct: r.price_pnl_pct ?? null,
+      net_pnl_usd: r.net_pnl_usd ?? r.pnl_usd,
       pnl_usd: r.pnl_usd,
       pnl_pct: r.pnl_pct,
       fees_earned_usd: r.fees_earned_usd,
@@ -657,13 +670,17 @@ export function getPerformanceHistory({ hours = 24, limit = 50 }: GetPerformance
       closed_at: r.recorded_at,
     }));
 
-  const totalPnl = filtered.reduce((s, r) => s + (r.pnl_usd ?? 0), 0);
-  const wins = filtered.filter((r) => r.pnl_pct! >= 0).length;
+  const totalPnl = filtered.reduce((s, r) => s + (r.net_pnl_usd ?? r.pnl_usd ?? 0), 0);
+  const totalPricePnl = filtered.reduce((s, r) => s + (r.price_pnl_usd ?? (r.pnl_usd ?? 0) - (r.fees_earned_usd ?? 0)), 0);
+  const totalFees = filtered.reduce((s, r) => s + (r.fees_earned_usd ?? 0), 0);
+  const wins = filtered.filter((r) => (r.pnl_pct ?? 0) >= 0).length;
 
   return {
     hours,
     count: filtered.length,
     total_pnl_usd: Math.round(totalPnl * 100) / 100,
+    total_price_pnl_usd: Math.round(totalPricePnl * 100) / 100,
+    total_fees_earned_usd: Math.round(totalFees * 100) / 100,
     win_rate_pct: filtered.length > 0 ? Math.round((wins / filtered.length) * 100) : null,
     positions: filtered,
   };
@@ -678,15 +695,21 @@ export function getPerformanceSummary(): Record<string, unknown> | null {
 
   if (p.length === 0) return null;
 
-  const totalPnl = p.reduce((s, x) => s + x.pnl_usd!, 0);
-  const avgPnlPct = p.reduce((s, x) => s + x.pnl_pct!, 0) / p.length;
-  const avgRangeEfficiency = p.reduce((s, x) => s + x.range_efficiency!, 0) / p.length;
-  const wins = p.filter((x) => x.pnl_pct! >= 0).length;
+  const totalPnl = p.reduce((s, x) => s + (x.net_pnl_usd ?? x.pnl_usd ?? 0), 0);
+  const totalPricePnl = p.reduce((s, x) => s + (x.price_pnl_usd ?? (x.pnl_usd ?? 0) - (x.fees_earned_usd ?? 0)), 0);
+  const totalFees = p.reduce((s, x) => s + (x.fees_earned_usd ?? 0), 0);
+  const avgPnlPct = p.reduce((s, x) => s + (x.pnl_pct ?? 0), 0) / p.length;
+  const avgPricePnlPct = p.reduce((s, x) => s + (x.price_pnl_pct ?? 0), 0) / p.length;
+  const avgRangeEfficiency = p.reduce((s, x) => s + (x.range_efficiency ?? 0), 0) / p.length;
+  const wins = p.filter((x) => (x.pnl_pct ?? 0) >= 0).length;
 
   return {
     total_positions_closed: p.length,
     total_pnl_usd: Math.round(totalPnl * 100) / 100,
+    total_price_pnl_usd: Math.round(totalPricePnl * 100) / 100,
+    total_fees_earned_usd: Math.round(totalFees * 100) / 100,
     avg_pnl_pct: Math.round(avgPnlPct * 100) / 100,
+    avg_price_pnl_pct: Math.round(avgPricePnlPct * 100) / 100,
     avg_range_efficiency_pct: Math.round(avgRangeEfficiency * 10) / 10,
     win_rate_pct: Math.round((wins / p.length) * 100),
     total_lessons: data.lessons.length,
