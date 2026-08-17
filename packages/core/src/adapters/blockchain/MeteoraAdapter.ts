@@ -2013,8 +2013,24 @@ export async function closePosition({ position_address, reason }: { position_add
       base_mint: pool.lbPair.tokenXMint.toString(),
     };
   } catch (error: any) {
-    log('close_error', error.message);
-    return { success: false, error: error.message };
+    const msg = error?.message ?? String(error);
+    const isAlreadyClosed =
+      msg.includes('AccountOwnedByWrongProgram') ||
+      msg.includes('3007') ||
+      msg.includes('0xbbf') ||
+      msg.includes('owned by a different program') ||
+      msg.includes('not found in open positions') ||
+      msg.includes('AccountNotFound') ||
+      msg.includes('could not find account');
+
+    if (isAlreadyClosed) {
+      recordClose(position_address, 'already closed on-chain (externally)');
+      log('close', `Position ${position_address} was already closed on-chain — state reconciled`);
+      return { success: true, closed_externally: true, position: position_address };
+    }
+
+    log('close_error', msg);
+    return { success: false, error: msg };
   }
 }
 
