@@ -74,6 +74,9 @@ interface RecordPoolDeployData {
   closed_at?: string;
   pnl_pct?: number | null;
   pnl_usd?: number | null;
+  price_pnl_usd?: number | null;
+  price_pnl_pct?: number | null;
+  net_pnl_usd?: number | null;
   fees_earned_usd?: number | null;
   fees_earned_sol?: number | null;
   fee_earned_pct?: number | null;
@@ -122,6 +125,9 @@ export function recordPoolDeploy(poolAddress: string, deployData: RecordPoolDepl
     closed_at: deployData.closed_at || new Date().toISOString(),
     pnl_pct: deployData.pnl_pct ?? null,
     pnl_usd: deployData.pnl_usd ?? null,
+    price_pnl_usd: deployData.price_pnl_usd ?? null,
+    price_pnl_pct: deployData.price_pnl_pct ?? null,
+    net_pnl_usd: deployData.net_pnl_usd ?? null,
     fees_earned_usd: deployData.fees_earned_usd ?? null,
     fees_earned_sol: deployData.fees_earned_sol ?? null,
     fee_earned_pct: deployData.fee_earned_pct ?? null,
