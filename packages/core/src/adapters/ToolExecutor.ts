@@ -375,6 +375,17 @@ const toolMap: Record<string, ToolFn> = {
   block_deployer: blockDev as ToolFn,
   unblock_deployer: unblockDev as ToolFn,
   list_blocked_deployers: listBlockedDevs as ToolFn,
+  get_user_config: () => ({
+    configPath: USER_CONFIG_PATH,
+    preset: (config as any).preset ?? 'custom',
+    risk: config.risk,
+    screening: config.screening,
+    management: config.management,
+    strategy: config.strategy,
+    opportunity: config.opportunity,
+    schedule: config.schedule,
+    llm: { temperature: config.llm.temperature, maxTokens: config.llm.maxTokens, maxSteps: config.llm.maxSteps },
+  }),
   add_lesson: ({ rule, tags, pinned, role }: Record<string, unknown>) => {
     addLesson(rule as string, (tags as string[]) || [], { pinned: !!pinned, role: (role as AgentRole) || null });
     return { saved: true, rule, pinned: !!pinned, role: (role as string) || 'all' };
