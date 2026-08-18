@@ -297,3 +297,16 @@ Etemaro can track known smart wallets (top LPers, whales, KOLs) and use their pr
    ```
 2. **Opportunity poller**: If enabled (`opportunityPollEnabled: true`), the background poller checks smart wallets on high-degen candidates and may trigger an early screening cycle when smart wallets are present.
 3. **No wallets tracked**: If the list is empty or the file is missing, the agent reports `No smart wallets tracked yet — neutral signal` and falls back to fundamentals.
+
+### How do I configure the agent to only enter positions based on smart wallets?
+
+You can change the `entrySource` under the `screening` section of your `config/user-config.json`:
+
+```json
+"screening": {
+  "entrySource": "smart_wallets",
+  ...
+}
+```
+
+When this mode is enabled, the agent completely skips scraping public markets for trending pools. Instead, it regularly checks the LP positions of the tracked `lp` smart wallets and will automatically copy them into any new positions they enter, provided the new pools pass the deterministic screening filters (TVL, token age, warnings, etc.) configured in your `user-config.json`. The LLM veto engine is bypassed for maximum speed.

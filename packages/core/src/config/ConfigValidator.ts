@@ -27,6 +27,7 @@ const REQUIRED_FLAT_KEYS = new Set([
   'telegramChatId',
   'maxPositions',
   'maxDeployAmount',
+  'entrySource',
   'timeframe',
   'category',
   'excludeHighSupplyConcentration',

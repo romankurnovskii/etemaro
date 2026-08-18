@@ -14,6 +14,8 @@
 import 'dotenv/config';
 import cron from 'node-cron';
 import * as readline from 'readline';
+import fs from 'fs';
+import path from 'path';
 import {
   config,
   computeDeployAmount,
@@ -492,7 +494,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
     }, pnlPollMs);
 
     // Opportunity poller
-    if (config.opportunity.enabled) {
+    if (config.opportunity.enabled && config.screening.entrySource !== 'smart_wallets') {
       const oppMs = Math.max(15, Number(config.opportunity.pollIntervalSec ?? 45)) * 1000;
       const oppCooldownMs = 5 * 60 * 1000;
 
@@ -924,6 +926,18 @@ After evaluating, write a brief one-line result per position.
       liveMessage = await this.adapters.telegram.createLiveMessage('🔍 Screening Cycle', 'Scanning candidates...');
     }
     this.screeningLastRun = Date.now();
+
+    if (config.screening.entrySource === 'smart_wallets') {
+      try {
+        screenReport = await this.runSmartWalletScreening({ liveMessage, deployAmount: computeDeployAmount(preBalance.sol) });
+      } catch (e: any) {
+        log('cron_error', `Smart wallet screening failed: ${e.message}`);
+        screenReport = `Smart wallet screening failed: ${e.message}`;
+      }
+      this.screeningBusy = false;
+      return screenReport;
+    }
+
     log('cron', `Starting screening cycle [model: ${config.llm.screeningModel}]`);
     try {
       const currentBalance = preBalance;
@@ -1220,6 +1234,109 @@ IMPORTANT:
       count: this.latestCandidates.length,
       updatedAt: this.latestCandidatesAt,
     };
+  }
+
+  async runSmartWalletScreening({ liveMessage, deployAmount }: { liveMessage: any; deployAmount: number }): Promise<string> {
+    log('cron', `[SmartWallets] Starting smart wallet screening cycle...`);
+
+    // 1. Load smart wallets
+    const trackedWallets = domain.listSmartWallets().wallets.filter((w: any) => !w.type || w.type === 'lp');
+    if (!trackedWallets.length) {
+      log('cron', '[SmartWallets] No smart LP wallets tracked. Skipping.');
+      return 'No smart LP wallets tracked.';
+    }
+
+    // 2. Load snapshot
+    const snapshotPath = path.join(getDataDir(), '.smart-wallets-snapshot.json');
+    let snapshot: { positions: string[] } = { positions: [] };
+    if (fs.existsSync(snapshotPath)) {
+      try {
+        snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
+      } catch (e: any) {
+        log('cron_error', `[SmartWallets] Failed to load snapshot: ${e.message}`);
+      }
+    }
+    const isFirstRun = snapshot.positions.length === 0;
+
+    // 3. Fetch positions for each wallet
+    const currentPositions: string[] = [];
+    const poolToPos = new Map<string, string>();
+    for (const w of trackedWallets) {
+      try {
+        const result = await meteora.getWalletPositions({ wallet_address: w.address });
+        for (const p of result.positions || []) {
+          currentPositions.push(p.position);
+          poolToPos.set(p.position, p.pair);
+        }
+      } catch (e: any) {
+        log('cron_error', `[SmartWallets] Failed to fetch positions for ${w.address}: ${e.message}`);
+      }
+    }
+
+    // 4. Update snapshot
+    const newPositions = currentPositions.filter((p) => !snapshot.positions.includes(p));
+    snapshot.positions = currentPositions;
+    fs.writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2), 'utf8');
+
+    if (isFirstRun) {
+      log('cron', `[SmartWallets] Smart wallets initialized (first run snapshot recorded with ${currentPositions.length} positions).`);
+      return 'Smart wallets initialized (first run snapshot recorded).';
+    }
+
+    if (!newPositions.length) {
+      log('cron', '[SmartWallets] No new positions detected by smart wallets.');
+      return 'No new positions detected by smart wallets.';
+    }
+
+    // 5. Deploy on new unique pools
+    let deployedCount = 0;
+    const uniquePools = Array.from(new Set(newPositions.map((pos) => poolToPos.get(pos)!).filter(Boolean)));
+
+    for (const pool of uniquePools) {
+      try {
+        // Skip if already deployed
+        const memory = getPoolMemory(pool);
+        if (memory?.positions?.some((p: any) => p.status === 'open')) {
+          log('cron', `[SmartWallets] Skipped pool ${pool}: Already have an open position.`);
+          continue;
+        }
+
+        // Fetch pool detail and evaluate veto
+        const detail = await screening.getPoolDetail({ pool_address: pool });
+        if (!detail) {
+          log('cron', `[SmartWallets] Could not fetch pool details for ${pool}.`);
+          continue;
+        }
+
+        const rejectReason = screening.getRawPoolScreeningRejectReason(detail as any, config.screening);
+        if (rejectReason) {
+          log('cron', `[SmartWallets] Vetoed ${detail.name || pool}: ${rejectReason}`);
+          continue;
+        }
+
+        // Deploy
+        log('cron', `[SmartWallets] Deploying to ${detail.name || pool} (Smart wallet signal)`);
+        if (liveMessage) {
+          await this.adapters.telegram
+            .editMessageWithButtons(`🚀 Smart Wallet Signal: ${detail.name || pool}\nDeploying ${deployAmount} SOL...`, liveMessage.message_id, [])
+            .catch(() => {});
+        }
+
+        const deployRes = await meteora.deploy_position({
+          pool_address: pool,
+          amount_sol: deployAmount,
+          strategy: config.strategy.strategyMeteora,
+        });
+
+        domain.recordPositionSnapshot(pool, deployRes.position);
+        log('cron', `[SmartWallets] Deployed ${deployRes.position.position} on ${detail.name || pool}`);
+        deployedCount++;
+      } catch (e: any) {
+        log('cron_error', `[SmartWallets] Deploy failed for pool ${pool}: ${e.message}`);
+      }
+    }
+
+    return `Smart wallet cycle completed. Deployed to ${deployedCount} new pools.`;
   }
 
   async runDeterministicScreen(limit = 5): Promise<string> {
