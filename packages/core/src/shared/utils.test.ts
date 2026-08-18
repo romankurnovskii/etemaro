@@ -63,4 +63,14 @@ describe('flattenUserConfig', () => {
     expect(result.risk).toBeUndefined();
     expect(result.management).toBeUndefined();
   });
+
+  it('remaps hiveMind.agentId to hiveMindAgentId to avoid shadowing top-level agentId', () => {
+    const input = {
+      agentId: 'primary-agent',
+      hiveMind: { agentId: 'public-hivemind-agent', enabled: true },
+    };
+    const result = flattenUserConfig(input);
+    expect(result.agentId).toBe('primary-agent');
+    expect(result.hiveMindAgentId).toBe('public-hivemind-agent');
+  });
 });
