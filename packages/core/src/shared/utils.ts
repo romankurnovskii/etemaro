@@ -104,8 +104,13 @@ export function flattenUserConfig(u: Record<string, unknown>): Record<string, un
       const catObj = catValue as Record<string, unknown>;
       const { description, ...fields } = catObj;
       for (const [key, value] of Object.entries(fields)) {
-        if (!(key in result)) {
-          result[key] = value;
+        let finalKey = key;
+        // Deterministically rename hiveMind.agentId to avoid shadowing the top-level agentId
+        if (cat === 'hiveMind' && key === 'agentId') {
+          finalKey = 'hiveMindAgentId';
+        }
+        if (!(finalKey in result)) {
+          result[finalKey] = value;
         }
       }
     }
