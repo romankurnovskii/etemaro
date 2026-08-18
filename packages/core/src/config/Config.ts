@@ -124,7 +124,8 @@ function buildConfig(): AppConfig {
       solMode: u.solMode as boolean,
     },
     strategy: {
-      strategy: u.strategy as string,
+      activeStrategyId: u.activeStrategyId as string,
+      strategyMeteora: u.strategyMeteora as 'spot' | 'curve' | 'bid_ask',
       minBinsBelow: u.minBinsBelow as number,
       maxBinsBelow: u.maxBinsBelow as number,
       defaultBinsBelow: u.defaultBinsBelow as number,

@@ -34,7 +34,7 @@ dev-blocklist.json
 logs/
 dist/
 .dev/
-data/
+data/*
 !data/smart-wallets.example.json
 !data/strategy-library.shared.json
 
