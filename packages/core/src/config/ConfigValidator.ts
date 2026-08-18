@@ -110,6 +110,7 @@ const REQUIRED_FLAT_KEYS = new Set([
   'hiveMindUrl',
   'hiveMindApiKey',
   'agentId',
+  'hiveMindAgentId',
   'hiveMindPullMode',
   'agentMeridianApiUrl',
   'publicApiKey',
