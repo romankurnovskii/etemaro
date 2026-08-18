@@ -21,7 +21,7 @@ import {
   TOKEN_MINTS,
   setMinSafeBinsBelowOverride,
 } from '../shared/constants.js';
-import { numericConfig } from '../shared/utils.js';
+import { numericConfig, flattenUserConfig } from '../shared/utils.js';
 import { loadAndValidateConfig } from './ConfigValidator.js';
 
 const GMGN_CONFIG_PATH = configPath('gmgn-config.json');
@@ -158,7 +158,7 @@ function buildConfig(): AppConfig {
     hiveMind: {
       url: typeof u.hiveMindUrl === 'string' && u.hiveMindUrl ? u.hiveMindUrl : null,
       apiKey: process.env.HIVEMIND_API_KEY || (typeof u.hiveMindApiKey === 'string' && u.hiveMindApiKey ? u.hiveMindApiKey : null),
-      agentId: typeof u.agentId === 'string' && u.agentId ? u.agentId : null,
+      agentId: typeof u.hiveMindAgentId === 'string' && u.hiveMindAgentId ? u.hiveMindAgentId : null,
       pullMode: u.hiveMindPullMode as string,
     },
     api: {
@@ -230,10 +230,7 @@ export function reloadScreeningThresholds(): void {
   try {
     if (!fs.existsSync(USER_CONFIG_PATH)) return;
     const raw = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8')) as Record<string, unknown>;
-    const u =
-      raw.chartIndicators && typeof raw.chartIndicators === 'object' && !Array.isArray(raw.chartIndicators)
-        ? { ...(raw as Record<string, unknown>), ...flattenNestedValues(raw) }
-        : raw;
+    const u = flattenUserConfig(raw);
     const s = config.screening;
 
     if (u.minFeeActiveTvlRatio != null) s.minFeeActiveTvlRatio = resolveField('minFeeActiveTvlRatio', u.minFeeActiveTvlRatio) as number;
@@ -283,36 +280,4 @@ function resolveField(key: string, value: unknown): unknown {
     return process.env[value.slice(4)];
   }
   return value;
-}
-
-function flattenNestedValues(u: Record<string, unknown>): Record<string, unknown> {
-  const flatCategories = [
-    'risk',
-    'screening',
-    'management',
-    'strategy',
-    'schedule',
-    'llm',
-    'darwin',
-    'hiveMind',
-    'api',
-    'pnl',
-    'opportunity',
-    'gmgn',
-    'jupiter',
-  ];
-  const result: Record<string, unknown> = {};
-  for (const cat of flatCategories) {
-    const catValue = u[cat];
-    if (catValue && typeof catValue === 'object' && !Array.isArray(catValue)) {
-      const catObj = catValue as Record<string, unknown>;
-      const { description, ...fields } = catObj;
-      for (const [key, value] of Object.entries(fields)) {
-        if (!(key in result)) {
-          result[key] = value;
-        }
-      }
-    }
-  }
-  return result;
 }
