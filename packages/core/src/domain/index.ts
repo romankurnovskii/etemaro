@@ -10,3 +10,4 @@ export * from './strategy-library.js';
 export * from './token-blacklist.js';
 export * from './dev-blocklist.js';
 export * from './smart-wallets.js';
+export * from './smart-wallets-screening.js';
