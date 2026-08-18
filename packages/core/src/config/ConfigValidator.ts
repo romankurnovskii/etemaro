@@ -171,28 +171,28 @@ function getMissingFields(flat: Record<string, unknown>): string[] {
   }
 
   if (!('chartIndicators' in flat)) {
-    return ['chartIndicators'];
-  }
-
-  const chartIndicators = flat.chartIndicators as Record<string, unknown>;
-  const ciFields = [
-    'enabled',
-    'entryPreset',
-    'exitPreset',
-    'rsiLength',
-    'intervals',
-    'candles',
-    'rsiOversold',
-    'rsiOverbought',
-    'requireAllIntervals',
-  ];
-  for (const field of ciFields) {
-    if (!(field in chartIndicators)) {
-      return [`chartIndicators.${field}`];
+    missing.push('chartIndicators');
+  } else {
+    const chartIndicators = flat.chartIndicators as Record<string, unknown>;
+    const ciFields = [
+      'enabled',
+      'entryPreset',
+      'exitPreset',
+      'rsiLength',
+      'intervals',
+      'candles',
+      'rsiOversold',
+      'rsiOverbought',
+      'requireAllIntervals',
+    ];
+    for (const field of ciFields) {
+      if (!(field in chartIndicators)) {
+        missing.push(`chartIndicators.${field}`);
+      }
     }
   }
 
-  return [];
+  return missing;
 }
 
 // Note: jupiterApiKey / JUPITER_API_KEY is required for Jupiter swap operations. Get a free key at https://developers.jup.ag/portal/
@@ -253,6 +253,9 @@ function validateConfig(raw: Record<string, unknown>): ValidatedConfig {
   };
 }
 
+/**
+ * Deep merge missing default fields from example raw configuration into user raw while preserving user custom values.
+ */
 function mergeIntoExample(exampleRaw: Record<string, unknown>, userRaw: Record<string, unknown>): Record<string, unknown> {
   const userFlat = flattenUserConfig(userRaw);
   const result = JSON.parse(JSON.stringify(exampleRaw)) as Record<string, unknown>;
