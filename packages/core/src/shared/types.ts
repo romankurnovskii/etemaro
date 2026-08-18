@@ -553,6 +553,7 @@ export interface AppConfig {
 }
 
 export interface ScreeningConfig {
+  entrySource?: 'market' | 'smart_wallets';
   excludeHighSupplyConcentration: boolean;
   minFeeActiveTvlRatio: number;
   minTvl: number;

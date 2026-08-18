@@ -64,6 +64,7 @@ function buildConfig(): AppConfig {
       maxDeployAmount: u.maxDeployAmount as number,
     },
     screening: {
+      entrySource: (u.entrySource as 'market' | 'smart_wallets') ?? 'market',
       excludeHighSupplyConcentration: u.excludeHighSupplyConcentration as boolean,
       minFeeActiveTvlRatio: u.minFeeActiveTvlRatio as number,
       minTvl: u.minTvl as number,

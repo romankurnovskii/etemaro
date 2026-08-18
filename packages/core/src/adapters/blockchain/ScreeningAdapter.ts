@@ -291,7 +291,7 @@ export function degenScore(pool: CondensedPool | RawPool, targets: Record<string
 
 // ─── Raw pool screening reject reason ──────────────────────────
 
-function getRawPoolScreeningRejectReason(pool: RawPool, s: typeof config.screening): string | null {
+export function getRawPoolScreeningRejectReason(pool: RawPool, s: typeof config.screening): string | null {
   const base = pool?.token_x || {};
   const quote = pool?.token_y || {};
   const binStep = numeric(pool?.dlmm_params?.bin_step);
