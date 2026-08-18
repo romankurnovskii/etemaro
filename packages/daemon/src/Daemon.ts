@@ -1266,7 +1266,7 @@ IMPORTANT:
         const result = await meteora.getWalletPositions({ wallet_address: w.address });
         for (const p of result.positions || []) {
           currentPositions.push(p.position);
-          poolToPos.set(p.position, p.pair);
+          poolToPos.set(p.position, p.pool);
         }
       } catch (e: any) {
         log('cron_error', `[SmartWallets] Failed to fetch positions for ${w.address}: ${e.message}`);
@@ -1295,8 +1295,8 @@ IMPORTANT:
     for (const pool of uniquePools) {
       try {
         // Skip if already deployed
-        const memory = getPoolMemory(pool);
-        if (memory?.positions?.some((p: any) => p.status === 'open')) {
+        const openPositions = getTrackedPositions(true);
+        if (openPositions.some((p) => p.pool === pool)) {
           log('cron', `[SmartWallets] Skipped pool ${pool}: Already have an open position.`);
           continue;
         }
@@ -1322,7 +1322,7 @@ IMPORTANT:
             .catch(() => {});
         }
 
-        const deployRes = await meteora.deploy_position({
+        const deployRes = await meteora.deployPosition({
           pool_address: pool,
           amount_sol: deployAmount,
           strategy: config.strategy.strategyMeteora,
