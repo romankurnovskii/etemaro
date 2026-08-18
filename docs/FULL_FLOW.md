@@ -10,13 +10,13 @@
 
 1. [System Overview](#1-system-overview)
 2. [Architecture](#2-architecture)
-3. [Startup & Initialization](#3-startup--initialization)
+3. [Startup &amp; Initialization](#3-startup--initialization)
 4. [Configuration System](#4-configuration-system)
 5. [The Agent Loop (ReAct)](#5-the-agent-loop-react)
 6. [Screening Flow](#6-screening-flow)
 7. [Management Flow](#7-management-flow)
 8. [State Management](#8-state-management)
-9. [Learning & Evolution](#9-learning--evolution)
+9. [Learning &amp; Evolution](#9-learning--evolution)
 10. [External Integrations](#10-external-integrations)
 11. [User Interfaces](#11-user-interfaces)
 
@@ -162,18 +162,18 @@ graph LR
 
 ### Key Files
 
-| File                                              | Role                                                            |
-| ------------------------------------------------- | --------------------------------------------------------------- |
-| `packages/core/src/config/Config.ts`              | Zod-validated config singleton from `user-config.json` + `.env` |
-| `packages/core/src/application/agent-loop.ts`     | Core ReAct loop: LLM → tool call → repeat                       |
-| `packages/core/src/application/prompt-builder.ts` | Builds role-specific system prompts                             |
-| `packages/core/src/adapters/ToolExecutor.ts`      | Dispatches tool calls to adapter implementations                |
-| `packages/core/src/adapters/ToolDefinitions.ts`   | OpenAI-format tool schemas                                      |
-| `packages/core/src/domain/state.ts`               | Position registry in `state.json`                               |
-| `packages/core/src/domain/lessons.ts`             | Learning engine + threshold evolution                           |
-| `packages/core/src/domain/decision-log.ts`        | Structured decision rationale log                               |
-| `packages/core/src/domain/signal-weights.ts`      | Darwinian signal weighting system                               |
-| `packages/core/src/domain/pool-memory.ts`         | Per-pool deploy history + snapshots                             |
+| File                                              | Role                                                           |
+| ------------------------------------------------- | -------------------------------------------------------------- |
+| `packages/core/src/config/Config.ts`              | Zod-validated config singleton from`user-config.json` + `.env` |
+| `packages/core/src/application/agent-loop.ts`     | Core ReAct loop: LLM → tool call → repeat                      |
+| `packages/core/src/application/prompt-builder.ts` | Builds role-specific system prompts                            |
+| `packages/core/src/adapters/ToolExecutor.ts`      | Dispatches tool calls to adapter implementations               |
+| `packages/core/src/adapters/ToolDefinitions.ts`   | OpenAI-format tool schemas                                     |
+| `packages/core/src/domain/state.ts`               | Position registry in`state.json`                               |
+| `packages/core/src/domain/lessons.ts`             | Learning engine + threshold evolution                          |
+| `packages/core/src/domain/decision-log.ts`        | Structured decision rationale log                              |
+| `packages/core/src/domain/signal-weights.ts`      | Darwinian signal weighting system                              |
+| `packages/core/src/domain/pool-memory.ts`         | Per-pool deploy history + snapshots                            |
 
 ---
 
@@ -256,18 +256,18 @@ graph TD
 
 ### Config Sections
 
-| Section      | Purpose                                                               |
-| ------------ | --------------------------------------------------------------------- |
-| `risk`       | Max positions, max deploy amount                                      |
-| `screening`  | Fee/TVL ratio, organic score, holder count, mcap, bin step thresholds |
-| `management` | Deploy amount, stop loss, take profit, trailing TP, OOR wait time     |
-| `strategy`   | LP strategy (bid_ask/spot), bin range                                 |
-| `schedule`   | Management and screening interval (minutes)                           |
-| `llm`        | Temperature, max tokens/steps, per-role model selection               |
-| `darwin`     | Signal weight evolution settings                                      |
-| `hiveMind`   | Shared learning sync settings                                         |
-| `jupiter`    | Swap referral settings                                                |
-| `indicators` | RSI/supertrend entry/exit indicators                                  |
+| Section      | Purpose                                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------------- |
+| `risk`       | Max positions, max deploy amount                                                                              |
+| `screening`  | Entry source (market vs smart_wallets), fee/TVL ratio, organic score, holder count, mcap, bin step thresholds |
+| `management` | Deploy amount, stop loss, take profit, trailing TP, OOR wait time                                             |
+| `strategy`   | LP strategy (bid_ask/spot), bin range                                                                         |
+| `schedule`   | Management and screening interval (minutes)                                                                   |
+| `llm`        | Temperature, max tokens/steps, per-role model selection                                                       |
+| `darwin`     | Signal weight evolution settings                                                                              |
+| `hiveMind`   | Shared learning sync settings                                                                                 |
+| `jupiter`    | Swap referral settings                                                                                        |
+| `indicators` | RSI/supertrend entry/exit indicators                                                                          |
 
 ---
 
@@ -319,10 +319,10 @@ sequenceDiagram
 | ----------------------------- | ------------------------------------------------------------------------------ |
 | **Once-per-session lock**     | `deploy_position`, `close_position`, `swap_token` can only fire once per cycle |
 | **No-retry lock**             | `deploy_position` locked after first attempt regardless of outcome             |
-| **JSON repair**               | Malformed tool arguments auto-repaired via `jsonrepair`                        |
-| **Provider fallback**         | Falls back to `stepfun/step-3.5-flash:free` on provider errors                 |
-| **System role fallback**      | Embeds system prompt in user message if provider rejects `role: system`        |
-| **Tool choice fallback**      | Retries without `tool_choice: required` if provider rejects it                 |
+| **JSON repair**               | Malformed tool arguments auto-repaired via`jsonrepair`                         |
+| **Provider fallback**         | Falls back to`stepfun/step-3.5-flash:free` on provider errors                  |
+| **System role fallback**      | Embeds system prompt in user message if provider rejects`role: system`         |
+| **Tool choice fallback**      | Retries without`tool_choice: required` if provider rejects it                  |
 | **Rate limit handling**       | 30s wait on 429 errors                                                         |
 | **Tool-required enforcement** | For action intents, rejects answers without tool calls (up to 2 retries)       |
 
@@ -599,6 +599,7 @@ The Strategy Library (`strategy-library.ts`) provides persistent storage for LP 
    ```
 
 2. Via CLI:
+
    ```bash
    npm run cli add-strategy -- --id my_strategy --name "My Custom Strategy" --lp_strategy bid_ask
    ```
