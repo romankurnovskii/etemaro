@@ -310,9 +310,24 @@ export function loadAndValidateConfig(): ValidatedConfig {
 
   let raw: Record<string, unknown>;
   try {
-    raw = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'));
+    const content = fs.readFileSync(USER_CONFIG_PATH, 'utf8');
+    if (!content.trim() && fs.existsSync(EXAMPLE_CONFIG_PATH)) {
+      fs.copyFileSync(EXAMPLE_CONFIG_PATH, USER_CONFIG_PATH);
+      raw = JSON.parse(fs.readFileSync(EXAMPLE_CONFIG_PATH, 'utf8'));
+    } else {
+      raw = JSON.parse(content);
+    }
   } catch (e) {
-    throw new Error(`Failed to parse user-config.json: ${e instanceof Error ? e.message : String(e)}`);
+    if (fs.existsSync(EXAMPLE_CONFIG_PATH)) {
+      try {
+        fs.copyFileSync(EXAMPLE_CONFIG_PATH, USER_CONFIG_PATH);
+        raw = JSON.parse(fs.readFileSync(EXAMPLE_CONFIG_PATH, 'utf8'));
+      } catch {
+        throw new Error(`Failed to parse user-config.json: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    } else {
+      throw new Error(`Failed to parse user-config.json: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   if (fs.existsSync(EXAMPLE_CONFIG_PATH)) {
