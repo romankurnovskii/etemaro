@@ -140,8 +140,8 @@ Only call this if you need the current price to calculate a specific bin range (
       description: `Open a new DLMM liquidity position.
 
 PRIORITY ORDER for strategy and bins:
-1. User explicitly specifies → always follow exactly (user override is absolute)
-2. No user spec → use the configured strategy from config.strategy.strategy and choose bins based on volatility
+1. If user asks for spot/curve/bid_ask, use it.
+2. No user spec → use the configured strategy from config.strategy.strategyMeteora and choose bins based on volatility
 
 HARD RULES:
 - Never use 'curve'.
@@ -152,7 +152,7 @@ HARD RULES:
   use bins_below only, keep bins_above=0, and the upper bin will be pinned to the current active bin.
 
 Guidelines (only when user hasn't specified):
-- Strategy: omit the strategy field — the system will use the configured default from config.strategy.strategy
+- Strategy: omit the strategy field — the system will use the configured default from config.strategy.strategyMeteora
 - Bins: choose from configured minBinsBelow/maxBinsBelow by positive volatility. The hard lower floor is 35 bins.
 - Deposit: single-sided SOL only: set amount_y/amount_sol, keep amount_x=0.
 
@@ -180,7 +180,7 @@ WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
             type: 'string',
             enum: ['bid_ask', 'spot'],
             description:
-              'DLMM strategy type. If user specifies, use exactly what they said. Otherwise omit — the system default from config.strategy.strategy will be used automatically.',
+              'DLMM strategy type. If user specifies, use exactly what they said. Otherwise omit — the system default from config.strategy.strategyMeteora will be used automatically.',
           },
           bins_below: {
             type: 'number',

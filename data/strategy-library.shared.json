@@ -1,5 +1,4 @@
 {
-  "active": null,
   "strategies": {
     "custom_ratio_spot": {
       "id": "custom_ratio_spot",
