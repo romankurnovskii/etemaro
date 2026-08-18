@@ -147,4 +147,38 @@ describe('ConfigMigrator', () => {
     expect(fs.readFileSync(`${configPath}.bak`, 'utf8')).toBe(originalContent);
     expect(JSON.parse(fs.readFileSync(configPath, 'utf8'))).toEqual(updatedConfig);
   });
+
+  it('migrates v1 to v2 by renaming strategy and seeding activeStrategyId from file', () => {
+    const v1Config = {
+      _version: 1,
+      strategy: {
+        strategy: 'spot',
+        minBinsBelow: 2,
+      },
+    };
+
+    // Create a temporary data dir and mock strategy-library.json
+    const tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'etemaro-data-'));
+    const oldEnv = process.env.ETEMARO_DATA_DIR;
+    process.env.ETEMARO_DATA_DIR = tempDataDir;
+
+    try {
+      fs.writeFileSync(path.join(tempDataDir, 'strategy-library.json'), JSON.stringify({ active: 'test_strategy_xyz' }));
+
+      const result = runConfigMigrations(v1Config, mockExampleConfig);
+
+      expect(result.fromVersion).toBe(1);
+      expect(result.toVersion).toBe(CURRENT_CONFIG_VERSION);
+      expect(result.changed).toBe(true);
+
+      const strat = result.migrated.strategy as Record<string, unknown>;
+      expect(strat.strategy).toBeUndefined();
+      expect(strat.strategyMeteora).toBe('spot');
+      expect(strat.activeStrategyId).toBe('test_strategy_xyz'); // seeded from mocked file
+      expect(strat.minBinsBelow).toBe(2);
+    } finally {
+      process.env.ETEMARO_DATA_DIR = oldEnv;
+      fs.rmSync(tempDataDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -1,6 +1,7 @@
 {
   "_version": 1,
   "preset": "custom",
+  "agentId": "",
   "connection": {
     "description": "Network endpoints, API credentials, wallet key, LLM provider settings, and runtime mode. These values are also propagated to environment variables on startup.",
     "rpcUrl": "https://pump.helius-rpc.com",
@@ -84,7 +85,8 @@
 
   "strategy": {
     "description": "LP bin placement strategy. Determines how liquidity is distributed relative to the active price bin.",
-    "strategy": "bid_ask",
+    "activeStrategyId": "single_sided_reseed",
+    "strategyMeteora": "bid_ask",
     "minBinsBelow": 35,
     "maxBinsBelow": 69,
     "defaultBinsBelow": 69,

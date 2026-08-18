@@ -10,9 +10,10 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { dataPath } from '../shared/constants.js';
 import { flattenUserConfig } from '../shared/utils.js';
 
-export const CURRENT_CONFIG_VERSION = 1;
+export const CURRENT_CONFIG_VERSION = 2;
 
 export interface MigrationLog {
   fromVersion: number;
@@ -126,6 +127,40 @@ const MIGRATIONS: Migration[] = [
       const { data, added } = autoFillMissingDefaults(userRaw, exampleRaw);
       data._version = 1;
       return { data, added, updated: [] };
+    },
+  },
+  {
+    fromVersion: 1,
+    toVersion: 2,
+    description: 'Rename strategy.strategy to strategy.strategyMeteora and seed activeStrategyId from library',
+    migrate: (userRaw, exampleRaw) => {
+      const added: string[] = [];
+      const updated: string[] = [];
+      if (userRaw.strategy && typeof userRaw.strategy === 'object') {
+        const strat = userRaw.strategy as Record<string, unknown>;
+        if (strat.strategy) {
+          strat.strategyMeteora = strat.strategy;
+          delete strat.strategy;
+          added.push('strategyMeteora');
+        }
+        if (!strat.activeStrategyId) {
+          let active = 'single_sided_reseed';
+          try {
+            const privatePath = dataPath('strategy-library.json');
+            if (fs.existsSync(privatePath)) {
+              const privateDb = JSON.parse(fs.readFileSync(privatePath, 'utf8'));
+              if (privateDb.active) {
+                active = privateDb.active;
+              }
+            }
+          } catch (e) {
+            // ignore missing/invalid file
+          }
+          strat.activeStrategyId = active;
+          added.push('activeStrategyId');
+        }
+      }
+      return { data: userRaw, added, updated };
     },
   },
 ];
