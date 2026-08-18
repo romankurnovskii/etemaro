@@ -21,6 +21,7 @@
 
   "screening": {
     "description": "Filters applied when scanning for new pool candidates. Tighten these to reduce noise; loosen them to explore more pools.",
+    "entrySource": "market",
     "timeframe": "5m",
     "category": "trending",
     "excludeHighSupplyConcentration": true,
