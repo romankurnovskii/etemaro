@@ -60,3 +60,10 @@ describe('schema versioning', () => {
     expect(config._version).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('screening entrySource config', () => {
+  it('defaults entrySource to market or smart_wallets', () => {
+    expect(config.screening.entrySource).toBeDefined();
+    expect(['market', 'smart_wallets']).toContain(config.screening.entrySource);
+  });
+});

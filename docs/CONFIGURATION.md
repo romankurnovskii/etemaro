@@ -82,6 +82,7 @@ Conventional environment variables that the daemon reads:
   },
   "screening": {
     "description": "Filters applied when scanning for new pool candidates.",
+    "entrySource": "market",
     "timeframe": "5m",
     "category": "trending",
     ...
@@ -121,6 +122,7 @@ Conventional environment variables that the daemon reads:
 
 | Field                                     | Purpose                                                  | Example / what to expect                                                                                                      |
 | ----------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `entrySource`                             | Entry universe source for pool candidates.               | `"market"` → trending pool discovery + LLM screener. `"smart_wallets"` → copy-entry from tracked LP wallets (bypasses LLM).   |
 | `timeframe`                               | Candle timeframe used by indicator scans.                | `"5m"` → 5-minute candles. `"1m"` scans faster/shorter.                                                                       |
 | `category`                                | Pool category filter from the discovery API.             | `"trending"` → trending pools. `"new"` → recently launched.                                                                   |
 | `excludeHighSupplyConcentration`          | Skip tokens whose supply is concentrated in few wallets. | `true` → filters out likely dumps. `false` → includes them.                                                                   |
