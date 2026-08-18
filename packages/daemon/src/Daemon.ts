@@ -1248,7 +1248,7 @@ IMPORTANT:
 
     // 2. Load snapshot
     const snapshotPath = path.join(getDataDir(), '.smart-wallets-snapshot.json');
-    let snapshot: { positions: string[] } = { positions: [] };
+    let snapshot: domain.SmartWalletSnapshot | null = null;
     if (fs.existsSync(snapshotPath)) {
       try {
         snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
@@ -1256,48 +1256,50 @@ IMPORTANT:
         log('cron_error', `[SmartWallets] Failed to load snapshot: ${e.message}`);
       }
     }
-    const isFirstRun = snapshot.positions.length === 0;
 
     // 3. Fetch positions for each wallet
-    const currentPositions: string[] = [];
-    const poolToPos = new Map<string, string>();
+    const currentPositions: domain.WalletPositionItem[] = [];
     for (const w of trackedWallets) {
       try {
         const result = await meteora.getWalletPositions({ wallet_address: w.address });
         for (const p of result.positions || []) {
-          currentPositions.push(p.position);
-          poolToPos.set(p.position, p.pool);
+          if (p.position && p.pool) {
+            currentPositions.push({ position: p.position, pool: p.pool });
+          }
         }
       } catch (e: any) {
         log('cron_error', `[SmartWallets] Failed to fetch positions for ${w.address}: ${e.message}`);
       }
     }
 
-    // 4. Update snapshot
-    const newPositions = currentPositions.filter((p) => !snapshot.positions.includes(p));
-    snapshot.positions = currentPositions;
-    fs.writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2), 'utf8');
+    // 4. Calculate diff using pure domain helper
+    const diff = domain.diffSmartWalletPositions(currentPositions, snapshot);
 
-    if (isFirstRun) {
-      log('cron', `[SmartWallets] Smart wallets initialized (first run snapshot recorded with ${currentPositions.length} positions).`);
-      return 'Smart wallets initialized (first run snapshot recorded).';
+    if (diff.isFirstRun) {
+      fs.writeFileSync(snapshotPath, JSON.stringify(diff.nextSnapshot, null, 2), 'utf8');
+      log('cron', `[SmartWallets] Smart wallets initialized (baseline snapshot recorded with ${diff.nextSnapshot.positions.length} positions).`);
+      return 'Smart wallets initialized (baseline snapshot recorded).';
     }
 
-    if (!newPositions.length) {
+    if (!diff.newPositions.length) {
       log('cron', '[SmartWallets] No new positions detected by smart wallets.');
       return 'No new positions detected by smart wallets.';
     }
 
-    // 5. Deploy on new unique pools
+    // 5. Deploy on candidate pools and track resolution
     let deployedCount = 0;
-    const uniquePools = Array.from(new Set(newPositions.map((pos) => poolToPos.get(pos)!).filter(Boolean)));
+    const processedPositions: { position: string; resolved: boolean }[] = [];
 
-    for (const pool of uniquePools) {
+    for (const posItem of diff.newPositions) {
+      const pool = posItem.pool;
+      if (!pool) continue;
+
       try {
         // Skip if already deployed
         const openPositions = getTrackedPositions(true);
         if (openPositions.some((p) => p.pool === pool)) {
           log('cron', `[SmartWallets] Skipped pool ${pool}: Already have an open position.`);
+          processedPositions.push({ position: posItem.position, resolved: true });
           continue;
         }
 
@@ -1305,12 +1307,14 @@ IMPORTANT:
         const detail = await screening.getPoolDetail({ pool_address: pool });
         if (!detail) {
           log('cron', `[SmartWallets] Could not fetch pool details for ${pool}.`);
+          processedPositions.push({ position: posItem.position, resolved: false });
           continue;
         }
 
         const rejectReason = screening.getRawPoolScreeningRejectReason(detail as any, config.screening);
         if (rejectReason) {
           log('cron', `[SmartWallets] Vetoed ${detail.name || pool}: ${rejectReason}`);
+          processedPositions.push({ position: posItem.position, resolved: true });
           continue;
         }
 
@@ -1331,10 +1335,16 @@ IMPORTANT:
         domain.recordPositionSnapshot(pool, deployRes.position);
         log('cron', `[SmartWallets] Deployed ${deployRes.position.position} on ${detail.name || pool}`);
         deployedCount++;
+        processedPositions.push({ position: posItem.position, resolved: true });
       } catch (e: any) {
         log('cron_error', `[SmartWallets] Deploy failed for pool ${pool}: ${e.message}`);
+        processedPositions.push({ position: posItem.position, resolved: false });
       }
     }
+
+    // Save updated snapshot after processing
+    const updatedSnapshot = domain.updateSnapshotPositions(diff.nextSnapshot, processedPositions);
+    fs.writeFileSync(snapshotPath, JSON.stringify(updatedSnapshot, null, 2), 'utf8');
 
     return `Smart wallet cycle completed. Deployed to ${deployedCount} new pools.`;
   }
