@@ -309,4 +309,4 @@ You can change the `entrySource` under the `screening` section of your `config/u
 }
 ```
 
-When this mode is enabled, the agent completely skips scraping public markets for trending pools. Instead, it regularly checks the LP positions of the tracked `lp` smart wallets and will automatically copy them into any new positions they enter, provided the new pools pass the deterministic screening filters (TVL, token age, warnings, etc.) configured in your `user-config.json`. The LLM veto engine is bypassed for maximum speed.
+When this mode is enabled, the agent completely skips scraping public markets for trending pools. Instead, it regularly checks the LP positions of the tracked `lp` smart wallets and uses newly entered pools as candidate signals. If the candidate pool passes your configured deterministic screening filters (TVL, token age, warnings, organic score, etc.), the agent deploys into the pool using your own strategy, SOL deposit sizing, and management rules. (Note: This is candidate discovery driven by smart wallet signals; deploy sizing, bin strategies, and exit rules remain 100% your own).
