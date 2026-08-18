@@ -7,7 +7,6 @@
  * - Sets active deployment strategy profile
  * - Merges preset profiles pulled from HiveMind fleet
  *
- * @sideEffects Reads and writes `data/strategy-library.json`
  */
 
 import fs from 'node:fs';
@@ -134,21 +133,6 @@ const DEFAULT_STRATEGIES: Record<string, Strategy> = {
     best_for: 'Locking in profits without fully exiting winning positions',
   },
 };
-
-function ensureDefaultStrategies(): void {
-  const privateDb = loadPrivate();
-  const changed = false;
-
-  // We no longer set privateDb.active here, only strategy defaults if needed
-  // In the future, this function might not be necessary if strategies are only in shared.
-
-  if (changed) {
-    savePrivate(privateDb);
-    log('strategy', 'Initialized private strategy library');
-  }
-}
-
-ensureDefaultStrategies();
 
 // ─── Tool Handlers ─────────────────────────────────────────────
 
