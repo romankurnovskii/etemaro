@@ -56,7 +56,8 @@ function getAuditPath(): string {
 export function log(level: string, message: string): void {
   const ts = new Date().toISOString();
   const agentId = getAgentIdForRequests();
-  const line = `[${ts}] [${level}] [${agentId}] ${message}\n`;
+  const dryTag = process.env.DRY_RUN === 'true' ? ' [DRY RUN]' : '';
+  const line = `[${ts}] [${level}] [${agentId}]${dryTag} ${message}\n`;
   try {
     fs.appendFileSync(getLogPath(), line);
   } catch {
@@ -83,6 +84,7 @@ export function logAction(entry: LogActionEntry): void {
   const record = {
     ts: new Date().toISOString(),
     agentId: getAgentIdForRequests(),
+    dryRun: process.env.DRY_RUN === 'true',
     ...entry,
   };
   try {
