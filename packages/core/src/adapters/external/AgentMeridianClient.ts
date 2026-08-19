@@ -12,6 +12,7 @@
  */
 
 import { config } from '../../config/Config.js';
+import { logStructured, createTimer } from '../../shared/logger.js';
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -87,7 +88,9 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
 }
 
 async function agentMeridianJsonOnce(pathname: string, options: RequestInit = {}, timeoutMs: number | null = null): Promise<Record<string, unknown>> {
+  const timer = createTimer();
   const res = await fetchWithTimeout(`${getAgentMeridianBase()}${pathname}`, options, timeoutMs);
+  const durationMs = timer.stop();
   const text = await res.text().catch(() => '');
   let payload: Record<string, unknown> = {};
   try {
@@ -100,6 +103,17 @@ async function agentMeridianJsonOnce(pathname: string, options: RequestInit = {}
     error.status = res.status;
     error.payload = payload;
     error.retryAfter = res.headers.get('retry-after');
+    logStructured({
+      category: 'api_error',
+      message: `AgentMeridian ${pathname} failed: HTTP ${res.status} (${durationMs}ms)`,
+      metadata: {
+        pathname,
+        status: res.status,
+        duration_ms: durationMs,
+        retryAfter: res.headers.get('retry-after'),
+        bodySnippet: text.slice(0, 200),
+      },
+    });
     throw error;
   }
   return payload;
@@ -132,6 +146,11 @@ export async function agentMeridianJson(pathname: string, options: AgentEtemaroR
       }
       const waitMs = Math.min(retryDelayMs(lastError, attempt), Math.max(0, remainingMs - 1));
       if (waitMs <= 0) break;
+      logStructured({
+        category: 'api_retry',
+        message: `AgentMeridian ${pathname} retry ${attempt + 1}/${maxAttempts} after ${waitMs}ms (status ${status})`,
+        metadata: { pathname, attempt: attempt + 1, maxAttempts, wait_ms: waitMs, status, elapsed_ms: Date.now() - startedAt },
+      });
       await sleep(waitMs);
       attempt += 1;
     }

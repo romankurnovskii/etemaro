@@ -13,7 +13,7 @@
 
 import { Connection, PublicKey, VersionedTransaction, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
-import { log } from '../../shared/logger.js';
+import { log, logStructured, createTimer } from '../../shared/logger.js';
 import { config } from '../../config/Config.js';
 
 let _connection: Connection | null = null;
@@ -241,8 +241,14 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
     };
   }
 
+  const swapTimer = createTimer();
   try {
     log('swap', `${amount} of ${input_mint} → ${output_mint}`);
+    logStructured({
+      category: 'swap_start',
+      message: `Swap initiated: ${amount} ${input_mint} → ${output_mint}`,
+      metadata: { input_mint, output_mint, amount },
+    });
     const wallet = getWallet();
     const connection = getConnection();
 
@@ -282,6 +288,17 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
     });
     if (!orderRes.ok) {
       const body = await orderRes.text();
+      logStructured({
+        category: 'api_error',
+        message: `Jupiter order failed: HTTP ${orderRes.status}`,
+        metadata: {
+          api: 'jup.ag/swap/v2/order',
+          status: orderRes.status,
+          statusText: orderRes.statusText,
+          rateLimitReset: orderRes.headers.get('x-ratelimit-reset'),
+          bodySnippet: body.slice(0, 200),
+        },
+      });
       throw new Error(`Swap V2 order failed: ${orderRes.status} ${body}`);
     }
 
@@ -316,6 +333,18 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
     }
 
     log('swap', `SUCCESS tx: ${result.signature}`);
+    logStructured({
+      category: 'swap_finish',
+      message: `Swap completed: ${result.signature}`,
+      metadata: {
+        tx: result.signature,
+        input_mint,
+        output_mint,
+        amount_in: result.inputAmountResult,
+        amount_out: result.outputAmountResult,
+        duration_ms: swapTimer.stop(),
+      },
+    });
     if (referralParams && order.feeBps !== referralParams.referralFee) {
       log('swap_warn', `Jupiter referral fee requested ${referralParams.referralFee} bps but order applied ${order.feeBps ?? 'unknown'} bps`);
     }
@@ -334,6 +363,11 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
     };
   } catch (error: any) {
     log('swap_error', error.message);
+    logStructured({
+      category: 'swap_error',
+      message: `Swap failed: ${error.message}`,
+      metadata: { input_mint, output_mint, amount, error: error.message, duration_ms: swapTimer?.stop?.() ?? 0 },
+    });
     return { success: false, error: error.message };
   }
 }

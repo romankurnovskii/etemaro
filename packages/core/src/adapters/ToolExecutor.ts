@@ -18,7 +18,7 @@ import { execSync, spawn } from 'node:child_process';
 // ─── Shared imports ────────────────────────────────────────────
 import { config, reloadScreeningThresholds } from '../config/Config.js';
 import { REPO_ROOT, configPath, USER_CONFIG_PATH, getMinSafeBinsBelow } from '../shared/constants.js';
-import { log, logAction } from '../shared/logger.js';
+import { log, logAction, logStructured } from '../shared/logger.js';
 import type { AppConfig, AgentRole } from '../shared/types.js';
 
 // ─── Adapter imports ───────────────────────────────────────────
@@ -875,6 +875,11 @@ export async function executeTool(name: string, args: Record<string, unknown> = 
     const safetyCheck = await _runSafetyChecks(name, args);
     if (!safetyCheck.pass) {
       log('safety_block', `${name} blocked: ${safetyCheck.reason}`);
+      logStructured({
+        category: 'safety_block',
+        message: `${name} blocked: ${safetyCheck.reason}`,
+        metadata: { tool: name, reason: safetyCheck.reason, args: summarizeArgsForLog(args) },
+      });
       return {
         blocked: true,
         reason: safetyCheck.reason,
@@ -1164,4 +1169,23 @@ function summarizeResult(result: Record<string, unknown>): Record<string, unknow
     return str.slice(0, 1000) + '...(truncated)';
   }
   return result;
+}
+
+/**
+ * Summarize tool args for structured logging — truncates long string values,
+ * strips sensitive fields, and keeps only first-level keys.
+ */
+function summarizeArgsForLog(args: Record<string, unknown>): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+  const SENSITIVE_KEYS = new Set(['private_key', 'secret', 'api_key', 'apiKey', 'token']);
+  for (const [key, value] of Object.entries(args)) {
+    if (SENSITIVE_KEYS.has(key)) {
+      summary[key] = '[REDACTED]';
+    } else if (typeof value === 'string') {
+      summary[key] = value.length > 100 ? value.slice(0, 100) + '...' : value;
+    } else {
+      summary[key] = value;
+    }
+  }
+  return summary;
 }
