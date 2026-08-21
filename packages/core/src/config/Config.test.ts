@@ -67,3 +67,9 @@ describe('screening entrySource config', () => {
     expect(['market', 'smart_wallets']).toContain(config.screening.entrySource);
   });
 });
+
+describe('top-level agentId support', () => {
+  it('exposes agentId in AppConfig', () => {
+    expect(config.agentId !== undefined).toBe(true);
+  });
+});

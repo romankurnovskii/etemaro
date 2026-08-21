@@ -59,6 +59,8 @@ function buildConfig(): AppConfig {
 
   return {
     _version: (u._version as number) ?? 1,
+    agentId:
+      typeof u.agentId === 'string' && u.agentId ? u.agentId : typeof u.hiveMindAgentId === 'string' && u.hiveMindAgentId ? u.hiveMindAgentId : null,
     risk: {
       maxPositions: u.maxPositions as number,
       maxDeployAmount: u.maxDeployAmount as number,
