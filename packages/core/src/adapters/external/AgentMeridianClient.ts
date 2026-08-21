@@ -35,30 +35,18 @@ interface AgentEtemaroError extends Error {
 // ─── Helpers ───────────────────────────────────────────────────
 
 export function getAgentMeridianBase(): string {
-  try {
-    return String(config?.api?.url || 'https://api.agentmeridian.xyz/api').replace(/\/+$/, '');
-  } catch {
-    return 'https://api.agentmeridian.xyz/api';
-  }
+  return String(config.api.url || 'https://api.agentmeridian.xyz/api').replace(/\/+$/, '');
 }
 
 export function getAgentMeridianHeaders({ json = false } = {}): Record<string, string> {
   const headers: Record<string, string> = {};
   if (json) headers['Content-Type'] = 'application/json';
-  try {
-    if (config?.api?.publicApiKey) headers['x-api-key'] = config.api.publicApiKey;
-  } catch {
-    // Config in TDZ during early initialization
-  }
+  if (config.api.publicApiKey) headers['x-api-key'] = config.api.publicApiKey;
   return headers;
 }
 
 export function getAgentIdForRequests(): string {
-  try {
-    return config?.agentId || config?.hiveMind?.agentId || 'agent-etemaro-local';
-  } catch {
-    return 'agent-etemaro-local';
-  }
+  return config.agentId || config.hiveMind?.agentId || 'agent-etemaro-local';
 }
 
 function sleep(ms: number): Promise<void> {
