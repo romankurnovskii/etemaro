@@ -3,6 +3,6 @@
 
 # Except example templates and this gitignore itself
 !*.example.json
+!*.example.cjs
 !.gitignore
-!ecosystem.config.cjs
 trader-notes.md
