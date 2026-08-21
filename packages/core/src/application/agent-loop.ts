@@ -15,7 +15,7 @@ import OpenAI from 'openai';
 import { jsonrepair } from 'jsonrepair';
 import { buildSystemPrompt } from './prompt-builder.js';
 import { config } from '../config/Config.js';
-import { log } from '../shared/logger.js';
+import { log, logStructured, createCorrelationId, setCorrelationId, createTimer } from '../shared/logger.js';
 import type { AgentRole, AgentMessage, ToolCall, ToolResult, WalletBalances, OnChainPosition, StateSummary } from '../shared/types.js';
 
 // ─── Tool definitions (imported dynamically at call site via adapter) ───
@@ -242,6 +242,46 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Summarize tool args for structured logging — truncates long values,
+ * strips sensitive fields, and keeps only first-level keys.
+ */
+function summarizeToolArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+  const SENSITIVE_KEYS = new Set(['private_key', 'secret', 'api_key', 'apiKey', 'token']);
+  for (const [key, value] of Object.entries(args)) {
+    if (SENSITIVE_KEYS.has(key)) {
+      summary[key] = '[REDACTED]';
+    } else if (typeof value === 'string') {
+      summary[key] = value.length > 100 ? value.slice(0, 100) + '...' : value;
+    } else {
+      summary[key] = value;
+    }
+  }
+  return summary;
+}
+
+/**
+ * Summarize a tool result for structured logging — extracts key fields
+ * and truncates large payloads.
+ */
+function summarizeToolResult(result: Record<string, unknown>): Record<string, unknown> | string {
+  if (!result) return 'null';
+  const str = JSON.stringify(result);
+  if (str.length > 500) {
+    try {
+      const summary: Record<string, unknown> = {};
+      for (const key of ['success', 'error', 'blocked', 'reason', 'tx', 'position', 'pool', 'pnl_usd', 'pnl_pct']) {
+        if (key in result) summary[key] = result[key];
+      }
+      return Object.keys(summary).length > 0 ? summary : str.slice(0, 500) + '...(truncated)';
+    } catch {
+      return str.slice(0, 500) + '...(truncated)';
+    }
+  }
+  return result;
+}
+
 // ─── Agent Loop Options ─────────────────────────────────────────
 
 export interface AgentLoopCallbacks {
@@ -284,6 +324,15 @@ export async function agentLoop(
   options: AgentLoopCallbacks & { interactive?: boolean } & { deps: AgentLoopDeps },
 ): Promise<AgentLoopResult> {
   const { interactive = false, onToolStart = null, onToolFinish = null, deps } = options;
+
+  // Generate correlation ID for this agent loop invocation
+  const correlationId = createCorrelationId();
+  setCorrelationId(correlationId);
+  logStructured({
+    category: 'agent_loop_start',
+    message: `Agent loop started (type=${agentType}, maxSteps=${maxSteps}): ${goal.slice(0, 120)}`,
+    metadata: { goal, agentType, maxSteps, correlationId },
+  });
 
   // Build dynamic system prompt with current portfolio state
   const [portfolio, positions] = await Promise.all([deps.getWalletBalances(), deps.getMyPositions()]);
@@ -427,6 +476,11 @@ export async function agentLoop(
           messages.pop();
           log('agent', `Rejected no-tool final answer (${noToolRetryCount}/2) for tool-required request`);
           log('agent', `No-tool content was: ${msg.content?.slice(0, 1000)}`);
+          logStructured({
+            category: 'anti_hallucination_reject',
+            message: `No-tool answer rejected (${noToolRetryCount}/2)`,
+            metadata: { retryCount: noToolRetryCount, maxRetries: 2, goal, rejectedContentSnippet: (msg.content || '').slice(0, 200) },
+          });
           if (noToolRetryCount >= 2) {
             return {
               content: "I couldn't complete that reliably because no tool call was made. Please retry after checking the logs.",
@@ -444,6 +498,12 @@ export async function agentLoop(
         }
         log('agent', 'Final answer reached');
         log('agent', msg.content);
+        logStructured({
+          category: 'agent_loop_end',
+          message: 'Agent loop completed with final answer',
+          metadata: { goal, agentType, stepsUsed: step + 1, correlationId },
+        });
+        setCorrelationId(null);
         return { content: msg.content, userMessage: goal };
       }
       sawToolCall = true;
@@ -518,6 +578,11 @@ export async function agentLoop(
           // Block once-per-session tools from firing a second time
           if (ONCE_PER_SESSION.has(functionName) && firedOnce.has(functionName)) {
             log('agent', `Blocked duplicate ${functionName} call — already executed this session`);
+            logStructured({
+              category: 'tool_blocked',
+              message: `Duplicate ${functionName} blocked (once-per-session)`,
+              metadata: { tool: functionName, step, reason: 'once_per_session' },
+            });
             const blockedResult = {
               blocked: true,
               reason: `${functionName} already attempted this session — do not retry. If it failed, report the error and stop.`,
@@ -537,12 +602,25 @@ export async function agentLoop(
           }
 
           await onToolStart?.({ name: functionName, args: functionArgs, step });
+          const toolTimer = createTimer();
+          logStructured({
+            category: 'tool_start',
+            message: `Tool executing: ${functionName}`,
+            metadata: { tool: functionName, step, args: summarizeToolArgs(functionArgs) },
+          });
           const result = await deps.executeTool(functionName, functionArgs);
+          const toolDurationMs = toolTimer.stop();
+          const toolSuccess = result?.success !== false && !result?.error && !result?.blocked;
+          logStructured({
+            category: toolSuccess ? 'tool_finish' : 'tool_blocked',
+            message: `Tool ${toolSuccess ? 'completed' : 'finished'}: ${functionName} (${toolDurationMs}ms)`,
+            metadata: { tool: functionName, step, duration_ms: toolDurationMs, success: toolSuccess, result_summary: summarizeToolResult(result) },
+          });
           await onToolFinish?.({
             name: functionName,
             args: functionArgs,
             result,
-            success: result?.success !== false && !result?.error && !result?.blocked,
+            success: toolSuccess,
             step,
           });
 
@@ -567,6 +645,11 @@ export async function agentLoop(
         if (blockedIds.has(tc.id)) {
           const block = blockedInMessage.find((b) => b.toolCall.id === tc.id)!;
           log('agent', `Blocked duplicate ${block.functionName} call in same message — already executed this turn`);
+          logStructured({
+            category: 'tool_blocked',
+            message: `Duplicate ${block.functionName} blocked (same message)`,
+            metadata: { tool: block.functionName, step, reason: 'duplicate_in_message' },
+          });
           const blockedResult = {
             blocked: true,
             reason: 'Only one deploy_position per message is allowed. If you need to deploy to multiple pools, send separate messages.',
@@ -590,6 +673,11 @@ export async function agentLoop(
       messages.push(...orderedResults);
     } catch (error: any) {
       log('error', `Agent loop error at step ${step}: ${error.message}`);
+      logStructured({
+        category: 'agent_loop_error',
+        message: `Agent loop error at step ${step}: ${error.message}`,
+        metadata: { step, error: error.message, stack: error.stack?.slice(0, 500), goal, agentType },
+      });
 
       // If it's a rate limit, wait and retry
       if (error.status === 429) {
@@ -604,5 +692,11 @@ export async function agentLoop(
   }
 
   log('agent', 'Max steps reached without final answer');
+  logStructured({
+    category: 'agent_loop_end',
+    message: 'Max steps reached without final answer',
+    metadata: { goal, agentType, maxSteps, correlationId },
+  });
+  setCorrelationId(null);
   return { content: 'Max steps reached. Review logs for partial progress.', userMessage: goal };
 }
