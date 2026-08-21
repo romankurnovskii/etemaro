@@ -1136,6 +1136,16 @@ async function _runSafetyChecks(
     }
 
     case 'swap_token': {
+      // Basic validation: check that input_mint and output_mint are non-empty strings and amount is positive
+      if (!args.input_mint || typeof args.input_mint !== 'string' || args.input_mint.trim() === '') {
+        return { pass: false, reason: 'input_mint is required' };
+      }
+      if (!args.output_mint || typeof args.output_mint !== 'string' || args.output_mint.trim() === '') {
+        return { pass: false, reason: 'output_mint is required' };
+      }
+      if (typeof args.amount !== 'number' || args.amount <= 0) {
+        return { pass: false, reason: 'amount must be a positive number' };
+      }
       return { pass: true };
     }
 
@@ -1151,6 +1161,20 @@ async function _runSafetyChecks(
           pass: false,
           reason: 'self_update is only allowed from a local interactive TTY session, not from Telegram or background automation.',
         };
+      }
+      return { pass: true };
+    }
+
+    case 'claim_fees': {
+      if (!args.position_address || typeof args.position_address !== 'string' || args.position_address.trim() === '') {
+        return { pass: false, reason: 'position_address is required' };
+      }
+      return { pass: true };
+    }
+
+    case 'close_position': {
+      if (!args.position_address || typeof args.position_address !== 'string' || args.position_address.trim() === '') {
+        return { pass: false, reason: 'position_address is required' };
       }
       return { pass: true };
     }

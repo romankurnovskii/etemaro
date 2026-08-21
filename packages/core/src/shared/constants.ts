@@ -135,7 +135,7 @@ export function getMinSafeBinsBelow(): number {
 }
 export const MIN_EVOLVE_POSITIONS = 5;
 export const MAX_CHANGE_PER_STEP = 0.2;
-export const STAGE_TTL_MS = 10 * 60_1000;
+export const STAGE_TTL_MS = 600_000;
 export const CACHE_TTL_MS = 5 * 60 * 1000;
 
 export const SOLANA_PUBKEY_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;

@@ -721,9 +721,15 @@ After evaluating, write a brief one-line result per position.
       positions = livePositions?.positions || [];
 
       if (positions.length === 0) {
-        log('cron', 'No open positions — triggering screening cycle');
-        mgmtReport = 'No open positions. Triggering screening cycle.';
-        this.runScreeningCycle().catch((e: any) => log('cron_error', `Triggered screening failed: ${e.message}`));
+        log('cron', 'No open positions — checking screening trigger');
+        mgmtReport = 'No open positions.';
+        if (Date.now() - this.screeningLastTriggered > screeningCooldownMs) {
+          this.screeningLastTriggered = Date.now();
+          log('cron', 'Triggering screening cycle');
+          this.runScreeningCycle().catch((e: any) => log('cron_error', `Triggered screening failed: ${e.message}`));
+        } else {
+          log('cron', 'Screening skipped — cooldown active');
+        }
         return mgmtReport;
       }
 
@@ -2512,8 +2518,12 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
 }
 
 // ─── Self-Execution ──────────────────────────────────────────────
-const isMain =
-  process.argv[1] && (process.argv[1].endsWith('Daemon.ts') || process.argv[1].endsWith('Daemon.js') || process.argv[1].endsWith('index.js'));
+function isScriptTarget(filePath: string | undefined): boolean {
+  if (!filePath) return false;
+  return filePath.endsWith('Daemon.ts') || filePath.endsWith('Daemon.js') || filePath.endsWith('index.js');
+}
+
+const isMain = isScriptTarget(process.argv[1]) || isScriptTarget(process.env.pm_exec_path);
 
 if (isMain) {
   const agentLoopDeps: AgentLoopDeps = {
@@ -2567,4 +2577,6 @@ if (isMain) {
     console.error('Daemon failed to start:', err);
     process.exit(1);
   });
+} else {
+  log('pm2', `Etemaro started as a child process. No REPL available. PID: ${process.pid}`);
 }

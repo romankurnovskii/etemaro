@@ -15,6 +15,7 @@ import { dataPath, MAX_NOTE_LENGTH } from '../shared/constants.js';
 import { sanitizeStoredText, isOorCloseReason, isAdjustedWinRateExcludedReason, loadJsonFile, saveJsonFile } from '../shared/utils.js';
 import { config } from '../config/Config.js';
 import type { PoolMemoryEntry, PoolMemoryDeploy, PoolSnapshot } from '../shared/types.js';
+import { recordPoolMetric } from './pool-metrics.js';
 
 const POOL_MEMORY_FILE = dataPath('pool-memory.json');
 
@@ -355,6 +356,18 @@ export function recordPositionSnapshot(poolAddress: string, snapshot: PositionSn
   }
 
   save(db);
+
+  // Record pool metric snapshot to data/pool_metrics/
+  recordPoolMetric(poolAddress, {
+    position: snapshot.position,
+    pair: snapshot.pair,
+    pnl_pct: snapshot.pnl_pct,
+    pnl_usd: snapshot.pnl_usd,
+    in_range: snapshot.in_range,
+    unclaimed_fees_usd: snapshot.unclaimed_fees_usd,
+    minutes_out_of_range: snapshot.minutes_out_of_range,
+    age_minutes: snapshot.age_minutes,
+  });
 }
 
 /**
