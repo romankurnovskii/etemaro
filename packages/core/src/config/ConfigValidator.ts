@@ -11,9 +11,14 @@
  */
 
 import fs from 'node:fs';
+import path from 'node:path';
 import { configPath, USER_CONFIG_PATH } from '../shared/constants.js';
 import { flattenUserConfig } from '../shared/utils.js';
 import { runConfigMigrations, backupAndSaveUserConfig } from './ConfigMigrator.js';
+
+function getConfigFileName(): string {
+  return path.basename(USER_CONFIG_PATH);
+}
 
 const REQUIRED_FLAT_KEYS = new Set([
   '_version',
@@ -304,10 +309,10 @@ export function loadAndValidateConfig(): ValidatedConfig {
 
   if (!fs.existsSync(USER_CONFIG_PATH)) {
     if (fs.existsSync(EXAMPLE_CONFIG_PATH)) {
-      console.log('[config] user-config.json not found, copying from example');
+      console.log(`[config] ${getConfigFileName()} not found, copying from example`);
       fs.copyFileSync(EXAMPLE_CONFIG_PATH, USER_CONFIG_PATH);
     } else {
-      throw new Error('user-config.json not found and no example config to copy from');
+      throw new Error(`${getConfigFileName()} not found and no example config to copy from`);
     }
   }
 
@@ -326,10 +331,10 @@ export function loadAndValidateConfig(): ValidatedConfig {
         fs.copyFileSync(EXAMPLE_CONFIG_PATH, USER_CONFIG_PATH);
         raw = JSON.parse(fs.readFileSync(EXAMPLE_CONFIG_PATH, 'utf8'));
       } catch {
-        throw new Error(`Failed to parse user-config.json: ${e instanceof Error ? e.message : String(e)}`);
+        throw new Error(`Failed to parse ${getConfigFileName()}: ${e instanceof Error ? e.message : String(e)}`);
       }
     } else {
-      throw new Error(`Failed to parse user-config.json: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(`Failed to parse ${getConfigFileName()}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -338,7 +343,7 @@ export function loadAndValidateConfig(): ValidatedConfig {
       const exampleRaw = JSON.parse(fs.readFileSync(EXAMPLE_CONFIG_PATH, 'utf8')) as Record<string, unknown>;
       const migrationResult = runConfigMigrations(raw, exampleRaw);
       if (migrationResult.changed) {
-        console.log(`[config] Migrated user-config.json schema from v${migrationResult.fromVersion} to v${migrationResult.toVersion}`);
+        console.log(`[config] Migrated ${getConfigFileName()} schema from v${migrationResult.fromVersion} to v${migrationResult.toVersion}`);
         for (const entry of migrationResult.logs) {
           if (entry.addedKeys.length > 0) {
             console.log(`[config]   + Auto-filled ${entry.addedKeys.length} new field(s): ${entry.addedKeys.join(', ')}`);
@@ -362,7 +367,7 @@ export function loadAndValidateConfig(): ValidatedConfig {
         const envValue = process.env[envVar];
         if (envValue === undefined) {
           throw new Error(
-            `Environment variable ${envVar} is not set but is referenced by ${key} in user-config.json.\n` +
+            `Environment variable ${envVar} is not set but is referenced by ${key} in ${getConfigFileName()}.\n` +
               `Set ${envVar} in your .env file or environment.`,
           );
         }
@@ -404,7 +409,7 @@ export function loadAndValidateConfig(): ValidatedConfig {
     }
 
     const missingFields = getMissingFields(flattenUserConfig(raw));
-    console.log(`[config] user-config.json is missing ${missingFields.length} field(s), auto-filling from example:`);
+    console.log(`[config] ${getConfigFileName()} is missing ${missingFields.length} field(s), auto-filling from example:`);
     for (const field of missingFields) {
       if (field.startsWith('chartIndicators.')) {
         const fieldName = field.slice('chartIndicators.'.length);
@@ -416,8 +421,8 @@ export function loadAndValidateConfig(): ValidatedConfig {
 
     const merged = mergeIntoExample(JSON.parse(JSON.stringify(exampleRaw)) as Record<string, unknown>, raw);
 
-    fs.writeFileSync(configPath('user-config.json'), JSON.stringify(merged, null, 2) + '\n');
-    console.log('[config] Updated user-config.json with missing fields. Your custom values are preserved.');
+    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(merged, null, 2) + '\n');
+    console.log(`[config] Updated ${getConfigFileName()} with missing fields. Your custom values are preserved.`);
 
     return validateConfig(merged);
   }
