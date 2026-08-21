@@ -28,7 +28,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "pnpm -r run typecheck",
     "prepare": "husky",
-    "pm2:start": "node -e \"if (!require('fs').existsSync('config/ecosystem.config.cjs')) require('fs').copyFileSync('config/ecosystem.config.example.cjs', 'config/ecosystem.config.cjs')\" && pm2 start config/ecosystem.config.cjs",
+    "pm2:start": "pm2 start config/ecosystem.config.cjs",
     "pm2:restart": "pm2 restart etemaro --update-env",
     "pm2:logs": "pm2 logs etemaro --lines 100",
     "desktop": "pnpm --filter @etemaro/desktop tauri dev",
