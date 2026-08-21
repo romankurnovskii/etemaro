@@ -41,10 +41,8 @@ const SENSITIVE_PATTERNS: RegExp[] = [
   /\b([1-9A-HJ-NP-Za-km-z]{88,})\b/g,
   // API key assignments: specific prefix + value
   /(?:api[_-]?key|apikey|secret|token|password|private[_-]?key)\s*[=:]\s*["']?([A-Za-z0-9_\-./]{20,})["']?/gi,
-  // Generic key=value in URLs (e.g. ?api-key=xxx or ?key=xxx)
-  /([?&](?:api[_-]?key|key|apikey|secret|token)=)([A-Za-z0-9_-]{16,})/gi,
-  // URL-embedded API keys (e.g. /v1/xxx with key path segment)
-  /https?:\/\/[^"'\s]*(?:api[_-]?key|key|apikey)=([A-Za-z0-9_-]{16,})/gi,
+  // Generic key=value in URLs (e.g. ?api-key=xxx or &key=xxx)
+  /[?&](?:api[_-]?key|key|apikey|secret|token)=([A-Za-z0-9_-]{16,})/gi,
 ];
 
 /** Characters that indicate a redacted value was sanitized. */

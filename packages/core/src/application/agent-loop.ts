@@ -330,7 +330,7 @@ export async function agentLoop(
   setCorrelationId(correlationId);
   logStructured({
     category: 'agent_loop_start',
-    message: `Agent loop started: goal="${goal.slice(0, 120)}" type=${agentType} maxSteps=${maxSteps}`,
+    message: `Agent loop started (type=${agentType}, maxSteps=${maxSteps}): ${goal.slice(0, 120)}`,
     metadata: { goal, agentType, maxSteps, correlationId },
   });
 
