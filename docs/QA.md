@@ -42,7 +42,7 @@
 
 ---
 
-#### Option B: PM2 or Docker Compose (Headless Server)
+#### Option B: PM2 Process Manager (Headless Server)
 
 1. **Create Config Files**:
    Copy `config/user-config.example.json` to create a custom config for each agent:
@@ -52,8 +52,8 @@
    ```
 2. **Configure Parameters**:
    Edit each JSON file to set your risk, deploy amount, and strategy settings. Keep `"walletKey": "env.WALLET_PRIVATE_KEY"` so each daemon process reads `WALLET_PRIVATE_KEY` from its own process environment.
-3. **Run via PM2**:
-   In `config/ecosystem.config.cjs`, pass `USER_CONFIG_PATH` and the process-specific `WALLET_PRIVATE_KEY`:
+3. **Set Up & Run PM2 Ecosystem**:
+   Copy `config/ecosystem.config.example.cjs` to `config/ecosystem.config.cjs` (`cp config/ecosystem.config.example.cjs config/ecosystem.config.cjs`). In `config/ecosystem.config.cjs`, pass `USER_CONFIG_PATH` and the process-specific `WALLET_PRIVATE_KEY`:
    ```javascript
    module.exports = {
      apps: [
@@ -82,8 +82,46 @@
      ],
    };
    ```
-4. **Run via Docker Compose**:
-   Define distinct container services sharing a `./data:/app/data` volume (or set `ETEMARO_DATA_DIR` per service) and setting `USER_CONFIG_PATH` and `WALLET_PRIVATE_KEY` per container.
+   Start the processes with:
+   ```bash
+   npm run pm2:start
+   ```
+
+#### Option C: Docker Compose (Headless Server)
+
+1. **Create Config Files**:
+   Copy `config/user-config.example.json` to create a custom config for each agent:
+   ```bash
+   cp config/user-config.example.json config/agt_my-agent-1.json
+   cp config/user-config.example.json config/agt_my-agent-2.json
+   ```
+2. **Configure Parameters**:
+   Edit each JSON file to set your risk, deploy amount, and strategy settings. Keep `"walletKey": "env.WALLET_PRIVATE_KEY"` so each daemon process reads `WALLET_PRIVATE_KEY` from its own process environment.
+3. **Define Docker Compose Services**:
+   Define distinct container services sharing a `./data:/app/data` volume (or set `ETEMARO_DATA_DIR` per service) and set `USER_CONFIG_PATH` and `WALLET_PRIVATE_KEY` per container in `docker-compose.yml`:
+   ```yaml
+   version: '3.8'
+   services:
+     agent-conservative:
+       build: .
+       environment:
+         - USER_CONFIG_PATH=config/agt_my-agent-1.json
+         - WALLET_PRIVATE_KEY=your_private_key_base58_for_agent_1
+       volumes:
+         - ./data:/app/data
+     agent-degen:
+       build: .
+       environment:
+         - USER_CONFIG_PATH=config/agt_my-agent-2.json
+         - WALLET_PRIVATE_KEY=your_private_key_base58_for_agent_2
+       volumes:
+         - ./data:/app/data
+   ```
+4. **Launch Containers**:
+   Start all agent services in detached mode:
+   ```bash
+   docker compose up -d
+   ```
 
 _Note:_ State files (`state-*.json`, `lessons-*.json`, `pool-memory-*.json`) automatically acquire each agent's configuration filename suffix under the active data dir (`ETEMARO_DATA_DIR` / `DATA_DIR` / `<repo>/data`). Multiple processes can share one data directory without filename collisions when each has a distinct `USER_CONFIG_PATH` basename.
 
@@ -310,3 +348,39 @@ You can change the `entrySource` under the `screening` section of your `config/u
 ```
 
 When this mode is enabled, the agent completely skips scraping public markets for trending pools. Instead, it regularly checks the LP positions of the tracked `lp` smart wallets and uses newly entered pools as candidate signals. If the candidate pool passes your configured deterministic screening filters (TVL, token age, warnings, organic score, etc.), the agent deploys into the pool using your own strategy, SOL deposit sizing, and management rules. (Note: This is candidate discovery driven by smart wallet signals; deploy sizing, bin strategies, and exit rules remain 100% your own).
+
+---
+
+## Performance & PnL Metrics
+
+### Q: What is the difference between "Price Win / Price Loss" and "Net Win / Net Loss" in trade reporting?
+
+**A:** Liquidity Provision (LP) trades generate earnings from both **underlying asset price changes** and **LP trading fees**. Performance metrics explicitly separate asset price movement from net total returns:
+
+1. **Price PnL (`final_value - initial_value`)**:
+   - **Price Win**: The underlying token asset price went **UP** while the position was open (`Price PnL > +0.1%`).
+   - **Price Loss**: The underlying token asset price went **DOWN** while the position was open (`Price PnL < -0.1%`).
+
+2. **Net Return / Net PnL (`Price PnL + Fees Earned`)**:
+   - **Net Win**: The overall trade made money **after adding LP trading fees** (`Net PnL > +0.1%`).
+   - **Net Loss**: The overall trade lost money even after accounting for LP trading fees (`Net PnL < -0.1%`).
+
+#### Simple Examples
+
+- **Price Loss, but Net Win (Very Common in High-Yield LP Trading)**:
+  - You deposit **$100**.
+  - Token price drops while in position, so principal asset value becomes **$90** (**Price Loss = -$10**).
+  - You collect **$15** in LP trading fees.
+  - **Net Return:** -$10 + $15 = **+$5** (**Net Win**).
+
+- **Price Win & Net Win**:
+  - You deposit **$100**.
+  - Token price rises to **$110** (**Price Win = +$10**).
+  - You collect **$5** in LP trading fees.
+  - **Net Return:** +$10 + $5 = **+$15** (**Net Win**).
+
+- **Price Loss & Net Loss (Token Price Dump)**:
+  - You deposit **$100**.
+  - Token price dumps to **$45** (**Price Loss = -$55**).
+  - You collect **$2** in LP trading fees.
+  - **Net Return:** -$55 + $2 = **-$53** (**Net Loss**).
