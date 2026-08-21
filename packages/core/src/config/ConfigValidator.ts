@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import { configPath, USER_CONFIG_PATH } from '../shared/constants.js';
 import { flattenUserConfig } from '../shared/utils.js';
 import { runConfigMigrations, backupAndSaveUserConfig } from './ConfigMigrator.js';
+import { log } from '../shared/logger.js';
 
 const REQUIRED_FLAT_KEYS = new Set([
   '_version',
@@ -304,7 +305,7 @@ export function loadAndValidateConfig(): ValidatedConfig {
 
   if (!fs.existsSync(USER_CONFIG_PATH)) {
     if (fs.existsSync(EXAMPLE_CONFIG_PATH)) {
-      console.log('[config] user-config.json not found, copying from example');
+      log('config', 'user-config.json not found, copying from example');
       fs.copyFileSync(EXAMPLE_CONFIG_PATH, USER_CONFIG_PATH);
     } else {
       throw new Error('user-config.json not found and no example config to copy from');
@@ -338,17 +339,17 @@ export function loadAndValidateConfig(): ValidatedConfig {
       const exampleRaw = JSON.parse(fs.readFileSync(EXAMPLE_CONFIG_PATH, 'utf8')) as Record<string, unknown>;
       const migrationResult = runConfigMigrations(raw, exampleRaw);
       if (migrationResult.changed) {
-        console.log(`[config] Migrated user-config.json schema from v${migrationResult.fromVersion} to v${migrationResult.toVersion}`);
-        for (const log of migrationResult.logs) {
-          if (log.addedKeys.length > 0) {
-            console.log(`[config]   + Auto-filled ${log.addedKeys.length} new field(s): ${log.addedKeys.join(', ')}`);
+        log('config', `Migrated user-config.json schema from v${migrationResult.fromVersion} to v${migrationResult.toVersion}`);
+        for (const entry of migrationResult.logs) {
+          if (entry.addedKeys.length > 0) {
+            log('config', `  + Auto-filled ${entry.addedKeys.length} new field(s): ${entry.addedKeys.join(', ')}`);
           }
         }
         backupAndSaveUserConfig(USER_CONFIG_PATH, migrationResult.migrated);
         raw = migrationResult.migrated;
       }
     } catch (e) {
-      console.warn(`[config] Auto-migration warning: ${e instanceof Error ? e.message : String(e)}`);
+      log('config_warn', `Auto-migration warning: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -404,20 +405,20 @@ export function loadAndValidateConfig(): ValidatedConfig {
     }
 
     const missingFields = getMissingFields(flattenUserConfig(raw));
-    console.log(`[config] user-config.json is missing ${missingFields.length} field(s), auto-filling from example:`);
+    log('config', `user-config.json is missing ${missingFields.length} field(s), auto-filling from example:`);
     for (const field of missingFields) {
       if (field.startsWith('chartIndicators.')) {
         const fieldName = field.slice('chartIndicators.'.length);
-        console.log(`  + ${field}: ${JSON.stringify(((exampleRaw.chartIndicators as Record<string, unknown>) || {})[fieldName])}`);
+        log('config', `  + ${field}: ${JSON.stringify(((exampleRaw.chartIndicators as Record<string, unknown>) || {})[fieldName])}`);
       } else {
-        console.log(`  + ${field}: ${JSON.stringify(exampleFlat[field])}`);
+        log('config', `  + ${field}: ${JSON.stringify(exampleFlat[field])}`);
       }
     }
 
     const merged = mergeIntoExample(JSON.parse(JSON.stringify(exampleRaw)) as Record<string, unknown>, raw);
 
     fs.writeFileSync(configPath('user-config.json'), JSON.stringify(merged, null, 2) + '\n');
-    console.log('[config] Updated user-config.json with missing fields. Your custom values are preserved.');
+    log('config', 'Updated user-config.json with missing fields. Your custom values are preserved.');
 
     return validateConfig(merged);
   }

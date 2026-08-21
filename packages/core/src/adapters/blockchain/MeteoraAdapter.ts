@@ -26,7 +26,7 @@ import BN from 'bn.js';
 import bs58 from 'bs58';
 import { config, computeDeployAmount } from '../../config/Config.js';
 import { getMinSafeBinsBelow } from '../../shared/constants.js';
-import { log } from '../../shared/logger.js';
+import { log, logStructured, createTimer } from '../../shared/logger.js';
 import {
   trackPosition,
   markOutOfRange,
@@ -521,6 +521,18 @@ export async function deployPosition({
   const parsedVolatility = volatility == null ? null : Number(volatility);
   const normalizedVolatility = parsedVolatility != null && Number.isFinite(parsedVolatility) ? parsedVolatility : null;
 
+  logStructured({
+    category: 'tx_state',
+    message: `Deploy initiated for pool ${pool_address.slice(0, 8)}`,
+    metadata: {
+      pool: pool_address,
+      strategy: activeStrategy,
+      amount_sol: amount_y ?? amount_sol,
+      bins_below: activeBinsBelow,
+      bins_above: activeBinsAbove,
+    },
+  });
+
   if (volatility != null && (normalizedVolatility == null || normalizedVolatility <= 0)) {
     throw new Error(`Invalid volatility ${volatility} — refusing deploy because the volatility feed is unusable.`);
   }
@@ -845,6 +857,18 @@ export async function deployPosition({
     }
 
     log('deploy', `SUCCESS — ${txHashes.length} tx(s): ${txHashes[0]}`);
+    logStructured({
+      category: 'tx_state',
+      message: `Deploy confirmed: ${txHashes.length} tx(s)`,
+      metadata: {
+        pool: pool_address,
+        position: newPosition.publicKey.toString(),
+        txHash: txHashes[0],
+        txCount: txHashes.length,
+        strategy: activeStrategy,
+        amount_sol: finalAmountY,
+      },
+    });
 
     _positionsCacheAt = 0;
     const signalSnapshot = config.darwin?.enabled ? getAndClearStagedSignals(pool_address, baseMint) : null;
@@ -915,6 +939,11 @@ export async function deployPosition({
     };
   } catch (error: any) {
     log('deploy_error', error.message);
+    logStructured({
+      category: 'tx_error',
+      message: `Deploy failed: ${error.message}`,
+      metadata: { pool: pool_address, error: error.message, stack: error.stack?.slice(0, 500), strategy: activeStrategy, amount_sol: finalAmountY },
+    });
     return { success: false, error: error.message };
   }
 }
@@ -1440,6 +1469,11 @@ export async function claimFees({ position_address }: { position_address: string
 
   try {
     log('claim', `Claiming fees for position: ${position_address}`);
+    logStructured({
+      category: 'tx_state',
+      message: `Claim initiated for position ${position_address.slice(0, 8)}`,
+      metadata: { position: position_address },
+    });
     const wallet = getWallet();
     const poolAddress = await lookupPoolForPosition(position_address, wallet.publicKey.toString());
     poolCache.delete(poolAddress.toString());
@@ -1461,12 +1495,22 @@ export async function claimFees({ position_address }: { position_address: string
       txHashes.push(txHash);
     }
     log('claim', `SUCCESS txs: ${txHashes.join(', ')}`);
+    logStructured({
+      category: 'tx_state',
+      message: `Claim confirmed: ${txHashes.length} tx(s)`,
+      metadata: { position: position_address, txHashes, base_mint: pool.lbPair.tokenXMint.toString() },
+    });
     _positionsCacheAt = 0;
     recordClaim(position_address);
 
     return { success: true, position: position_address, txs: txHashes, base_mint: pool.lbPair.tokenXMint.toString() };
   } catch (error: any) {
     log('claim_error', error.message);
+    logStructured({
+      category: 'tx_error',
+      message: `Claim failed for position ${position_address.slice(0, 8)}: ${error.message}`,
+      metadata: { position: position_address, error: error.message, stack: error.stack?.slice(0, 500) },
+    });
     return { success: false, error: error.message };
   }
 }
@@ -1482,6 +1526,11 @@ export async function closePosition({ position_address, reason }: { position_add
 
   try {
     log('close', `Closing position: ${position_address}`);
+    logStructured({
+      category: 'tx_state',
+      message: `Close initiated for position ${position_address.slice(0, 8)}`,
+      metadata: { position: position_address, reason },
+    });
     const wallet = getWallet();
     const poolAddress = await lookupPoolForPosition(position_address, wallet.publicKey.toString());
     const poolMeta = await getPoolMetadata(poolAddress);
@@ -2030,6 +2079,11 @@ export async function closePosition({ position_address, reason }: { position_add
     }
 
     log('close_error', msg);
+    logStructured({
+      category: 'tx_error',
+      message: `Close failed for position ${position_address.slice(0, 8)}: ${msg}`,
+      metadata: { position: position_address, error: msg, stack: error.stack?.slice(0, 500), isAlreadyClosed },
+    });
     return { success: false, error: msg };
   }
 }
