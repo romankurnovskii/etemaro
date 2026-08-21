@@ -44,16 +44,26 @@
 
 #### Option B: PM2 Process Manager (Headless Server)
 
-1. **Create Config Files**:
+1. **Install Dependencies**:
+   Ensure all monorepo node modules and workspace dependencies are installed on the server:
+
+   ```bash
+   pnpm install
+   ```
+
+2. **Create Config Files**:
    Copy `config/user-config.example.json` to create a custom config for each agent:
+
    ```bash
    cp config/user-config.example.json config/agt_my-agent-1.json
    cp config/user-config.example.json config/agt_my-agent-2.json
    ```
-2. **Configure Parameters**:
+
+3. **Configure Parameters**:
    Edit each JSON file to set your risk, deploy amount, and strategy settings. Keep `"walletKey": "env.WALLET_PRIVATE_KEY"` so each daemon process reads `WALLET_PRIVATE_KEY` from its own process environment.
-3. **Set Up & Run PM2 Ecosystem**:
+4. **Set Up & Run PM2 Ecosystem**:
    Copy `config/ecosystem.config.example.cjs` to `config/ecosystem.config.cjs` (`cp config/ecosystem.config.example.cjs config/ecosystem.config.cjs`). In `config/ecosystem.config.cjs`, pass `USER_CONFIG_PATH` and the process-specific `WALLET_PRIVATE_KEY`:
+
    ```javascript
    module.exports = {
      apps: [
@@ -82,7 +92,9 @@
      ],
    };
    ```
+
    Start the processes with:
+
    ```bash
    npm run pm2:start
    ```
@@ -206,8 +218,8 @@ The app never opens a position **because** a tracked wallet did. The LLM screene
 **A: It works in both directions, but neither is copytrade:**
 
 1. **Your positions exposed (outbound, read-only for others).** When `lpAgentRelayEnabled: true`, the relay is a public endpoint that allows other agents to query your open positions and performance (`config/user-config.example.json:131-136`).
-
 2. **See others' data (inbound, read-only research).** The app can query aggregated data about other wallets through the LPAgent / Study API:
+
    - `study_top_lpers` / `get_top_lpers` — fetch top LPer aggregates for a pool: their positions, PnL, fees, strategies, historical performance (`StudyAdapter.ts:101-111`, endpoints `/top-lp/{pool}` and `/study-top-lp/{pool}`).
    - Open-position lookup — `fetchRawOpenPositionsFromMeridian` queries `/positions/open/raw?owner={wallet}` and the endpoint accepts any owner wallet address (`MeteoraAdapter.ts:1097-1120`); the app uses it for your own wallet via `getMyPositions`.
    - Smart-wallet check — fetches tracked wallets' LP positions to detect presence in a pool (`smart-wallets.ts:98-118`).
@@ -231,6 +243,7 @@ The app never opens a position **because** a tracked wallet did. The LLM screene
 **A: Yes — and it is NOT only in `decision-log.json`.** The bot already writes the entire run to **three separate destinations**, all implemented in `packages/core/src/shared/logger.ts`:
 
 1. **`data/logs/agent-<YYYY-MM-DD>.log`** — human-readable text log of _every_ event, including the operational tags you want to review:
+
    - `[screening]` — each screening cycle, hard-filter rejections, PVP guards, indicator confirmations (`ScreeningAdapter.ts`)
    - `[deploy]` / `[deploy_error]` — position opens, bin/amount/tx details (`MeteoraAdapter.ts:802`)
    - `[close]` / `[claim]` — position closes, fee claims, auto-swap-back-to-SOL steps (`MeteoraAdapter.ts:1513`, `1471`)
@@ -239,7 +252,6 @@ The app never opens a position **because** a tracked wallet did. The LLM screene
    - Also `info` / `warn` / `error` / `debug` standard lines.
 
 2. **`data/logs/actions-<YYYY-MM-DD>.jsonl`** — structured per-tool **audit trail** (`logAction`, `ToolExecutor.ts:724`). Every tool call (e.g. `deploy_position`, `close_position`, `swap_token`, `claim_fees`, `screen`/candidate tools) is appended as one JSON line with `tool`, `args`, `result`, `duration_ms`, `success`/`error`. This is the most machine-readable way to replay the exact actions taken.
-
 3. **`data/decision-log.json`** — append-only structured **decisions** (`appendDecision`, `domain/decision-log.ts`), capped at `MAX_DECISIONS`. Types observed: `deploy`, `close`, `skip`, `no_deploy`, `note` (actors: `SCREENER`, `MANAGER`, etc.). This is the summary feed used by the daily briefing (`getDecisionSummary`).
 
 Plus, if Telegram is configured, write operations also push **notifications**: `notifyDeploy` / `notifyClose` / `notifySwap` (`TelegramAdapter.ts:509/537/554`).
@@ -304,13 +316,13 @@ Etemaro can track known smart wallets (top LPers, whales, KOLs) and use their pr
 }
 ```
 
-| Field      | Purpose                                                      |
-| ---------- | ------------------------------------------------------------ |
-| `name`     | Label you choose (e.g. `whale-sol`, `top-lper-1`)            |
-| `address`  | Solana base58 wallet address                                 |
-| `category` | One of: `alpha`, `smart`, `fast`, `multi` (default: `alpha`) |
-| `type`     | `lp` = track positions, `holder` = track holdings only       |
-| `addedAt`  | ISO timestamp (auto-filled)                                  |
+| Field      | Purpose                                                     |
+| ---------- | ----------------------------------------------------------- |
+| `name`     | Label you choose (e.g.`whale-sol`, `top-lper-1`)            |
+| `address`  | Solana base58 wallet address                                |
+| `category` | One of:`alpha`, `smart`, `fast`, `multi` (default: `alpha`) |
+| `type`     | `lp` = track positions, `holder` = track holdings only      |
+| `addedAt`  | ISO timestamp (auto-filled)                                 |
 
 ### How to add / remove / list
 
@@ -358,28 +370,33 @@ When this mode is enabled, the agent completely skips scraping public markets fo
 **A:** Liquidity Provision (LP) trades generate earnings from both **underlying asset price changes** and **LP trading fees**. Performance metrics explicitly separate asset price movement from net total returns:
 
 1. **Price PnL (`final_value - initial_value`)**:
+
    - **Price Win**: The underlying token asset price went **UP** while the position was open (`Price PnL > +0.1%`).
    - **Price Loss**: The underlying token asset price went **DOWN** while the position was open (`Price PnL < -0.1%`).
 
 2. **Net Return / Net PnL (`Price PnL + Fees Earned`)**:
+
    - **Net Win**: The overall trade made money **after adding LP trading fees** (`Net PnL > +0.1%`).
    - **Net Loss**: The overall trade lost money even after accounting for LP trading fees (`Net PnL < -0.1%`).
 
 #### Simple Examples
 
 - **Price Loss, but Net Win (Very Common in High-Yield LP Trading)**:
+
   - You deposit **$100**.
   - Token price drops while in position, so principal asset value becomes **$90** (**Price Loss = -$10**).
   - You collect **$15** in LP trading fees.
   - **Net Return:** -$10 + $15 = **+$5** (**Net Win**).
 
 - **Price Win & Net Win**:
+
   - You deposit **$100**.
   - Token price rises to **$110** (**Price Win = +$10**).
   - You collect **$5** in LP trading fees.
   - **Net Return:** +$10 + $5 = **+$15** (**Net Win**).
 
 - **Price Loss & Net Loss (Token Price Dump)**:
+
   - You deposit **$100**.
   - Token price dumps to **$45** (**Price Loss = -$55**).
   - You collect **$2** in LP trading fees.
