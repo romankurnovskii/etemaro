@@ -178,7 +178,9 @@ export function log(level: string, message: string): void {
   } catch {
     /* ignore */
   }
-  if (LOG_LEVELS[level as LogLevel] !== undefined && LOG_LEVELS[level as LogLevel] >= minLevel) {
+  const categoryLevel =
+    LOG_LEVELS[level as LogLevel] ?? (level.includes('error') ? LOG_LEVELS.error : level.includes('warn') ? LOG_LEVELS.warn : LOG_LEVELS.info);
+  if (categoryLevel >= minLevel) {
     process.stdout.write(line);
   }
 }
