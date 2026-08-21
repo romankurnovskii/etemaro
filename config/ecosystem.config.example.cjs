@@ -24,7 +24,6 @@ module.exports = {
       time: true,
       // Always start via this file (npm run pm2:start) so cwd + script path stay pinned to the repo.
       env: {
-        NODE_ENV: process.env.NODE_ENV || 'production',
         ...(process.env.WALLET_PRIVATE_KEY ? { WALLET_PRIVATE_KEY: process.env.WALLET_PRIVATE_KEY } : {}),
         ...(process.env.ETEMARO_DATA_DIR ? { ETEMARO_DATA_DIR: process.env.ETEMARO_DATA_DIR } : {}),
       },
@@ -42,7 +41,6 @@ module.exports = {
       restart_delay: 5000,
       kill_timeout: 10000,
       env: {
-        NODE_ENV: 'production',
         USER_CONFIG_PATH: 'config/agt_conservative.json',
         WALLET_PRIVATE_KEY: 'your_private_key_base58_for_agent_1',
       },

@@ -93,12 +93,15 @@ function readUserConfig(): Record<string, unknown> {
 }
 
 function getUserConfigValue(userConfig: Record<string, unknown>, flatKey: string, category: string, nestedKey: string): unknown {
+  if (userConfig[flatKey] !== undefined && userConfig[flatKey] !== null && userConfig[flatKey] !== '') {
+    return userConfig[flatKey];
+  }
   const nested = userConfig[category];
   if (nested && typeof nested === 'object' && nestedKey in (nested as Record<string, unknown>)) {
     const val = (nested as Record<string, unknown>)[nestedKey];
     if (val !== undefined && val !== null && val !== '') return val;
   }
-  return userConfig[flatKey];
+  return null;
 }
 
 function writeUserConfig(nextConfig: Record<string, unknown>): void {

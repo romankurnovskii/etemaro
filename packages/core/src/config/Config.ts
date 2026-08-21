@@ -59,8 +59,7 @@ function buildConfig(): AppConfig {
 
   return {
     _version: (u._version as number) ?? 1,
-    agentId:
-      typeof u.agentId === 'string' && u.agentId ? u.agentId : typeof u.hiveMindAgentId === 'string' && u.hiveMindAgentId ? u.hiveMindAgentId : null,
+    agentId: typeof u.agentId === 'string' && u.agentId ? u.agentId : null,
     risk: {
       maxPositions: u.maxPositions as number,
       maxDeployAmount: u.maxDeployAmount as number,
@@ -161,7 +160,7 @@ function buildConfig(): AppConfig {
     hiveMind: {
       url: typeof u.hiveMindUrl === 'string' && u.hiveMindUrl ? u.hiveMindUrl : null,
       apiKey: process.env.HIVEMIND_API_KEY || (typeof u.hiveMindApiKey === 'string' && u.hiveMindApiKey ? u.hiveMindApiKey : null),
-      agentId: typeof u.hiveMindAgentId === 'string' && u.hiveMindAgentId ? u.hiveMindAgentId : null,
+      agentId: typeof u.agentId === 'string' && u.agentId ? u.agentId : null,
       pullMode: u.hiveMindPullMode as string,
     },
     api: {
