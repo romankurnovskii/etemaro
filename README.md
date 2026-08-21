@@ -34,6 +34,8 @@ Before running Etemaro, ensure you have:
 
 ## Getting Started
 
+> 💡 **Have questions?** Most common user questions, setup troubleshooting, multi-instance deployment steps, and PnL metric definitions are covered in **[docs/QA.md](docs/QA.md)**.
+
 For a complete step-by-step walkthrough, environment variable setup, and strategy selection guide, see **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**.
 
 ### Quick Setup (CLI / Daemon)
@@ -94,6 +96,7 @@ docker compose -f docker-compose.prod.yml up -d --build --force-recreate --remov
 
 ## Documentation & Guides
 
+- ❓ **[Q&A / FAQ Guide](docs/QA.md)** — Frequently asked questions covering setup, multi-instance deployment, dry runs, smart wallets, and PnL metrics (most user questions are covered here).
 - 🚀 **[Getting Started Guide](docs/GETTING_STARTED.md)** — Step-by-step first-time setup, environment variables, strategy selection.
 - 📖 **[Usage Guide](docs/USAGE_GUIDE.md)** — Daily operations, CLI commands, Telegram bot controls, REPL, and decision flows.
 - 🏗️ **[Architecture Guide](docs/ARCHITECTURE.md)** — System layout, domain boundaries, adapter layer, and state management.
