@@ -11,3 +11,4 @@ export * from './token-blacklist.js';
 export * from './dev-blocklist.js';
 export * from './smart-wallets.js';
 export * from './smart-wallets-screening.js';
+export * from './pool-metrics.js';
