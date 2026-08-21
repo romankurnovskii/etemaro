@@ -391,7 +391,7 @@ export class Daemon {
     this.adapters.domain.validateActiveStrategy();
 
     const mgmtTask = cron.schedule(`*/${Math.max(1, config.schedule.managementIntervalMin)} * * * *`, async () => {
-      if (this.managementBusy) return;
+      if (this.managementBusy || this.pnlPollBusy) return;
       this.managementLastRun = Date.now();
       await this.runManagementCycle();
     });
@@ -399,7 +399,7 @@ export class Daemon {
     const screenTask = cron.schedule(`*/${Math.max(1, config.schedule.screeningIntervalMin)} * * * *`, () => this.runScreeningCycle());
 
     const healthTask = cron.schedule(`0 * * * *`, async () => {
-      if (this.managementBusy) return;
+      if (this.managementBusy || this.pnlPollBusy) return;
       this.managementBusy = true;
       log('cron', 'Starting health check');
       try {
@@ -476,6 +476,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
 
           log('state', `[PnL poll] ${signal} confirmed (${confirmTicks} ticks): ${p.pair} — ${reason} — closing directly`);
           // Hold the management lock so the cron cycle can't double-act on this position.
+          const wasManagementBusy = this.managementBusy;
           this.managementBusy = true;
           try {
             const actMap = new Map([[p.position, { action: 'CLOSE', rule, reason }]]);
@@ -484,7 +485,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
           } catch (e: any) {
             log('cron_error', `Poll-triggered close failed: ${e.message}`);
           } finally {
-            this.managementBusy = false;
+            this.managementBusy = wasManagementBusy;
           }
           break; // one action per tick
         }
@@ -499,7 +500,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
       const oppCooldownMs = 5 * 60 * 1000;
 
       this.opportunityPollInterval = setInterval(async () => {
-        if (this.screeningBusy || this.managementBusy || this.opportunityPollBusy) return;
+        if (this.screeningBusy || this.managementBusy || this.pnlPollBusy || this.opportunityPollBusy) return;
         if (Date.now() - this.screeningLastTriggered < oppCooldownMs) return;
         this.opportunityPollBusy = true;
         try {
@@ -703,7 +704,7 @@ After evaluating, write a brief one-line result per position.
   }
 
   async runManagementCycle({ silent = false } = {}): Promise<string | null> {
-    if (this.managementBusy) return null;
+    if (this.managementBusy || this.pnlPollBusy) return null;
     this.managementBusy = true;
     this.managementLastRun = Date.now();
     log('cron', 'Starting management cycle');
@@ -1699,7 +1700,7 @@ IMPORTANT:
       await this.showSettingsMenu().catch((e: any) => this.adapters.telegram.sendMessage(`Settings error: ${e.message}`).catch(() => {}));
       return;
     }
-    if (this.managementBusy || this.screeningBusy || this.busy) {
+    if (this.managementBusy || this.screeningBusy || this.pnlPollBusy || this.busy) {
       if (this.telegramQueue.length < this.MAX_TELEGRAM_QUEUE) {
         this.telegramQueue.push(msg);
         this.adapters.telegram.sendMessage(`⏳ Queued (${this.telegramQueue.length} in queue): "${text.slice(0, 60)}"`).catch(() => {});
@@ -2198,7 +2199,7 @@ IMPORTANT:
   }
 
   private async drainTelegramQueue(): Promise<void> {
-    while (this.telegramQueue.length > 0 && !this.managementBusy && !this.screeningBusy && !this.busy) {
+    while (this.telegramQueue.length > 0 && !this.managementBusy && !this.screeningBusy && !this.pnlPollBusy && !this.busy) {
       const queued = this.telegramQueue.shift();
       await this.telegramHandler(queued);
     }
@@ -2250,7 +2251,7 @@ IMPORTANT:
     };
 
     const runBusy = async (fn: () => Promise<void>) => {
-      if (this.busy) {
+      if (this.busy || this.managementBusy || this.screeningBusy || this.pnlPollBusy) {
         console.log('Agent is busy, please wait...');
         rl.prompt();
         return;
