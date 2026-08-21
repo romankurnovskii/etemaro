@@ -532,6 +532,7 @@ export interface AgentLoopResult {
 
 export interface AppConfig {
   _version?: number;
+  agentId?: string | null;
   risk: {
     maxPositions: number;
     maxDeployAmount: number;
