@@ -2,19 +2,19 @@
 
 Every agent working in this repo **must** read this file first and keep the Memory Bank in sync on every change.
 
-**There is exactly one persistence system in this repo: `.memory-bank/`.** There is no separate `docs/` tree, no `README.md`-as-doc-index, and no `.dev/` scratch directory. If you find yourself wondering "where does this go," the answer is always somewhere under `.memory-bank/` — see Section 3 for the file reference table.
+**There is exactly one persistence system in this repo: `./.memory-bank/`.** There is no separate `docs/` tree, no `README.md`-as-doc-index, and no `.dev/` scratch directory. If you find yourself wondering "where does this go," the answer is always somewhere under `./.memory-bank/` — see Section 3 for the file reference table.
 
 ---
 
 ## 0. Mandatory Bootstrap (Every Session, Before Anything Else)
 
-1. Check whether `.memory-bank/` exists at the repo root.
+1. Check whether `./.memory-bank/` exists at the repo root.
    - **If it does not exist**: scaffold the full structure below immediately, unprompted. This does **not** require user approval — it is infrastructure, not a content change. Do this even if the user's task seems small or unrelated to documentation.
    - **If it exists**: proceed to Session Startup (Section 2).
 2. Output the compliance statement (Section 1).
 
 ```
-.memory-bank/
+./.memory-bank/
 ├── toc.md
 ├── projectbrief.md
 ├── productContext.md
@@ -39,7 +39,7 @@ When a task adds a new package, extend `systemPatterns.md` and `techContext.md` 
 
 ### Solana / Meteora integration work
 
-Before modifying Solana or Meteora integration logic, read `.memory-bank/systemPatterns.md#Solana-CLMM-Findings` (or the equivalent section covering known SDK quirks and anti-patterns). If that section doesn't exist yet, that's a signal to create it once you've found something worth recording — not before.
+Before modifying Solana or Meteora integration logic, read `./.memory-bank/systemPatterns.md#Solana-CLMM-Findings` (or the equivalent section covering known SDK quirks and anti-patterns). If that section doesn't exist yet, that's a signal to create it once you've found something worth recording — not before.
 
 ---
 
@@ -82,7 +82,7 @@ Before modifying Solana or Meteora integration logic, read `.memory-bank/systemP
 
 1. Attach MCP servers: read `.mcp.json` if present.
 2. Load Memory Bank per mode below.
-3. Append a line to `.memory-bank/session-log.jsonl`:
+3. Append a line to `./.memory-bank/session-log.jsonl`:
    `{"ts":"2025-10-25T10:30Z","mode":"fast|standard|deep","mb_v":"2024-10"}`
 
 **Fast Track** (bug fixes, small changes):
@@ -105,7 +105,7 @@ Before modifying Solana or Meteora integration logic, read `.memory-bank/systemP
 
 ### Session Logging
 
-All operational log entries are appended to `.memory-bank/session-log.jsonl` (JSONL, append-only). This is separate from the human-readable Memory Bank content files.
+All operational log entries are appended to `./.memory-bank/session-log.jsonl` (JSONL, append-only). This is separate from the human-readable Memory Bank content files.
 
 ```json
 {"timestamp":"2025-10-25T10:30:00Z","session_id":"uuid","mode":"standard","mb_version":"2024-10"}
@@ -188,7 +188,7 @@ PLAN [approve] → BUILD → DIFF → QA [pass] → APPROVAL [approve] → APPLY
 **Analyzed**:
 
 - `path/file.ext:50-100` - Current implementation of X
-- `.memory-bank/systemPatterns.md#Pattern` - Established pattern for Y
+- `./.memory-bank/systemPatterns.md#Pattern` - Established pattern for Y
 
 **Reuse Strategy**:
 
@@ -315,8 +315,8 @@ On failure: report the error, roll back, diagnose, return to BUILD.
 
 **No additional user approval is required to enter this state** — approving the code in APPROVAL covers the documentation of that same code. This is the one thing this file used to contradict itself on; it doesn't anymore.
 
-1. Create task doc: `.memory-bank/tasks/YYYY-MM/DDMMDD_task-name.md`.
-2. Update monthly README: `.memory-bank/tasks/YYYY-MM/README.md`.
+1. Create task doc: `./.memory-bank/tasks/YYYY-MM/DDMMDD_task-name.md`.
+2. Update monthly README: `./.memory-bank/tasks/YYYY-MM/README.md`.
 3. Update `projectRules.md` if new patterns emerged.
 4. Update `decisions.md` if architectural decisions were made.
 5. Update `toc.md` if new MB files were added.
@@ -477,9 +477,9 @@ Zero lint errors before APPROVAL (warnings OK with justification). Unit tests fo
 
 **Everything in this section happens as a normal consequence of code approval — none of it needs a second, separate approval:**
 
-- Creating `.memory-bank/tasks/*/` task docs
-- Updating `.memory-bank/tasks/*/README.md`
-- Updating `.memory-bank/decisions.md` and `.memory-bank/projectRules.md`
+- Creating `./.memory-bank/tasks/*/` task docs
+- Updating `./.memory-bank/tasks/*/README.md`
+- Updating `./.memory-bank/decisions.md` and `./.memory-bank/projectRules.md`
 - Committing the above to version control alongside the code
 
 The only approval gate in this whole workflow is the one in the APPROVAL state (Section 4), and it covers both the code and its documentation.
@@ -491,7 +491,7 @@ The only approval gate in this whole workflow is the one in the APPROVAL state (
 - ✅ Making an architectural decision → `decisions.md`
 - ✅ User says "update memory bank" → full refresh across relevant files
 
-**Citation formats**: Code: `path/file.ext:42` | `path/file.ext:42-58` | `path/file.ext:functionName()`. MB: `.memory-bank/systemPatterns.md#Section` | `.memory-bank/decisions.md#2025-10-15-decision`.
+**Citation formats**: Code: `path/file.ext:42` | `path/file.ext:42-58` | `path/file.ext:functionName()`. MB: `./.memory-bank/systemPatterns.md#Section` | `./.memory-bank/decisions.md#2025-10-15-decision`.
 
 ### Versioning & Rollback
 
@@ -549,11 +549,11 @@ Iterations on failure: `BUILD ← DIFF ← QA ← APPROVAL`. Major changes: retu
 3. No fake/mock data in production.
 4. Always cite `file:line` for code, `file.md#Section` for MB.
 5. Always work in sandbox (never main).
-6. If `.memory-bank/` doesn't exist at session start, create it — unprompted, no approval needed.
+6. If `./.memory-bank/` doesn't exist at session start, create it — unprompted, no approval needed.
 7. Every completed task gets a task doc and a monthly README update — no exceptions, no separate approval.
 
 ---
 
-**Each session starts fresh. `.memory-bank/` is the only persistent memory — there is no other doc tree and no scratch directory. Maintain it with precision.**
+**Each session starts fresh. `./.memory-bank/` is the only persistent memory — there is no other doc tree and no scratch directory. Maintain it with precision.**
 
 **Mission**: Build software respecting existing architecture, following established patterns, improving incrementally. Reuse over creation. Quality over speed. Approval over assumption.
