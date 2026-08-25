@@ -25,11 +25,23 @@ function findRepoRoot(startDir: string): string {
     if (parent === dir) break;
     dir = parent;
   }
-  return path.resolve(startDir, '../..');
+  const fallback = path.resolve(startDir, '../..');
+  if (fs.existsSync(path.join(fallback, 'config', 'user-config.example.json'))) {
+    return fallback;
+  }
+  const home = process.env.HOME || process.env.USERPROFILE;
+  return process.env.ETEMARO_HOME || (home ? path.join(home, '.etemaro') : fallback);
 }
 
+const currentFileDir =
+  typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:')
+    ? path.dirname(fileURLToPath(import.meta.url))
+    : typeof __dirname !== 'undefined'
+      ? __dirname
+      : process.cwd();
+
 /** Absolute path to the repository root (the pnpm workspace root). */
-export const REPO_ROOT: string = findRepoRoot(path.dirname(fileURLToPath(import.meta.url)));
+export const REPO_ROOT: string = findRepoRoot(currentFileDir);
 
 /** Resolve a path relative to the repository root. */
 export function repoPath(...segments: string[]): string {
