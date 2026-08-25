@@ -88,16 +88,14 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     process.env.ETEMARO_DATA_DIR = '/tmp/agent-data-root';
     process.env.USER_CONFIG_PATH = '/cfg/agt_desktop_1.json';
     expect(dataPath('state.json')).toBe(path.resolve('/tmp/agent-data-root', 'state-agt_desktop_1.json'));
-    expect(dataPath('notifications.jsonl')).toBe(
-      path.resolve('/tmp/agent-data-root', 'notifications-agt_desktop_1.jsonl'),
-    );
+    expect(dataPath('notifications.jsonl')).toBe(path.resolve('/tmp/agent-data-root', 'notifications-agt_desktop_1.jsonl'));
   });
 
   it('getDataDir expands leading ~', () => {
     envSnap = snapshotEnv();
     const home = process.env.HOME || process.env.USERPROFILE;
     if (!home) return;
-    process.env.ETEMARO_DATA_DIR = '~/.etemaro/data';
-    expect(getDataDir()).toBe(path.resolve(home, '.etemaro/data'));
+    process.env.ETEMARO_DATA_DIR = '~/.config/etemaro/data';
+    expect(getDataDir()).toBe(path.resolve(home, '.config/etemaro/data'));
   });
 });

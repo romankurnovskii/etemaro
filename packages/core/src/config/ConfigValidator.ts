@@ -15,6 +15,7 @@ import path from 'node:path';
 import { configPath, USER_CONFIG_PATH } from '../shared/constants.js';
 import { flattenUserConfig } from '../shared/utils.js';
 import { runConfigMigrations, backupAndSaveUserConfig } from './ConfigMigrator.js';
+import { defaultUserConfigStr } from './defaultUserConfig.js';
 
 function getConfigFileName(): string {
   return path.basename(USER_CONFIG_PATH);
@@ -313,6 +314,11 @@ function mergeIntoExample(exampleRaw: Record<string, unknown>, userRaw: Record<s
 
 export function loadAndValidateConfig(): ValidatedConfig {
   const EXAMPLE_CONFIG_PATH = configPath('user-config.example.json');
+
+  if (!fs.existsSync(EXAMPLE_CONFIG_PATH)) {
+    fs.mkdirSync(path.dirname(EXAMPLE_CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(EXAMPLE_CONFIG_PATH, defaultUserConfigStr, 'utf8');
+  }
 
   if (process.env.TEST_MODE || process.env.VITEST) {
     if (!fs.existsSync(USER_CONFIG_PATH) && fs.existsSync(EXAMPLE_CONFIG_PATH)) {
