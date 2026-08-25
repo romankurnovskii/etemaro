@@ -30,7 +30,8 @@ function findRepoRoot(startDir: string): string {
     return fallback;
   }
   const home = process.env.HOME || process.env.USERPROFILE;
-  return process.env.ETEMARO_HOME || (home ? path.join(home, '.etemaro') : fallback);
+  const xdgConfigHome = process.env.XDG_CONFIG_HOME || (home ? path.join(home, '.config') : undefined);
+  return process.env.ETEMARO_HOME || (xdgConfigHome ? path.join(xdgConfigHome, 'etemaro') : fallback);
 }
 
 const currentFileDir =

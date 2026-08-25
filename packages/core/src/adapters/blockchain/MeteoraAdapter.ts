@@ -422,8 +422,8 @@ async function getPool(poolAddress: string): Promise<any> {
   return poolCache.get(key);
 }
 
-setInterval(() => poolCache.clear(), 5 * 60 * 1000);
-setInterval(() => poolMetadataCache.clear(), 15 * 60 * 1000);
+setInterval(() => poolCache.clear(), 5 * 60 * 1000).unref();
+setInterval(() => poolMetadataCache.clear(), 15 * 60 * 1000).unref();
 
 async function getPoolMetadata(poolAddress: string): Promise<any> {
   const key = String(poolAddress);
