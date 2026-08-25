@@ -1293,8 +1293,16 @@ IMPORTANT:
       return 'No new positions detected by smart wallets.';
     }
 
+    const maxPositions = config.risk?.maxPositions ?? 3;
+    const initialOpenCount = getTrackedPositions(true).length;
+    if (initialOpenCount >= maxPositions) {
+      log('cron', `[SmartWallets] Already at max positions cap (${initialOpenCount}/${maxPositions}).`);
+      return `Smart wallet cycle completed. Deployed to 0 new pools (at max positions cap).`;
+    }
+
     // 5. Deploy on candidate pools and track resolution
     let deployedCount = 0;
+    const deployedPools = new Set<string>();
     const processedPositions: { position: string; resolved: boolean }[] = [];
 
     for (const posItem of diff.newPositions) {
@@ -1302,9 +1310,14 @@ IMPORTANT:
       if (!pool) continue;
 
       try {
-        // Skip if already deployed
         const openPositions = getTrackedPositions(true);
-        if (openPositions.some((p) => p.pool === pool)) {
+        if (initialOpenCount + deployedCount >= maxPositions || openPositions.length + deployedCount >= maxPositions) {
+          log('cron', `[SmartWallets] Reached max positions cap (${initialOpenCount + deployedCount}/${maxPositions}). Stopping deploy loop.`);
+          break;
+        }
+
+        // Skip if already deployed
+        if (openPositions.some((p) => p.pool === pool) || deployedPools.has(pool)) {
           log('cron', `[SmartWallets] Skipped pool ${pool}: Already have an open position.`);
           processedPositions.push({ position: posItem.position, resolved: true });
           continue;
@@ -1341,6 +1354,7 @@ IMPORTANT:
 
         domain.recordPositionSnapshot(pool, deployRes.position);
         log('cron', `[SmartWallets] Deployed ${deployRes.position.position} on ${detail.name || pool}`);
+        deployedPools.add(pool);
         deployedCount++;
         processedPositions.push({ position: posItem.position, resolved: true });
       } catch (e: any) {
