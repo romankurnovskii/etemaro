@@ -49,6 +49,7 @@ import {
   token,
   tools,
 } from '@etemaro/core';
+import { saveJsonFile } from '../../core/src/shared/utils.js';
 // These will be injected or resolved at runtime by the adapter layer.
 
 export interface DaemonAdapters {
@@ -476,7 +477,6 @@ Summarize the current portfolio health, total fees earned, and performance of al
 
           log('state', `[PnL poll] ${signal} confirmed (${confirmTicks} ticks): ${p.pair} — ${reason} — closing directly`);
           // Hold the management lock so the cron cycle can't double-act on this position.
-          const wasManagementBusy = this.managementBusy;
           this.managementBusy = true;
           try {
             const actMap = new Map([[p.position, { action: 'CLOSE', rule, reason }]]);
@@ -485,7 +485,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
           } catch (e: any) {
             log('cron_error', `Poll-triggered close failed: ${e.message}`);
           } finally {
-            this.managementBusy = wasManagementBusy;
+            this.managementBusy = false;
           }
           break; // one action per tick
         }
@@ -1283,7 +1283,7 @@ IMPORTANT:
     const diff = domain.diffSmartWalletPositions(currentPositions, snapshot);
 
     if (diff.isFirstRun) {
-      fs.writeFileSync(snapshotPath, JSON.stringify(diff.nextSnapshot, null, 2), 'utf8');
+      saveJsonFile(snapshotPath, diff.nextSnapshot);
       log('cron', `[SmartWallets] Smart wallets initialized (baseline snapshot recorded with ${diff.nextSnapshot.positions.length} positions).`);
       return 'Smart wallets initialized (baseline snapshot recorded).';
     }
@@ -1351,7 +1351,7 @@ IMPORTANT:
 
     // Save updated snapshot after processing
     const updatedSnapshot = domain.updateSnapshotPositions(diff.nextSnapshot, processedPositions);
-    fs.writeFileSync(snapshotPath, JSON.stringify(updatedSnapshot, null, 2), 'utf8');
+    saveJsonFile(snapshotPath, updatedSnapshot);
 
     return `Smart wallet cycle completed. Deployed to ${deployedCount} new pools.`;
   }
