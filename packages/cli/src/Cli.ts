@@ -93,7 +93,7 @@ export interface CliAdapters {
 
 const SKILL_MD = `# etemaro — Solana DLMM LP Agent CLI
 
-Data dir: ~/.etemaro/
+Data dir: ~/.config/etemaro/
 
 ## Commands
 
@@ -290,7 +290,7 @@ export class Cli {
 
   constructor(adapters: CliAdapters) {
     this.adapters = adapters;
-    this.etemaroDir = path.join(process.env.HOME || '', '.etemaro');
+    this.etemaroDir = path.join(process.env.XDG_CONFIG_HOME || path.join(process.env.HOME || '', '.config'), 'etemaro');
   }
 
   // ─── Lifecycle ─────────────────────────────────────────────────
