@@ -113,10 +113,10 @@ Conventional environment variables that the daemon reads:
 
 #### Risk
 
-| Field             | Purpose                                | Example / what to expect      |
-| ----------------- | -------------------------------------- | ----------------------------- |
-| `maxPositions`    | Maximum number of open positions.      | `3` → never hold more than 3. |
-| `maxDeployAmount` | Hard cap on SOL deployed per position. | `50` → never deploy > 50 SOL. |
+| Field             | Purpose                                                                                                                                                                                                                                                                                                                                                                                                        | Example / what to expect      |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `maxPositions`    | **Global** cap on simultaneously open positions (across all entry sources). When `entrySource: "smart_wallets"`, the daemon enforces this limit **per screening cycle** — if multiple new positions are detected, it will only deploy up to the remaining capacity and stop. The cap is checked once before the screening cycle starts **and** inside the per-position deploy loop to prevent over-allocation. | `3` → never hold more than 3. |
+| `maxDeployAmount` | Hard cap on SOL deployed per position.                                                                                                                                                                                                                                                                                                                                                                         | `50` → never deploy > 50 SOL. |
 
 #### Screening
 
