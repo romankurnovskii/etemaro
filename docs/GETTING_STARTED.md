@@ -6,20 +6,31 @@ A simple guide to run your first autonomous LP agent on Solana.
 
 ## 1. Install
 
-### Option A: Desktop App (macOS)
+### Option A: 1-Line Install (CLI — Recommended)
+
+```bash
+curl -fsSL https://etemaro.com/install.sh | sh
+```
+*Or via npm:*
+```bash
+npm install -g @etemaro/cli
+```
+
+### Option B: Desktop App (macOS)
 
 ```bash
 brew tap romankurnovskii/awesome-brew
 brew trust --cask romankurnovskii/awesome-brew/etemaro
 brew install romankurnovskii/awesome-brew/etemaro --cask
 ```
+*(Windows and Linux builds are also available on [GitHub Releases](https://github.com/romankurnovskii/etemaro/releases))*
 
-### Option B: Run Locally (all platforms)
+### Option C: Developer / Source Setup
 
 ```bash
 git clone https://github.com/romankurnovskii/etemaro
 cd etemaro
-npm install
+pnpm install
 ```
 
 ---
