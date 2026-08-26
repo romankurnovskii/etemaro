@@ -147,6 +147,7 @@ export async function getGmgnTokenFees(mint: string): Promise<{ total_fee: numbe
     const info = (payload?.data as Record<string, unknown>)?.data || payload?.data || payload;
     if (!info || typeof info !== 'object') return null;
     const record = info as Record<string, unknown>;
+    log('gmgn', `token fees lookup hit for ${String(mint).slice(0, 8)}: total_fee=${record.total_fee} trade_fee=${record.trade_fee}`);
     return {
       total_fee: num(record.total_fee),
       trade_fee: num(record.trade_fee),
