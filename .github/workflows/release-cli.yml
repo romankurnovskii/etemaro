@@ -40,6 +40,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.TOKEN_PR || secrets.GITHUB_TOKEN }}
           files: |
             packages/cli/dist/Cli.cjs
           generate_release_notes: true
