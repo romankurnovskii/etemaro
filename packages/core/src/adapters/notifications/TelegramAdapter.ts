@@ -14,18 +14,31 @@
 import fs from 'node:fs';
 import { log } from '../../shared/logger.js';
 import { USER_CONFIG_PATH } from '../../shared/constants.js';
+import { config } from '../../config/Config.js';
 import { notify } from './NotificationSink.js';
 
-const getEnv = (key: string): string | null => (typeof process !== 'undefined' ? process.env?.[key] || null : null);
+function getToken(): string | null {
+  const token = config.connection?.telegramBotToken;
+  return token && !token.startsWith('env.') ? token : null;
+}
 
-const TOKEN: string | null = getEnv('TELEGRAM_BOT_TOKEN');
-const BASE: string | null = TOKEN ? `https://api.telegram.org/bot${TOKEN}` : null;
-const ALLOWED_USER_IDS = new Set(
-  String(getEnv('TELEGRAM_ALLOWED_USER_IDS') || '')
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean),
-);
+function getBase(): string | null {
+  const token = getToken();
+  return token ? `https://api.telegram.org/bot${token}` : null;
+}
+
+function getAllowedUserIds(): Set<string> {
+  const raw = config.connection?.telegramAllowedUserIds || '';
+  return new Set(
+    raw
+      .split(',')
+      .map((id) => id.trim())
+      .filter((id) => Boolean(id) && !id.startsWith('env.')),
+  );
+}
+
+const TOKEN: string | null = getToken();
+const BASE: string | null = getBase();
 
 let chatId: string | null = null;
 let _offset = 0;
@@ -34,26 +47,10 @@ let _liveMessageDepth = 0;
 let _warnedMissingChatId = false;
 let _warnedMissingAllowedUsers = false;
 
-function nonEmptyChatId(value: unknown): string | null {
-  if (value == null) return null;
-  const trimmed = String(value).trim();
-  return trimmed || null;
-}
-
 // ─── chatId persistence ──────────────────────────────────────────
 function resolveChatId(): string | null {
-  const fromEnv = nonEmptyChatId(getEnv('TELEGRAM_CHAT_ID'));
-  let fromConfig: string | null = null;
-  try {
-    if (typeof fs?.existsSync === 'function' && fs.existsSync(USER_CONFIG_PATH)) {
-      const cfg = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'));
-      fromConfig = nonEmptyChatId(cfg.connection?.telegramChatId || cfg.telegramChatId);
-    }
-  } catch (error: any) {
-    log('telegram_warn', `Invalid user-config.json; chatId not loaded: ${error.message}`);
-  }
-  const resolved = fromConfig || fromEnv || null;
-  return resolved != null ? String(resolved) : null;
+  const cfgChatId = config.connection?.telegramChatId;
+  return cfgChatId && !cfgChatId.startsWith('env.') ? cfgChatId : null;
 }
 
 function loadChatId(): void {
@@ -63,6 +60,9 @@ function loadChatId(): void {
 function saveChatId(id: string): void {
   try {
     if (typeof fs?.existsSync !== 'function' || typeof fs?.writeFileSync !== 'function') return;
+    if (config.connection) {
+      config.connection.telegramChatId = id;
+    }
     const cfg: Record<string, unknown> = fs.existsSync(USER_CONFIG_PATH) ? JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8')) : {};
     const connection =
       cfg.connection && typeof cfg.connection === 'object' && !Array.isArray(cfg.connection) ? (cfg.connection as Record<string, unknown>) : {};
@@ -90,6 +90,7 @@ function isAuthorizedIncomingMessage(msg: IncomingTelegramMessage): boolean {
   const incomingChatId = String(msg.chat?.id || '');
   const senderUserId = msg.from?.id != null ? String(msg.from.id) : null;
   const chatType = msg.chat?.type || 'unknown';
+  const allowedUserIds = getAllowedUserIds();
 
   if (!chatId) {
     if (!_warnedMissingChatId) {
@@ -104,7 +105,7 @@ function isAuthorizedIncomingMessage(msg: IncomingTelegramMessage): boolean {
 
   if (incomingChatId !== String(chatId)) return false;
 
-  if (chatType !== 'private' && ALLOWED_USER_IDS.size === 0) {
+  if (chatType !== 'private' && allowedUserIds.size === 0) {
     if (!_warnedMissingAllowedUsers) {
       log(
         'telegram_warn',
@@ -115,8 +116,8 @@ function isAuthorizedIncomingMessage(msg: IncomingTelegramMessage): boolean {
     return false;
   }
 
-  if (ALLOWED_USER_IDS.size > 0) {
-    if (!senderUserId || !ALLOWED_USER_IDS.has(senderUserId)) return false;
+  if (allowedUserIds.size > 0) {
+    if (!senderUserId || !allowedUserIds.has(senderUserId)) return false;
   }
 
   return true;
