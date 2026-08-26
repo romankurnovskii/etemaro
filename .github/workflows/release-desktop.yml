@@ -50,7 +50,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           submodules: 'recursive'
           token: ${{ secrets.TOKEN_PR }}
@@ -62,8 +62,6 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -98,7 +96,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           submodules: 'recursive'
           token: ${{ secrets.TOKEN_PR }}
@@ -110,8 +108,6 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -138,7 +134,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           submodules: 'recursive'
           token: ${{ secrets.TOKEN_PR }}
@@ -150,8 +146,6 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -256,7 +250,7 @@ jobs:
 
       - name: Publish release update
         if: needs.create_release.result == 'success'
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
