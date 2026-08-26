@@ -1,8 +1,8 @@
 class Etemaro < Formula
   desc "Etemaro LP Strategy CLI"
   homepage "https://etemaro.com"
-  version "3.4.0" # This will be updated by release workflow
-  url "https://registry.npmjs.org/@etemaro/cli/-/cli-3.4.0.tgz"
+  version "3.4.2" # This will be updated by release workflow
+  url "https://registry.npmjs.org/@etemaro/cli/-/cli-3.4.2.tgz"
   
   depends_on "node"
 
