@@ -509,7 +509,7 @@ const toolMap: Record<string, ToolFn> = {
       // hivemind
       hiveMindUrl: ['hiveMind', 'url'],
       hiveMindApiKey: ['hiveMind', 'apiKey'],
-      agentId: ['hiveMind', 'agentId'],
+      hiveMindAgentId: ['hiveMind', 'agentId'],
       hiveMindPullMode: ['hiveMind', 'pullMode'],
       // Etemaro API / relay
       publicApiKey: ['api', 'publicApiKey'],
