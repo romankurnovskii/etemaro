@@ -11,7 +11,8 @@
  * @sideEffects One-shot tool execution and console JSON output
  */
 
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config({ override: true });
 import fs from 'fs';
 import path from 'path';
 import { parseArgs } from 'util';

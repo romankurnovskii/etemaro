@@ -3,7 +3,7 @@ const dotenv = require('dotenv');
 
 const repoRoot = path.resolve(__dirname, '..');
 // Load .env file from repo root if present
-dotenv.config({ path: path.join(repoRoot, '.env') });
+dotenv.config({ path: path.join(repoRoot, '.env'), override: true });
 
 module.exports = {
   apps: [

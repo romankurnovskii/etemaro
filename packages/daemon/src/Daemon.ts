@@ -11,7 +11,8 @@
  * @sideEffects Long-running process, background cron jobs, and socket/polling listeners
  */
 
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config({ override: true });
 import cron from 'node-cron';
 import * as readline from 'readline';
 import fs from 'fs';
