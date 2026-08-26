@@ -53,14 +53,14 @@ const {
 // Mock fs operations for snapshot file
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
-  const existsSync = vi.fn().mockImplementation((filePath: string) => {
-    if (String(filePath).endsWith('.smart-wallets-snapshot.json')) {
+  const existsSync = vi.fn().mockImplementation((filePath: any) => {
+    if (String(filePath).includes('.smart-wallets-snapshot.json')) {
       return snapshotState.exists;
     }
     return actual.existsSync(filePath);
   });
   const readFileSync = vi.fn().mockImplementation((filePath: any, encoding?: any) => {
-    if (String(filePath).endsWith('.smart-wallets-snapshot.json')) {
+    if (String(filePath).includes('.smart-wallets-snapshot.json')) {
       if (snapshotState.content === null) {
         throw new Error('ENOENT: no such file or directory');
       }
@@ -69,12 +69,25 @@ vi.mock('fs', async () => {
     return actual.readFileSync(filePath, encoding);
   });
   const writeFileSync = vi.fn().mockImplementation((filePath: any, data: any, options?: any) => {
-    if (String(filePath).endsWith('.smart-wallets-snapshot.json')) {
+    if (String(filePath).includes('.smart-wallets-snapshot.json')) {
       snapshotState.content = data;
       snapshotState.exists = true;
       return undefined;
     }
     return actual.writeFileSync(filePath, data, options);
+  });
+  const renameSync = vi.fn().mockImplementation((oldPath: any, newPath: any) => {
+    if (String(oldPath).includes('.smart-wallets-snapshot.json') || String(newPath).includes('.smart-wallets-snapshot.json')) {
+      snapshotState.exists = true;
+      return undefined;
+    }
+    return actual.renameSync(oldPath, newPath);
+  });
+  const unlinkSync = vi.fn().mockImplementation((filePath: any) => {
+    if (String(filePath).includes('.smart-wallets-snapshot.json')) {
+      return undefined;
+    }
+    return actual.unlinkSync(filePath);
   });
   const mkdirSync = vi.fn().mockImplementation((path: string, options?: any) => {
     if (path === '/tmp/test-data') {
@@ -88,12 +101,16 @@ vi.mock('fs', async () => {
     existsSync,
     readFileSync,
     writeFileSync,
+    renameSync,
+    unlinkSync,
     mkdirSync,
     default: {
       ...((actual as any).default ?? actual),
       existsSync,
       readFileSync,
       writeFileSync,
+      renameSync,
+      unlinkSync,
       mkdirSync,
     },
   };
