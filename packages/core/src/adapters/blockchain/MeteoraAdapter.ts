@@ -109,7 +109,7 @@ function getWallet(): Keypair {
 }
 
 function shouldUseLpAgentRelay(): boolean {
-  return !!config.api.lpAgentRelayEnabled;
+  return !!config.api.meridian.lpAgentRelayEnabled;
 }
 
 function shouldUseLpAgentRelayForDeploy(): boolean {
@@ -953,16 +953,16 @@ const POSITIONS_CACHE_TTL = 5 * 60_000;
 let _positionsCache: any = null;
 let _positionsCacheAt = 0;
 let _positionsInflight: Promise<any> | null = null;
-const LPAGENT_API = 'https://api.lpagent.io/open-api/v1';
+const DEFAULT_LPAGENT_API = 'https://api.lpagent.io/open-api/v1';
 
 async function fetchLpAgentOpenPositions(walletAddress: string): Promise<Record<string, any>> {
-  if (!process.env.LPAGENT_API_KEY) return {};
+  if (!config.api.lpAgent.enabled || !config.api.lpAgent.apiKey) return {};
 
-  const url = `${LPAGENT_API}/lp-positions/opening?owner=${walletAddress}`;
+  const url = `${config.api.lpAgent.url || DEFAULT_LPAGENT_API}/lp-positions/opening?owner=${walletAddress}`;
   try {
     const res = await fetch(url, {
       headers: {
-        'x-api-key': process.env.LPAGENT_API_KEY,
+        'x-api-key': config.api.lpAgent.apiKey,
       },
     });
     if (!res.ok) {

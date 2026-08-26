@@ -138,7 +138,7 @@ export function getHiveMindPullMode(): string {
 }
 
 export function isHiveMindEnabled(): boolean {
-  return !!(getBaseUrl() && getApiKey());
+  return !!(config.hiveMind?.enabled && getBaseUrl() && getApiKey());
 }
 
 export function ensureAgentId(): string {

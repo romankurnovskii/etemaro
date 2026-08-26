@@ -9,7 +9,7 @@ config/
   agents.json
   user-config.json           # Active user configuration (copied from user-config.example.json)
   user-config.example.json   # Template user configuration
-  gmgn-config.example.json   # GMGN fee provider config template
+  user-config.example.json   # Includes GMGN fee provider configuration
 data/
   state.json                 # Registry of open/closed positions
   lessons.json               # Historical performance lessons

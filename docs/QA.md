@@ -21,9 +21,9 @@
 
 1. **Launch App**: Open the Etemaro Desktop App. The first-run wizard automatically sets up local directories (`~/.etemaro/config` and `~/.etemaro/data`) and prepares the agent engine.
 2. **Configure Environment & Strategy**:
-   - The app automatically verifies your configuration on launch (`validate_agent_config`). If `connection.walletKey` is set to `"env.WALLET_PRIVATE_KEY"` but no key is found in `.env`, the GUI displays a warning notice.
+   - The app automatically verifies your configuration on launch (`validate_agent_config`). If `connection.walletPrivateKey` is set to `"env.WALLET_PRIVATE_KEY"` but no key is found in `.env`, the GUI displays a warning notice.
    - **Environment Manager (Settings Tab)**: Go to **Settings** $\rightarrow$ **Environment Variables (.env)**. You can view, add, edit, or remove process environment variables (`WALLET_PRIVATE_KEY`, `LLM_API_KEY`, etc.) directly in the app. If `.env` does not exist yet, the app automatically copies default entries from `.env.example`.
-   - **Direct Wallet Key Entry**: Alternatively, paste your Solana Private Key (Base58 string) directly into `"walletKey"` in the agent config settings.
+   - **Direct Wallet Key Entry**: Alternatively, paste your Solana Private Key (Base58 string) directly into `"walletPrivateKey"` in the agent config settings.
 3. **Start Agent**: Click **"Start Agent"**. The daemon runs in the background and streams live logs, open positions, PnL metrics, and notifications directly to the desktop dashboard.
 
 ---
@@ -60,7 +60,7 @@
    ```
 
 3. **Configure Parameters**:
-   Edit each JSON file to set your risk, deploy amount, and strategy settings. Keep `"walletKey": "env.WALLET_PRIVATE_KEY"` so each daemon process reads `WALLET_PRIVATE_KEY` from its own process environment.
+   Edit each JSON file to set your risk, deploy amount, and strategy settings. Keep `"walletPrivateKey": "env.WALLET_PRIVATE_KEY"` so each daemon process reads `WALLET_PRIVATE_KEY` from its own process environment.
 4. **Set Up & Run PM2 Ecosystem**:
    Copy `config/ecosystem.config.example.cjs` to `config/ecosystem.config.cjs` (`cp config/ecosystem.config.example.cjs config/ecosystem.config.cjs`). In `config/ecosystem.config.cjs`, pass `USER_CONFIG_PATH` and the process-specific `WALLET_PRIVATE_KEY`:
 
@@ -108,7 +108,7 @@
    cp config/user-config.example.json config/agt_my-agent-2.json
    ```
 2. **Configure Parameters**:
-   Edit each JSON file to set your risk, deploy amount, and strategy settings. Keep `"walletKey": "env.WALLET_PRIVATE_KEY"` so each daemon process reads `WALLET_PRIVATE_KEY` from its own process environment.
+   Edit each JSON file to set your risk, deploy amount, and strategy settings. Keep `"walletPrivateKey": "env.WALLET_PRIVATE_KEY"` so each daemon process reads `WALLET_PRIVATE_KEY` from its own process environment.
 3. **Define Docker Compose Services**:
    Define distinct container services sharing a `./data:/app/data` volume (or set `ETEMARO_DATA_DIR` per service) and set `USER_CONFIG_PATH` and `WALLET_PRIVATE_KEY` per container in `docker-compose.yml`:
    ```yaml
@@ -139,7 +139,7 @@ _Note:_ State files (`state-*.json`, `lessons-*.json`, `pool-memory-*.json`) aut
 
 ### Q: Can I load my private key from an environment variable instead of writing it in `user-config.json`?
 
-**A:** **Yes.** Set `"walletKey": "env.WALLET_PRIVATE_KEY"` in `user-config.json`. The config loader resolves any `"env.VAR_NAME"` string directly from `process.env` at startup ([CONFIGURATION.md](CONFIGURATION.md#1-env-pattern-referencing-environment-variables)). This keeps private keys and API credentials out of JSON config files.
+**A:** **Yes.** Set `"walletPrivateKey": "env.WALLET_PRIVATE_KEY"` in `user-config.json`. The config loader resolves any `"env.VAR_NAME"` string directly from `process.env` at startup ([CONFIGURATION.md](CONFIGURATION.md#1-env-pattern-referencing-environment-variables)). This keeps private keys and API credentials out of JSON config files.
 
 ---
 
@@ -229,7 +229,7 @@ The app never opens a position **because** a tracked wallet did. The LLM screene
 **API keys — what is actually required:**
 
 - **Agent Meridian API calls** (study, open-position lookup, and relay execution) send an `x-api-key` header **only when** `api.publicApiKey` is configured — from `env.DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY` per `config/user-config.example.json:134`. The header is added conditionally (`AgentMeridianClient.ts:30`); if the key is missing the app still makes the request without it, so there is **no client-side hard requirement**.
-- **LPAgent open-positions lookup** (`api.lpagent.io`, `MeteoraAdapter.ts:916-943`) is different: it is gated on the `LPAGENT_API_KEY` environment variable. Without that key the call is **skipped entirely** and returns no data (`MeteoraAdapter.ts:917`).
+- **LPAgent open-positions lookup** (`api.lpagent.io`, `MeteoraAdapter.ts:916-943`) is different: it is gated by `api.lpAgent.enabled` and its separate `api.lpAgent.apiKey` (`env.LPAGENT_API_KEY`). When disabled or unauthenticated, the call is **skipped entirely** and returns no data (`MeteoraAdapter.ts:959`).
 - **HiveMind auth is separate** — it uses `hiveMindApiKey`, not the relay key (`HivemindAdapter.ts:138`).
 
 **Bottom line:** you can **read** aggregated data about other wallets, and you can **expose** your own positions to others — but the app will never execute a trade to mirror what another wallet does.

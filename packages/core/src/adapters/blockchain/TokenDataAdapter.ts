@@ -119,7 +119,7 @@ interface TokenHoldersResponse {
 // Falls back to the Jupiter value when GMGN is disabled / keyless / errors.
 async function resolveGlobalFeesSol(mint: string | null, jupiterFees: number | null | undefined): Promise<number | null> {
   const jup = jupiterFees != null ? parseFloat(jupiterFees.toFixed(2)) : null;
-  if (!mint || config.gmgn.feeSource !== 'gmgn' || !hasGmgnApiKey()) return jup;
+  if (!mint || !config.gmgn.enabled || config.gmgn.feeSource !== 'gmgn' || !hasGmgnApiKey()) return jup;
   const fees = await getGmgnTokenFees(mint);
   if (fees?.total_fee != null) return parseFloat(fees.total_fee.toFixed(2));
   return jup;

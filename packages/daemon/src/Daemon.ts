@@ -1450,7 +1450,7 @@ IMPORTANT:
   private settingValue(key: string): unknown {
     const values: Record<string, unknown> = {
       solMode: config.management.solMode,
-      lpAgentRelayEnabled: config.api.lpAgentRelayEnabled,
+      lpAgentRelayEnabled: config.api.meridian.lpAgentRelayEnabled,
       chartIndicatorsEnabled: config.indicators.enabled,
       trailingTakeProfit: config.management.trailingTakeProfit,
       useDiscordSignals: config.screening.useDiscordSignals,
@@ -1511,7 +1511,7 @@ IMPORTANT:
     const summary = [
       title,
       '',
-      `Mode: ${config.management.solMode ? 'SOL' : 'USD'} | Relay: ${config.api.lpAgentRelayEnabled ? 'on' : 'off'}`,
+      `Mode: ${config.management.solMode ? 'SOL' : 'USD'} | Relay: ${config.api.meridian.lpAgentRelayEnabled ? 'on' : 'off'}`,
       `Strategy: ${config.strategy.strategyMeteora} | bins ${config.strategy.minBinsBelow}-${config.strategy.maxBinsBelow} | deploy ${config.management.deployAmountSol} SOL`,
       `TP/SL: ${config.management.takeProfitPct}% / ${config.management.stopLossPct}% | trailing ${config.management.trailingTakeProfit ? 'on' : 'off'}`,
       `Indicators: ${config.indicators.enabled ? 'on' : 'off'} | entry ${config.indicators.entryPreset} | ${this.fmtSettingValue(config.indicators.intervals)}`,

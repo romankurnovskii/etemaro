@@ -6,6 +6,7 @@
  * - Mathematical formatting (`safeNumber`, `roundNum`, `clampNum`)
  * - Path resolution (`repoPath`, `dataPath`, `configPath`)
  * - Text sanitization and prompt truncation helpers
+ * - Safe JSON file loading and atomic writing
  */
 
 import fs from 'node:fs';
@@ -73,71 +74,6 @@ export function formatNumber(n: number | null | undefined): string {
 }
 
 // ─── Config Utilities ──────────────────────────────────────────
-
-export function flattenUserConfig(u: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  const flatCategories = [
-    'connection',
-    'risk',
-    'screening',
-    'management',
-    'strategy',
-    'schedule',
-    'llm',
-    'darwin',
-    'hiveMind',
-    'api',
-    'pnl',
-    'opportunity',
-    'gmgn',
-    'jupiter',
-  ];
-
-  for (const [key, value] of Object.entries(u)) {
-    if (flatCategories.includes(key) || key === 'chartIndicators') continue;
-    result[key] = value;
-  }
-
-  for (const cat of flatCategories) {
-    const catValue = u[cat];
-    if (catValue && typeof catValue === 'object' && !Array.isArray(catValue)) {
-      const catObj = catValue as Record<string, unknown>;
-      const { description, ...fields } = catObj;
-      // Special handling for hiveMind: flatten agentId as hiveMindAgentId to avoid identity conflict
-      if (cat === 'hiveMind') {
-        for (const [key, value] of Object.entries(fields)) {
-          if (key === 'agentId') {
-            // Flatten hiveMind.agentId as hiveMindAgentId (separate from top-level agentId)
-            if (value !== undefined && value !== null && value !== '' && !('hiveMindAgentId' in result)) {
-              result.hiveMindAgentId = value;
-            }
-          } else if (key.startsWith('hiveMind')) {
-            if (!(key in result)) {
-              result[key] = value;
-            }
-          } else {
-            const prefixedKey = `hiveMind${key.charAt(0).toUpperCase()}${key.slice(1)}`;
-            if (!(prefixedKey in result)) {
-              result[prefixedKey] = value;
-            }
-          }
-        }
-      } else {
-        for (const [key, value] of Object.entries(fields)) {
-          if (!(key in result)) {
-            result[key] = value;
-          }
-        }
-      }
-    }
-  }
-
-  if (u.chartIndicators && typeof u.chartIndicators === 'object' && !Array.isArray(u.chartIndicators)) {
-    result.chartIndicators = u.chartIndicators;
-  }
-
-  return result;
-}
 
 export function numericConfig(value: unknown): number | null {
   const n = Number(value);

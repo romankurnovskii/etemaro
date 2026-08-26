@@ -415,7 +415,7 @@ const toolMap: Record<string, ToolFn> = {
   },
   update_config: ({ changes, reason = '' }: Record<string, unknown>) => {
     // Flat key → config section mapping (covers everything in config.js)
-    const CONFIG_MAP: Record<string, [string, string, string[]?]> = {
+    const CONFIG_MAP: Record<string, any> = {
       // screening
       minFeeActiveTvlRatio: ['screening', 'minFeeActiveTvlRatio'],
       excludeHighSupplyConcentration: ['screening', 'excludeHighSupplyConcentration'],
@@ -512,9 +512,9 @@ const toolMap: Record<string, ToolFn> = {
       hiveMindAgentId: ['hiveMind', 'agentId'],
       hiveMindPullMode: ['hiveMind', 'pullMode'],
       // Etemaro API / relay
-      publicApiKey: ['api', 'publicApiKey'],
-      agentMeridianApiUrl: ['api', 'url'],
-      lpAgentRelayEnabled: ['api', 'lpAgentRelayEnabled'],
+      publicApiKey: ['api', 'meridian', 'publicApiKey', ['api', 'meridian', 'publicApiKey']],
+      agentMeridianApiUrl: ['api', 'meridian', 'url', ['api', 'meridian', 'url']],
+      lpAgentRelayEnabled: ['api', 'meridian', 'lpAgentRelayEnabled', ['api', 'meridian', 'lpAgentRelayEnabled']],
       // pnl fetcher / poller
       pnlSource: ['pnl', 'source', ['pnlSource']],
       pnlRpcUrl: ['pnl', 'rpcUrl', ['pnlRpcUrl']],
@@ -552,7 +552,7 @@ const toolMap: Record<string, ToolFn> = {
         unknown.push(key);
         continue;
       }
-      const match = raw as [string, [string, string, string[]?]];
+      const match = raw as [string, any];
       try {
         let normalizedVal = val;
         if (STRATEGY_BIN_KEYS.has(match[0])) {
@@ -600,10 +600,13 @@ const toolMap: Record<string, ToolFn> = {
       if (key.startsWith('_')) continue;
       const mapping = CONFIG_MAP[key];
       if (!mapping) continue;
-      const [section, field] = mapping;
-      const before = (config as any)[section][field];
-      (config as any)[section][field] = val;
-      log('config', `update_config: config.${section}.${field} ${before} → ${val} (verify: ${(config as any)[section][field]})`);
+      const livePath = mapping.slice(1).filter((part: unknown) => typeof part === 'string');
+      let target = config as any;
+      for (const part of livePath.slice(0, -1)) target = target[part];
+      const field = livePath.at(-1)!;
+      const before = target[field];
+      target[field] = val;
+      log('config', `update_config: config.${livePath.join('.')} ${before} → ${val} (verify: ${target[field]})`);
     }
     if (applied.binsBelow != null || applied.minBinsBelow != null || applied.maxBinsBelow != null || applied.defaultBinsBelow != null) {
       config.strategy.minBinsBelow = Math.max(getMinSafeBinsBelow(), Math.round(Number(config.strategy.minBinsBelow ?? getMinSafeBinsBelow())));
@@ -619,7 +622,8 @@ const toolMap: Record<string, ToolFn> = {
 
     for (const [key, val] of Object.entries(applied)) {
       if (key.startsWith('_')) continue;
-      const persistPath = CONFIG_MAP[key]?.[2];
+      const mapping = CONFIG_MAP[key];
+      const persistPath = mapping?.find((part: unknown) => Array.isArray(part));
       if (Array.isArray(persistPath) && persistPath.length > 0) {
         let target = userConfig;
         for (const part of persistPath.slice(0, -1)) {
