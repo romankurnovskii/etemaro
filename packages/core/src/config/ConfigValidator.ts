@@ -259,8 +259,8 @@ function validateConfig(raw: Record<string, unknown>): ValidatedConfig {
   const missing = getMissingFields(flat);
   if (missing.length > 0) {
     throw new Error(
-      `user-config.json is missing ${missing.length} required field(s):\n${missing.map((m) => `  - ${m}`).join('\n')}\n\n` +
-        `Copy config/user-config.example.json to config/user-config.json and reapply your custom values.`,
+      `${getConfigFileName()} is missing ${missing.length} required field(s):\n${missing.map((m) => `  - ${m}`).join('\n')}\n\n` +
+        `Copy config/user-config.example.json to config/${getConfigFileName()} and reapply your custom values.`,
     );
   }
 
