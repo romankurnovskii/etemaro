@@ -1,331 +1,45 @@
 /**
  * @file ConfigValidator.ts
- * @description Zod schema and flat key validator for runtime application configuration files.
+ * @description Zod schema based validator for runtime application configuration files (Version 3).
  *
  * @features
- * - Verifies presence of all required configuration keys
- * - Auto-migrates legacy config files to latest schema version
- * - Validates types and numerical range thresholds
+ * - Uses nested Zod schema mapping directly to config shape
+ * - Validates types, env refs, and thresholds using Zod
+ * - Does not perform backward-compatible auto-migration from flattened configs
  *
- * @dependencies ConfigMigrator
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { configPath, USER_CONFIG_PATH } from '../shared/constants.js';
-import { flattenUserConfig } from '../shared/utils.js';
-import { runConfigMigrations, backupAndSaveUserConfig } from './ConfigMigrator.js';
 import { defaultUserConfigStr } from './defaultUserConfig.js';
+import { UserConfigSchema, ValidatedUserConfig } from './schema.js';
 
 function getConfigFileName(): string {
   return path.basename(USER_CONFIG_PATH);
-}
-
-const REQUIRED_FLAT_KEYS = new Set([
-  '_version',
-  'preset',
-  'rpcUrl',
-  'walletKey',
-  'llmBaseUrl',
-  'llmApiKey',
-  'llmModel',
-  'dryRun',
-  'telegramChatId',
-  'maxPositions',
-  'maxDeployAmount',
-  'entrySource',
-  'timeframe',
-  'category',
-  'excludeHighSupplyConcentration',
-  'minFeeActiveTvlRatio',
-  'minTvl',
-  'maxTvl',
-  'minVolume',
-  'minOrganic',
-  'minQuoteOrganic',
-  'minHolders',
-  'minMcap',
-  'maxMcap',
-  'minBinStep',
-  'maxBinStep',
-  'minTokenFeesSol',
-  'useDiscordSignals',
-  'discordSignalMode',
-  'avoidPvpSymbols',
-  'blockPvpSymbols',
-  'maxBotHoldersPct',
-  'maxTop10Pct',
-  'loneCandidateMinDegen',
-  'allowedLaunchpads',
-  'blockedLaunchpads',
-  'minTokenAgeHours',
-  'maxTokenAgeHours',
-  'minClaimAmount',
-  'autoSwapAfterClaim',
-  'autoSwapRetryAttempts',
-  'autoSwapRetryDelayMs',
-  'autoSwapInterSwapDelayMs',
-  'haltOnSwapFailure',
-  'maxFailedSwapsBeforeHalt',
-  'outOfRangeBinsToClose',
-  'outOfRangeWaitMinutes',
-  'oorCooldownTriggerCount',
-  'oorCooldownHours',
-  'repeatDeployCooldownEnabled',
-  'repeatDeployCooldownTriggerCount',
-  'repeatDeployCooldownHours',
-  'repeatDeployCooldownScope',
-  'repeatDeployCooldownMinFeeEarnedPct',
-  'minVolumeToRebalance',
-  'stopLossPct',
-  'takeProfitPct',
-  'minFeePerTvl24h',
-  'minAgeBeforeYieldCheck',
-  'minSolToOpen',
-  'deployAmountSol',
-  'gasReserve',
-  'positionSizePct',
-  'trailingTakeProfit',
-  'trailingTriggerPct',
-  'trailingDropPct',
-  'pnlSanityMaxDiffPct',
-  'solMode',
-  'strategyMeteora',
-  'activeStrategyId',
-  'minBinsBelow',
-  'maxBinsBelow',
-  'defaultBinsBelow',
-  'minSafeBinsBelow',
-
-  'managementIntervalMin',
-  'screeningIntervalMin',
-  'healthCheckIntervalMin',
-  'temperature',
-  'maxTokens',
-  'maxSteps',
-  'managementModel',
-  'screeningModel',
-  'generalModel',
-  'darwinEnabled',
-  'darwinWindowDays',
-  'darwinRecalcEvery',
-  'darwinBoost',
-  'darwinDecay',
-  'darwinFloor',
-  'darwinCeiling',
-  'darwinMinSamples',
-  'hiveMindUrl',
-  'hiveMindApiKey',
-  'agentId',
-  'hiveMindPullMode',
-  'agentMeridianApiUrl',
-  'publicApiKey',
-  'lpAgentRelayEnabled',
-  'pnlSource',
-  'pnlRpcUrl',
-  'pnlPollIntervalSec',
-  'pnlDepositCacheTtlSec',
-  'pnlConfirmTicks',
-  'opportunityPollEnabled',
-  'opportunityPollIntervalSec',
-  'opportunityPollLimit',
-  'opportunityMinScore',
-  'opportunitySmartWalletBonus',
-  'degenTargetVolRatio',
-  'degenTargetLpCount',
-  'degenTargetFeeRatio',
-  'degenTargetLiquidity',
-  'gmgnFeeSource',
-  'gmgnApiKey',
-  'gmgnBaseUrl',
-  'gmgnRequestDelayMs',
-  'gmgnMaxRetries',
-  'jupiterApiKey',
-  'jupiterReferralAccount',
-  'jupiterReferralFeeBps',
-]);
-
-const CATEGORIES = [
-  'connection',
-  'risk',
-  'screening',
-  'management',
-  'strategy',
-  'schedule',
-  'llm',
-  'darwin',
-  'hiveMind',
-  'api',
-  'pnl',
-  'opportunity',
-  'gmgn',
-  'jupiter',
-];
-
-export interface ValidatedConfig {
-  flat: Record<string, unknown>;
-  chartIndicators: Record<string, unknown>;
-}
-
-function getMissingFields(flat: Record<string, unknown>): string[] {
-  const missing: string[] = [];
-  for (const key of REQUIRED_FLAT_KEYS) {
-    if (!(key in flat)) {
-      missing.push(key);
-    }
-  }
-
-  if (!('chartIndicators' in flat)) {
-    missing.push('chartIndicators');
-  } else {
-    const chartIndicators = flat.chartIndicators as Record<string, unknown>;
-    const ciFields = [
-      'enabled',
-      'entryPreset',
-      'exitPreset',
-      'rsiLength',
-      'intervals',
-      'candles',
-      'rsiOversold',
-      'rsiOverbought',
-      'requireAllIntervals',
-    ];
-    for (const field of ciFields) {
-      if (!(field in chartIndicators)) {
-        missing.push(`chartIndicators.${field}`);
-      }
-    }
-  }
-
-  return missing;
 }
 
 function isHelpOrInfoCommand(): boolean {
   return process.env.ETEMARO_SKIP_ENV_VALIDATION === '1' || process.argv.some((a) => ['help', '--help', '-h', '--version', '-v', 'init'].includes(a));
 }
 
-// Note: jupiterApiKey / JUPITER_API_KEY is required for Jupiter swap operations. Get a free key at https://developers.jup.ag/portal/
-function resolveEnvRefs(config: Record<string, unknown>): Record<string, unknown> {
-  const resolved: Record<string, unknown> = { ...config };
-  const bypass = isHelpOrInfoCommand();
-  for (const [key, value] of Object.entries(resolved)) {
-    if (key === 'chartIndicators') continue;
-    if (typeof value === 'string' && value.startsWith('env.')) {
-      const envVar = value.slice(4);
-      const envValue = process.env[envVar];
-      if (envValue === undefined) {
-        if (bypass) {
-          resolved[key] = '';
-          continue;
-        }
-        let helpNote = `Set ${envVar} in your .env file or environment.`;
-        if (envVar === 'JUPITER_API_KEY' || key === 'jupiterApiKey') {
-          helpNote += `\nJupiter API key is required for swap operations. Get a free API key at https://developers.jup.ag/portal/`;
-        }
-        throw new Error(`Environment variable ${envVar} is not set but is referenced by ${key} in user-config.json.\n${helpNote}`);
-      }
-      resolved[key] = envValue;
-    }
-  }
-  return resolved;
-}
-
-function resolveChartIndicatorsEnv(chartIndicators: Record<string, unknown>): Record<string, unknown> {
-  const resolved = { ...chartIndicators };
-  const bypass = isHelpOrInfoCommand();
-  for (const [key, value] of Object.entries(resolved)) {
-    if (typeof value === 'string' && value.startsWith('env.')) {
-      const envVar = value.slice(4);
-      const envValue = process.env[envVar];
-      if (envValue === undefined) {
-        if (bypass) {
-          resolved[key] = '';
-          continue;
-        }
-        throw new Error(
-          `Environment variable ${envVar} is not set but is referenced by chartIndicators.${key} in user-config.json.\n` +
-            `Set ${envVar} in your .env file or environment.`,
-        );
-      }
-      resolved[key] = envValue;
-    }
-  }
-  return resolved;
-}
-
-function validateConfig(raw: Record<string, unknown>): ValidatedConfig {
-  const flat = flattenUserConfig(raw);
-
-  const missing = getMissingFields(flat);
-  if (missing.length > 0) {
-    throw new Error(
-      `${getConfigFileName()} is missing ${missing.length} required field(s):\n${missing.map((m) => `  - ${m}`).join('\n')}\n\n` +
-        `Copy config/user-config.example.json to config/${getConfigFileName()} and reapply your custom values.`,
-    );
-  }
-
-  const chartIndicators = flat.chartIndicators as Record<string, unknown>;
-
-  return {
-    flat: resolveEnvRefs(flat),
-    chartIndicators: resolveChartIndicatorsEnv(chartIndicators),
-  };
-}
-
-/**
- * Deep merge missing default fields from example raw configuration into user raw while preserving user custom values.
- */
-function mergeIntoExample(exampleRaw: Record<string, unknown>, userRaw: Record<string, unknown>): Record<string, unknown> {
-  const userFlat = flattenUserConfig(userRaw);
-  const result = JSON.parse(JSON.stringify(exampleRaw)) as Record<string, unknown>;
-
-  for (const [key, value] of Object.entries(userFlat)) {
-    if (key === 'chartIndicators') continue;
-    if (key === 'preset') {
-      result.preset = value;
-      continue;
-    }
-
-    let placed = false;
-    for (const cat of CATEGORIES) {
-      const catObj = result[cat];
-      if (catObj && typeof catObj === 'object' && catObj !== null && !Array.isArray(catObj) && key in catObj) {
-        (catObj as Record<string, unknown>)[key] = value;
-        placed = true;
-        break;
-      }
-    }
-
-    if (!placed) {
-      result[key] = value;
-    }
-  }
-
-  // Merge chartIndicators if user provided it
-  if (userRaw.chartIndicators && typeof userRaw.chartIndicators === 'object' && !Array.isArray(userRaw.chartIndicators)) {
-    result.chartIndicators = {
-      ...((result.chartIndicators as Record<string, unknown>) || {}),
-      ...(userRaw.chartIndicators as Record<string, unknown>),
-    };
-  }
-
-  return result;
-}
-
-export function loadAndValidateConfig(): ValidatedConfig {
+export function loadAndValidateConfig(): ValidatedUserConfig {
   const EXAMPLE_CONFIG_PATH = configPath('user-config.example.json');
 
+  // Create example config if it doesn't exist
   if (!fs.existsSync(EXAMPLE_CONFIG_PATH)) {
     fs.mkdirSync(path.dirname(EXAMPLE_CONFIG_PATH), { recursive: true });
     fs.writeFileSync(EXAMPLE_CONFIG_PATH, defaultUserConfigStr, 'utf8');
   }
 
+  // Handle test environment initial copying
   if (process.env.TEST_MODE || process.env.VITEST) {
     if (!fs.existsSync(USER_CONFIG_PATH) && fs.existsSync(EXAMPLE_CONFIG_PATH)) {
       fs.copyFileSync(EXAMPLE_CONFIG_PATH, USER_CONFIG_PATH);
     }
   }
 
+  // Ensure user config exists
   if (!fs.existsSync(USER_CONFIG_PATH)) {
     if (fs.existsSync(EXAMPLE_CONFIG_PATH)) {
       console.log(`[config] ${getConfigFileName()} not found, copying from example`);
@@ -335,6 +49,7 @@ export function loadAndValidateConfig(): ValidatedConfig {
     }
   }
 
+  // Read user config
   let raw: Record<string, unknown>;
   try {
     const content = fs.readFileSync(USER_CONFIG_PATH, 'utf8');
@@ -345,104 +60,24 @@ export function loadAndValidateConfig(): ValidatedConfig {
       raw = JSON.parse(content);
     }
   } catch (e) {
-    if (fs.existsSync(EXAMPLE_CONFIG_PATH)) {
-      try {
-        fs.copyFileSync(EXAMPLE_CONFIG_PATH, USER_CONFIG_PATH);
-        raw = JSON.parse(fs.readFileSync(EXAMPLE_CONFIG_PATH, 'utf8'));
-      } catch {
-        throw new Error(`Failed to parse ${getConfigFileName()}: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    } else {
-      throw new Error(`Failed to parse ${getConfigFileName()}: ${e instanceof Error ? e.message : String(e)}`);
-    }
+    throw new Error(`Failed to parse ${getConfigFileName()}: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  if (fs.existsSync(EXAMPLE_CONFIG_PATH)) {
-    try {
-      const exampleRaw = JSON.parse(fs.readFileSync(EXAMPLE_CONFIG_PATH, 'utf8')) as Record<string, unknown>;
-      const migrationResult = runConfigMigrations(raw, exampleRaw);
-      if (migrationResult.changed) {
-        console.log(`[config] Migrated ${getConfigFileName()} schema from v${migrationResult.fromVersion} to v${migrationResult.toVersion}`);
-        for (const entry of migrationResult.logs) {
-          if (entry.addedKeys.length > 0) {
-            console.log(`[config]   + Auto-filled ${entry.addedKeys.length} new field(s): ${entry.addedKeys.join(', ')}`);
-          }
-        }
-        backupAndSaveUserConfig(USER_CONFIG_PATH, migrationResult.migrated);
-        raw = migrationResult.migrated;
-      }
-    } catch (e) {
-      console.warn(`[config_warn] Auto-migration warning: ${e instanceof Error ? e.message : String(e)}`);
-    }
+  // If running info commands, we can bypass strict parsing
+  if (isHelpOrInfoCommand()) {
+    return raw as unknown as ValidatedUserConfig; // Bypass validation
   }
 
-  if (process.env.TEST_MODE || process.env.VITEST) {
-    const flat = flattenUserConfig(raw);
-    const resolved: Record<string, unknown> = { ...flat };
-    for (const [key, value] of Object.entries(resolved)) {
-      if (key === 'chartIndicators') continue;
-      if (typeof value === 'string' && value.startsWith('env.')) {
-        const envVar = value.slice(4);
-        const envValue = process.env[envVar];
-        if (envValue === undefined) {
-          throw new Error(
-            `Environment variable ${envVar} is not set but is referenced by ${key} in ${getConfigFileName()}.\n` +
-              `Set ${envVar} in your .env file or environment.`,
-          );
-        }
-        resolved[key] = envValue;
-      }
-    }
-    const chartIndicators = (resolved.chartIndicators as Record<string, unknown>) || {};
-    return { flat: resolveEnvRefs(resolved), chartIndicators: resolveChartIndicatorsEnv(chartIndicators) };
+  // Validate with Zod
+  const result = UserConfigSchema.safeParse(raw);
+
+  if (!result.success) {
+    const issues = result.error?.issues ?? (result.error as any)?.errors ?? [];
+    const errorMessages = issues.map((err: any) => `  - ${err.path.join('.')}: ${err.message}`).join('\n');
+    throw new Error(
+      `${getConfigFileName()} has invalid or missing fields:\n${errorMessages}\n\n` + `Please ensure you are using the Version 3 schema structure.`,
+    );
   }
 
-  try {
-    return validateConfig(raw);
-  } catch (err) {
-    const EXAMPLE_CONFIG_PATH = configPath('user-config.example.json');
-
-    if (!fs.existsSync(EXAMPLE_CONFIG_PATH)) {
-      throw err;
-    }
-
-    const exampleRaw = JSON.parse(fs.readFileSync(EXAMPLE_CONFIG_PATH, 'utf8')) as Record<string, unknown>;
-    const userFlat = flattenUserConfig(raw);
-    const exampleFlat = flattenUserConfig(exampleRaw);
-
-    const missing = getMissingFields(flattenUserConfig(raw));
-    if (missing.length === 0) {
-      throw err;
-    }
-
-    const canAutoFill = missing.every((f) => {
-      if (f.startsWith('chartIndicators.')) {
-        const field = f.slice('chartIndicators.'.length);
-        return field in ((exampleRaw.chartIndicators as Record<string, unknown>) || {});
-      }
-      return f in exampleFlat;
-    });
-
-    if (!canAutoFill) {
-      throw err;
-    }
-
-    const missingFields = getMissingFields(flattenUserConfig(raw));
-    console.log(`[config] ${getConfigFileName()} is missing ${missingFields.length} field(s), auto-filling from example:`);
-    for (const field of missingFields) {
-      if (field.startsWith('chartIndicators.')) {
-        const fieldName = field.slice('chartIndicators.'.length);
-        console.log(`[config]   + ${field}: ${JSON.stringify(((exampleRaw.chartIndicators as Record<string, unknown>) || {})[fieldName])}`);
-      } else {
-        console.log(`[config]   + ${field}: ${JSON.stringify(exampleFlat[field])}`);
-      }
-    }
-
-    const merged = mergeIntoExample(JSON.parse(JSON.stringify(exampleRaw)) as Record<string, unknown>, raw);
-
-    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(merged, null, 2) + '\n');
-    console.log(`[config] Updated ${getConfigFileName()} with missing fields. Your custom values are preserved.`);
-
-    return validateConfig(merged);
-  }
+  return result.data;
 }

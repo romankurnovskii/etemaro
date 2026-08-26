@@ -8,10 +8,10 @@ HiveMind uses Meridian's **collective learning sync**. Agents register with a sh
 
 ## 1. Enabling HiveMind
 
-HiveMind is **off by default** and turns on only when both a URL and an API key are present:
+HiveMind is enabled when `hiveMind.enabled` is `true` and both a URL and an API key are present:
 
-- `isHiveMindEnabled()` returns `true` only when `hiveMind.url` **and** `hiveMind.apiKey` are set — `HivemindAdapter.ts:81-83`.
-- Keys come from the flat `user-config.json` fields `hiveMindUrl` / `hiveMindApiKey`, with an `HIVEMIND_API_KEY` environment fallback — `Config.ts:371-375`.
+- `isHiveMindEnabled()` checks `hiveMind.enabled`, `hiveMind.url`, and `hiveMind.apiKey` — `HivemindAdapter.ts:140-142`.
+- The canonical config uses nested `hiveMind.url` and `hiveMind.apiKey`, with an `HIVEMIND_API_KEY` environment fallback.
 - A unique `agentId` is generated automatically on first run (format `agt_<hex>`) if absent, and written back to `user-config.json` — `HivemindAdapter.ts:85-98`, `ensureAgentId()`.
 
 If HiveMind is disabled, every pull/push call short-circuits to `null` and the feature is a no-op.
@@ -20,12 +20,13 @@ If HiveMind is disabled, every pull/push call short-circuits to `null` and the f
 
 ## 2. Configuration Fields
 
-| Field              | Purpose                                                                                         | Example / what to expect                                                                                |
-| ------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `hiveMindUrl`      | Base URL of the HiveMind backend (e.g. `https://api.agentmeridian.xyz/api`). Empty = disabled.  | `""` → HiveMind off. `"https://..."` → enabled once key is also set.                                    |
-| `hiveMindApiKey`   | Auth key sent as the `x-api-key` header on every request. Falls back to `HIVEMIND_API_KEY` env. | Missing/empty → disabled even if URL set.                                                               |
-| `hiveMindPullMode` | `auto` (default) or `manual`. Controls whether lessons are pulled on startup + periodically.    | `"auto"` → continuous sync. `"manual"` → only pulled on demand via `/hive pull` (see §4).               |
-| `agentId`          | Stable instance identity. Leave empty to auto-generate.                                         | `""` → a new `agt_...` id is written on startup. A fixed string persists your identity across restarts. |
+| Field      | Purpose                                                                                      | Example / what to expect                                                                                |
+| ---------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `enabled`  | Explicitly enable HiveMind synchronization.                                                  | `true` → active when URL and key are also configured.                                                   |
+| `url`      | Base URL of the HiveMind backend.                                                            | `"https://api.agentmeridian.xyz"`                                                                       |
+| `apiKey`   | Auth key sent as the `x-api-key` header. Falls back to `HIVEMIND_API_KEY` env.               | Missing/empty → disabled.                                                                               |
+| `pullMode` | `auto` (default) or `manual`. Controls whether lessons are pulled on startup + periodically. | `"auto"` → continuous sync. `"manual"` → only pulled on demand via `/hive pull` (see §4).               |
+| `agentId`  | Stable instance identity. Leave empty to auto-generate.                                      | `""` → a new `agt_...` id is written on startup. A fixed string persists your identity across restarts. |
 
 Type definition: `HiveMindConfig` at `packages/core/src/shared/types.ts:647-652`.
 
