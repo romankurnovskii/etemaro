@@ -13,8 +13,51 @@
 
 import { Connection, PublicKey, VersionedTransaction, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
+import path from 'node:path';
 import { log, logStructured, createTimer } from '../../shared/logger.js';
 import { config } from '../../config/Config.js';
+import { configPath } from '../../shared/constants.js';
+import { loadJsonFile, saveJsonFile } from '../../shared/utils.js';
+
+export interface GeneratedWallet {
+  publicKey: string;
+  privateKey: string;
+  createdAt: string;
+  label?: string;
+}
+
+export interface WalletsStore {
+  wallets: GeneratedWallet[];
+}
+
+/**
+ * Generates a fresh Solana keypair, stores it in wallets.json under the config directory,
+ * and returns the public key and base58 private key.
+ */
+export function generateNewWallet(opts?: { label?: string; configDir?: string }): GeneratedWallet {
+  const kp = Keypair.generate();
+  const publicKey = kp.publicKey.toBase58();
+  const privateKey = bs58.encode(kp.secretKey);
+  const wallet: GeneratedWallet = {
+    publicKey,
+    privateKey,
+    createdAt: new Date().toISOString(),
+    label: opts?.label || 'Generated Keypair',
+  };
+
+  try {
+    const targetFile = opts?.configDir ? path.join(opts.configDir, 'wallets.json') : configPath('wallets.json');
+    const existing = loadJsonFile<WalletsStore>(targetFile, { wallets: [] });
+    existing.wallets = existing.wallets || [];
+    existing.wallets.push(wallet);
+    saveJsonFile(targetFile, existing);
+    log('wallet', `Generated and stored new wallet ${publicKey} to ${targetFile}`);
+  } catch (err: any) {
+    log('wallet', `Warning: Failed to persist generated wallet to wallets.json: ${err.message}`);
+  }
+
+  return wallet;
+}
 
 let _connection: Connection | null = null;
 let _wallet: Keypair | null = null;

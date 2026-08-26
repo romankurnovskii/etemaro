@@ -13,6 +13,8 @@ tsconfig.tsbuildinfo
 .env.*
 !.env.example
 .envrypt
+*wallets.json
+wallets.json
 
 # Configuration files (ignored via config/.gitignore)
 

@@ -28,7 +28,14 @@ function savePrivate(data: StrategyLibraryData): void {
 }
 
 function load(): StrategyLibraryData {
-  const sharedDb = loadJsonFile<StrategyLibraryData>(SHARED_STRATEGY_FILE, { strategies: {} });
+  let sharedDb = loadJsonFile<StrategyLibraryData>(SHARED_STRATEGY_FILE, { strategies: {} });
+
+  if (Object.keys(sharedDb.strategies).length === 0) {
+    const localSharedFile = dataPath('strategy-library.shared.json');
+    if (fs.existsSync(localSharedFile)) {
+      sharedDb = loadJsonFile<StrategyLibraryData>(localSharedFile, { strategies: {} });
+    }
+  }
 
   if (Object.keys(sharedDb.strategies).length === 0) {
     sharedDb.strategies = DEFAULT_STRATEGIES;
@@ -45,7 +52,7 @@ function load(): StrategyLibraryData {
 }
 
 // ─── Default Strategies ─────────────────────────────────────────
-const DEFAULT_STRATEGIES: Record<string, Strategy> = {
+export const DEFAULT_STRATEGIES: Record<string, Strategy> = {
   custom_ratio_spot: {
     id: 'custom_ratio_spot',
     name: 'Custom Ratio Spot',

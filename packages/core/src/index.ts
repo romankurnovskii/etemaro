@@ -14,9 +14,11 @@ export { meteora, wallet, screening, token, study, telegram, desktop, briefing, 
 
 // Flat exports for standard utilities, types, and configs
 export * from './config/Config.js';
+export * from './config/defaultUserConfig.js';
 export * from './shared/logger.js';
 export * from './shared/constants.js';
 export * from './shared/types.js';
+export * from './adapters/blockchain/WalletAdapter.js';
 export * from './adapters/ToolDefinitions.js';
 export * from './application/agent-loop.js';
 export * from './application/prompt-builder.js';
