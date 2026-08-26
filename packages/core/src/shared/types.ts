@@ -658,6 +658,7 @@ export interface TokenMints {
 }
 
 export interface HiveMindConfig {
+  enabled: boolean;
   url: string | null;
   apiKey: string | null;
   agentId: string | null;
@@ -665,9 +666,17 @@ export interface HiveMindConfig {
 }
 
 export interface ApiConfig {
-  url: string | null;
-  publicApiKey: string | null;
-  lpAgentRelayEnabled: boolean;
+  meridian: {
+    enabled: boolean;
+    url: string | null;
+    publicApiKey: string | null;
+    lpAgentRelayEnabled: boolean;
+  };
+  lpAgent: {
+    enabled: boolean;
+    url: string | null;
+    apiKey: string | null;
+  };
 }
 
 export interface PnlConfig {
@@ -691,6 +700,7 @@ export interface OpportunityConfig {
 }
 
 export interface GmgnConfig {
+  enabled: boolean;
   apiKey: string | null;
   baseUrl: string;
   requestDelayMs: number;

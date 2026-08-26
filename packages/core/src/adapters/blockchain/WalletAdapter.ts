@@ -119,18 +119,18 @@ export async function getWalletBalances(): Promise<WalletBalancesResult> {
     return { wallet: null, sol: 0, sol_price: 0, sol_usd: 0, usdc: 0, tokens: [], total_usd: 0, error: 'Wallet not configured' };
   }
 
-  let HELIUS_KEY = process.env.HELIUS_API_KEY;
-  if (!HELIUS_KEY) {
+  let HELIUS_API_KEY = process.env.HELIUS_API_KEY;
+  if (!HELIUS_API_KEY) {
     log('wallet_error', 'HELIUS_API_KEY not set in .env');
     return { wallet: walletAddress, sol: 0, sol_price: 0, sol_usd: 0, usdc: 0, tokens: [], total_usd: 0, error: 'Helius API key missing' };
   }
 
   // Normalize: strip "api-key=" prefix if copy-pasted with parameter name
   // TODO: deprecate such workaround
-  HELIUS_KEY = HELIUS_KEY.trim().replace(/^api-key=/i, '');
+  HELIUS_API_KEY = HELIUS_API_KEY.trim().replace(/^api-key=/i, '');
 
   try {
-    const url = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_KEY}`;
+    const url = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_API_KEY}`;
     const res = await fetch(url);
 
     if (!res.ok) {

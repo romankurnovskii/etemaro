@@ -58,7 +58,7 @@ function getApiKey(): string {
 }
 
 export function hasGmgnApiKey(): boolean {
-  return !!(config.gmgn?.apiKey || (typeof process !== 'undefined' ? process.env?.GMGN_API_KEY : undefined));
+  return !!(config.gmgn?.enabled && (config.gmgn?.apiKey || (typeof process !== 'undefined' ? process.env?.GMGN_API_KEY : undefined)));
 }
 
 function appendParams(url: URL, params: Record<string, unknown> = {}): void {

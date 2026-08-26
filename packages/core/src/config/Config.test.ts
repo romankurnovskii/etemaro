@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { config } from './Config.js';
+import { defaultUserConfigStr } from './defaultUserConfig.js';
 import { getMinSafeBinsBelow } from '../shared/constants.js';
 import { scaleScreeningToTimeframe } from '../shared/utils.js';
 
@@ -81,37 +82,27 @@ describe('hiveMind agentId support', () => {
   beforeEach(() => {
     vi.resetModules();
 
-    // Create mock functions
     mockExistsSync = vi.fn((path: string) => {
       if (path.endsWith('user-config.json')) return true;
       if (path.endsWith('user-config.example.json')) return true;
-      // Fall back to actual fs for other paths
       return true;
     });
 
+    const baseConfig = JSON.parse(defaultUserConfigStr);
+
     mockReadFileSync = vi.fn((path: string, encoding: string) => {
-      if (path.endsWith('user-config.json')) {
+      if (path.endsWith('user-config.json') || path.endsWith('user-config.example.json')) {
         return JSON.stringify({
+          ...baseConfig,
           agentId: 'local-top-level-agent',
           hiveMind: {
+            ...baseConfig.hiveMind,
             agentId: 'nested-hive-agent',
             url: 'https://hive.example.com',
             apiKey: 'hive-key',
           },
         });
       }
-      if (path.endsWith('user-config.example.json')) {
-        return JSON.stringify({
-          _version: 1,
-          preset: 'custom',
-          // ... other required fields with default values
-          agentId: '',
-          hiveMindUrl: null,
-          hiveMindApiKey: null,
-          hiveMindPullMode: 'auto',
-        });
-      }
-      // Fall back to actual fs for other files
       return '';
     });
 
@@ -130,39 +121,29 @@ describe('hiveMind agentId support', () => {
   });
 
   it('exposes hiveMind.agentId from nested config when top-level agentId is present', async () => {
-    // Re-import the config module to get the mocked version
     const { config: testConfig } = await import('./Config.js');
     expect(testConfig.agentId).toBe('local-top-level-agent');
     expect(testConfig.hiveMind.agentId).toBe('nested-hive-agent');
   });
 
   it('sets hiveMind.agentId correctly when no top-level agentId is present', async () => {
-    // Override the mock for this specific test
+    const baseConfig = JSON.parse(defaultUserConfigStr);
     mockReadFileSync.mockImplementation((path: string, encoding: string) => {
-      if (path.endsWith('user-config.json')) {
+      if (path.endsWith('user-config.json') || path.endsWith('user-config.example.json')) {
         return JSON.stringify({
+          ...baseConfig,
+          agentId: null,
           hiveMind: {
+            ...baseConfig.hiveMind,
             agentId: 'hive-only-agent',
             url: 'https://hive.example.com',
             apiKey: 'hive-key',
           },
         });
       }
-      if (path.endsWith('user-config.example.json')) {
-        return JSON.stringify({
-          _version: 1,
-          preset: 'custom',
-          // ... other required fields with default values
-          agentId: '',
-          hiveMindUrl: null,
-          hiveMindApiKey: null,
-          hiveMindPullMode: 'auto',
-        });
-      }
       return '';
     });
 
-    // Re-import the config module to get the mocked version
     const { config: testConfig } = await import('./Config.js');
     expect(testConfig.agentId).toBeNull();
     expect(testConfig.hiveMind.agentId).toBe('hive-only-agent');

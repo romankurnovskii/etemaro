@@ -230,7 +230,7 @@ graph TD
     subgraph "Configuration Sources"
         ENV[".env<br/>Secrets: keys, tokens, RPC URLs"]
         USER["user-config.json<br/>Runtime settings: thresholds, strategy"]
-        GMGN_CFG["gmgn-config.example.json<br/>GMGN API settings"]
+        GMGN_CFG["user-config.example.json<br/>GMGN API settings"]
         DEFAULTS["Zod Schema Defaults<br/>Hardcoded fallbacks"]
     end
 

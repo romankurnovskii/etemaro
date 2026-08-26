@@ -35,13 +35,13 @@ interface AgentEtemaroError extends Error {
 // ─── Helpers ───────────────────────────────────────────────────
 
 export function getAgentMeridianBase(): string {
-  return String(config.api.url || 'https://api.agentmeridian.xyz/api').replace(/\/+$/, '');
+  return String(config.api.meridian.url || 'https://api.agentmeridian.xyz/api').replace(/\/+$/, '');
 }
 
 export function getAgentMeridianHeaders({ json = false } = {}): Record<string, string> {
   const headers: Record<string, string> = {};
   if (json) headers['Content-Type'] = 'application/json';
-  if (config.api.publicApiKey) headers['x-api-key'] = config.api.publicApiKey;
+  if (config.api.meridian.publicApiKey) headers['x-api-key'] = config.api.meridian.publicApiKey;
   return headers;
 }
 
@@ -89,6 +89,9 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
 }
 
 async function agentMeridianJsonOnce(pathname: string, options: RequestInit = {}, timeoutMs: number | null = null): Promise<Record<string, unknown>> {
+  if (!config.api.meridian.enabled) {
+    throw new Error('Agent Meridian API is disabled in configuration');
+  }
   const timer = createTimer();
   const res = await fetchWithTimeout(`${getAgentMeridianBase()}${pathname}`, options, timeoutMs);
   const durationMs = timer.stop();

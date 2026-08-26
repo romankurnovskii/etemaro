@@ -47,7 +47,7 @@ function resolveChatId(): string | null {
   try {
     if (typeof fs?.existsSync === 'function' && fs.existsSync(USER_CONFIG_PATH)) {
       const cfg = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'));
-      fromConfig = nonEmptyChatId(cfg.telegramChatId);
+      fromConfig = nonEmptyChatId(cfg.connection?.telegramChatId || cfg.telegramChatId);
     }
   } catch (error: any) {
     log('telegram_warn', `Invalid user-config.json; chatId not loaded: ${error.message}`);
@@ -64,7 +64,10 @@ function saveChatId(id: string): void {
   try {
     if (typeof fs?.existsSync !== 'function' || typeof fs?.writeFileSync !== 'function') return;
     const cfg: Record<string, unknown> = fs.existsSync(USER_CONFIG_PATH) ? JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8')) : {};
-    cfg.telegramChatId = id;
+    const connection =
+      cfg.connection && typeof cfg.connection === 'object' && !Array.isArray(cfg.connection) ? (cfg.connection as Record<string, unknown>) : {};
+    connection.telegramChatId = id;
+    cfg.connection = connection;
     fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(cfg, null, 2));
   } catch (e: any) {
     log('telegram_error', `Failed to persist chatId: ${e.message}`);
