@@ -111,10 +111,15 @@ export function flattenUserConfig(u: Record<string, unknown>): Record<string, un
             if (value !== undefined && value !== null && value !== '' && !('hiveMindAgentId' in result)) {
               result.hiveMindAgentId = value;
             }
-          } else if (!(key in result)) {
-            // For hiveMind properties (except agentId which is handled above),
-            // prefix with hiveMind to avoid conflicts with top-level properties
-            result[`hiveMind${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value;
+          } else if (key.startsWith('hiveMind')) {
+            if (!(key in result)) {
+              result[key] = value;
+            }
+          } else {
+            const prefixedKey = `hiveMind${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+            if (!(prefixedKey in result)) {
+              result[prefixedKey] = value;
+            }
           }
         }
       } else {

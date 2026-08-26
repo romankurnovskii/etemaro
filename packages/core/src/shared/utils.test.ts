@@ -64,6 +64,35 @@ describe('flattenUserConfig', () => {
     expect(result.management).toBeUndefined();
   });
 
+  it('flattens hiveMind short keys (url, apiKey, pullMode) correctly', () => {
+    const input = {
+      hiveMind: {
+        url: 'https://api.agentmeridian.xyz',
+        apiKey: 'key123',
+        pullMode: 'auto',
+      },
+    };
+    const result = flattenUserConfig(input);
+    expect(result.hiveMindUrl).toBe('https://api.agentmeridian.xyz');
+    expect(result.hiveMindApiKey).toBe('key123');
+    expect(result.hiveMindPullMode).toBe('auto');
+  });
+
+  it('flattens hiveMind prefixed keys (hiveMindUrl, hiveMindApiKey, hiveMindPullMode) without double-prefixing', () => {
+    const input = {
+      hiveMind: {
+        hiveMindUrl: 'https://api.agentmeridian.xyz',
+        hiveMindApiKey: 'key123',
+        hiveMindPullMode: 'auto',
+      },
+    };
+    const result = flattenUserConfig(input);
+    expect(result.hiveMindUrl).toBe('https://api.agentmeridian.xyz');
+    expect(result.hiveMindApiKey).toBe('key123');
+    expect(result.hiveMindPullMode).toBe('auto');
+    expect(result.hiveMindHiveMindUrl).toBeUndefined();
+  });
+
   it('preserves top-level agentId and hiveMind.agentId as separate identities', () => {
     const input = {
       agentId: 'primary-agent',
