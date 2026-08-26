@@ -36,28 +36,35 @@ Before running Etemaro, ensure you have:
 
 > 💡 **Have questions?** Most common user questions, setup troubleshooting, multi-instance deployment steps, and PnL metric definitions are covered in **[docs/QA.md](docs/QA.md)**.
 
-For a complete step-by-step walkthrough, environment variable setup, and strategy selection guide, see **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**.
-
-### Quick Setup (CLI / Daemon)
+### ⚡ 1-Line Quick Install (CLI)
 
 ```bash
-# 1. Clone repo & install dependencies
-git clone https://github.com/romankurnovskii/etemaro
-cd etemaro
-npm install
-
-# 2. Copy config templates (.env and user-config.json)
-cp .env.example .env
-cp config/user-config.example.json config/user-config.json
-
-# 3. Configure your API keys in .env (WALLET_PRIVATE_KEY, LLM_API_KEY, JUPITER_API_KEY)
-
-# 4. Start in dry-run mode (safe testing, no real transactions)
-npm run dev
-
-# 5. When ready for live trading
-npm start
+# Install Etemaro CLI globally (macOS / Linux)
+curl -fsSL https://etemaro.com/install.sh | sh
 ```
+*Or install via npm / Homebrew:*
+```bash
+npm install -g @etemaro/cli
+# or: brew install romankurnovskii/awesome-brew/etemaro
+```
+
+### 🚀 30-Second Quickstart
+
+```bash
+# 1. Provide your Solana wallet private key (in a .env file or export)
+export WALLET_PRIVATE_KEY="your_base58_solana_private_key"
+
+# 2. Check live wallet balances
+etemaro balance
+
+# 3. Simulate and test strategies (dry-run mode, no real transactions)
+etemaro start --dry-run
+
+# 4. Start autonomous agent in live trading mode
+etemaro start
+```
+
+---
 
 ### Desktop App (GUI)
 
@@ -69,6 +76,24 @@ npm start
   ```
 - **Windows / Linux / macOS (Direct Download)**:
   Download the latest installer or bundle from [GitHub Releases](https://github.com/romankurnovskii/etemaro/releases).
+
+---
+
+### Developer / Source Setup
+
+```bash
+# 1. Clone repo & install dependencies
+git clone https://github.com/romankurnovskii/etemaro
+cd etemaro
+pnpm install
+
+# 2. Copy config templates (.env and user-config.json)
+cp .env.example .env
+cp config/user-config.example.json config/user-config.json
+
+# 3. Start in dry-run mode
+pnpm run dev
+```
 
 ---
 
