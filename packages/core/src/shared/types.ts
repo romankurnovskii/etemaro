@@ -530,9 +530,20 @@ export interface AgentLoopResult {
 
 // ─── Config (derived from Zod schema) ─────────────────────────
 
+export interface ConnectionConfig {
+  rpcUrl?: string;
+  walletPrivateKey?: string;
+  heliusApiKey?: string | null;
+  telegramBotToken?: string | null;
+  telegramChatId?: string | null;
+  telegramAllowedUserIds?: string | null;
+  dryRun: boolean;
+}
+
 export interface AppConfig {
   _version?: number;
   agentId?: string | null;
+  connection: ConnectionConfig;
   risk: {
     maxPositions: number;
     maxDeployAmount: number;
@@ -635,6 +646,7 @@ export interface LlmConfig {
   temperature: number;
   maxTokens: number;
   maxSteps: number;
+  defaultModel: string;
   managementModel: string;
   screeningModel: string;
   generalModel: string;

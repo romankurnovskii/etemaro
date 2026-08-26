@@ -1,16 +1,19 @@
 import { z } from 'zod';
+import { resolveEnvString } from '../shared/utils.js';
 
 // Helper to handle process.env references for strings
-const envString = z.string().transform((val) => {
+const envString = z.string().transform((val, ctx) => {
   if (val.startsWith('env.')) {
     const envVar = val.slice(4);
     const resolved = process.env[envVar];
-    if (resolved === undefined) {
-      throw new Error(
-        `Environment variable ${envVar} is not set but is referenced by configuration.\n` + `Set ${envVar} in your .env file or environment.`,
-      );
+    if (resolved === undefined || resolved.trim() === '') {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Environment variable ${envVar} is not set but is referenced by configuration.\nSet ${envVar} in your .env file or environment.`,
+      });
+      return z.NEVER;
     }
-    return resolved;
+    return resolved.trim();
   }
   return val;
 });
@@ -19,12 +22,12 @@ const envString = z.string().transform((val) => {
 const envStringNullable = z
   .string()
   .nullable()
+  .optional()
   .transform((val) => {
-    if (val && val.startsWith('env.')) {
-      const envVar = val.slice(4);
-      return process.env[envVar] || null;
+    if (val && typeof val === 'string' && val.startsWith('env.')) {
+      return resolveEnvString(val);
     }
-    return val;
+    return val ?? null;
   });
 
 // Helper for numbers that might be passed as strings from env or config
@@ -35,7 +38,7 @@ const envNumber = z.union([z.number(), z.string()]).transform((val, ctx) => {
       const resolved = process.env[envVar];
       if (resolved === undefined) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: `Environment variable ${envVar} is not set but is referenced.`,
         });
         return z.NEVER;
@@ -43,7 +46,7 @@ const envNumber = z.union([z.number(), z.string()]).transform((val, ctx) => {
       const num = Number(resolved);
       if (isNaN(num)) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: `Environment variable ${envVar} did not resolve to a valid number.`,
         });
         return z.NEVER;
@@ -53,7 +56,7 @@ const envNumber = z.union([z.number(), z.string()]).transform((val, ctx) => {
     const num = Number(val);
     if (isNaN(num)) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'Expected a number',
       });
       return z.NEVER;
@@ -70,7 +73,7 @@ const envBoolean = z.union([z.boolean(), z.string()]).transform((val, ctx) => {
       const resolved = process.env[envVar];
       if (resolved === undefined) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: `Environment variable ${envVar} is not set but is referenced.`,
         });
         return z.NEVER;
@@ -93,17 +96,11 @@ export const UserConfigSchema = z.object({
       walletPrivateKey: envString.optional(),
       heliusApiKey: envStringNullable.optional(),
       telegramBotToken: envStringNullable.optional(),
-      // Legacy aliases accepted while existing configs migrate to llm.*.
-      llmBaseUrl: envStringNullable.optional(),
-      llmApiKey: envStringNullable.optional(),
-      llmModel: envStringNullable.optional(),
-      dryRun: envBoolean,
       telegramChatId: envStringNullable.optional(),
       telegramAllowedUserIds: envStringNullable.optional(),
+      dryRun: envBoolean,
     })
     .optional(),
-  rpcUrl: envString.optional(),
-  walletPrivateKey: envString.optional(),
   risk: z.object({
     maxPositions: envNumber,
     maxDeployAmount: envNumber,
@@ -185,10 +182,10 @@ export const UserConfigSchema = z.object({
   llm: z.object({
     baseUrl: envStringNullable.optional(),
     apiKey: envStringNullable.optional(),
-    defaultModel: envString.optional(),
     temperature: envNumber,
     maxTokens: envNumber,
     maxSteps: envNumber,
+    defaultModel: envString,
     managementModel: envString,
     screeningModel: envString,
     generalModel: envString,
@@ -230,10 +227,6 @@ export const UserConfigSchema = z.object({
         apiKey: envStringNullable.optional(),
       })
       .optional(),
-    // Legacy API fields remain accepted while existing configs migrate.
-    url: envStringNullable.optional(),
-    publicApiKey: envStringNullable.optional(),
-    lpAgentRelayEnabled: envBoolean.optional(),
   }),
   pnl: z.object({
     rpcUrl: envString,

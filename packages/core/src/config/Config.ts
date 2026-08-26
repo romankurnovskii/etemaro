@@ -14,29 +14,29 @@ import type { AppConfig } from '../shared/types.js';
 import { repoPath, dataPath, USER_CONFIG_PATH, MIN_SAFE_BINS_BELOW, TOKEN_MINTS, setMinSafeBinsBelowOverride } from '../shared/constants.js';
 import { loadAndValidateConfig } from './ConfigValidator.js';
 import type { ValidatedUserConfig } from './schema.js';
-import { numericConfig } from '../shared/utils.js';
+import { numericConfig, resolveEnvString } from '../shared/utils.js';
 
 function applyUserConfigToEnv(u: ValidatedUserConfig): void {
   const connection = u.connection;
-  if (connection?.rpcUrl || u.rpcUrl) process.env.RPC_URL ||= connection?.rpcUrl || u.rpcUrl!;
-  if (connection?.walletPrivateKey || u.walletPrivateKey) process.env.WALLET_PRIVATE_KEY ||= connection?.walletPrivateKey || u.walletPrivateKey!;
+  if (connection?.rpcUrl) process.env.RPC_URL ||= connection?.rpcUrl;
+  if (connection?.walletPrivateKey) process.env.WALLET_PRIVATE_KEY ||= connection?.walletPrivateKey;
   if (connection?.heliusApiKey) process.env.HELIUS_API_KEY ||= connection.heliusApiKey;
   if (connection?.telegramBotToken) process.env.TELEGRAM_BOT_TOKEN ||= connection.telegramBotToken;
   if (connection?.telegramAllowedUserIds) process.env.TELEGRAM_ALLOWED_USER_IDS ||= connection.telegramAllowedUserIds;
-  if (u.llm.defaultModel || connection?.llmModel || u.llm.managementModel) {
-    process.env.LLM_MODEL ||= u.llm.defaultModel || connection?.llmModel || u.llm.managementModel;
+  if (u.llm.defaultModel || u.llm.managementModel) {
+    process.env.LLM_MODEL ||= u.llm.defaultModel || u.llm.managementModel;
   }
-  if (u.llm.baseUrl || connection?.llmBaseUrl) process.env.LLM_BASE_URL ||= u.llm.baseUrl || connection?.llmBaseUrl!;
-  if (u.llm.apiKey || connection?.llmApiKey) process.env.LLM_API_KEY ||= u.llm.apiKey || connection?.llmApiKey!;
+  if (u.llm.baseUrl) process.env.LLM_BASE_URL ||= u.llm.baseUrl;
+  if (u.llm.apiKey) process.env.LLM_API_KEY ||= u.llm.apiKey;
   if (connection?.dryRun !== undefined) process.env.DRY_RUN ||= String(connection.dryRun);
   if (connection?.telegramChatId) process.env.TELEGRAM_CHAT_ID ||= connection.telegramChatId;
   const meridian = u.api.meridian;
   const lpAgent = u.api.lpAgent;
-  if (meridian?.enabled !== false && (meridian?.publicApiKey || u.api.publicApiKey)) {
-    process.env.PUBLIC_API_KEY ||= meridian?.publicApiKey || u.api.publicApiKey!;
+  if (meridian?.enabled !== false && meridian?.publicApiKey) {
+    process.env.PUBLIC_API_KEY ||= meridian?.publicApiKey;
   }
-  if (meridian?.enabled !== false && (meridian?.url || u.api.url)) {
-    process.env.AGENT_MERIDIAN_API_URL ||= meridian?.url || u.api.url!;
+  if (meridian?.enabled !== false && meridian?.url) {
+    process.env.AGENT_MERIDIAN_API_URL ||= meridian?.url;
   }
   if (lpAgent?.apiKey) process.env.LPAGENT_API_KEY ||= lpAgent.apiKey;
   if (lpAgent?.url) process.env.LPAGENT_API_URL ||= lpAgent.url;
@@ -51,6 +51,15 @@ function buildConfig(): AppConfig {
   return {
     _version: u._version ?? 3,
     agentId: u.agentId ?? null,
+    connection: {
+      rpcUrl: u.connection?.rpcUrl,
+      walletPrivateKey: u.connection?.walletPrivateKey,
+      heliusApiKey: u.connection?.heliusApiKey ?? null,
+      telegramBotToken: u.connection?.telegramBotToken ?? null,
+      telegramChatId: u.connection?.telegramChatId ?? null,
+      telegramAllowedUserIds: u.connection?.telegramAllowedUserIds ?? null,
+      dryRun: u.connection?.dryRun ?? false,
+    },
     risk: {
       maxPositions: u.risk.maxPositions,
       maxDeployAmount: u.risk.maxDeployAmount,
@@ -133,6 +142,7 @@ function buildConfig(): AppConfig {
       temperature: u.llm.temperature,
       maxTokens: u.llm.maxTokens,
       maxSteps: u.llm.maxSteps,
+      defaultModel: u.llm.defaultModel,
       managementModel: u.llm.managementModel,
       screeningModel: u.llm.screeningModel,
       generalModel: u.llm.generalModel,
@@ -158,14 +168,14 @@ function buildConfig(): AppConfig {
     api: {
       meridian: {
         enabled: u.api.meridian?.enabled ?? true,
-        url: process.env.AGENT_MERIDIAN_API_URL || u.api.meridian?.url || u.api.url || null,
-        publicApiKey: process.env.PUBLIC_API_KEY || u.api.meridian?.publicApiKey || u.api.publicApiKey || null,
-        lpAgentRelayEnabled: u.api.meridian?.lpAgentRelayEnabled ?? u.api.lpAgentRelayEnabled ?? false,
+        url: (process.env.AGENT_MERIDIAN_API_URL || u.api.meridian?.url) ?? null,
+        publicApiKey: (process.env.PUBLIC_API_KEY || u.api.meridian?.publicApiKey) ?? null,
+        lpAgentRelayEnabled: u.api.meridian?.lpAgentRelayEnabled ?? false,
       },
       lpAgent: {
         enabled: u.api.lpAgent?.enabled ?? false,
-        url: process.env.LPAGENT_API_URL || u.api.lpAgent?.url || null,
-        apiKey: process.env.LPAGENT_API_KEY || u.api.lpAgent?.apiKey || null,
+        url: (process.env.LPAGENT_API_URL || u.api.lpAgent?.url) ?? null,
+        apiKey: (process.env.LPAGENT_API_KEY || u.api.lpAgent?.apiKey) ?? null,
       },
     },
     pnl: {
@@ -289,7 +299,7 @@ export function reloadScreeningThresholds(): void {
 
 function resolveField(key: string, value: unknown): unknown {
   if (typeof value === 'string' && value.startsWith('env.')) {
-    return process.env[value.slice(4)];
+    return resolveEnvString(value);
   }
   return value;
 }
