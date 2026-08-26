@@ -46,7 +46,8 @@ export function getAgentMeridianHeaders({ json = false } = {}): Record<string, s
 }
 
 export function getAgentIdForRequests(): string {
-  return config.agentId || config.hiveMind?.agentId || 'agent-etemaro-local';
+  // ponytail: local agentId only — no fallback to hiveMind.agentId (separate identity)
+  return config.agentId || 'agent-etemaro-local';
 }
 
 function sleep(ms: number): Promise<void> {

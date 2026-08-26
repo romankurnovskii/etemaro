@@ -143,14 +143,17 @@ export function isHiveMindEnabled(): boolean {
 
 export function ensureAgentId(): string {
   const userConfig = readUserConfig();
-  const existingId = getUserConfigValue(userConfig, 'agentId', 'hiveMind', 'agentId') as string | null;
+  const existingId = (userConfig.hiveMind as Record<string, unknown> | undefined)?.agentId as string | null;
   if (existingId) {
     config.hiveMind.agentId = existingId;
     return existingId;
   }
 
   const agentId = `agt_${safeRandomBytesHex(12)}`;
-  userConfig.agentId = agentId;
+  if (!userConfig.hiveMind || typeof userConfig.hiveMind !== 'object') {
+    userConfig.hiveMind = {};
+  }
+  (userConfig.hiveMind as Record<string, unknown>).agentId = agentId;
   writeUserConfig(userConfig);
   config.hiveMind.agentId = agentId;
   log('hivemind', `Generated agentId ${agentId}`);
