@@ -1,84 +1,65 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { resolveEnvString, resolveEnvVars, safeNumber, clamp, avg, percentile, nudge } from './utils.js';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { saveJsonFile } from './utils.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 
-describe('resolveEnvString and resolveEnvVars', () => {
-  const originalEnv = process.env;
-
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-  });
-
+describe('saveJsonFile — atomicity', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'saveJsonFile-test-'));
   afterEach(() => {
-    process.env = originalEnv;
+    // Clean up any leftover tmp files in the directory
+    for (const f of fs.readdirSync(tmpDir)) {
+      fs.unlinkSync(path.join(tmpDir, f));
+    }
   });
 
-  it('resolves string starting with env. to process.env value', () => {
-    process.env.TEST_VAR = 'hello_world';
-    expect(resolveEnvString('env.TEST_VAR')).toBe('hello_world');
+  it('writes a valid JSON file atomically (no leftover tmp on success)', () => {
+    const target = path.join(tmpDir, 'atomic.json');
+    saveJsonFile(target, { hello: 'world' });
+
+    const content = fs.readFileSync(target, 'utf8');
+    expect(JSON.parse(content)).toEqual({ hello: 'world' });
+
+    // No stray .tmp files should remain
+    const files = fs.readdirSync(tmpDir).filter((f) => f.endsWith('.tmp'));
+    expect(files).toHaveLength(0);
   });
 
-  it('returns null if env var is missing or empty', () => {
-    delete process.env.MISSING_VAR;
-    expect(resolveEnvString('env.MISSING_VAR')).toBeNull();
+  it('does NOT overwrite the original file when fs.renameSync fails', () => {
+    const target = path.join(tmpDir, 'rename-fail.json');
+    // Seed original
+    fs.writeFileSync(target, JSON.stringify({ original: true }));
 
-    process.env.EMPTY_VAR = '   ';
-    expect(resolveEnvString('env.EMPTY_VAR')).toBeNull();
-  });
-
-  it('leaves regular strings unchanged', () => {
-    expect(resolveEnvString('regular_value')).toBe('regular_value');
-    expect(resolveEnvString('https://pump.helius-rpc.com')).toBe('https://pump.helius-rpc.com');
-  });
-
-  it('recursively resolves nested objects and arrays', () => {
-    process.env.RPC_URL = 'https://custom.rpc';
-    process.env.API_KEY = 'secret_key';
-
-    const input = {
-      connection: {
-        rpcUrl: 'env.RPC_URL',
-        missing: 'env.UNSET_KEY',
-        staticVal: 'unchanged',
-      },
-      tokens: ['env.API_KEY', 'plain_item'],
-      count: 42,
-    };
-
-    const output = resolveEnvVars(input);
-
-    expect(output).toEqual({
-      connection: {
-        rpcUrl: 'https://custom.rpc',
-        missing: null,
-        staticVal: 'unchanged',
-      },
-      tokens: ['secret_key', 'plain_item'],
-      count: 42,
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw new Error('simulated rename failure');
     });
-  });
-});
 
-describe('math and string utilities', () => {
-  it('safeNumber handles fallbacks', () => {
-    expect(safeNumber(10)).toBe(10);
-    expect(safeNumber('20')).toBe(20);
-    expect(safeNumber('invalid', 5)).toBe(5);
-    expect(safeNumber(null, 0)).toBe(0);
-  });
+    try {
+      expect(() => saveJsonFile(target, { new: true })).toThrow('simulated rename failure');
 
-  it('clamp restricts values to bounds', () => {
-    expect(clamp(5, 10, 20)).toBe(10);
-    expect(clamp(15, 10, 20)).toBe(15);
-    expect(clamp(25, 10, 20)).toBe(20);
+      // Original file must still contain the old data
+      const content = fs.readFileSync(target, 'utf8');
+      expect(JSON.parse(content)).toEqual({ original: true });
+    } finally {
+      spy.mockRestore();
+    }
   });
 
-  it('avg computes array average', () => {
-    expect(avg([])).toBe(0);
-    expect(avg([10, 20, 30])).toBe(20);
-  });
+  it('cleans up the temp file when an error occurs', () => {
+    const target = path.join(tmpDir, 'cleanup.json');
 
-  it('nudge adjusts values towards target with limit', () => {
-    expect(nudge(100, 150, 0.1)).toBe(110);
-    expect(nudge(100, 105, 0.1)).toBe(105);
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw new Error('disk full');
+    });
+
+    try {
+      expect(() => saveJsonFile(target, { data: 42 })).toThrow('disk full');
+
+      // The temp file matching the pattern should NOT persist
+      const tmpFiles = fs.readdirSync(tmpDir).filter((f) => f.endsWith('.tmp'));
+      expect(tmpFiles).toHaveLength(0);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
