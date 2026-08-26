@@ -63,7 +63,7 @@ import { blockDev, unblockDev, listBlockedDevs } from '../domain/dev-blocklist.j
 import { addSmartWallet, removeSmartWallet, listSmartWallets, checkSmartWalletsOnPool } from '../domain/smart-wallets.js';
 import { getRecentDecisions } from '../domain/decision-log.js';
 import { normalizeTimeframe, scaleScreeningToTimeframe } from '../shared/utils.js';
-import { notifyDeploy, notifyClose, notifySwap } from './notifications/TelegramAdapter.js';
+import { notifyDeploy, notifyClose, notifySwap, notifySwapError } from './notifications/TelegramAdapter.js';
 
 // ─── Constants ─────────────────────────────────────────────────
 
@@ -685,6 +685,7 @@ async function swapBaseToSolWithRetry(
   const haltOnSwapFailure = config.management.haltOnSwapFailure ?? true;
   const maxFailedSwapsBeforeHalt = config.management.maxFailedSwapsBeforeHalt ?? 5;
   let lastErr: string | null = null;
+  let lastToken: any = null;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const balances = await getWalletBalances();
@@ -692,6 +693,7 @@ async function swapBaseToSolWithRetry(
       if (!token || (token.usd ?? 0) < 0.1) {
         return { swapped: attempt > 1, result: null, token: null };
       }
+      lastToken = token;
       log(
         'executor',
         `Auto-swapping ${label} ${token.symbol || baseMint.slice(0, 8)} ($${(token.usd ?? 0).toFixed(2)}) back to SOL (attempt ${attempt}/${attempts})`,
@@ -701,6 +703,16 @@ async function swapBaseToSolWithRetry(
       const ok = swapResult && sr.success !== false && !sr.error && (sr.tx || sr.amount_out);
       if (ok) {
         recordSwapSuccess();
+        const solReceived = sr.amount_out != null ? (typeof sr.amount_out === 'number' ? sr.amount_out : parseFloat(sr.amount_out)) : null;
+        const usdValue = token.usd ?? (solReceived != null && balances.sol_price ? solReceived * balances.sol_price : null);
+        notifySwap({
+          inputSymbol: token.symbol || baseMint.slice(0, 8),
+          outputSymbol: 'SOL',
+          amountIn: token.balance != null ? String(token.balance) : String(sr.amount_in ?? '?'),
+          amountOut: solReceived != null ? `${solReceived.toFixed(4)} SOL` : String(sr.amount_out ?? '?'),
+          tx: sr.tx,
+          amountUsd: usdValue,
+        }).catch(() => {});
         return { swapped: true, result: swapResult as unknown as Record<string, unknown>, token: token as unknown as Record<string, unknown> };
       }
       lastErr = sr?.error || sr?.reason || 'swap returned no tx';
@@ -712,6 +724,12 @@ async function swapBaseToSolWithRetry(
   }
   log('executor_warn', `Auto-swap ${label} failed after ${attempts} attempts — base token left unsold (${baseMint.slice(0, 8)})`);
   recordSwapFailure({ maxFailedSwapsBeforeHalt, haltOnSwapFailure });
+  const symbol = lastToken?.symbol || baseMint.slice(0, 8);
+  notifySwapError({
+    inputSymbol: symbol,
+    outputSymbol: 'SOL',
+    reason: lastErr || `Failed after ${attempts} attempts`,
+  }).catch(() => {});
   return { swapped: false, result: null, token: null };
 }
 
@@ -909,9 +927,10 @@ export async function executeTool(name: string, args: Record<string, unknown> = 
             (args.output_mint as string) === 'So11111111111111111111111111111111111111112' || (args.output_mint as string) === 'SOL'
               ? 'SOL'
               : (args.output_mint as string)?.slice(0, 8),
-          amountIn: (result as any).amount_in,
+          amountIn: (result as any).amount_in ?? String(args.amount ?? '?'),
           amountOut: (result as any).amount_out,
           tx: (result as any).tx,
+          amountUsd: (result as any).usd_value ?? (result as any).amount_usd ?? null,
         }).catch(() => {});
       } else if (name === 'deploy_position') {
         notifyDeploy({

@@ -581,15 +581,32 @@ interface NotifySwapArgs {
   amountIn: string;
   amountOut: string;
   tx: string;
+  amountUsd?: number | null;
 }
 
-export async function notifySwap({ inputSymbol, outputSymbol, amountIn, amountOut, tx }: NotifySwapArgs): Promise<void> {
+export async function notifySwap({ inputSymbol, outputSymbol, amountIn, amountOut, tx, amountUsd }: NotifySwapArgs): Promise<void> {
   if (hasActiveLiveMessage()) return;
-  const body = `In: ${amountIn ?? '?'} | Out: ${amountOut ?? '?'} | Tx: ${tx?.slice(0, 16)}...`;
+  const usdPart = amountUsd != null && !isNaN(Number(amountUsd)) ? ` (~$${Number(amountUsd).toFixed(2)})` : '';
+  const body = `In: ${amountIn ?? '?'}${usdPart} | Out: ${amountOut ?? '?'}\nTx: ${tx?.slice(0, 16)}...`;
   notify('swap', '🔄', `Swapped ${inputSymbol} → ${outputSymbol}`, body);
   await sendPlain(
-    `🔄 Swapped ${inputSymbol} → ${outputSymbol}\n` + `In: ${amountIn ?? '?'} | Out: ${amountOut ?? '?'}\n` + `Tx: ${tx?.slice(0, 16)}...`,
+    `🔄 Swapped ${inputSymbol} → ${outputSymbol}\n` + `In: ${amountIn ?? '?'}${usdPart} | Out: ${amountOut ?? '?'}\n` + `Tx: ${tx?.slice(0, 16)}...`,
   );
+}
+
+export async function notifySwapError({
+  inputSymbol,
+  outputSymbol,
+  reason,
+}: {
+  inputSymbol: string;
+  outputSymbol: string;
+  reason?: string;
+}): Promise<void> {
+  if (hasActiveLiveMessage()) return;
+  const body = `Reason: ${reason || 'Unknown error'}`;
+  notify('swap_error', '⚠️', `Auto-swap failed: ${inputSymbol} → ${outputSymbol}`, body);
+  await sendPlain(`⚠️ Auto-swap failed: ${inputSymbol} → ${outputSymbol}\n` + body);
 }
 
 interface NotifyOutOfRangeArgs {
