@@ -10,7 +10,7 @@
  *
  * @dependencies vitest
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { config } from './Config.js';
 import { getMinSafeBinsBelow } from '../shared/constants.js';
 import { scaleScreeningToTimeframe } from '../shared/utils.js';
@@ -71,5 +71,100 @@ describe('screening entrySource config', () => {
 describe('top-level agentId support', () => {
   it('exposes agentId in AppConfig', () => {
     expect(config.agentId !== undefined).toBe(true);
+  });
+});
+
+describe('hiveMind agentId support', () => {
+  let mockReadFileSync: ReturnType<typeof vi.fn>;
+  let mockExistsSync: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.resetModules();
+
+    // Create mock functions
+    mockExistsSync = vi.fn((path: string) => {
+      if (path.endsWith('user-config.json')) return true;
+      if (path.endsWith('user-config.example.json')) return true;
+      // Fall back to actual fs for other paths
+      return true;
+    });
+
+    mockReadFileSync = vi.fn((path: string, encoding: string) => {
+      if (path.endsWith('user-config.json')) {
+        return JSON.stringify({
+          agentId: 'local-top-level-agent',
+          hiveMind: {
+            agentId: 'nested-hive-agent',
+            url: 'https://hive.example.com',
+            apiKey: 'hive-key',
+          },
+        });
+      }
+      if (path.endsWith('user-config.example.json')) {
+        return JSON.stringify({
+          _version: 1,
+          preset: 'custom',
+          // ... other required fields with default values
+          agentId: '',
+          hiveMindUrl: null,
+          hiveMindApiKey: null,
+          hiveMindPullMode: 'auto',
+        });
+      }
+      // Fall back to actual fs for other files
+      return '';
+    });
+
+    vi.doMock('node:fs', () => ({
+      default: {
+        existsSync: mockExistsSync,
+        readFileSync: mockReadFileSync,
+      },
+      existsSync: mockExistsSync,
+      readFileSync: mockReadFileSync,
+    }));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('exposes hiveMind.agentId from nested config when top-level agentId is present', async () => {
+    // Re-import the config module to get the mocked version
+    const { config: testConfig } = await import('./Config.js');
+    expect(testConfig.agentId).toBe('local-top-level-agent');
+    expect(testConfig.hiveMind.agentId).toBe('nested-hive-agent');
+  });
+
+  it('sets hiveMind.agentId correctly when no top-level agentId is present', async () => {
+    // Override the mock for this specific test
+    mockReadFileSync.mockImplementation((path: string, encoding: string) => {
+      if (path.endsWith('user-config.json')) {
+        return JSON.stringify({
+          hiveMind: {
+            agentId: 'hive-only-agent',
+            url: 'https://hive.example.com',
+            apiKey: 'hive-key',
+          },
+        });
+      }
+      if (path.endsWith('user-config.example.json')) {
+        return JSON.stringify({
+          _version: 1,
+          preset: 'custom',
+          // ... other required fields with default values
+          agentId: '',
+          hiveMindUrl: null,
+          hiveMindApiKey: null,
+          hiveMindPullMode: 'auto',
+        });
+      }
+      return '';
+    });
+
+    // Re-import the config module to get the mocked version
+    const { config: testConfig } = await import('./Config.js');
+    expect(testConfig.agentId).toBeNull();
+    expect(testConfig.hiveMind.agentId).toBe('hive-only-agent');
   });
 });

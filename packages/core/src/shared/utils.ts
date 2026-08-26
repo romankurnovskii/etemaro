@@ -103,9 +103,25 @@ export function flattenUserConfig(u: Record<string, unknown>): Record<string, un
     if (catValue && typeof catValue === 'object' && !Array.isArray(catValue)) {
       const catObj = catValue as Record<string, unknown>;
       const { description, ...fields } = catObj;
-      for (const [key, value] of Object.entries(fields)) {
-        if (!(key in result)) {
-          result[key] = value;
+      // Special handling for hiveMind: flatten agentId as hiveMindAgentId to avoid identity conflict
+      if (cat === 'hiveMind') {
+        for (const [key, value] of Object.entries(fields)) {
+          if (key === 'agentId') {
+            // Flatten hiveMind.agentId as hiveMindAgentId (separate from top-level agentId)
+            if (value !== undefined && value !== null && value !== '' && !('hiveMindAgentId' in result)) {
+              result.hiveMindAgentId = value;
+            }
+          } else if (!(key in result)) {
+            // For hiveMind properties (except agentId which is handled above),
+            // prefix with hiveMind to avoid conflicts with top-level properties
+            result[`hiveMind${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value;
+          }
+        }
+      } else {
+        for (const [key, value] of Object.entries(fields)) {
+          if (!(key in result)) {
+            result[key] = value;
+          }
         }
       }
     }

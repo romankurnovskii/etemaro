@@ -64,13 +64,23 @@ describe('flattenUserConfig', () => {
     expect(result.management).toBeUndefined();
   });
 
-  it('preserves top-level agentId without shadowing from hiveMind.agentId', () => {
+  it('preserves top-level agentId and hiveMind.agentId as separate identities', () => {
     const input = {
       agentId: 'primary-agent',
       hiveMind: { agentId: 'public-hivemind-agent', enabled: true },
     };
     const result = flattenUserConfig(input);
     expect(result.agentId).toBe('primary-agent');
-    expect(result.hiveMindAgentId).toBeUndefined();
+    expect(result.hiveMindAgentId).toBe('public-hivemind-agent');
+  });
+
+  it('sets hiveMindAgentId when no top-level agentId is present', () => {
+    const input = {
+      hiveMind: { agentId: 'hive-only-agent', url: 'https://example.com' },
+    };
+    const result = flattenUserConfig(input);
+    expect(result.agentId).toBeUndefined();
+    expect(result.hiveMindAgentId).toBe('hive-only-agent');
+    expect(result.hiveMindUrl).toBe('https://example.com');
   });
 });
