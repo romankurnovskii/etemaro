@@ -73,7 +73,35 @@ export function formatNumber(n: number | null | undefined): string {
   return String(Math.round(n));
 }
 
-// ─── Config Utilities ──────────────────────────────────────────
+export function resolveEnvString(val: string): string | null {
+  if (!val.startsWith('env.')) return val;
+  const envVar = val.slice(4);
+  const resolved = typeof process !== 'undefined' ? process.env?.[envVar] : undefined;
+  return resolved !== undefined && resolved.trim() !== '' ? resolved.trim() : null;
+}
+
+/**
+ * Recursively resolves any string value starting with "env.VAR_NAME"
+ * against process.env[VAR_NAME].
+ * If the environment variable is not defined or empty, evaluates to null.
+ */
+export function resolveEnvVars<T>(val: T): T {
+  if (val == null) return val;
+  if (typeof val === 'string') {
+    return resolveEnvString(val) as unknown as T;
+  }
+  if (Array.isArray(val)) {
+    return val.map((item) => resolveEnvVars(item)) as unknown as T;
+  }
+  if (typeof val === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val)) {
+      result[k] = resolveEnvVars(v);
+    }
+    return result as unknown as T;
+  }
+  return val;
+}
 
 export function numericConfig(value: unknown): number | null {
   const n = Number(value);
