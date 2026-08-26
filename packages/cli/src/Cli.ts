@@ -754,8 +754,20 @@ export class Cli {
   }
 }
 
-// ─── Self-Execution ──────────────────────────────────────────────
-const isMain = process.argv[1] && (process.argv[1].endsWith('Cli.ts') || process.argv[1].endsWith('Cli.js') || process.argv[1].endsWith('cli.js'));
+function isCliTarget(filePath: string | undefined): boolean {
+  if (!filePath) return false;
+  const lower = filePath.toLowerCase();
+  return (
+    lower.endsWith('cli.ts') ||
+    lower.endsWith('cli.js') ||
+    lower.endsWith('cli.cjs') ||
+    lower.endsWith('/etemaro') ||
+    lower.endsWith('\\etemaro') ||
+    lower === 'etemaro'
+  );
+}
+
+const isMain = isCliTarget(process.argv[1]) || (typeof require !== 'undefined' && require.main === module);
 
 if (isMain) {
   const agentLoopDeps = {

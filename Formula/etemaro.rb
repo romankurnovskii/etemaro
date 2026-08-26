@@ -1,8 +1,8 @@
 class Etemaro < Formula
   desc "Autonomous DLMM LP agent for Meteora on Solana"
   homepage "https://github.com/romankurnovskii/etemaro"
-  version "3.4.3"
-  url "https://registry.npmjs.org/@etemaro/cli/-/cli-3.4.3.tgz"
+  version "3.4.4"
+  url "https://registry.npmjs.org/@etemaro/cli/-/cli-3.4.4.tgz"
   
   depends_on "node"
 
