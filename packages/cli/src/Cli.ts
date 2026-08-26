@@ -34,6 +34,8 @@ import {
   briefing,
   hivemind,
   tools,
+  defaultUserConfigStr,
+  DEFAULT_STRATEGIES,
 } from '@etemaro/core';
 import { Daemon } from '@etemaro/daemon';
 
@@ -334,16 +336,24 @@ export class Cli {
         'dry-run': { type: 'boolean' },
         silent: { type: 'boolean' },
         limit: { type: 'string' },
+        dir: { type: 'string' },
+        label: { type: 'string' },
       },
       allowPositionals: true,
       strict: false,
     });
 
     switch (subcommand) {
+      case 'generate-wallet':
+      case 'new-wallet':
+        return this.handleGenerateWallet(flags);
       case 'balance':
       case 'wallet':
         if (sub2 === 'swap-all') {
           return this.handleSwapAllTokensToSol(flags);
+        }
+        if (sub2 === 'generate' || sub2 === 'new') {
+          return this.handleGenerateWallet(flags);
         }
         return this.handleBalance();
       case 'positions':
@@ -396,6 +406,8 @@ export class Cli {
         return this.handlePerformance(flags);
       case 'discord-signals':
         return this.handleDiscordSignals(sub2);
+      case 'init':
+        return this.handleInit(flags);
       default:
         die(`Unknown command: ${subcommand}. Run 'etemaro help' for usage.`);
     }
@@ -409,6 +421,82 @@ export class Cli {
   }
 
   // ─── Command Handlers ──────────────────────────────────────────
+
+  private handleInit(flags: Record<string, any>): void {
+    const targetDir = typeof flags.dir === 'string' && flags.dir.trim().length > 0 ? path.resolve(flags.dir) : this.etemaroDir;
+    const configDir = path.join(targetDir, 'config');
+    const dataDir = path.join(targetDir, 'data');
+
+    fs.mkdirSync(targetDir, { recursive: true });
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.mkdirSync(dataDir, { recursive: true });
+
+    // .env
+    const envFile = path.join(targetDir, '.env');
+    let envCreated = false;
+    if (!fs.existsSync(envFile)) {
+      const template = `# etemaro process environment variables
+WALLET_PRIVATE_KEY=""
+HELIUS_API_KEY=""
+RPC_URL="https://pump.helius-rpc.com"
+LLM_API_KEY=""
+LLM_BASE_URL="https://openrouter.ai/api/v1"
+LLM_MODEL="anthropic/claude-3.5-sonnet"
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
+TELEGRAM_ALLOWED_USER_IDS=""
+JUPITER_API_KEY=""
+`;
+      fs.writeFileSync(envFile, template);
+      envCreated = true;
+    }
+
+    // config/user-config.json
+    const userConfigFile = path.join(configDir, 'user-config.json');
+    let configCreated = false;
+    if (!fs.existsSync(userConfigFile)) {
+      fs.writeFileSync(userConfigFile, defaultUserConfigStr);
+      configCreated = true;
+    }
+
+    // data/strategy-library.shared.json
+    const sharedStrategyFile = path.join(dataDir, 'strategy-library.shared.json');
+    let strategyCreated = false;
+    if (!fs.existsSync(sharedStrategyFile)) {
+      const sharedData = { strategies: DEFAULT_STRATEGIES };
+      fs.writeFileSync(sharedStrategyFile, JSON.stringify(sharedData, null, 2) + '\n');
+      strategyCreated = true;
+    }
+
+    // SKILL.md
+    this.writeSkillMd();
+
+    out({
+      success: true,
+      directory: targetDir,
+      env: { path: envFile, created: envCreated },
+      config: { path: userConfigFile, created: configCreated },
+      strategyLibrary: { path: sharedStrategyFile, created: strategyCreated },
+      message: 'Etemaro runtime directory initialized successfully.',
+    });
+  }
+
+  private handleGenerateWallet(flags: Record<string, any>): void {
+    const configDir = path.join(this.etemaroDir, 'config');
+    const result = wallet.generateNewWallet({
+      label: flags.label || 'CLI Generated Keypair',
+      configDir,
+    });
+    out({
+      success: true,
+      publicKey: result.publicKey,
+      privateKey: result.privateKey,
+      createdAt: result.createdAt,
+      label: result.label,
+      savedTo: path.join(configDir, 'wallets.json'),
+      message: 'New Solana wallet generated and saved to config/wallets.json',
+    });
+  }
 
   private async handleBalance(): Promise<void> {
     out(await this.adapters.wallet.getWalletBalances());
