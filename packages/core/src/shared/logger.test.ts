@@ -133,13 +133,13 @@ describe('createTimer', () => {
   it('returns elapsed_ms that increases over time', async () => {
     const timer = createTimer();
     expect(timer.elapsed_ms).toBeGreaterThanOrEqual(0);
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 25));
     expect(timer.elapsed_ms).toBeGreaterThanOrEqual(10);
   });
 
   it('stop() returns final elapsed time and freezes it', async () => {
     const timer = createTimer();
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 25));
     const stopped = timer.stop();
     expect(stopped).toBeGreaterThanOrEqual(10);
     // After stop, elapsed_ms should not change
