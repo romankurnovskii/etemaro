@@ -20,18 +20,27 @@ jobs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       release_id: ${{ steps.create_release.outputs.id }}
     steps:
-      - name: Create Release
+      - name: Create or Get Existing Release
         id: create_release
-        uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
-        with:
-          tag_name: ${{ github.event.inputs.test_tag || github.ref_name }}
-          release_name: 'Etemaro Desktop ${{ github.event.inputs.test_tag || github.ref_name }}'
-          body: |
-            Release binaries for Etemaro Desktop version ${{ github.event.inputs.test_tag || github.ref_name }}.
-          draft: false
-          prerelease: false
+          GH_TOKEN: ${{ secrets.TOKEN_PR || secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.test_tag || github.ref_name }}
+        run: |
+          RELEASE_JSON=$(gh api repos/${{ github.repository }}/releases/tags/${TAG} 2>/dev/null || true)
+          RELEASE_ID=$(echo "$RELEASE_JSON" | jq -r '.id // empty')
+          UPLOAD_URL=$(echo "$RELEASE_JSON" | jq -r '.upload_url // empty')
+          if [ -z "$RELEASE_ID" ]; then
+            RES=$(gh api --method POST repos/${{ github.repository }}/releases \
+              -f tag_name="${TAG}" \
+              -f name="Etemaro Desktop ${TAG}" \
+              -f body="Release binaries for Etemaro Desktop version ${TAG}." \
+              -F draft=false \
+              -F prerelease=false)
+            RELEASE_ID=$(echo "$RES" | jq -r '.id')
+            UPLOAD_URL=$(echo "$RES" | jq -r '.upload_url')
+          fi
+          echo "id=${RELEASE_ID}" >> $GITHUB_OUTPUT
+          echo "upload_url=${UPLOAD_URL}" >> $GITHUB_OUTPUT
 
   build_macos:
     needs: create_release
