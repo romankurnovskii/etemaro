@@ -1,6 +1,6 @@
 {
   "name": "@etemaro/cli",
-  "version": "3.4.2",
+  "version": "3.4.3",
   "type": "module",
   "main": "dist/Cli.cjs",
   "bin": {
@@ -14,13 +14,12 @@
   "files": [
     "dist"
   ],
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
     "@etemaro/core": "workspace:*",
     "@etemaro/daemon": "workspace:*",
-    "dotenv": "^17.4.2"
-  },
-  "devDependencies": {
     "@types/node": "^26.2.0",
+    "dotenv": "^17.4.2",
     "tsup": "^8.5.1",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2"

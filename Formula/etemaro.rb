@@ -1,8 +1,8 @@
 class Etemaro < Formula
-  desc "Etemaro LP Strategy CLI"
-  homepage "https://etemaro.com"
-  version "3.4.2" # This will be updated by release workflow
-  url "https://registry.npmjs.org/@etemaro/cli/-/cli-3.4.2.tgz"
+  desc "Autonomous DLMM LP agent for Meteora on Solana"
+  homepage "https://github.com/romankurnovskii/etemaro"
+  version "3.4.3"
+  url "https://registry.npmjs.org/@etemaro/cli/-/cli-3.4.3.tgz"
   
   depends_on "node"
 
