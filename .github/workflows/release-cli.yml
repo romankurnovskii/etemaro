@@ -15,7 +15,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install pnpm
@@ -26,8 +26,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build CLI
-        run: pnpm --filter @etemaro/cli run build
+      - name: Build packages and CLI
+        run: pnpm run build
 
       - name: Publish to NPM
         run: pnpm --filter @etemaro/cli publish --access public --no-git-checks
