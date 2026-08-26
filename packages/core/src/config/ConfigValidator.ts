@@ -20,7 +20,10 @@ function getConfigFileName(): string {
 }
 
 function isHelpOrInfoCommand(): boolean {
-  return process.env.ETEMARO_SKIP_ENV_VALIDATION === '1' || process.argv.some((a) => ['help', '--help', '-h', '--version', '-v', 'init'].includes(a));
+  return (
+    process.env.ETEMARO_SKIP_ENV_VALIDATION === '1' ||
+    process.argv.some((a) => ['help', '--help', '-h', '--version', '-v', 'init', 'generate-wallet', 'new-wallet', 'wallet'].includes(a))
+  );
 }
 
 export function loadAndValidateConfig(): ValidatedUserConfig {

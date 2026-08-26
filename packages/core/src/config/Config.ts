@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import type { AppConfig } from '../shared/types.js';
 import { repoPath, dataPath, USER_CONFIG_PATH, MIN_SAFE_BINS_BELOW, TOKEN_MINTS, setMinSafeBinsBelowOverride } from '../shared/constants.js';
 import { loadAndValidateConfig } from './ConfigValidator.js';
+import { defaultUserConfigStr } from './defaultUserConfig.js';
 import type { ValidatedUserConfig } from './schema.js';
 import { numericConfig, resolveEnvString } from '../shared/utils.js';
 
@@ -23,15 +24,15 @@ function applyUserConfigToEnv(u: ValidatedUserConfig): void {
   if (connection?.heliusApiKey) process.env.HELIUS_API_KEY ||= connection.heliusApiKey;
   if (connection?.telegramBotToken) process.env.TELEGRAM_BOT_TOKEN ||= connection.telegramBotToken;
   if (connection?.telegramAllowedUserIds) process.env.TELEGRAM_ALLOWED_USER_IDS ||= connection.telegramAllowedUserIds;
-  if (u.llm.defaultModel || u.llm.managementModel) {
-    process.env.LLM_MODEL ||= u.llm.defaultModel || u.llm.managementModel;
+  if (u.llm?.defaultModel || u.llm?.managementModel) {
+    process.env.LLM_MODEL ||= u.llm?.defaultModel || u.llm?.managementModel;
   }
-  if (u.llm.baseUrl) process.env.LLM_BASE_URL ||= u.llm.baseUrl;
-  if (u.llm.apiKey) process.env.LLM_API_KEY ||= u.llm.apiKey;
+  if (u.llm?.baseUrl) process.env.LLM_BASE_URL ||= u.llm?.baseUrl;
+  if (u.llm?.apiKey) process.env.LLM_API_KEY ||= u.llm?.apiKey;
   if (connection?.dryRun !== undefined) process.env.DRY_RUN ||= String(connection.dryRun);
   if (connection?.telegramChatId) process.env.TELEGRAM_CHAT_ID ||= connection.telegramChatId;
-  const meridian = u.api.meridian;
-  const lpAgent = u.api.lpAgent;
+  const meridian = u.api?.meridian;
+  const lpAgent = u.api?.lpAgent;
   if (meridian?.enabled !== false && meridian?.publicApiKey) {
     process.env.PUBLIC_API_KEY ||= meridian?.publicApiKey;
   }
@@ -43,7 +44,33 @@ function applyUserConfigToEnv(u: ValidatedUserConfig): void {
 }
 
 function buildConfig(): AppConfig {
-  const u = loadAndValidateConfig();
+  let loaded: Partial<ValidatedUserConfig> = {};
+  try {
+    loaded = loadAndValidateConfig();
+  } catch (err: any) {
+    if (process.env.NODE_ENV !== 'test') {
+      console.warn(`[config] Warning: using fallback defaults for info/init: ${err.message}`);
+    }
+  }
+
+  const defaultFallback = JSON.parse(defaultUserConfigStr) as ValidatedUserConfig;
+  const u = {
+    ...defaultFallback,
+    ...loaded,
+    connection: { ...defaultFallback.connection, ...loaded.connection },
+    risk: { ...defaultFallback.risk, ...loaded.risk },
+    screening: { ...defaultFallback.screening, ...loaded.screening },
+    management: { ...defaultFallback.management, ...loaded.management },
+    strategy: { ...defaultFallback.strategy, ...loaded.strategy },
+    api: {
+      ...defaultFallback.api,
+      ...loaded.api,
+      meridian: { ...defaultFallback.api?.meridian, ...loaded.api?.meridian },
+      lpAgent: { ...defaultFallback.api?.lpAgent, ...loaded.api?.lpAgent },
+    },
+    llm: { ...defaultFallback.llm, ...loaded.llm },
+    chartIndicators: { ...defaultFallback.chartIndicators, ...loaded.chartIndicators },
+  } as unknown as ValidatedUserConfig;
 
   applyUserConfigToEnv(u);
 
