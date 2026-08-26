@@ -2534,10 +2534,11 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
 // ─── Self-Execution ──────────────────────────────────────────────
 function isScriptTarget(filePath: string | undefined): boolean {
   if (!filePath) return false;
-  return filePath.endsWith('Daemon.ts') || filePath.endsWith('Daemon.js') || filePath.endsWith('index.js');
+  const lower = filePath.toLowerCase();
+  return lower.endsWith('daemon.ts') || lower.endsWith('daemon.js') || lower.endsWith('daemon.cjs');
 }
 
-const isMain = isScriptTarget(process.argv[1]) || isScriptTarget(process.env.pm_exec_path);
+const isMain = isScriptTarget(process.argv[1]) || (process.env.pm_exec_path ? isScriptTarget(process.env.pm_exec_path) : false);
 
 if (isMain) {
   const agentLoopDeps: AgentLoopDeps = {
@@ -2591,6 +2592,6 @@ if (isMain) {
     console.error('Daemon failed to start:', err);
     process.exit(1);
   });
-} else {
+} else if (process.env.pm_exec_path) {
   log('pm2', `Etemaro started as a child process. No REPL available. PID: ${process.pid}`);
 }
