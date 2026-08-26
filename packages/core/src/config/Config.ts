@@ -160,7 +160,7 @@ function buildConfig(): AppConfig {
     hiveMind: {
       url: typeof u.hiveMindUrl === 'string' && u.hiveMindUrl ? u.hiveMindUrl : null,
       apiKey: process.env.HIVEMIND_API_KEY || (typeof u.hiveMindApiKey === 'string' && u.hiveMindApiKey ? u.hiveMindApiKey : null),
-      agentId: typeof u.agentId === 'string' && u.agentId ? u.agentId : null,
+      agentId: typeof u.hiveMindAgentId === 'string' && u.hiveMindAgentId ? u.hiveMindAgentId : null,
       pullMode: u.hiveMindPullMode as string,
     },
     api: {
