@@ -29,7 +29,9 @@
     "lint": "pnpm -r run typecheck",
     "prepare": "husky",
     "pm2:start": "pm2 start config/ecosystem.config.cjs",
-    "pm2:restart": "pm2 restart etemaro --update-env",
+    "pm2:restart": "pm2 restart config/ecosystem.config.cjs --update-env",
+    "pm2:stop": "pm2 stop etemaro",
+    "pm2:delete": "pm2 delete etemaro",
     "pm2:logs": "pm2 logs etemaro --lines 100",
     "desktop": "pnpm --filter @etemaro/desktop tauri dev",
     "postinstall": "node scripts/patch-anchor.js"
