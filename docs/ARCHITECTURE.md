@@ -5,11 +5,12 @@
 The codebase is a pnpm monorepo. Config and runtime data live at the repository root; application code is split across three packages under `packages/`:
 
 ```
-config/
-  agents.json
-  user-config.json           # Active user configuration (copied from user-config.example.json)
-  user-config.example.json   # Template user configuration
-  user-config.example.json   # Includes GMGN fee provider configuration
+  config/
+    agents.json
+    user-config.json           # Active user configuration (copied from config/templates/user-config.example.json)
+    templates/
+      user-config.example.json   # Template user configuration
+      user-config.example.json   # Includes GMGN fee provider configuration
 data/
   state.json                 # Registry of open/closed positions
   lessons.json               # Historical performance lessons

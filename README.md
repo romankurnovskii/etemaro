@@ -42,7 +42,9 @@ Before running Etemaro, ensure you have:
 # Install Etemaro CLI globally (macOS / Linux)
 curl -fsSL https://etemaro.com/install.sh | sh
 ```
-*Or install via npm / Homebrew:*
+
+_Or install via npm / Homebrew:_
+
 ```bash
 npm install -g @etemaro/cli
 # or: brew install romankurnovskii/awesome-brew/etemaro
@@ -89,7 +91,7 @@ pnpm install
 
 # 2. Copy config templates (.env and user-config.json)
 cp .env.example .env
-cp config/user-config.example.json config/user-config.json
+cp config/templates/user-config.example.json config/user-config.json
 
 # 3. Start in dry-run mode
 pnpm run dev

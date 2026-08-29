@@ -34,7 +34,7 @@ function applyUserConfigToEnv(u: ValidatedUserConfig): void {
   const meridian = u.api?.meridian;
   const lpAgent = u.api?.lpAgent;
   if (meridian?.enabled !== false && meridian?.publicApiKey) {
-    process.env.PUBLIC_API_KEY ||= meridian?.publicApiKey;
+    process.env.AGENT_MERIDIAN_PUBLIC_API_KEY ||= meridian?.publicApiKey;
   }
   if (meridian?.enabled !== false && meridian?.url) {
     process.env.AGENT_MERIDIAN_API_URL ||= meridian?.url;
@@ -196,7 +196,7 @@ function buildConfig(): AppConfig {
       meridian: {
         enabled: u.api.meridian?.enabled ?? true,
         url: (process.env.AGENT_MERIDIAN_API_URL || u.api.meridian?.url) ?? null,
-        publicApiKey: (process.env.PUBLIC_API_KEY || u.api.meridian?.publicApiKey) ?? null,
+        publicApiKey: (process.env.AGENT_MERIDIAN_PUBLIC_API_KEY || u.api.meridian?.publicApiKey) ?? null,
         lpAgentRelayEnabled: u.api.meridian?.lpAgentRelayEnabled ?? false,
       },
       lpAgent: {

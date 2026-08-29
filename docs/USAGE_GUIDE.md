@@ -55,7 +55,7 @@ npm install
 
 # 2. Copy config templates (.env + user-config.json)
 cp .env.example .env
-cp config/user-config.example.json config/user-config.json
+cp config/templates/user-config.example.json config/user-config.json
 
 # 3. Edit .env and enter your credentials:
 #   - WALLET_PRIVATE_KEY (Solana wallet private key)
