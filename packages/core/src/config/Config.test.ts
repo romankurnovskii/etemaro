@@ -84,14 +84,14 @@ describe('hiveMind agentId support', () => {
 
     mockExistsSync = vi.fn((path: string) => {
       if (path.endsWith('user-config.json')) return true;
-      if (path.endsWith('user-config.example.json')) return true;
+      if (path.endsWith('templates/user-config.example.json')) return true;
       return true;
     });
 
     const baseConfig = JSON.parse(defaultUserConfigStr);
 
     mockReadFileSync = vi.fn((path: string, encoding: string) => {
-      if (path.endsWith('user-config.json') || path.endsWith('user-config.example.json')) {
+      if (path.endsWith('user-config.json') || path.endsWith('templates/user-config.example.json')) {
         return JSON.stringify({
           ...baseConfig,
           agentId: 'local-top-level-agent',
@@ -129,7 +129,7 @@ describe('hiveMind agentId support', () => {
   it('sets hiveMind.agentId correctly when no top-level agentId is present', async () => {
     const baseConfig = JSON.parse(defaultUserConfigStr);
     mockReadFileSync.mockImplementation((path: string, encoding: string) => {
-      if (path.endsWith('user-config.json') || path.endsWith('user-config.example.json')) {
+      if (path.endsWith('user-config.json') || path.endsWith('templates/user-config.example.json')) {
         return JSON.stringify({
           ...baseConfig,
           agentId: null,

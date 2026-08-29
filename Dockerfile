@@ -22,7 +22,7 @@ COPY config/ ./config/
 RUN pnpm install --no-frozen-lockfile
 
 RUN mkdir -p /app/data && \
-    if [ ! -f config/user-config.json ]; then cp config/user-config.example.json config/user-config.json; fi
+    if [ ! -f config/user-config.json ]; then cp config/templates/user-config.example.json config/user-config.json; fi
 
 ENV NODE_ENV=production
 

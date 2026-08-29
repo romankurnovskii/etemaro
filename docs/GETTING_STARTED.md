@@ -11,7 +11,9 @@ A simple guide to run your first autonomous LP agent on Solana.
 ```bash
 curl -fsSL https://etemaro.com/install.sh | sh
 ```
-*Or via npm:*
+
+_Or via npm:_
+
 ```bash
 npm install -g @etemaro/cli
 ```
@@ -23,7 +25,8 @@ brew tap romankurnovskii/awesome-brew
 brew trust --cask romankurnovskii/awesome-brew/etemaro
 brew install romankurnovskii/awesome-brew/etemaro --cask
 ```
-*(Windows and Linux builds are also available on [GitHub Releases](https://github.com/romankurnovskii/etemaro/releases))*
+
+_(Windows and Linux builds are also available on [GitHub Releases](https://github.com/romankurnovskii/etemaro/releases))_
 
 ### Option C: Developer / Source Setup
 
@@ -55,7 +58,7 @@ Copy the example files and fill in your values:
 
 ```bash
 cp .env.example .env
-cp config/user-config.example.json config/user-config.json
+cp config/templates/user-config.example.json config/user-config.json
 ```
 
 Edit `.env` and set:

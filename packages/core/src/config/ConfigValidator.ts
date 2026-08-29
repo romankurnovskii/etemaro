@@ -27,7 +27,7 @@ function isHelpOrInfoCommand(): boolean {
 }
 
 export function loadAndValidateConfig(): ValidatedUserConfig {
-  const EXAMPLE_CONFIG_PATH = configPath('user-config.example.json');
+  const EXAMPLE_CONFIG_PATH = configPath('templates/user-config.example.json');
 
   // Create example config if it doesn't exist
   if (!fs.existsSync(EXAMPLE_CONFIG_PATH)) {
