@@ -18,7 +18,7 @@
   "devDependencies": {
     "@etemaro/core": "workspace:*",
     "@etemaro/daemon": "workspace:*",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.3.0",
     "dotenv": "^17.4.2",
     "tsup": "^8.5.1",
     "tsx": "^4.23.12",
