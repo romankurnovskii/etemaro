@@ -11,12 +11,12 @@
 
 import fs from 'node:fs';
 import { log } from '../shared/logger.js';
-import { dataPath, repoPath, configPath } from '../shared/constants.js';
+import { strategyLibraryPath, repoPath, configPath } from '../shared/constants.js';
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js';
 import { config } from '../config/Config.js';
 import type { Strategy, StrategyLibraryData } from '../shared/types.js';
 
-const STRATEGY_FILE = dataPath('strategy-library.json');
+const STRATEGY_FILE = strategyLibraryPath('strategy-library.json');
 const SHARED_STRATEGY_FILE = repoPath('data', 'strategy-library.shared.json');
 
 function loadPrivate(): StrategyLibraryData {
@@ -31,7 +31,7 @@ function load(): StrategyLibraryData {
   let sharedDb = loadJsonFile<StrategyLibraryData>(SHARED_STRATEGY_FILE, { strategies: {} });
 
   if (Object.keys(sharedDb.strategies).length === 0) {
-    const localSharedFile = dataPath('strategy-library.shared.json');
+    const localSharedFile = strategyLibraryPath('strategy-library.shared.json');
     if (fs.existsSync(localSharedFile)) {
       sharedDb = loadJsonFile<StrategyLibraryData>(localSharedFile, { strategies: {} });
     }
@@ -42,6 +42,14 @@ function load(): StrategyLibraryData {
   }
 
   const privateDb = loadPrivate();
+
+  const sharedIds = new Set(Object.keys(sharedDb.strategies));
+  for (const id of Object.keys(privateDb.strategies)) {
+    if (sharedIds.has(id)) {
+      log('strategy', `Warning: private strategy '${id}' collides with a shared strategy id and overrides it.`);
+      log('strategy', `Duplicate strategy ids between shared and private libraries should be resolved (see issue #148).`);
+    }
+  }
 
   return {
     strategies: {

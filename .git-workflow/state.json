@@ -1,0 +1,18 @@
+{
+  "target_branch": "main",
+  "status": "complete",
+  "flags": {
+    "skip_tests": false,
+    "draft_pr": false,
+    "no_push": false,
+    "squash": false,
+    "conventional": true,
+    "trunk_based": false
+  },
+  "current_step": "complete",
+  "current_phase": 5,
+  "completed_steps": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  "files_created": ["00-git-context.md", "01-code-review.md", "02-breaking-changes.md", "03-test-results.md", "04-test-gaps.md"],
+  "started_at": "2026-08-29T11:08:54Z",
+  "last_updated": "2026-08-29T11:35:00Z"
+}
