@@ -1973,6 +1973,12 @@ IMPORTANT:
       return;
     }
 
+    if (text === '/stop') {
+      await this.adapters.telegram.sendMessage('🛑 Shutting down agent...').catch(() => {});
+      await this.shutdown('telegram /stop');
+      return;
+    }
+
     if (text === '/resume') {
       if (!this.cronStarted) {
         this.cronStarted = true;
