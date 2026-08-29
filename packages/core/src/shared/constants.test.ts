@@ -12,7 +12,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO_ROOT, configPath, dataPath, getDataDir } from './constants.js';
+import { REPO_ROOT, configPath, dataPath, getDataDir, strategyLibraryPath } from './constants.js';
 
 const ENV_KEYS = ['USER_CONFIG_PATH', 'ETEMARO_DATA_DIR', 'DATA_DIR'] as const;
 
@@ -97,5 +97,19 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     if (!home) return;
     process.env.ETEMARO_DATA_DIR = '~/.config/etemaro/data';
     expect(getDataDir()).toBe(path.resolve(home, '.config/etemaro/data'));
+  });
+
+  it('strategyLibraryPath does NOT add agent suffix even with a custom USER_CONFIG_PATH (issue #148 regression)', () => {
+    envSnap = snapshotEnv();
+    delete process.env.ETEMARO_DATA_DIR;
+    delete process.env.DATA_DIR;
+    process.env.USER_CONFIG_PATH = '/path/to/config/agt_a717d5fa29c5d09fe188bc16.json';
+
+    // state.json is intentionally agent-suffixed...
+    expect(dataPath('state.json')).toBe(path.join(REPO_ROOT, 'data', 'state-agt_a717d5fa29c5d09fe188bc16.json'));
+    // ...but the strategy library files must NOT be, so the private/shared
+    // libraries resolve for every agent and validateActiveStrategy() finds the strategy.
+    expect(strategyLibraryPath('strategy-library.json')).toBe(path.join(REPO_ROOT, 'data', 'strategy-library.json'));
+    expect(strategyLibraryPath('strategy-library.shared.json')).toBe(path.join(REPO_ROOT, 'data', 'strategy-library.shared.json'));
   });
 });
