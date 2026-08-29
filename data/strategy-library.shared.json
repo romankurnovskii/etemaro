@@ -114,6 +114,30 @@
         "notes": "When total return >= 10% of deployed capital: withdraw_liquidity(bps=5000) to take 50% off. Remaining 50% keeps running. Repeat at next threshold."
       },
       "best_for": "Locking in profits without fully exiting winning positions"
+    },
+    "copy_trade_lag": {
+      "id": "copy_trade_lag",
+      "name": "Copy Trade Lag",
+      "author": "custom",
+      "lp_strategy": "bid_ask",
+      "token_criteria": {
+        "notes": "Follows specific smart wallets into pools."
+      },
+      "entry": {
+        "condition": "Triggered heavily by opportunity poller smart wallet bonus.",
+        "single_side": "token",
+        "notes": "Opens when tracked wallets open. Places bins slightly below active price (1 to 30 bins)."
+      },
+      "range": {
+        "type": "custom",
+        "bins_below_pct": 100,
+        "notes": "Starts 1 bin below the active price down to 30 bins to act as a safety net."
+      },
+      "exit": {
+        "take_profit_pct": 1,
+        "notes": "Quick scalp: takes profit strictly at 1%."
+      },
+      "best_for": "Copy trading alpha wallets safely by entering slightly lower and scalping 1%."
     }
   }
 }
