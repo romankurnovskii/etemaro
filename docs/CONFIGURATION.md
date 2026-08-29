@@ -16,7 +16,7 @@ Etemaro uses a strict schema-validated configuration system (Version 3): every r
               └────────────────────────┘     ALL required fields must be present.
 ```
 
-> The canonical template is [`config/user-config.example.json`](../../config/user-config.example.json). Copy it to `config/user-config.json` before starting: `cp config/user-config.example.json config/user-config.json`.
+> The canonical template is [`config/templates/user-config.example.json`](../../config/templates/user-config.example.json). Copy it to `config/user-config.json` before starting: `cp config/templates/user-config.example.json config/user-config.json`.
 
 ---
 
@@ -263,7 +263,7 @@ The `api` block contains two independent services.
 | --------------------- | -------------------------------------- | ------------------------------------- |
 | `enabled`             | Enable Meridian API requests.          | `true`                                |
 | `url`                 | Meridian API base URL.                 | `"https://api.agentmeridian.xyz/api"` |
-| `publicApiKey`        | Public API key for Meridian endpoints. | `"env.PUBLIC_API_KEY"`                |
+| `publicApiKey`        | Public API key for Meridian endpoints. | `"env.AGENT_MERIDIAN_PUBLIC_API_KEY"` |
 | `lpAgentRelayEnabled` | Enable Meridian relay execution.       | `false`                               |
 
 ##### LPAgent

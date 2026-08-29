@@ -16,7 +16,9 @@ tsconfig.tsbuildinfo
 *wallets.json
 wallets.json
 
-# Configuration files (ignored via config/.gitignore)
+# Configuration files
+config/*.json
+!config/templates/*.json
 
 # Stray Claude Code worktrees
 .claude/worktrees/

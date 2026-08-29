@@ -97,11 +97,11 @@ Read these docs **in this order** before generating config — each one layers o
 
 1. `docs/ARCHITECTURE.md` — understand the strategy library's role in deploy decisions
 2. `docs/CONFIGURATION.md` — full field reference (all categories, types, defaults)
-3. `config/user-config.example.json` — canonical template; every field that must be present
+3. `config/templates/user-config.example.json` — canonical template; every field that must be present
 
 ### Config sections to populate
 
-When generating a new config file, **first copy the entire content of `config/user-config.example.json`**. Then, modify only the specific fields that differ based on the user's requirements. This ensures no required fields are missed. Cover these sections:
+When generating a new config file, **first copy the entire content of `config/templates/user-config.example.json`**. Then, modify only the specific fields that differ based on the user's requirements. This ensures no required fields are missed. Cover these sections:
 
 #### `strategy` section (always required)
 
@@ -233,7 +233,7 @@ Provide the CLI command to activate it.
 | Need                                          | Read                                                |
 | --------------------------------------------- | --------------------------------------------------- |
 | All config fields + types                     | `docs/CONFIGURATION.md`                             |
-| Field defaults                                | `config/user-config.example.json`                   |
+| Field defaults                                | `config/templates/user-config.example.json`         |
 | Existing strategy presets                     | `data/strategy-library.json`                        |
 | Smart wallet tracking setup                   | `docs/QA.md` → Smart Wallets section                |
 | Architecture (how strategy is used at deploy) | `docs/ARCHITECTURE.md` → Strategy Library section   |

@@ -1,8 +1,3 @@
-# Ignore all configuration files in this directory
+# Nested git: ignore everything, use git add -f for runtime configs
 *
-
-# Except example templates and this gitignore itself
-!*.example.json
-!*.example.cjs
 !.gitignore
-trader-notes.md
