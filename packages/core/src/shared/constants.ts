@@ -113,6 +113,20 @@ export function dataPath(...segments: string[]): string {
   return path.join(baseDir, ...segments);
 }
 
+/**
+ * Resolve a path relative to the data directory for the strategy libraries.
+ *
+ * Unlike `dataPath`, the strategy library files must NOT get an agent-name
+ * suffix: there are exactly two shared-across-agents strategy libraries
+ * (the repo-tracked `strategy-library.shared.json` and the per-deployment,
+ * user-maintained `strategy-library.json`). Applying the agent suffix here
+ * made `validateActiveStrategy()` fail to find private strategies when a
+ * custom agent config was active (see GitHub issue #148).
+ */
+export function strategyLibraryPath(...segments: string[]): string {
+  return path.join(getDataDir(), ...segments);
+}
+
 /** Resolve a path relative to the config directory. */
 export function configPath(...segments: string[]): string {
   // Honor USER_CONFIG_PATH env var for the main config file
