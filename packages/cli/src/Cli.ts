@@ -16,28 +16,64 @@ dotenv.config({ override: true });
 import fs from 'fs';
 import path from 'path';
 import { parseArgs } from 'util';
-import {
-  config,
-  computeDeployAmount,
-  getTrackedPosition,
-  log,
-  dataPath,
-  meteora,
-  wallet,
-  screening,
-  toolExecutor,
-  domain,
-  token,
-  study,
-  telegram,
-  desktop,
-  briefing,
-  hivemind,
-  tools,
-  defaultUserConfigStr,
-  DEFAULT_STRATEGIES,
-} from '@etemaro/core';
-import { Daemon } from '@etemaro/daemon';
+
+// Type-only imports to help tsc
+type CoreExports = typeof import('@etemaro/core');
+type DaemonExports = typeof import('@etemaro/daemon');
+
+// Lazily populated core exports (set after flag parsing)
+let config: CoreExports['config'] = null as any;
+let computeDeployAmount: CoreExports['computeDeployAmount'] = null as any;
+let getTrackedPosition: CoreExports['getTrackedPosition'] = null as any;
+let log: CoreExports['log'] = null as any;
+let dataPath: CoreExports['dataPath'] = null as any;
+let meteora: CoreExports['meteora'] = null as any;
+let wallet: CoreExports['wallet'] = null as any;
+let screening: CoreExports['screening'] = null as any;
+let toolExecutor: CoreExports['toolExecutor'] = null as any;
+let domain: CoreExports['domain'] = null as any;
+let token: CoreExports['token'] = null as any;
+let study: CoreExports['study'] = null as any;
+let telegram: CoreExports['telegram'] = null as any;
+let desktop: CoreExports['desktop'] = null as any;
+let briefing: CoreExports['briefing'] = null as any;
+let hivemind: CoreExports['hivemind'] = null as any;
+let tools: CoreExports['tools'] = null as any;
+let defaultUserConfigStr: CoreExports['defaultUserConfigStr'] = null as any;
+let DEFAULT_STRATEGIES: CoreExports['DEFAULT_STRATEGIES'] = null as any;
+
+// Lazily populated Daemon constructor
+let DaemonCtor: DaemonExports['Daemon'] = null as any;
+
+/**
+ * Load core and daemon modules after environment is prepared.
+ * Must be called before using any core functionality.
+ */
+async function loadCore(): Promise<void> {
+  const [coreMod, daemonMod] = await Promise.all([import('@etemaro/core'), import('@etemaro/daemon')]);
+  // Assign core exports
+  config = coreMod.config;
+  computeDeployAmount = coreMod.computeDeployAmount;
+  getTrackedPosition = coreMod.getTrackedPosition;
+  log = coreMod.log;
+  dataPath = coreMod.dataPath;
+  meteora = coreMod.meteora;
+  wallet = coreMod.wallet;
+  screening = coreMod.screening;
+  toolExecutor = coreMod.toolExecutor;
+  domain = coreMod.domain;
+  token = coreMod.token;
+  study = coreMod.study;
+  telegram = coreMod.telegram;
+  desktop = coreMod.desktop;
+  briefing = coreMod.briefing;
+  hivemind = coreMod.hivemind;
+  tools = coreMod.tools;
+  defaultUserConfigStr = coreMod.defaultUserConfigStr;
+  DEFAULT_STRATEGIES = coreMod.DEFAULT_STRATEGIES;
+  // Assign Daemon constructor
+  DaemonCtor = daemonMod.Daemon;
+}
 
 // ─── Adapter Imports ────────────────────────────────────────────
 
@@ -271,6 +307,8 @@ Starts the autonomous agent with cron jobs (management + screening).
 ## Flags
 --dry-run     Skip all on-chain transactions
 --silent      Suppress Telegram notifications for this run
+--config <path>  Path to user-config.json (alias: -c). Overrides USER_CONFIG_PATH env var.
+--data-dir <path>  Data directory (alias: -d). Overrides ETEMARO_DATA_DIR/DATA_DIR env vars.
 `;
 
 // ─── Output Helpers ─────────────────────────────────────────────
@@ -859,6 +897,38 @@ function isCliTarget(filePath: string | undefined): boolean {
 const isMain = isCliTarget(process.argv[1]) || (typeof require !== 'undefined' && require.main === module);
 
 if (isMain) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+
+/**
+ * Extract the value for a `--flag`/`-f` pair from an argv array.
+ * Returns undefined if the flag is absent, has no value, or the value
+ * looks like another flag (so `etemaro balance --config` with no path
+ * does not swallow the next subcommand).
+ *
+ * Extracted as a pure function for direct unit testing.
+ */
+export function resolveGlobalFlagValue(argv: string[], flag: string, alias?: string): string | undefined {
+  const idx = argv.findIndex((a) => a === flag || (alias !== undefined && a === alias));
+  if (idx === -1) return undefined;
+  const value = argv[idx + 1];
+  if (value === undefined || value.startsWith('-')) return undefined;
+  return value;
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+
+  const configPathArg = resolveGlobalFlagValue(argv, '--config', '-c');
+  const dataDirArg = resolveGlobalFlagValue(argv, '--data-dir', '-d');
+  if (configPathArg) process.env.USER_CONFIG_PATH = path.resolve(configPathArg);
+  if (dataDirArg) process.env.ETEMARO_DATA_DIR = path.resolve(dataDirArg);
+
+  await loadCore();
+
   const agentLoopDeps = {
     executeTool: toolExecutor.executeTool,
     getTools: () => tools,
@@ -886,7 +956,7 @@ if (isMain) {
     getWeightsSummary: domain.getWeightsSummary,
   };
 
-  const daemon = new Daemon({
+  const daemon = new DaemonCtor({
     meteora,
     wallet,
     screening,
@@ -920,8 +990,5 @@ if (isMain) {
     token,
     daemon,
   });
-  cli.run().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+  await cli.run(argv);
 }
