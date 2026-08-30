@@ -18,6 +18,8 @@ import path from 'node:path';
 // so the factory closure has access to this state at hoist time.
 const {
   snapshotState,
+  fsStore,
+  mockDataPath,
   mockGetTrackedPositions,
   mockListSmartWallets,
   mockDiffSmartWalletPositions,
@@ -36,6 +38,8 @@ const {
     content: null as string | null,
     exists: false as boolean,
   },
+  fsStore: {} as Record<string, string>,
+  mockDataPath: vi.fn().mockImplementation((p: string) => path.join('/tmp/test-data', p)),
   mockGetTrackedPositions: vi.fn(),
   mockListSmartWallets: vi.fn(),
   mockDiffSmartWalletPositions: vi.fn(),
@@ -55,13 +59,17 @@ const {
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
   const existsSync = vi.fn().mockImplementation((filePath: any) => {
-    if (String(filePath).includes('.smart-wallets-snapshot.json')) {
+    if (String(filePath).includes('.smart-wallets-snapshot')) {
+      const p = String(filePath);
+      if (p in fsStore) return true;
       return snapshotState.exists;
     }
     return actual.existsSync(filePath);
   });
   const readFileSync = vi.fn().mockImplementation((filePath: any, encoding?: any) => {
-    if (String(filePath).includes('.smart-wallets-snapshot.json')) {
+    if (String(filePath).includes('.smart-wallets-snapshot')) {
+      const p = String(filePath);
+      if (p in fsStore) return fsStore[p];
       if (snapshotState.content === null) {
         throw new Error('ENOENT: no such file or directory');
       }
@@ -70,7 +78,9 @@ vi.mock('fs', async () => {
     return actual.readFileSync(filePath, encoding);
   });
   const writeFileSync = vi.fn().mockImplementation((filePath: any, data: any, options?: any) => {
-    if (String(filePath).includes('.smart-wallets-snapshot.json')) {
+    if (String(filePath).includes('.smart-wallets-snapshot')) {
+      const p = String(filePath);
+      fsStore[p] = String(data);
       snapshotState.content = data;
       snapshotState.exists = true;
       return undefined;
@@ -78,14 +88,19 @@ vi.mock('fs', async () => {
     return actual.writeFileSync(filePath, data, options);
   });
   const renameSync = vi.fn().mockImplementation((oldPath: any, newPath: any) => {
-    if (String(oldPath).includes('.smart-wallets-snapshot.json') || String(newPath).includes('.smart-wallets-snapshot.json')) {
+    if (String(oldPath).includes('.smart-wallets-snapshot') || String(newPath).includes('.smart-wallets-snapshot')) {
+      const data = fsStore[String(oldPath)] || snapshotState.content;
+      if (data) {
+        fsStore[String(newPath)] = data;
+      }
       snapshotState.exists = true;
       return undefined;
     }
     return actual.renameSync(oldPath, newPath);
   });
   const unlinkSync = vi.fn().mockImplementation((filePath: any) => {
-    if (String(filePath).includes('.smart-wallets-snapshot.json')) {
+    if (String(filePath).includes('.smart-wallets-snapshot')) {
+      delete fsStore[String(filePath)];
       return undefined;
     }
     return actual.unlinkSync(filePath);
@@ -130,7 +145,7 @@ vi.mock('@etemaro/core', () => ({
   },
   computeDeployAmount: mockComputeDeployAmount,
   getDataDir: mockGetDataDir,
-  dataPath: (p: string) => path.join('/tmp/test-data', p),
+  dataPath: (p: string) => mockDataPath(p),
   sharedDataPath: (p: string) => path.join('/tmp/test-data', p),
   configPath: (p: string) => path.join('/tmp/test-config', p),
   log: mockLog,
@@ -261,6 +276,10 @@ function createMockAdapters(): DaemonAdapters {
 function resetSnapshot() {
   snapshotState.content = null;
   snapshotState.exists = false;
+  for (const key of Object.keys(fsStore)) {
+    delete fsStore[key];
+  }
+  mockDataPath.mockImplementation((p: string) => path.join('/tmp/test-data', p));
 }
 
 // ─── Shared helpers ─────────────────────────────────────────────────────────
@@ -674,5 +693,33 @@ describe('runSmartWalletScreening — maxPositions enforcement', () => {
 
     // Restore config
     coreModule.config.risk.maxPositions = originalConfig.risk.maxPositions;
+  });
+
+  // ── Case 15: Migration fallback from legacy unsuffixed snapshot ──
+  it('migrates legacy unsuffixed snapshot to agent-suffixed snapshot when agent snapshot is missing', async () => {
+    mockDataPath.mockImplementation((p: string) => path.join('/tmp/test-data', '.smart-wallets-snapshot-agt_1.json'));
+    const legacyPath = path.join(mockGetDataDir(), '.smart-wallets-snapshot.json');
+    fsStore[legacyPath] = JSON.stringify({
+      initialized: true,
+      positions: [{ position: 'legacy-p1', pool: 'legacy-pool1' }],
+    });
+
+    mockGetTrackedPositions.mockReturnValue([]);
+    mockListSmartWallets.mockReturnValue({
+      wallets: [{ address: 'w1', type: 'lp' }],
+    });
+    mockGetWalletPositions.mockResolvedValue({
+      positions: [walletPos('legacy-p1', 'legacy-pool1')],
+    });
+    mockDiffSmartWalletPositions.mockReturnValue({
+      isFirstRun: false,
+      newPositions: [],
+      uniquePools: [],
+      nextSnapshot: { initialized: true, positions: [{ position: 'legacy-p1', pool: 'legacy-pool1' }] },
+    });
+
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    expect(result).toBe('No new positions detected by smart wallets.');
+    expect(fsStore['/tmp/test-data/.smart-wallets-snapshot-agt_1.json']).toContain('legacy-p1');
   });
 });
