@@ -47,6 +47,7 @@ Conventional environment variables the daemon reads:
 
 - `WALLET_PRIVATE_KEY`: Your Solana wallet's base58 private key.
 - `RPC_URL`: Optional override for `connection.rpcUrl`.
+- `RPC_URL_2`: Optional override for `connection.rpcUrl2` (fallback RPC URL on errors / rate limits).
 - `HELIUS_API_KEY`: Helius API key used for wallet balances and token valuations. Required for normal wallet operation.
 - `LLM_API_KEY`: API key for LLM provider.
 - `LLM_BASE_URL`: LLM provider base URL.
@@ -128,7 +129,8 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 
 | Field                    | Purpose                                                       | Example                           |
 | ------------------------ | ------------------------------------------------------------- | --------------------------------- |
-| `rpcUrl`                 | Solana RPC endpoint for chain reads.                          | `"https://pump.helius-rpc.com"`   |
+| `rpcUrl`                 | Primary Solana RPC endpoint for chain reads and transactions. | `"https://pump.helius-rpc.com"`   |
+| `rpcUrl2`                | Fallback Solana RPC endpoint on errors/rate-limits (optional).| `"env.RPC_URL_2"`                 |
 | `walletPrivateKey`       | Wallet private key (base58).                                  | `"env.WALLET_PRIVATE_KEY"`        |
 | `heliusApiKey`           | Helius Wallet API key.                                        | `"env.HELIUS_API_KEY"`            |
 | `dryRun`                 | Prevent live trade execution.                                 | `true`                            |
@@ -278,11 +280,13 @@ The `api` block contains two independent services.
 
 | Field                | Purpose                      | Example                                                |
 | -------------------- | ---------------------------- | ------------------------------------------------------ |
-| `source`             | PnL data source.             | `"rpc"` → read positions via RPC.                      |
+| `source`             | PnL data source.             | `"portfolio"` (Recommended: free Meteora Datapi) or `"rpc"` (On-chain DLMM reads). |
 | `rpcUrl`             | RPC used for PnL reads.      | `"https://pump.helius-rpc.com"` or `"env.PNL_RPC_URL"` |
 | `pollIntervalSec`    | Poll interval (seconds).     | `3`                                                    |
 | `depositCacheTtlSec` | Deposit cache TTL (seconds). | `300`                                                  |
 | `confirmTicks`       | Confirm ticks for PnL calc.  | `2`                                                    |
+
+> **Cost Optimization Note**: Setting `source: "portfolio"` eliminates all Solana RPC calls for position tracking and PnL monitoring by utilizing Meteora's free indexed REST API. See [RPC_AND_API_OPTIMIZATION.md](RPC_AND_API_OPTIMIZATION.md) for full details.
 
 #### Opportunity (Smart Wallet Poller)
 

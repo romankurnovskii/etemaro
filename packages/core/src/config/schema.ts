@@ -93,6 +93,7 @@ export const UserConfigSchema = z.object({
     .object({
       description: z.string().optional(),
       rpcUrl: envString.optional(),
+      rpcUrl2: envStringNullable.optional(),
       walletPrivateKey: envString.optional(),
       heliusApiKey: envStringNullable.optional(),
       telegramBotToken: envStringNullable.optional(),
