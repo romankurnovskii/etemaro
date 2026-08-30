@@ -17,34 +17,34 @@ import {
   PublicKey,
   SystemInstruction,
   SystemProgram,
+  sendAndConfirmTransaction,
   Transaction,
   TransactionInstruction,
   VersionedTransaction,
-  sendAndConfirmTransaction,
 } from '@solana/web3.js';
 import BN from 'bn.js';
 import bs58 from 'bs58';
-import { config, computeDeployAmount } from '../../config/Config.js';
-import { getMinSafeBinsBelow } from '../../shared/constants.js';
-import { log, logStructured, createTimer } from '../../shared/logger.js';
-import {
-  trackPosition,
-  markOutOfRange,
-  markInRange,
-  recordClaim,
-  recordClose,
-  getTrackedPosition,
-  minutesOutOfRange,
-  syncOpenPositions,
-  reconcileTrackedPositions,
-} from '../../domain/state.js';
+import { computeDeployAmount, config } from '../../config/Config.js';
+import { appendDecision } from '../../domain/decision-log.js';
 import { recordPerformance } from '../../domain/lessons.js';
 import { isBaseMintOnCooldown, isPoolOnCooldown } from '../../domain/pool-memory.js';
-import { normalizeMint } from './WalletAdapter.js';
-import { appendDecision } from '../../domain/decision-log.js';
-import { agentMeridianJson, getAgentIdForRequests, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js';
 import { getAndClearStagedSignals } from '../../domain/signal-tracker.js';
+import {
+  getTrackedPosition,
+  markInRange,
+  markOutOfRange,
+  minutesOutOfRange,
+  reconcileTrackedPositions,
+  recordClaim,
+  recordClose,
+  syncOpenPositions,
+  trackPosition,
+} from '../../domain/state.js';
+import { getMinSafeBinsBelow } from '../../shared/constants.js';
+import { log, logStructured } from '../../shared/logger.js';
+import { agentMeridianJson, getAgentIdForRequests, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js';
 import { computePositions, fetchDlmmPnlForPool } from '../PnLAdapter.js';
+import { normalizeMint } from './WalletAdapter.js';
 
 // ─── Lazy SDK loader ───────────────────────────────────────────
 let _DLMM: any = null;
@@ -157,7 +157,11 @@ function getTransactionInstructions(tx: Transaction | VersionedTransaction): Tra
       const accounts = indexes.map((accountIndex: number) => keys[accountIndex]).filter(Boolean);
       return new TransactionInstruction({
         programId,
-        keys: accounts.map((pubkey: PublicKey) => ({ pubkey, isSigner: false, isWritable: false })),
+        keys: accounts.map((pubkey: PublicKey) => ({
+          pubkey,
+          isSigner: false,
+          isWritable: false,
+        })),
         data: Buffer.from(ix.data),
       });
     })
@@ -352,7 +356,7 @@ async function assertRangeDoesNotRequireBinArrayInitialization(pool: any, minBin
       const account = await getConnection().getAccountInfo(bitmapExtension, 'confirmed');
       if (!account) {
         throw new Error(
-          `Deploy skipped: selected range requires Meteora bin-array bitmap extension initialization ` +
+          'Deploy skipped: selected range requires Meteora bin-array bitmap extension initialization ' +
             `(~${formatSolFee(BIN_ARRAY_BITMAP_FEE ?? 0.01180416)} SOL non-refundable pool rent). Pick a closer initialized range/pool.`,
         );
       }
@@ -451,7 +455,12 @@ async function getPoolMetadata(poolAddress: string): Promise<any> {
     return meta;
   } catch (error: any) {
     log('pool_meta_warn', `Pool metadata lookup failed for ${key.slice(0, 8)}: ${error.message}`);
-    const fallback = { address: key, name: null, token_x_symbol: null, token_y_symbol: null };
+    const fallback = {
+      address: key,
+      name: null,
+      token_x_symbol: null,
+      token_y_symbol: null,
+    };
     poolMetadataCache.set(key, fallback);
     return fallback;
   }
@@ -541,7 +550,10 @@ export async function deployPosition({
 
   if (isPoolOnCooldown(pool_address)) {
     log('deploy', `Pool ${pool_address.slice(0, 8)} is on cooldown — skipping`);
-    return { success: false, error: 'Pool on cooldown — was recently closed with a cooldown reason. Try a different pool.' };
+    return {
+      success: false,
+      error: 'Pool on cooldown — was recently closed with a cooldown reason. Try a different pool.',
+    };
   }
 
   const { StrategyType, getBinIdFromPrice, getPriceOfBinByBinId } = await getDLMM();
@@ -549,7 +561,10 @@ export async function deployPosition({
   const baseMint = pool.lbPair.tokenXMint.toString();
   if (isBaseMintOnCooldown(baseMint)) {
     log('deploy', `Base mint ${baseMint.slice(0, 8)} is on cooldown — skipping deploy for pool ${pool_address.slice(0, 8)}`);
-    return { success: false, error: 'Token on cooldown — recently closed out-of-range too many times. Try a different token.' };
+    return {
+      success: false,
+      error: 'Token on cooldown — recently closed out-of-range too many times. Try a different token.',
+    };
   }
   const activeBin = await pool.getActiveBin();
   const actualBinStep = pool.lbPair.binStep;
@@ -727,7 +742,10 @@ export async function deployPosition({
 
       await new Promise((resolve) => setTimeout(resolve, 5000));
       _positionsCacheAt = 0;
-      const refreshed = await getMyPositions({ force: true, silent: true }).catch(() => null);
+      const refreshed = await getMyPositions({
+        force: true,
+        silent: true,
+      }).catch(() => null);
       const matching =
         refreshed?.positions?.find(
           (position: any) => position.pool === pool_address && position.lower_bin === minBinId && position.upper_bin === maxBinId,
@@ -741,7 +759,12 @@ export async function deployPosition({
           pool: pool_address,
           pool_name,
           strategy: activeStrategy,
-          bin_range: { min: minBinId, max: maxBinId, bins_below: activeBinsBelow, bins_above: activeBinsAbove },
+          bin_range: {
+            min: minBinId,
+            max: maxBinId,
+            bins_below: activeBinsBelow,
+            bins_above: activeBinsAbove,
+          },
           bin_step,
           volatility: normalizedVolatility,
           fee_tvl_ratio,
@@ -879,7 +902,12 @@ export async function deployPosition({
       pool: pool_address,
       pool_name,
       strategy: activeStrategy,
-      bin_range: { min: minBinId, max: maxBinId, bins_below: activeBinsBelow, bins_above: activeBinsAbove },
+      bin_range: {
+        min: minBinId,
+        max: maxBinId,
+        bins_below: activeBinsBelow,
+        bins_above: activeBinsAbove,
+      },
       bin_step,
       volatility: normalizedVolatility,
       fee_tvl_ratio,
@@ -944,7 +972,13 @@ export async function deployPosition({
     logStructured({
       category: 'tx_error',
       message: `Deploy failed: ${error.message}`,
-      metadata: { pool: pool_address, error: error.message, stack: error.stack?.slice(0, 500), strategy: activeStrategy, amount_sol: finalAmountY },
+      metadata: {
+        pool: pool_address,
+        error: error.message,
+        stack: error.stack?.slice(0, 500),
+        strategy: activeStrategy,
+        amount_sol: finalAmountY,
+      },
     });
     return { success: false, error: error.message };
   }
@@ -957,7 +991,7 @@ let _positionsCacheAt = 0;
 let _positionsInflight: Promise<any> | null = null;
 const DEFAULT_LPAGENT_API = 'https://api.lpagent.io/open-api/v1';
 
-async function fetchLpAgentOpenPositions(walletAddress: string): Promise<Record<string, any>> {
+async function _fetchLpAgentOpenPositions(walletAddress: string): Promise<Record<string, any>> {
   if (!config.api.lpAgent.enabled || !config.api.lpAgent.apiKey) return {};
 
   const url = `${config.api.lpAgent.url || DEFAULT_LPAGENT_API}/lp-positions/opening?owner=${walletAddress}`;
@@ -1138,7 +1172,7 @@ function deriveLpAgentPnlPct(lpData: any, solMode = false): number | null {
   return (pnl / deposit) * 100;
 }
 
-async function fetchRawOpenPositionsFromMeridian({ walletAddress, agentId }: { walletAddress: string; agentId?: string }) {
+async function _fetchRawOpenPositionsFromMeridian({ walletAddress, agentId }: { walletAddress: string; agentId?: string }) {
   const search = new URLSearchParams({
     owner: walletAddress,
     agentId: agentId || 'agent-local',
@@ -1168,12 +1202,21 @@ export async function getMyPositions({
   force = false,
   silent = false,
   wallet_address = null,
-}: { force?: boolean; silent?: boolean; wallet_address?: string | null } = {}) {
+}: {
+  force?: boolean;
+  silent?: boolean;
+  wallet_address?: string | null;
+} = {}) {
   let walletOverride: string | null;
   try {
     walletOverride = wallet_address ? new PublicKey(wallet_address).toString() : null;
   } catch {
-    return { wallet: wallet_address || null, total_positions: 0, positions: [], error: 'Invalid wallet address' };
+    return {
+      wallet: wallet_address || null,
+      total_positions: 0,
+      positions: [],
+      error: 'Invalid wallet address',
+    };
   }
 
   const useLocalWallet = !walletOverride;
@@ -1186,7 +1229,12 @@ export async function getMyPositions({
   try {
     walletAddress = walletOverride || getWallet().publicKey.toString();
   } catch {
-    return { wallet: null, total_positions: 0, positions: [], error: 'Wallet not configured' };
+    return {
+      wallet: null,
+      total_positions: 0,
+      positions: [],
+      error: 'Wallet not configured',
+    };
   }
 
   const loadPositions = async () => {
@@ -1361,7 +1409,12 @@ export async function getMyPositions({
       return result;
     } catch (error: any) {
       log('positions_error', `Portfolio fetch failed: ${error.stack || error.message}`);
-      return { wallet: walletAddress, total_positions: 0, positions: [], error: error.message };
+      return {
+        wallet: walletAddress,
+        total_positions: 0,
+        positions: [],
+        error: error.message,
+      };
     } finally {
       if (useLocalWallet) _positionsInflight = null;
     }
@@ -1381,7 +1434,14 @@ export async function getWalletPositions({ wallet_address }: { wallet_address: s
     const DLMM_PROGRAM = new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo');
 
     const accounts = await getConnection().getProgramAccounts(DLMM_PROGRAM, {
-      filters: [{ memcmp: { offset: 40, bytes: new PublicKey(wallet_address).toBase58() } }],
+      filters: [
+        {
+          memcmp: {
+            offset: 40,
+            bytes: new PublicKey(wallet_address).toBase58(),
+          },
+        },
+      ],
     });
 
     if (accounts.length === 0) {
@@ -1427,10 +1487,19 @@ export async function getWalletPositions({ wallet_address }: { wallet_address: s
       };
     });
 
-    return { wallet: wallet_address, total_positions: positions.length, positions };
+    return {
+      wallet: wallet_address,
+      total_positions: positions.length,
+      positions,
+    };
   } catch (error: any) {
     log('wallet_positions_error', error.message);
-    return { wallet: wallet_address, total_positions: 0, positions: [], error: error.message };
+    return {
+      wallet: wallet_address,
+      total_positions: 0,
+      positions: [],
+      error: error.message,
+    };
   }
 }
 
@@ -1451,8 +1520,14 @@ export async function searchPools({ query, limit = 10 }: { query: string; limit?
       fee_pct: p.base_fee_percentage ?? p.fee_pct,
       tvl: p.liquidity,
       volume_24h: p.trade_volume_24h,
-      token_x: { symbol: p.mint_x_symbol ?? p.token_x?.symbol, mint: p.mint_x ?? p.token_x?.address },
-      token_y: { symbol: p.mint_y_symbol ?? p.token_y?.symbol, mint: p.mint_y ?? p.token_y?.address },
+      token_x: {
+        symbol: p.mint_x_symbol ?? p.token_x?.symbol,
+        mint: p.mint_x ?? p.token_x?.address,
+      },
+      token_y: {
+        symbol: p.mint_y_symbol ?? p.token_y?.symbol,
+        mint: p.mint_y ?? p.token_y?.address,
+      },
     })),
   };
 }
@@ -1461,12 +1536,19 @@ export async function searchPools({ query, limit = 10 }: { query: string; limit?
 export async function claimFees({ position_address }: { position_address: string }) {
   position_address = normalizeMint(position_address);
   if (process.env.DRY_RUN === 'true') {
-    return { dry_run: true, would_claim: position_address, message: 'DRY RUN — no transaction sent' };
+    return {
+      dry_run: true,
+      would_claim: position_address,
+      message: 'DRY RUN — no transaction sent',
+    };
   }
 
   const tracked = getTrackedPosition(position_address);
   if (tracked?.closed) {
-    return { success: false, error: 'Position already closed — fees were claimed during close' };
+    return {
+      success: false,
+      error: 'Position already closed — fees were claimed during close',
+    };
   }
 
   try {
@@ -1488,7 +1570,10 @@ export async function claimFees({ position_address }: { position_address: string
     });
 
     if (!txs || txs.length === 0) {
-      return { success: false, error: 'No fees to claim — transaction is empty' };
+      return {
+        success: false,
+        error: 'No fees to claim — transaction is empty',
+      };
     }
 
     const txHashes: string[] = [];
@@ -1500,18 +1585,31 @@ export async function claimFees({ position_address }: { position_address: string
     logStructured({
       category: 'tx_state',
       message: `Claim confirmed: ${txHashes.length} tx(s)`,
-      metadata: { position: position_address, txHashes, base_mint: pool.lbPair.tokenXMint.toString() },
+      metadata: {
+        position: position_address,
+        txHashes,
+        base_mint: pool.lbPair.tokenXMint.toString(),
+      },
     });
     _positionsCacheAt = 0;
     recordClaim(position_address);
 
-    return { success: true, position: position_address, txs: txHashes, base_mint: pool.lbPair.tokenXMint.toString() };
+    return {
+      success: true,
+      position: position_address,
+      txs: txHashes,
+      base_mint: pool.lbPair.tokenXMint.toString(),
+    };
   } catch (error: any) {
     log('claim_error', error.message);
     logStructured({
       category: 'tx_error',
       message: `Claim failed for position ${position_address.slice(0, 8)}: ${error.message}`,
-      metadata: { position: position_address, error: error.message, stack: error.stack?.slice(0, 500) },
+      metadata: {
+        position: position_address,
+        error: error.message,
+        stack: error.stack?.slice(0, 500),
+      },
     });
     return { success: false, error: error.message };
   }
@@ -1521,7 +1619,11 @@ export async function claimFees({ position_address }: { position_address: string
 export async function closePosition({ position_address, reason }: { position_address: string; reason?: string }) {
   position_address = normalizeMint(position_address);
   if (process.env.DRY_RUN === 'true') {
-    return { dry_run: true, would_close: position_address, message: 'DRY RUN — no transaction sent' };
+    return {
+      dry_run: true,
+      would_close: position_address,
+      message: 'DRY RUN — no transaction sent',
+    };
   }
 
   const tracked = getTrackedPosition(position_address);
@@ -1541,7 +1643,10 @@ export async function closePosition({ position_address, reason }: { position_add
       try {
         const pool = await getPool(poolAddress);
         const relayAllowedDebitMints = [pool.lbPair.tokenXMint.toString(), pool.lbPair.tokenYMint.toString(), config.tokens.SOL];
-        const livePositions = await getMyPositions({ force: true, silent: true });
+        const livePositions = await getMyPositions({
+          force: true,
+          silent: true,
+        });
         const livePosition = livePositions?.positions?.find((position: any) => position.position === position_address);
         const closeFromBinId = livePosition?.lower_bin ?? tracked?.bin_range?.min ?? -887272;
         const closeToBinId = livePosition?.upper_bin ?? tracked?.bin_range?.max ?? 887272;
@@ -1608,7 +1713,10 @@ export async function closePosition({ position_address, reason }: { position_add
         let closedConfirmed = false;
         for (let attempt = 0; attempt < 4; attempt++) {
           try {
-            const refreshed = await getMyPositions({ force: true, silent: true });
+            const refreshed = await getMyPositions({
+              force: true,
+              silent: true,
+            });
             const stillOpen = refreshed?.positions?.some((p: any) => p.position === position_address);
             if (!stillOpen) {
               closedConfirmed = true;
@@ -1815,7 +1923,7 @@ export async function closePosition({ position_address, reason }: { position_add
     }
 
     if (hasLiquidity) {
-      log('close', `Step 2: Removing liquidity and closing account`);
+      log('close', 'Step 2: Removing liquidity and closing account');
       const closeTx = await pool.removeLiquidity({
         user: wallet.publicKey,
         position: positionPubKey,
@@ -1830,7 +1938,7 @@ export async function closePosition({ position_address, reason }: { position_add
         closeTxHashes.push(txHash);
       }
     } else {
-      log('close', `Step 2: No position liquidity detected, closing account`);
+      log('close', 'Step 2: No position liquidity detected, closing account');
       const closeTx = await pool.closePosition({
         owner: wallet.publicKey,
         position: { publicKey: positionPubKey },
@@ -1953,7 +2061,7 @@ export async function closePosition({ position_address, reason }: { position_add
             finalValueUsd = cachedPos.total_value_true_usd ?? cachedPos.total_value_usd ?? 0;
             initialUsd = Math.max(0, finalValueUsd + feesUsd - pnlTrueUsd);
           }
-          log('close_warn', `Using cached pnl fallback because closed API has not settled yet`);
+          log('close_warn', 'Using cached pnl fallback because closed API has not settled yet');
         }
       }
 
@@ -2077,14 +2185,23 @@ export async function closePosition({ position_address, reason }: { position_add
     if (isAlreadyClosed) {
       recordClose(position_address, 'already closed on-chain (externally)');
       log('close', `Position ${position_address} was already closed on-chain — state reconciled`);
-      return { success: true, closed_externally: true, position: position_address };
+      return {
+        success: true,
+        closed_externally: true,
+        position: position_address,
+      };
     }
 
     log('close_error', msg);
     logStructured({
       category: 'tx_error',
       message: `Close failed for position ${position_address.slice(0, 8)}: ${msg}`,
-      metadata: { position: position_address, error: msg, stack: error.stack?.slice(0, 500), isAlreadyClosed },
+      metadata: {
+        position: position_address,
+        error: msg,
+        stack: error.stack?.slice(0, 500),
+        isAlreadyClosed,
+      },
     });
     return { success: false, error: msg };
   }
