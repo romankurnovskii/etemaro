@@ -10,25 +10,55 @@ import {
   BALANCE_CACHE_TTL,
   swapToken,
 } from './WalletAdapter.js';
+import { resetConnectionState } from '../../shared/connection.js';
+import { config } from '../../config/Config.js';
 import bs58 from 'bs58';
-import { Keypair } from '@solana/web3.js';
+import { Connection, Keypair } from '@solana/web3.js';
 
 describe('WalletAdapter', () => {
   let tempDir: string;
   let testKeypair: Keypair;
   const originalEnv = { ...process.env };
+  const originalConnectionConfig = { ...config.connection };
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'etemaro-wallet-test-'));
     testKeypair = Keypair.generate();
-    process.env.WALLET_PRIVATE_KEY = bs58.encode(testKeypair.secretKey);
+    const privKey = bs58.encode(testKeypair.secretKey);
+    process.env.WALLET_PRIVATE_KEY = privKey;
     process.env.RPC_URL = 'https://api.mainnet-beta.solana.com';
+    config.connection = {
+      ...config.connection,
+      walletPrivateKey: privKey,
+      rpcUrl: 'https://api.mainnet-beta.solana.com',
+    };
+    resetConnectionState();
     invalidateBalanceCache();
+
+    vi.spyOn(Connection.prototype, 'getBalance').mockResolvedValue(1_000_000_000);
+    vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner').mockResolvedValue({
+      value: [
+        {
+          account: {
+            data: {
+              parsed: {
+                info: {
+                  mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+                  tokenAmount: { uiAmount: 10.5 },
+                },
+              },
+            },
+          },
+        },
+      ],
+    } as any);
   });
 
   afterEach(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
     process.env = { ...originalEnv };
+    config.connection = { ...originalConnectionConfig };
+    resetConnectionState();
     vi.restoreAllMocks();
     invalidateBalanceCache();
   });
@@ -84,73 +114,12 @@ describe('WalletAdapter', () => {
       expect(BALANCE_CACHE_TTL).toBe(30_000);
     });
 
-    it('caches getWalletBalances responses within TTL and bypasses with force: true', async () => {
-      process.env.HELIUS_API_KEY = 'test-key';
-      let fetchCount = 0;
-
-      const mockHeliusResponse = {
-        totalUsdValue: 150.5,
-        balances: [
-          {
-            mint: 'So11111111111111111111111111111111111111112',
-            symbol: 'SOL',
-            balance: 1.0,
-            pricePerToken: 140.0,
-            usdValue: 140.0,
-          },
-          {
-            mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-            symbol: 'USDC',
-            balance: 10.5,
-            pricePerToken: 1.0,
-            usdValue: 10.5,
-          },
-        ],
-      };
+    it('uses standard Solana RPC + Jupiter Price API as primary default and caches for 30s', async () => {
+      let jupFetchCount = 0;
 
       vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
-        if (String(url).includes('api.helius.xyz')) {
-          fetchCount++;
-          return {
-            ok: true,
-            status: 200,
-            statusText: 'OK',
-            json: async () => mockHeliusResponse,
-          } as any;
-        }
-        return { ok: false, status: 404 } as any;
-      });
-
-      // Call 1: cold cache -> hits Helius API
-      const res1 = await getWalletBalances();
-      expect(fetchCount).toBe(1);
-      expect(res1.sol).toBe(1.0);
-      expect(res1.usdc).toBe(10.5);
-      expect(res1.total_usd).toBe(150.5);
-
-      // Call 2: warm cache -> returns cached data without calling fetch again
-      const res2 = await getWalletBalances();
-      expect(fetchCount).toBe(1);
-      expect(res2).toEqual(res1);
-
-      // Call 3: force: true -> bypasses cache and increments fetch count
-      const res3 = await getWalletBalances({ force: true });
-      expect(fetchCount).toBe(2);
-      expect(res3).toEqual(res1);
-
-      // Call 4: invalidateBalanceCache() -> next call hits network
-      invalidateBalanceCache();
-      const res4 = await getWalletBalances();
-      expect(fetchCount).toBe(3);
-      expect(res4).toEqual(res1);
-    });
-
-    it('falls back to Solana RPC + Jupiter Price API when HELIUS_API_KEY is not set', async () => {
-      delete process.env.HELIUS_API_KEY;
-
-      // Mock Jupiter Price API fetch
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
         if (String(url).includes('jup.ag/price/v2')) {
+          jupFetchCount++;
           return {
             ok: true,
             status: 200,
@@ -158,7 +127,7 @@ describe('WalletAdapter', () => {
             headers: new Headers(),
             json: async () => ({
               data: {
-                So11111111111111111111111111111111111111112: { price: '150.0' },
+                So11111111111111111111111111111111111111112: { price: '160.0' },
                 EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { price: '1.0' },
               },
             }),
@@ -167,27 +136,78 @@ describe('WalletAdapter', () => {
         return { ok: false, status: 404, headers: new Headers() } as any;
       });
 
-      const res = await getWalletBalances();
-      expect(res.wallet).toBe(testKeypair.publicKey.toString());
-      expect(res.error).toBeUndefined();
-      expect(typeof res.sol).toBe('number');
-      expect(typeof res.sol_price).toBe('number');
-      expect(typeof res.total_usd).toBe('number');
+      // Call 1: cold cache -> queries RPC + Jupiter Price
+      const res1 = await getWalletBalances();
+      expect(jupFetchCount).toBe(1);
+      expect(res1.wallet).toBe(testKeypair.publicKey.toString());
+      expect(res1.sol_price).toBe(160.0);
+      expect(res1.error).toBeUndefined();
+
+      // Call 2: warm cache -> returns cached object without calling network
+      const res2 = await getWalletBalances();
+      expect(jupFetchCount).toBe(1);
+      expect(res2).toEqual(res1);
+
+      // Call 3: force: true -> bypasses cache and queries again
+      const res3 = await getWalletBalances({ force: true });
+      expect(jupFetchCount).toBe(2);
+      expect(res3).toEqual(res1);
+
+      // Call 4: invalidateBalanceCache() -> next call hits network
+      invalidateBalanceCache();
+      const res4 = await getWalletBalances();
+      expect(jupFetchCount).toBe(3);
+      expect(res4).toEqual(res1);
     });
 
-    it('falls back to Solana RPC when Helius API responds with error', async () => {
-      process.env.HELIUS_API_KEY = 'failing-key';
+    it('falls back to Helius API when standard RPC query fails', async () => {
+      process.env.HELIUS_API_KEY = 'fallback-helius-key';
+      vi.spyOn(Connection.prototype, 'getBalance').mockRejectedValue(new Error('Solana RPC rate limited 429'));
+
+      let heliusHit = false;
+      const mockHeliusResponse = {
+        totalUsdValue: 200.0,
+        balances: [
+          {
+            mint: 'So11111111111111111111111111111111111111112',
+            symbol: 'SOL',
+            balance: 2.0,
+            pricePerToken: 100.0,
+            usdValue: 200.0,
+          },
+        ],
+      };
 
       vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
         if (String(url).includes('api.helius.xyz')) {
+          heliusHit = true;
           return {
-            ok: false,
-            status: 429,
-            statusText: 'Too Many Requests',
-            headers: new Headers(),
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            json: async () => mockHeliusResponse,
           } as any;
         }
-        if (String(url).includes('jup.ag/price/v2')) {
+        return { ok: false, status: 404, headers: new Headers() } as any;
+      });
+
+      const res = await getWalletBalances({ force: true });
+      expect(heliusHit).toBe(true);
+      expect(res.wallet).toBe(testKeypair.publicKey.toString());
+      expect(res.sol).toBe(2.0);
+      expect(res.total_usd).toBe(200.0);
+    });
+
+    it('invalidates balance cache when swapToken completes successfully', async () => {
+      process.env.JUPITER_API_KEY = 'test-jup-key';
+      delete process.env.DRY_RUN;
+
+      let jupPriceCount = 0;
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any, init?: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('jup.ag/price/v2')) {
+          jupPriceCount++;
           return {
             ok: true,
             status: 200,
@@ -200,40 +220,7 @@ describe('WalletAdapter', () => {
             }),
           } as any;
         }
-        return { ok: false, status: 404, headers: new Headers() } as any;
-      });
-
-      const res = await getWalletBalances();
-      expect(res.wallet).toBe(testKeypair.publicKey.toString());
-      expect(res.error).toBeUndefined();
-      expect(typeof res.sol).toBe('number');
-      expect(res.sol_price).toBe(150.0);
-    });
-
-    it('invalidates balance cache when swapToken completes successfully', async () => {
-      process.env.HELIUS_API_KEY = 'test-key';
-      process.env.JUPITER_API_KEY = 'test-jup-key';
-      delete process.env.DRY_RUN;
-
-      let heliusFetchCount = 0;
-
-      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any, init?: any) => {
-        const urlStr = String(url);
-        if (urlStr.includes('api.helius.xyz')) {
-          heliusFetchCount++;
-          return {
-            ok: true,
-            status: 200,
-            statusText: 'OK',
-            headers: new Headers(),
-            json: async () => ({
-              totalUsdValue: 100,
-              balances: [{ mint: 'So11111111111111111111111111111111111111112', symbol: 'SOL', balance: 1, usdValue: 100 }],
-            }),
-          } as any;
-        }
         if (urlStr.includes('jup.ag/swap/v2/order')) {
-          // Mock versioned transaction
           const tx = new (await import('@solana/web3.js')).Transaction();
           tx.recentBlockhash = '11111111111111111111111111111111';
           tx.feePayer = testKeypair.publicKey;
@@ -265,13 +252,13 @@ describe('WalletAdapter', () => {
         return { ok: false, status: 404, headers: new Headers() } as any;
       });
 
-      // Warm the balance cache
+      // Warm balance cache
       await getWalletBalances();
-      expect(heliusFetchCount).toBe(1);
+      expect(jupPriceCount).toBe(1);
 
       // Verify cached
       await getWalletBalances();
-      expect(heliusFetchCount).toBe(1);
+      expect(jupPriceCount).toBe(1);
 
       // Execute swap
       const swapRes = await swapToken({
@@ -281,9 +268,9 @@ describe('WalletAdapter', () => {
       });
       expect('success' in swapRes && swapRes.success).toBe(true);
 
-      // Next balance query should bust cache and hit Helius API
+      // Next balance query should bust cache and query fresh data
       await getWalletBalances();
-      expect(heliusFetchCount).toBe(2);
+      expect(jupPriceCount).toBe(2);
     });
   });
 });

@@ -12,7 +12,6 @@
  */
 
 import {
-  Connection,
   Keypair,
   PublicKey,
   SystemInstruction,
@@ -23,7 +22,6 @@ import {
   VersionedTransaction,
 } from '@solana/web3.js';
 import BN from 'bn.js';
-import bs58 from 'bs58';
 import { computeDeployAmount, config } from '../../config/Config.js';
 import { appendDecision } from '../../domain/decision-log.js';
 import { recordPerformance } from '../../domain/lessons.js';
@@ -43,6 +41,8 @@ import {
 import { getMinSafeBinsBelow } from '../../shared/constants.js';
 import { log, logStructured } from '../../shared/logger.js';
 import { agentMeridianJson, getAgentIdForRequests, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js';
+import { getConnection, getWalletKeypair as getWallet } from '../../shared/connection.js';
+import { type GetMyPositionsResult } from '../../shared/types.js';
 import { computePositions, fetchDlmmPnlForPool } from '../PnLAdapter.js';
 import { invalidateBalanceCache, normalizeMint } from './WalletAdapter.js';
 
@@ -86,27 +86,7 @@ async function getDLMM() {
   };
 }
 
-// ─── Lazy wallet/connection init ──────────────────────────────
-let _connection: Connection | null = null;
-let _wallet: Keypair | null = null;
-
-function getConnection(): Connection {
-  if (!_connection) {
-    _connection = new Connection(process.env.RPC_URL!, 'confirmed');
-  }
-  return _connection;
-}
-
-function getWallet(): Keypair {
-  if (!_wallet) {
-    if (!process.env.WALLET_PRIVATE_KEY) {
-      throw new Error('WALLET_PRIVATE_KEY not set');
-    }
-    _wallet = Keypair.fromSecretKey(bs58.decode(process.env.WALLET_PRIVATE_KEY));
-    log('init', `Wallet: ${_wallet.publicKey.toString()}`);
-  }
-  return _wallet;
-}
+// ─── Relay helpers ──────────────────────────────────────────
 
 function shouldUseLpAgentRelay(): boolean {
   return !!config.api.meridian.lpAgentRelayEnabled;
@@ -1203,6 +1183,11 @@ async function _fetchRawOpenPositionsFromMeridian({ walletAddress, agentId }: { 
 }
 
 // ─── Get My Positions ──────────────────────────────────────────
+/**
+ * Fetches open DLMM positions for the wallet.
+ * Uses Meteora REST Datapi by default (config.pnl.source === 'portfolio') for 0 Solana RPC credit consumption.
+ * Uses on-chain DLMM RPC when config.pnl.source === 'rpc'.
+ */
 export async function getMyPositions({
   force = false,
   silent = false,
@@ -1211,7 +1196,7 @@ export async function getMyPositions({
   force?: boolean;
   silent?: boolean;
   wallet_address?: string | null;
-} = {}) {
+} = {}): Promise<GetMyPositionsResult> {
   let walletOverride: string | null;
   try {
     walletOverride = wallet_address ? new PublicKey(wallet_address).toString() : null;
