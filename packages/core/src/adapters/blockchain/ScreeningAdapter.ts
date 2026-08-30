@@ -620,7 +620,10 @@ async function enrichPvpRisk(pools: CondensedPool[]): Promise<void> {
 
       let assets = symbolCache.get(symbol);
       if (!assets) {
-        assets = await searchAssetsBySymbol(symbol).catch(() => []);
+        assets = await searchAssetsBySymbol(symbol).catch((err: any) => {
+          log('screening', `Failed to search assets by symbol for PvP check (${symbol}): ${err?.message || err}`);
+          return [];
+        });
         symbolCache.set(symbol, assets);
       }
 
@@ -634,7 +637,10 @@ async function enrichPvpRisk(pools: CondensedPool[]): Promise<void> {
         const rivalFees = Number(rival?.fees || 0);
         if (rivalHolders < PVP_MIN_HOLDERS || rivalFees < PVP_MIN_GLOBAL_FEES_SOL) continue;
 
-        const rivalPool = await findRivalPool(rival.id).catch(() => null);
+        const rivalPool = await findRivalPool(rival.id).catch((err: any) => {
+          log('screening', `Failed to find rival pool for PvP check (${rival.id}): ${err?.message || err}`);
+          return null;
+        });
         if (!rivalPool) continue;
 
         pool.is_pvp = true;

@@ -415,7 +415,9 @@ export class Daemon {
       const warningMsg = 'WARNING: Smart wallet list resolves to 0 wallets, but strategy specifies smart-wallets or high score bonus';
       log('startup_warn', warningMsg);
       if (this.adapters.telegram?.isEnabled?.()) {
-        this.adapters.telegram.sendMessage(warningMsg).catch(() => {});
+        this.adapters.telegram.sendMessage(warningMsg).catch((err: any) => {
+          log('telegram_warn', `Failed to send startup warning: ${err?.message || err}`);
+        });
       }
     }
 
@@ -440,7 +442,9 @@ export class Daemon {
     } else {
       log('startup', 'Non-TTY mode — starting cron cycles immediately.');
       this.startCronJobs();
-      this.maybeRunMissedBriefing().catch(() => {});
+      this.maybeRunMissedBriefing().catch((err: any) => {
+        log('cron_error', `Failed to check missed briefing on startup: ${err?.message || err}`);
+      });
       this.adapters.telegram.startPolling((msg: any) => this.telegramHandler(msg));
       try {
         await this.runScreeningCycle({ silent: false });
@@ -575,7 +579,10 @@ Summarize the current portfolio health, total fees earned, and performance of al
       if (getTrackedPositions(true).length === 0) return;
       if (!this.acquireLock('pnlPoll')) return;
       try {
-        const result = await this.adapters.meteora.getMyPositions({ force: true, silent: true }).catch(() => null);
+        const result = await this.adapters.meteora.getMyPositions({ force: true, silent: true }).catch((err: any) => {
+          log('cron_error', `PnL poller failed to fetch positions: ${err?.message || err}`);
+          return null;
+        });
         if (!result?.positions?.length) return;
         for (const p of result.positions) {
           confirmPeak(p.position, p.pnl_pct, confirmTicks);
@@ -631,14 +638,23 @@ Summarize the current portfolio health, total fees earned, and performance of al
         try {
           if (Date.now() - this.screeningLastTriggered < oppCooldownMs) return;
           const [positions, balance] = await Promise.all([
-            this.adapters.meteora.getMyPositions({ force: true, silent: true }).catch(() => null),
-            this.adapters.wallet.getWalletBalances().catch(() => null),
+            this.adapters.meteora.getMyPositions({ force: true, silent: true }).catch((err: any) => {
+              log('cron_error', `Opportunity poller failed to fetch positions: ${err?.message || err}`);
+              return null;
+            }),
+            this.adapters.wallet.getWalletBalances().catch((err: any) => {
+              log('cron_error', `Opportunity poller failed to fetch wallet balances: ${err?.message || err}`);
+              return null;
+            }),
           ]);
           if (!positions || (positions.total_positions ?? 0) >= config.risk.maxPositions) return;
           const minRequired = config.management.deployAmountSol + config.management.gasReserve;
           if (process.env.DRY_RUN !== 'true' && (!balance || balance.sol < minRequired)) return;
 
-          const top = await this.adapters.screening.getTopCandidates({ limit: config.opportunity.limit }).catch(() => null);
+          const top = await this.adapters.screening.getTopCandidates({ limit: config.opportunity.limit }).catch((err: any) => {
+            log('cron_error', `Opportunity poller failed to fetch top candidates: ${err?.message || err}`);
+            return null;
+          });
           const candidates = (top?.candidates || [])
             .slice()
             .sort(
@@ -660,7 +676,10 @@ Summarize the current portfolio health, total fees earned, and performance of al
               break;
             }
             if (bonus <= 0) continue;
-            const smart = (await this.adapters.domain.checkSmartWalletsOnPool({ pool_address: c.pool }).catch(() => null))?.in_pool || [];
+            const smart = (await this.adapters.domain.checkSmartWalletsOnPool({ pool_address: c.pool }).catch((err: any) => {
+              log('screening', `Opportunity poller failed smart wallet check for ${c.pool}: ${err?.message || err}`);
+              return null;
+            }))?.in_pool || [];
             if (smart.length > 0) {
               trigger = { c, s, smart };
               break;
@@ -847,7 +866,10 @@ After evaluating, write a brief one-line result per position.
       if (!silent && this.adapters.telegram.isEnabled()) {
         liveMessage = await this.adapters.telegram.createLiveMessage('🔄 Management Cycle', 'Evaluating positions...');
       }
-      const livePositions = await this.adapters.meteora.getMyPositions({ force: true }).catch(() => null);
+      const livePositions = await this.adapters.meteora.getMyPositions({ force: true }).catch((err: any) => {
+        log('cron_error', `Failed to fetch live positions in management cycle: ${err?.message || err}`);
+        return null;
+      });
       positions = livePositions?.positions || [];
 
       if (positions.length === 0) {
@@ -964,12 +986,18 @@ After evaluating, write a brief one-line result per position.
       this.releaseLock('management');
       if (!silent && this.adapters.telegram.isEnabled()) {
         if (mgmtReport) {
-          if (liveMessage) await liveMessage.finalize(stripThink(mgmtReport)).catch(() => {});
-          else this.adapters.telegram.sendMessage(`🔄 Management Cycle\n\n${stripThink(mgmtReport)}`).catch(() => {});
+          if (liveMessage) await liveMessage.finalize(stripThink(mgmtReport)).catch((err: any) => {
+            log('telegram_warn', `Failed to finalize management live message: ${err?.message || err}`);
+          });
+          else this.adapters.telegram.sendMessage(`🔄 Management Cycle\n\n${stripThink(mgmtReport)}`).catch((err: any) => {
+            log('telegram_warn', `Failed to send management report: ${err?.message || err}`);
+          });
         }
         for (const p of positions) {
           if (!p.in_range && p.minutes_out_of_range >= config.management.outOfRangeWaitMinutes) {
-            this.adapters.telegram.notifyOutOfRange({ pair: p.pair, minutesOOR: p.minutes_out_of_range }).catch(() => {});
+            this.adapters.telegram.notifyOutOfRange({ pair: p.pair, minutesOOR: p.minutes_out_of_range }).catch((err: any) => {
+              log('telegram_warn', `Failed to send out of range notification for ${p.pair}: ${err?.message || err}`);
+            });
           }
         }
       }
@@ -1372,8 +1400,15 @@ IMPORTANT:
       this.releaseLock('screening');
       if (!silent && this.adapters.telegram.isEnabled()) {
         if (screenReport) {
-          if (liveMessage) await liveMessage.finalize(stripThink(screenReport)).catch(() => {});
-          else this.adapters.telegram.sendMessage(`🔍 Screening Cycle\n\n${stripThink(screenReport)}`).catch(() => {});
+          if (liveMessage) {
+            await liveMessage.finalize(stripThink(screenReport)).catch((err: any) => {
+              log('telegram_warn', `Failed to finalize screening live message: ${err?.message || err}`);
+            });
+          } else {
+            this.adapters.telegram.sendMessage(`🔍 Screening Cycle\n\n${stripThink(screenReport)}`).catch((err: any) => {
+              log('telegram_warn', `Failed to send screening report: ${err?.message || err}`);
+            });
+          }
         }
       }
     }
@@ -1506,7 +1541,9 @@ IMPORTANT:
         if (liveMessage) {
           await this.adapters.telegram
             .editMessageWithButtons(`🚀 Smart Wallet Signal: ${detail.name || pool}\nDeploying ${deployAmount} SOL...`, liveMessage.message_id, [])
-            .catch(() => {});
+            .catch((err: any) => {
+              log('telegram_warn', `Failed to edit live message for smart wallet deploy: ${err?.message || err}`);
+            });
         }
 
         const deployRes = await meteora.deployPosition({
@@ -1867,6 +1904,16 @@ IMPORTANT:
 
   // ─── Telegram Handler ──────────────────────────────────────────
 
+  private async sendTelegramSafe(text: string): Promise<any> {
+    if (!this.adapters.telegram?.isEnabled?.()) return null;
+    try {
+      return await this.adapters.telegram.sendMessage(text);
+    } catch (err: any) {
+      log('telegram_warn', `Failed to send Telegram message: ${err?.message || err}`);
+      return null;
+    }
+  }
+
   private async telegramHandler(msg: any): Promise<void> {
     const text = msg?.text?.trim();
     if (!text) return;
@@ -1874,20 +1921,25 @@ IMPORTANT:
       try {
         await this.applySettingsMenuCallback(msg);
       } catch (e: any) {
-        await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, e.message).catch(() => {});
+        await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, e.message).catch((err: any) => {
+          log('telegram_warn', `Failed to answer callback query: ${err?.message || err}`);
+        });
       }
       return;
     }
     if (text === '/settings' || text === '/menu' || text === '/configmenu') {
-      await this.showSettingsMenu().catch((e: any) => this.adapters.telegram.sendMessage(`Settings error: ${e.message}`).catch(() => {}));
+      await this.showSettingsMenu().catch(async (e: any) => {
+        log('telegram_warn', `Failed to show settings menu: ${e.message}`);
+        await this.sendTelegramSafe(`Settings error: ${e.message}`);
+      });
       return;
     }
     if (this.managementBusy || this.screeningBusy || this.pnlPollBusy || this.busy) {
       if (this.telegramQueue.length < this.MAX_TELEGRAM_QUEUE) {
         this.telegramQueue.push(msg);
-        this.adapters.telegram.sendMessage(`⏳ Queued (${this.telegramQueue.length} in queue): "${text.slice(0, 60)}"`).catch(() => {});
+        await this.sendTelegramSafe(`⏳ Queued (${this.telegramQueue.length} in queue): "${text.slice(0, 60)}"`);
       } else {
-        this.adapters.telegram.sendMessage('Queue is full (5 messages). Wait for the agent to finish.').catch(() => {});
+        await this.sendTelegramSafe('Queue is full (5 messages). Wait for the agent to finish.');
       }
       return;
     }
@@ -1895,15 +1947,15 @@ IMPORTANT:
     if (text === '/briefing') {
       try {
         const briefing = await this.getBriefingWithSolPrice();
-        await this.adapters.telegram.sendMessage(briefing);
+        await this.sendTelegramSafe(briefing);
       } catch (e: any) {
-        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+        await this.sendTelegramSafe(`Error: ${e.message}`);
       }
       return;
     }
 
     if (text === '/help') {
-      await this.adapters.telegram.sendMessage(this.formatHelpText()).catch(() => {});
+      await this.sendTelegramSafe(this.formatHelpText());
       return;
     }
 
@@ -1914,15 +1966,15 @@ IMPORTANT:
           this.adapters.meteora.getMyPositions({ force: true }),
         ]);
         const suffix = text === '/status' && positions.total_positions ? `\n\nUse /positions for the numbered list.` : '';
-        await this.adapters.telegram.sendMessage(`${this.formatWalletStatus(wallet, positions)}${suffix}`).catch(() => {});
+        await this.sendTelegramSafe(`${this.formatWalletStatus(wallet, positions)}${suffix}`);
       } catch (e: any) {
-        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+        await this.sendTelegramSafe(`Error: ${e.message}`);
       }
       return;
     }
 
     if (text === '/config') {
-      await this.adapters.telegram.sendMessage(this.formatConfigSnapshot()).catch(() => {});
+      await this.sendTelegramSafe(this.formatConfigSnapshot());
       return;
     }
 
@@ -1930,7 +1982,7 @@ IMPORTANT:
       try {
         const { positions, total_positions } = await this.adapters.meteora.getMyPositions({ force: true });
         if (total_positions === 0) {
-          await this.adapters.telegram.sendMessage('No open positions.');
+          await this.sendTelegramSafe('No open positions.');
           return;
         }
         const cur = config.management.solMode ? '◎' : '$';
@@ -1940,11 +1992,11 @@ IMPORTANT:
           const oor = !p.in_range ? ' ⚠️OOR' : '';
           return `${i + 1}. ${p.pair} | ${cur}${p.total_value_usd} | PnL: ${pnl} | fees: ${cur}${p.unclaimed_fees_usd} | ${age}${oor}`;
         });
-        await this.adapters.telegram.sendMessage(
+        await this.sendTelegramSafe(
           `📊 Open Positions (${total_positions}):\n\n${lines.join('\n')}\n\n/close <n> to close | /set <n> <note> to set instruction`,
         );
       } catch (e: any) {
-        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+        await this.sendTelegramSafe(`Error: ${e.message}`);
       }
       return;
     }
@@ -1955,11 +2007,11 @@ IMPORTANT:
         const idx = parseInt(poolMatch[1]) - 1;
         const { positions } = await this.adapters.meteora.getMyPositions({ force: true });
         if (idx < 0 || idx >= positions.length) {
-          await this.adapters.telegram.sendMessage('Invalid number. Use /positions first.');
+          await this.sendTelegramSafe('Invalid number. Use /positions first.');
           return;
         }
         const pos = positions[idx];
-        await this.adapters.telegram.sendMessage(
+        await this.sendTelegramSafe(
           [
             `${idx + 1}. ${pos.pair}`,
             `Pool: ${pos.pool}`,
@@ -1974,7 +2026,7 @@ IMPORTANT:
             .join('\n'),
         );
       } catch (e: any) {
-        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+        await this.sendTelegramSafe(`Error: ${e.message}`);
       }
       return;
     }
@@ -1986,11 +2038,11 @@ IMPORTANT:
         const skipSwap = Boolean(closeMatch[2]);
         const { positions } = await this.adapters.meteora.getMyPositions({ force: true });
         if (idx < 0 || idx >= positions.length) {
-          await this.adapters.telegram.sendMessage('Invalid number. Use /positions first.');
+          await this.sendTelegramSafe('Invalid number. Use /positions first.');
           return;
         }
         const pos = positions[idx];
-        await this.adapters.telegram.sendMessage(`Closing ${pos.pair}${skipSwap ? ' (skipping auto-swap)' : ''}...`);
+        await this.sendTelegramSafe(`Closing ${pos.pair}${skipSwap ? ' (skipping auto-swap)' : ''}...`);
         const result = await this.adapters.toolExecutor.executeTool('close_position', {
           position_address: pos.position,
           skip_swap: skipSwap,
@@ -2002,14 +2054,14 @@ IMPORTANT:
           const swapNote = result.auto_swapped
             ? `\nAuto-swapped base token → ${result.sol_received ? `◎${result.sol_received.toFixed(4)} SOL` : 'SOL'}`
             : '';
-          await this.adapters.telegram.sendMessage(
+          await this.sendTelegramSafe(
             `✅ Closed ${pos.pair}\nPnL: ${config.management.solMode ? '◎' : '$'}${result.pnl_usd ?? '?'}${swapNote} | close txs: ${closeTxs?.join(', ') || 'n/a'}${claimNote}`,
           );
         } else {
-          await this.adapters.telegram.sendMessage(`❌ Close failed: ${result.error || JSON.stringify(result)}`);
+          await this.sendTelegramSafe(`❌ Close failed: ${result.error || JSON.stringify(result)}`);
         }
       } catch (e: any) {
-        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+        await this.sendTelegramSafe(`Error: ${e.message}`);
       }
       return;
     }
@@ -2019,10 +2071,10 @@ IMPORTANT:
         const skipSwap = text.includes('--skip-swap');
         const { positions } = await this.adapters.meteora.getMyPositions({ force: true });
         if (!positions.length) {
-          await this.adapters.telegram.sendMessage('No open positions.');
+          await this.sendTelegramSafe('No open positions.');
           return;
         }
-        await this.adapters.telegram.sendMessage(`Closing ${positions.length} position(s)...`);
+        await this.sendTelegramSafe(`Closing ${positions.length} position(s)...`);
         const results: string[] = [];
         for (const pos of positions) {
           try {
@@ -2037,9 +2089,9 @@ IMPORTANT:
             results.push(`${pos.pair}: failed (${error.message})`);
           }
         }
-        await this.adapters.telegram.sendMessage(`Close-all finished.\n\n${results.join('\n')}`).catch(() => {});
+        await this.sendTelegramSafe(`Close-all finished.\n\n${results.join('\n')}`);
       } catch (e: any) {
-        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+        await this.sendTelegramSafe(`Error: ${e.message}`);
       }
       return;
     }
@@ -2051,14 +2103,14 @@ IMPORTANT:
         const note = setMatch[2].trim();
         const { positions } = await this.adapters.meteora.getMyPositions({ force: true });
         if (idx < 0 || idx >= positions.length) {
-          await this.adapters.telegram.sendMessage('Invalid number. Use /positions first.');
+          await this.sendTelegramSafe('Invalid number. Use /positions first.');
           return;
         }
         const pos = positions[idx];
         setPositionInstruction(pos.position, note);
-        await this.adapters.telegram.sendMessage(`✅ Note set for ${pos.pair}:\n"${note}"`);
+        await this.sendTelegramSafe(`✅ Note set for ${pos.pair}:\n"${note}"`);
       } catch (e: any) {
-        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+        await this.sendTelegramSafe(`Error: ${e.message}`);
       }
       return;
     }
@@ -2073,27 +2125,27 @@ IMPORTANT:
           reason: 'Telegram slash command /setcfg',
         });
         if (!result?.success) {
-          await this.adapters.telegram.sendMessage(`Config update failed.\nUnknown: ${(result?.unknown || []).join(', ') || 'none'}`).catch(() => {});
+          await this.sendTelegramSafe(`Config update failed.\nUnknown: ${(result?.unknown || []).join(', ') || 'none'}`);
           return;
         }
-        await this.adapters.telegram.sendMessage(`✅ Updated ${key} = ${JSON.stringify(value)}`).catch(() => {});
+        await this.sendTelegramSafe(`✅ Updated ${key} = ${JSON.stringify(value)}`);
       } catch (e: any) {
-        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+        await this.sendTelegramSafe(`Error: ${e.message}`);
       }
       return;
     }
 
     if (text === '/screen') {
       try {
-        await this.adapters.telegram.sendMessage(await this.runDeterministicScreen(5)).catch(() => {});
+        await this.sendTelegramSafe(await this.runDeterministicScreen(5));
       } catch (e: any) {
-        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+        await this.sendTelegramSafe(`Error: ${e.message}`);
       }
       return;
     }
 
     if (text === '/candidates') {
-      await this.adapters.telegram.sendMessage(this.describeLatestCandidates(5)).catch(() => {});
+      await this.sendTelegramSafe(this.describeLatestCandidates(5));
       return;
     }
 
@@ -2105,22 +2157,20 @@ IMPORTANT:
         const coverage = result.range_coverage
           ? `Range: ${fmtPct(result.range_coverage.downside_pct)} downside | ${fmtPct(result.range_coverage.upside_pct)} upside`
           : `Strategy: ${config.strategy.strategyMeteora} | binsBelow: ${binsBelow}`;
-        await this.adapters.telegram
-          .sendMessage(
-            [
-              `✅ Deployed ${candidate.name}`,
-              `Pool: ${candidate.pool}`,
-              `Amount: ${deployAmount} SOL`,
-              coverage,
-              `Position: ${result.position || 'n/a'}`,
-              result.txs?.length ? `Tx: ${result.txs[0]}` : null,
-            ]
-              .filter(Boolean)
-              .join('\n'),
-          )
-          .catch(() => {});
+        await this.sendTelegramSafe(
+          [
+            `✅ Deployed ${candidate.name}`,
+            `Pool: ${candidate.pool}`,
+            `Amount: ${deployAmount} SOL`,
+            coverage,
+            `Position: ${result.position || 'n/a'}`,
+            result.txs?.length ? `Tx: ${result.txs[0]}` : null,
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        );
       } catch (e: any) {
-        await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+        await this.sendTelegramSafe(`Error: ${e.message}`);
       }
       return;
     }
@@ -2128,14 +2178,12 @@ IMPORTANT:
     if (text === '/pause') {
       this.stopCronJobs();
       this.cronStarted = false;
-      await this.adapters.telegram
-        .sendMessage('⏸ Paused autonomous cycles. Telegram control still works. Use /resume to start again.')
-        .catch(() => {});
+      await this.sendTelegramSafe('⏸ Paused autonomous cycles. Telegram control still works. Use /resume to start again.');
       return;
     }
 
     if (text === '/stop') {
-      await this.adapters.telegram.sendMessage('🛑 Shutting down agent...').catch(() => {});
+      await this.sendTelegramSafe('🛑 Shutting down agent...');
       await this.shutdown('telegram /stop');
       return;
     }
@@ -2146,9 +2194,9 @@ IMPORTANT:
         this.managementLastRun = Date.now();
         this.screeningLastRun = Date.now();
         this.startCronJobs();
-        await this.adapters.telegram.sendMessage('▶️ Autonomous cycles resumed.').catch(() => {});
+        await this.sendTelegramSafe('▶️ Autonomous cycles resumed.');
       } else {
-        await this.adapters.telegram.sendMessage('Autonomous cycles are already running.').catch(() => {});
+        await this.sendTelegramSafe('Autonomous cycles are already running.');
       }
       return;
     }
@@ -2158,7 +2206,7 @@ IMPORTANT:
         const enabled = this.adapters.hivemind.isHiveMindEnabled();
         const agentId = this.adapters.hivemind.ensureAgentId();
         if (!enabled) {
-          await this.adapters.telegram.sendMessage(`HiveMind: disabled\nAgent ID: ${agentId}\nSet hiveMindApiKey to connect.`).catch(() => {});
+          await this.sendTelegramSafe(`HiveMind: disabled\nAgent ID: ${agentId}\nSet hiveMindApiKey to connect.`);
           return;
         }
         const isManualPull = text === '/hive pull';
@@ -2168,22 +2216,20 @@ IMPORTANT:
           pullMode === 'auto' || isManualPull ? this.adapters.hivemind.pullHiveMindLessons(12) : Promise.resolve(null),
           pullMode === 'auto' || isManualPull ? this.adapters.hivemind.pullHiveMindPresets() : Promise.resolve(null),
         ]);
-        await this.adapters.telegram
-          .sendMessage(
-            [
-              'HiveMind: enabled',
-              `Agent ID: ${agentId}`,
-              `URL: ${config.hiveMind.url}`,
-              `Pull mode: ${pullMode}`,
-              `Register: ${registerResult ? 'ok' : 'warn'}`,
-              `Shared lessons: ${Array.isArray(lessons) ? lessons.length : pullMode === 'manual' ? 'manual' : 0}`,
-              `Presets: ${Array.isArray(presets) ? presets.length : pullMode === 'manual' ? 'manual' : 0}`,
-              isManualPull ? 'Manual pull: completed' : null,
-            ].join('\n'),
-          )
-          .catch(() => {});
+        await this.sendTelegramSafe(
+          [
+            'HiveMind: enabled',
+            `Agent ID: ${agentId}`,
+            `URL: ${config.hiveMind.url}`,
+            `Pull mode: ${pullMode}`,
+            `Register: ${registerResult ? 'ok' : 'warn'}`,
+            `Shared lessons: ${Array.isArray(lessons) ? lessons.length : pullMode === 'manual' ? 'manual' : 0}`,
+            `Presets: ${Array.isArray(presets) ? presets.length : pullMode === 'manual' ? 'manual' : 0}`,
+            isManualPull ? 'Manual pull: completed' : null,
+          ].join('\n'),
+        );
       } catch (e: any) {
-        await this.adapters.telegram.sendMessage(`HiveMind error: ${e.message}`).catch(() => {});
+        await this.sendTelegramSafe(`HiveMind error: ${e.message}`);
       }
       return;
     }
@@ -2210,14 +2256,21 @@ IMPORTANT:
       });
       this.appendHistory(text, content);
       if (liveMessage) await liveMessage.finalize(stripThink(content));
-      else await this.adapters.telegram.sendMessage(stripThink(content));
+      else await this.sendTelegramSafe(stripThink(content));
     } catch (e: any) {
-      if (liveMessage) await liveMessage.fail(e.message).catch(() => {});
-      else await this.adapters.telegram.sendMessage(`Error: ${e.message}`).catch(() => {});
+      if (liveMessage) {
+        await liveMessage.fail(e.message).catch((err: any) => {
+          log('telegram_warn', `Failed to send live message failure update: ${err?.message || err}`);
+        });
+      } else {
+        await this.sendTelegramSafe(`Error: ${e.message}`);
+      }
     } finally {
       this.busy = false;
       this.refreshPrompt();
-      this.drainTelegramQueue().catch(() => {});
+      this.drainTelegramQueue().catch((err: any) => {
+        log('telegram_warn', `Failed to drain telegram queue: ${err?.message || err}`);
+      });
     }
   }
 
