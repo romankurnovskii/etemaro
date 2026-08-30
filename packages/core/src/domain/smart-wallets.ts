@@ -59,6 +59,7 @@ export function removeSmartWallet({ address }: { address: string }): Record<stri
   if (!wallet) return { success: false, error: 'Wallet not found' };
   data.wallets = data.wallets.filter((w) => w.address !== address);
   saveWallets(data);
+  _cache.delete(address);
   log('smart_wallets', `Removed wallet: ${wallet.name}`);
   return { success: true, removed: wallet.name };
 }
@@ -68,8 +69,44 @@ export function listSmartWallets(): { total: number; wallets: SmartWallet[] } {
   return { total: wallets.length, wallets };
 }
 
+// Max bounded position cache size to avoid unbounded memory growth
+export const MAX_SMART_WALLET_CACHE_SIZE = 500;
+
 // Cache wallet positions for 5 minutes to avoid hammering RPC
 const _cache = new Map<string, { positions: Array<{ pool: string }>; fetchedAt: number }>();
+
+/**
+ * Prunes expired or untracked addresses from the cache, and enforces MAX_SMART_WALLET_CACHE_SIZE.
+ */
+export function pruneSmartWalletCache(activeAddresses?: Set<string>): void {
+  const now = Date.now();
+  for (const [addr, entry] of _cache.entries()) {
+    if ((activeAddresses && !activeAddresses.has(addr)) || now - entry.fetchedAt >= CACHE_TTL_MS) {
+      _cache.delete(addr);
+    }
+  }
+  if (_cache.size > MAX_SMART_WALLET_CACHE_SIZE) {
+    const sorted = [..._cache.entries()].sort((a, b) => a[1].fetchedAt - b[1].fetchedAt);
+    const toRemove = sorted.slice(0, _cache.size - MAX_SMART_WALLET_CACHE_SIZE);
+    for (const [addr] of toRemove) {
+      _cache.delete(addr);
+    }
+  }
+}
+
+/**
+ * Returns current count of entries in the in-memory smart wallet cache.
+ */
+export function getSmartWalletCacheSize(): number {
+  return _cache.size;
+}
+
+/**
+ * Clears the in-memory cache (for testing).
+ */
+export function __clearSmartWalletCache(): void {
+  _cache.clear();
+}
 
 /**
  * Callback type for fetching wallet positions — injected by the caller
@@ -106,6 +143,9 @@ export async function checkSmartWalletsOnPool(
     };
   }
 
+  const activeSet = new Set(wallets.map((w) => w.address));
+  pruneSmartWalletCache(activeSet);
+
   const getPositions: GetWalletPositionsFn = getWalletPositions ?? (await import('../adapters/blockchain/MeteoraAdapter.js')).getWalletPositions;
 
   const results = await Promise.all(
@@ -116,6 +156,9 @@ export async function checkSmartWalletsOnPool(
           return { wallet, positions: cached.positions };
         }
         const { positions } = await getPositions({ wallet_address: wallet.address });
+        if (_cache.size >= MAX_SMART_WALLET_CACHE_SIZE && !_cache.has(wallet.address)) {
+          pruneSmartWalletCache(activeSet);
+        }
         _cache.set(wallet.address, { positions: positions || [], fetchedAt: Date.now() });
         return { wallet, positions: positions || [] };
       } catch {
