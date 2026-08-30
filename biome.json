@@ -37,8 +37,7 @@
   "javascript": {
     "formatter": {
       "quoteStyle": "single",
-      "semicolons": "always",
-      "trailingCommas": "all"
+      "semicolons": "always"
     }
   },
   "assist": {
