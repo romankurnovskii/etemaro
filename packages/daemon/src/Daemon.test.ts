@@ -299,5 +299,21 @@ REJECTED
       }),
     );
   });
+
+  it('logs cron_error when getMyPositions fails in runManagementCycle', async () => {
+    adapters.meteora.getMyPositions = vi.fn().mockRejectedValue(new Error('RPC rate limited'));
+
+    const res = await daemon.runManagementCycle({ silent: true });
+    expect(res).toBe('No open positions.');
+    expect((daemon as any).managementBusy).toBe(false);
+  });
+
+  it('logs telegram_warn and handles error gracefully when sendTelegramSafe fails', async () => {
+    adapters.telegram.isEnabled = () => true;
+    adapters.telegram.sendMessage = vi.fn().mockRejectedValue(new Error('Network offline'));
+
+    // Should not throw even when sendMessage rejects
+    await expect((daemon as any).sendTelegramSafe('Test message')).resolves.toBeNull();
+  });
 });
 

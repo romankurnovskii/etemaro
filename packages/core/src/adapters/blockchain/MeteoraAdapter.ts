@@ -745,7 +745,10 @@ export async function deployPosition({
       const refreshed = await getMyPositions({
         force: true,
         silent: true,
-      }).catch(() => null);
+      }).catch((err: any) => {
+        log('meteora_warn', `Failed to refresh positions after deploy: ${err?.message || err}`);
+        return null;
+      });
       const matching =
         refreshed?.positions?.find(
           (position: any) => position.pool === pool_address && position.lower_bin === minBinId && position.upper_bin === maxBinId,
@@ -1801,8 +1804,8 @@ export async function closePosition({ position_address, reason }: { position_add
                 exit_volume: parseFloat(ep?.volume) || null,
               };
             }
-          } catch {
-            /* non-blocking */
+          } catch (err: any) {
+            log('meteora_warn', `Failed to fetch pool exit metrics for ${poolAddress}: ${err?.message || err}`);
           }
 
           await recordPerformance({
@@ -2087,8 +2090,8 @@ export async function closePosition({ position_address, reason }: { position_add
             exit_volume: parseFloat(ep?.volume) || null,
           };
         }
-      } catch {
-        /* non-blocking */
+      } catch (err: any) {
+        log('meteora_warn', `Failed to fetch pool exit metrics for ${poolAddress}: ${err?.message || err}`);
       }
 
       await recordPerformance({
