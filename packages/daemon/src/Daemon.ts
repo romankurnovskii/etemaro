@@ -89,6 +89,14 @@ export interface DaemonAdapters {
     editMessageWithButtons: (text: string, messageId: number, buttons: any[]) => Promise<any>;
     answerCallbackQuery: (queryId: string, text?: string) => Promise<any>;
     notifyOutOfRange: (data: { pair: string; minutesOOR: number }) => Promise<any>;
+    notifyRpcError?: (data: { operation: string; error: string; endpoint?: string }) => Promise<any>;
+    notifyTransactionError?: (data: {
+      type: 'deploy' | 'close' | 'claim' | 'swap' | 'confirm';
+      pair?: string;
+      position?: string;
+      tx?: string;
+      reason: string;
+    }) => Promise<any>;
     isEnabled: () => boolean;
     createLiveMessage: (title: string, body: string) => Promise<any>;
   };
@@ -687,6 +695,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
           this.runScreeningCycle({ silent: true }).catch((e: any) => log('cron_error', `Opportunity-triggered screening failed: ${e.message}`));
         } catch (e: any) {
           log('cron_error', `Opportunity poll failed: ${e.message}`);
+          this.adapters.telegram.notifyRpcError?.({ operation: 'Opportunity Poller', error: e.message }).catch(() => null);
         } finally {
           this.releaseLock('opportunityPoll');
         }
@@ -972,6 +981,7 @@ After evaluating, write a brief one-line result per position.
     } catch (error: any) {
       log('cron_error', `Management cycle failed: ${error.message}`);
       mgmtReport = `Management cycle failed: ${error.message}`;
+      this.adapters.telegram.notifyRpcError?.({ operation: 'Management Cycle', error: error.message }).catch(() => null);
     } finally {
       this.releaseLock('management');
       if (!silent && this.adapters.telegram.isEnabled()) {
@@ -1386,6 +1396,7 @@ IMPORTANT:
     } catch (error: any) {
       log('cron_error', `Screening cycle failed: ${error.message}`);
       screenReport = `Screening cycle failed: ${error.message}`;
+      this.adapters.telegram.notifyRpcError?.({ operation: 'Screening Cycle', error: error.message }).catch(() => null);
     } finally {
       this.releaseLock('screening');
       if (!silent && this.adapters.telegram.isEnabled()) {
