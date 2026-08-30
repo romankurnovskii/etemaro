@@ -4,8 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
-import path from 'node:path';
-import { sharedDataPath, REPO_ROOT } from '../shared/constants.js';
+import { sharedDataPath } from '../shared/constants.js';
 import { listSmartWallets, addSmartWallet, removeSmartWallet } from './smart-wallets.js';
 
 describe('smart-wallets domain module', () => {
@@ -77,5 +76,64 @@ describe('smart-wallets domain module', () => {
 
     const listAfter = listSmartWallets();
     expect(listAfter.total).toBe(0);
+  });
+
+  describe('smart wallet position cache pruning and bounding', () => {
+    const wallet1 = '7xKp9QZ6mN2vR5wX8yA1bC3dE4fG6hJ9kL2mV4nW7z';
+    const wallet2 = '8yLq0RA7nO3wS6yY9zB2cD4eF5gH7iK0lM3nW5oX8a';
+
+    beforeEach(async () => {
+      const { __clearSmartWalletCache } = await import('./smart-wallets.js');
+      __clearSmartWalletCache();
+    });
+
+    it('clears specific wallet from cache when removeSmartWallet is called', async () => {
+      const { checkSmartWalletsOnPool, getSmartWalletCacheSize } = await import('./smart-wallets.js');
+      fs.writeFileSync(
+        testWalletPath,
+        JSON.stringify({
+          wallets: [
+            { name: 'w1', address: wallet1, type: 'lp' },
+            { name: 'w2', address: wallet2, type: 'lp' },
+          ],
+        }),
+        'utf8',
+      );
+
+      const mockGetPositions = async ({ wallet_address }: { wallet_address: string }) => ({
+        positions: [{ pool: 'pool_xyz' }],
+      });
+
+      await checkSmartWalletsOnPool({ pool_address: 'pool_xyz' }, mockGetPositions);
+      expect(getSmartWalletCacheSize()).toBe(2);
+
+      removeSmartWallet({ address: wallet1 });
+      expect(getSmartWalletCacheSize()).toBe(1);
+    });
+
+    it('prunes untracked addresses when pruneSmartWalletCache is called', async () => {
+      const { checkSmartWalletsOnPool, pruneSmartWalletCache, getSmartWalletCacheSize } = await import('./smart-wallets.js');
+      fs.writeFileSync(
+        testWalletPath,
+        JSON.stringify({
+          wallets: [
+            { name: 'w1', address: wallet1, type: 'lp' },
+            { name: 'w2', address: wallet2, type: 'lp' },
+          ],
+        }),
+        'utf8',
+      );
+
+      const mockGetPositions = async ({ wallet_address }: { wallet_address: string }) => ({
+        positions: [{ pool: 'pool_xyz' }],
+      });
+
+      await checkSmartWalletsOnPool({ pool_address: 'pool_xyz' }, mockGetPositions);
+      expect(getSmartWalletCacheSize()).toBe(2);
+
+      // Prune keeping only wallet2
+      pruneSmartWalletCache(new Set([wallet2]));
+      expect(getSmartWalletCacheSize()).toBe(1);
+    });
   });
 });
