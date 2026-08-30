@@ -26,7 +26,7 @@ function findRepoRoot(startDir: string): string {
     dir = parent;
   }
   const fallback = path.resolve(startDir, '../..');
-  if (fs.existsSync(path.join(fallback, 'config', 'templates', 'user-config.example.json'))) {
+  if (fs.existsSync(path.join(fallback, 'pnpm-workspace.yaml')) || fs.existsSync(path.join(fallback, 'package.json'))) {
     return fallback;
   }
   const home = process.env.HOME || process.env.USERPROFILE;

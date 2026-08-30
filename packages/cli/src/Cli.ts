@@ -455,7 +455,7 @@ JUPITER_API_KEY=""
     const userConfigFile = path.join(configDir, 'user-config.json');
     let configCreated = false;
     if (!fs.existsSync(userConfigFile)) {
-      fs.writeFileSync(userConfigFile, defaultUserConfigStr);
+      fs.writeFileSync(userConfigFile, defaultUserConfigStr + '\n');
       configCreated = true;
     }
 
