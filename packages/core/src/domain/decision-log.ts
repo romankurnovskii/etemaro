@@ -1,16 +1,4 @@
-/**
- * @file decision-log.ts
- * @description Append-only JSON log of structured agent decisions (deploy, close, skip, no_deploy, note).
- *
- * @features
- * - appendDecision stores sanitized decisions capped at MAX_DECISIONS
- * - getRecentDecisions returns the N most recent entries
- * - getDecisionSummary produces a compact human-readable digest
- *
- * @dependencies none (pure file I/O)
- * @sideEffects Reads and writes decision-log.json
- */
-import { log } from '../shared/logger.js';
+
 import { dataPath, MAX_DECISIONS } from '../shared/constants.js';
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js';
 import type { Decision, DecisionType } from '../shared/types.js';
@@ -32,6 +20,29 @@ function save(data: DecisionLogData): void {
 function sanitize(value: unknown, maxLen = 280): string | null {
   if (value == null) return null;
   return String(value).replace(/\s+/g, ' ').trim().slice(0, maxLen) || null;
+}
+
+/**
+ * Extracts candidate rejections from LLM reports formatted with a `REJECTED` section.
+ */
+export function parseRejectedCandidates(content: string): string[] {
+  if (!content) return [];
+  const rejectedMatch = content.match(
+    /(?:^|\n)\s*(?:###?\s*)?REJECTED\s*:?\s*\n([\s\S]*?)(?:\n\s*(?:###?|[A-Z][A-Z\s]{3,}:|$))/i,
+  );
+  if (!rejectedMatch || !rejectedMatch[1]) return [];
+  const lines = rejectedMatch[1].split('\n');
+  const rejected: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    // Strip leading bullet point: -, *, •, or numbering 1.
+    const clean = trimmed.replace(/^[-*•\d.]+\s*/, '').trim();
+    if (clean && !clean.startsWith('(') && clean.toLowerCase() !== '<none>' && clean.toLowerCase() !== 'none') {
+      rejected.push(clean);
+    }
+  }
+  return rejected;
 }
 
 interface AppendDecisionEntry {
@@ -58,10 +69,10 @@ export function appendDecision(entry: AppendDecisionEntry): Decision {
     pool_name: sanitize(entry.pool_name || entry.pool, 120),
     position: entry.position || null,
     summary: sanitize(entry.summary),
-    reason: sanitize(entry.reason, 500),
+    reason: sanitize(entry.reason, 2048),
     risks: Array.isArray(entry.risks) ? (entry.risks.map((r) => sanitize(r, 140)).filter(Boolean) as string[]) : [],
     metrics: entry.metrics || {},
-    rejected: Array.isArray(entry.rejected) ? (entry.rejected.map((r) => sanitize(r, 180)).filter(Boolean) as string[]) : [],
+    rejected: Array.isArray(entry.rejected) ? (entry.rejected.map((r) => sanitize(r, 300)).filter(Boolean) as string[]) : [],
   };
   data.decisions.unshift(decision);
   data.decisions = data.decisions.slice(0, MAX_DECISIONS);
