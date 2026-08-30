@@ -767,6 +767,22 @@ const PROTECTED_TOOLS = new Set([...WRITE_TOOLS, 'self_update']);
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+let deployPositionQueue: Promise<void> = Promise.resolve();
+
+async function withDeployPositionLock<T>(operation: () => Promise<T>): Promise<T> {
+  let release!: () => void;
+  const previous = deployPositionQueue;
+  deployPositionQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
+
 /**
  * Swap a base token back to SOL with retry. Jupiter can transiently fail (no route,
  * quote error) and a single attempt silently leaves the token unsold — this retries
@@ -977,6 +993,14 @@ export async function closeAllPositions(skipSwapInput: boolean | { skipSwap?: bo
  * Execute a tool call with safety checks and logging.
  */
 export async function executeTool(name: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  const normalizedName = name.replace(/<.*$/, '').trim();
+  if (normalizedName === 'deploy_position') {
+    return withDeployPositionLock(() => executeToolUnlocked(normalizedName, args));
+  }
+  return executeToolUnlocked(normalizedName, args);
+}
+
+async function executeToolUnlocked(name: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
   const startTime = Date.now();
 
   // Strip model artifacts like "<|channel|>commentary" appended to tool names
