@@ -229,9 +229,8 @@ sequenceDiagram
 graph TD
     subgraph "Configuration Sources"
         ENV[".env<br/>Secrets: keys, tokens, RPC URLs"]
-        USER["user-config.json<br/>Runtime settings: thresholds, strategy"]
-        GMGN_CFG["config/templates/user-config.example.json<br/>GMGN API settings"]
-        DEFAULTS["Zod Schema Defaults<br/>Hardcoded fallbacks"]
+        USER["user-config.json<br/>Runtime settings: thresholds, strategy, GMGN API"]
+        DEFAULTS["DEFAULT_USER_CONFIG<br/>Typed core defaults in TypeScript"]
     end
 
     subgraph "Config Builder"

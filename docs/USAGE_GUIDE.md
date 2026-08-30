@@ -53,9 +53,8 @@ git clone https://github.com/romankurnovskii/etemaro
 cd etemaro
 npm install
 
-# 2. Copy config templates (.env + user-config.json)
-cp .env.example .env
-cp config/templates/user-config.example.json config/user-config.json
+# 2. Initialize configuration (.env + user-config.json)
+pnpm cli init
 
 # 3. Edit .env and enter your credentials:
 #   - WALLET_PRIVATE_KEY (Solana wallet private key)

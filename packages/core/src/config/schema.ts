@@ -102,10 +102,12 @@ export const UserConfigSchema = z.object({
     })
     .optional(),
   risk: z.object({
+    description: z.string().optional(),
     maxPositions: envNumber,
     maxDeployAmount: envNumber,
   }),
   screening: z.object({
+    description: z.string().optional(),
     entrySource: z.enum(['market', 'smart_wallets']).optional().default('market'),
     excludeHighSupplyConcentration: envBoolean,
     minFeeActiveTvlRatio: envNumber,
@@ -135,6 +137,7 @@ export const UserConfigSchema = z.object({
     maxTokenAgeHours: envNumber.nullable(),
   }),
   management: z.object({
+    description: z.string().optional(),
     minClaimAmount: envNumber,
     autoSwapAfterClaim: envBoolean,
     autoSwapRetryAttempts: envNumber,
@@ -167,6 +170,7 @@ export const UserConfigSchema = z.object({
     solMode: envBoolean,
   }),
   strategy: z.object({
+    description: z.string().optional(),
     activeStrategyId: envString,
     strategyMeteora: z.enum(['spot', 'curve', 'bid_ask']),
     minBinsBelow: envNumber,
@@ -175,11 +179,13 @@ export const UserConfigSchema = z.object({
     minSafeBinsBelow: envNumber,
   }),
   schedule: z.object({
+    description: z.string().optional(),
     managementIntervalMin: envNumber,
     screeningIntervalMin: envNumber,
     healthCheckIntervalMin: envNumber,
   }),
   llm: z.object({
+    description: z.string().optional(),
     baseUrl: envStringNullable.optional(),
     apiKey: envStringNullable.optional(),
     temperature: envNumber,
@@ -191,6 +197,7 @@ export const UserConfigSchema = z.object({
     generalModel: envString,
   }),
   darwin: z.object({
+    description: z.string().optional(),
     enabled: envBoolean,
     windowDays: envNumber,
     recalcEvery: envNumber,
@@ -229,6 +236,7 @@ export const UserConfigSchema = z.object({
       .optional(),
   }),
   pnl: z.object({
+    description: z.string().optional(),
     rpcUrl: envString,
     source: envString,
     pollIntervalSec: envNumber,
@@ -236,6 +244,7 @@ export const UserConfigSchema = z.object({
     confirmTicks: envNumber,
   }),
   opportunity: z.object({
+    description: z.string().optional(),
     enabled: envBoolean,
     pollIntervalSec: envNumber,
     limit: envNumber,
@@ -256,11 +265,13 @@ export const UserConfigSchema = z.object({
     feeSource: envString,
   }),
   jupiter: z.object({
+    description: z.string().optional(),
     apiKey: envString,
     referralAccount: envString,
     referralFeeBps: envNumber,
   }),
   chartIndicators: z.object({
+    description: z.string().optional(),
     enabled: envBoolean,
     entryPreset: envString,
     exitPreset: envString,
@@ -274,3 +285,4 @@ export const UserConfigSchema = z.object({
 });
 
 export type ValidatedUserConfig = z.infer<typeof UserConfigSchema>;
+export type UserConfigRaw = z.input<typeof UserConfigSchema>;

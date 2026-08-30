@@ -27,38 +27,20 @@ function isHelpOrInfoCommand(): boolean {
 }
 
 export function loadAndValidateConfig(): ValidatedUserConfig {
-  const EXAMPLE_CONFIG_PATH = configPath('templates/user-config.example.json');
-
-  // Create example config if it doesn't exist
-  if (!fs.existsSync(EXAMPLE_CONFIG_PATH)) {
-    fs.mkdirSync(path.dirname(EXAMPLE_CONFIG_PATH), { recursive: true });
-    fs.writeFileSync(EXAMPLE_CONFIG_PATH, defaultUserConfigStr, 'utf8');
-  }
-
-  // Handle test environment initial copying
-  if (process.env.TEST_MODE || process.env.VITEST) {
-    if (!fs.existsSync(USER_CONFIG_PATH) && fs.existsSync(EXAMPLE_CONFIG_PATH)) {
-      fs.copyFileSync(EXAMPLE_CONFIG_PATH, USER_CONFIG_PATH);
-    }
-  }
-
-  // Ensure user config exists
+  // Ensure user config directory and file exist
   if (!fs.existsSync(USER_CONFIG_PATH)) {
-    if (fs.existsSync(EXAMPLE_CONFIG_PATH)) {
-      console.log(`[config] ${getConfigFileName()} not found, copying from example`);
-      fs.copyFileSync(EXAMPLE_CONFIG_PATH, USER_CONFIG_PATH);
-    } else {
-      throw new Error(`${getConfigFileName()} not found and no example config to copy from`);
-    }
+    console.log(`[config] ${getConfigFileName()} not found, initializing from default config`);
+    fs.mkdirSync(path.dirname(USER_CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(USER_CONFIG_PATH, defaultUserConfigStr + '\n', 'utf8');
   }
 
   // Read user config
   let raw: Record<string, unknown>;
   try {
     const content = fs.readFileSync(USER_CONFIG_PATH, 'utf8');
-    if (!content.trim() && fs.existsSync(EXAMPLE_CONFIG_PATH)) {
-      fs.copyFileSync(EXAMPLE_CONFIG_PATH, USER_CONFIG_PATH);
-      raw = JSON.parse(fs.readFileSync(EXAMPLE_CONFIG_PATH, 'utf8'));
+    if (!content.trim()) {
+      fs.writeFileSync(USER_CONFIG_PATH, defaultUserConfigStr + '\n', 'utf8');
+      raw = JSON.parse(defaultUserConfigStr);
     } else {
       raw = JSON.parse(content);
     }

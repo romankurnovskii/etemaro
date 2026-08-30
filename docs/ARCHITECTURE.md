@@ -7,10 +7,9 @@ The codebase is a pnpm monorepo. Config and runtime data live at the repository 
 ```
   config/
     agents.json
-    user-config.json           # Active user configuration (copied from config/templates/user-config.example.json)
+    user-config.json           # Active user configuration (generated via `pnpm cli init` or core defaults)
     templates/
-      user-config.example.json   # Template user configuration
-      user-config.example.json   # Includes GMGN fee provider configuration
+      ecosystem.config.example.cjs # Multi-agent PM2 configuration template
 data/
   state.json                 # Registry of open/closed positions
   lessons.json               # Historical performance lessons
