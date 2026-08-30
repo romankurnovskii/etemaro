@@ -10,16 +10,16 @@
  */
 
 import { log } from '../shared/logger.js';
-import { dataPath } from '../shared/constants.js';
+import { sharedDataPath } from '../shared/constants.js';
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js';
 import type { BlacklistedToken } from '../shared/types.js';
 
-const BLACKLIST_FILE = dataPath('token-blacklist.json');
+const BLACKLIST_FILE = sharedDataPath('token-blacklist.json');
 
 type BlacklistDb = Record<string, BlacklistedToken>;
 
 function load(): BlacklistDb {
-  return loadJsonFile<BlacklistDb>(BLACKLIST_FILE, {});
+  return loadJsonFile<BlacklistDb>(BLACKLIST_FILE, {}, { label: 'token-blacklist' });
 }
 
 function save(data: BlacklistDb): void {

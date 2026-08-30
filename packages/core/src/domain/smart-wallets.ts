@@ -10,18 +10,18 @@
  */
 
 import { log } from '../shared/logger.js';
-import { dataPath, SOLANA_PUBKEY_RE, CACHE_TTL_MS } from '../shared/constants.js';
+import { sharedDataPath, SOLANA_PUBKEY_RE, CACHE_TTL_MS } from '../shared/constants.js';
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js';
 import type { SmartWallet, SmartWalletHit } from '../shared/types.js';
 
-const WALLETS_PATH = dataPath('smart-wallets.json');
+const WALLETS_PATH = sharedDataPath('smart-wallets.json');
 
 interface SmartWalletsData {
   wallets: SmartWallet[];
 }
 
 function loadWallets(): SmartWalletsData {
-  return loadJsonFile<SmartWalletsData>(WALLETS_PATH, { wallets: [] });
+  return loadJsonFile<SmartWalletsData>(WALLETS_PATH, { wallets: [] }, { label: 'smart-wallets' });
 }
 
 function saveWallets(data: SmartWalletsData): void {
