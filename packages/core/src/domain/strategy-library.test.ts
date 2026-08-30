@@ -23,7 +23,7 @@ describe('strategy-library persistence and validation', () => {
       if (p.includes('user-config.json') || p.includes('strategy-library.shared.json')) return true;
       return actualExistsSync(pathArg);
     });
-    vi.spyOn(fs, 'readFileSync').mockImplementation((pathArg: any, options: any) => {
+    vi.spyOn(fs, 'readFileSync').mockImplementation(((pathArg: any, options: any) => {
       const p = pathArg.toString();
       if (p.includes('user-config.json')) {
         return JSON.stringify({ strategy: { activeStrategyId: 'old_id' } });
@@ -32,7 +32,7 @@ describe('strategy-library persistence and validation', () => {
         return JSON.stringify({ strategies: { single_sided_reseed: { name: 'test_strategy' } } });
       }
       return actualReadFileSync(pathArg, options);
-    });
+    }) as any);
 
     vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {
       throw new Error('Disk full');
@@ -64,7 +64,7 @@ describe('strategy-library loads both shared and private libraries', () => {
       if (p.includes('strategy-library.json')) return true;
       return actualExistsSync(pathArg);
     });
-    vi.spyOn(fs, 'readFileSync').mockImplementation((pathArg: any, options: any) => {
+    vi.spyOn(fs, 'readFileSync').mockImplementation(((pathArg: any, options: any) => {
       const p = pathArg.toString();
       if (p.includes('strategy-library.shared.json')) {
         return JSON.stringify({ strategies: sharedStrategies });
@@ -73,7 +73,7 @@ describe('strategy-library loads both shared and private libraries', () => {
         return JSON.stringify({ strategies: privateStrategies });
       }
       return actualReadFileSync(pathArg, options);
-    });
+    }) as any);
   }
 
   beforeEach(() => vi.clearAllMocks());
@@ -133,7 +133,7 @@ describe('strategy-library loads both shared and private libraries', () => {
       const p = pathArg.toString();
       return p.includes('strategy-library.shared.json') || p.includes('strategy-library.json');
     });
-    vi.spyOn(fs, 'readFileSync').mockImplementation((pathArg: any, options: any) => {
+    vi.spyOn(fs, 'readFileSync').mockImplementation(((pathArg: any, options: any) => {
       const p = pathArg.toString();
       if (p.includes('strategy-library.shared.json')) {
         return JSON.stringify({ strategies: sharedWithCollision });
@@ -142,7 +142,7 @@ describe('strategy-library loads both shared and private libraries', () => {
         return JSON.stringify({ strategies: privateStrategies });
       }
       return actualReadFileSync(pathArg, options);
-    });
+    }) as any);
 
     lib.listStrategies();
 
