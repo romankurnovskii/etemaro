@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { applyCliRuntimeFlags, resolveGlobalFlagValue } from './Cli.js';
+import fs from 'node:fs';
+import { describe, it, expect, vi } from 'vitest';
+import { dataPath, LESSONS_FILENAME } from '@etemaro/core';
+import { Cli, loadCore, applyCliRuntimeFlags, resolveGlobalFlagValue } from './Cli.js';
 
 describe('resolveGlobalFlagValue', () => {
   it('returns the value following the long flag', () => {
@@ -40,3 +42,48 @@ describe('applyCliRuntimeFlags', () => {
     expect(env.DRY_RUN).toBe('false');
   });
 });
+
+describe('Cli handleEvolve', () => {
+  it('reads performance data from dataPath(LESSONS_FILENAME)', async () => {
+    await loadCore();
+
+    const mockEvolveThresholds = vi.fn().mockReturnValue({ changes: { minTvl: 1000 }, rationale: 'better yield' });
+    const adapters: any = {
+      domain: {
+        evolveThresholds: mockEvolveThresholds,
+      },
+    };
+
+    const cli = new Cli(adapters);
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+    const mockStdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const lessonsPath = dataPath(LESSONS_FILENAME);
+    const originalExists = fs.existsSync;
+    const originalReadFile = fs.readFileSync;
+
+    const existsSpy = vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
+      if (p === lessonsPath) return true;
+      return originalExists(p);
+    });
+    const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation((p, ...args) => {
+      if (p === lessonsPath) {
+        return JSON.stringify({ performance: [{ pnl_usd: 10 }] });
+      }
+      return originalReadFile(p, ...args);
+    });
+
+    try {
+      (cli as any).handleEvolve();
+      expect(mockEvolveThresholds).toHaveBeenCalledWith([{ pnl_usd: 10 }], expect.anything());
+      expect(mockStdout).toHaveBeenCalled();
+    } finally {
+      mockExit.mockRestore();
+      mockStdout.mockRestore();
+      existsSpy.mockRestore();
+      readSpy.mockRestore();
+    }
+  }, 15000);
+});
+
+
