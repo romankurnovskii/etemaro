@@ -2,7 +2,15 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { assessSetup, formatInitMessage, loadRuntimeDotenv, maybePromptSecrets, upsertEnvVars, writeRuntimeSkeleton } from './firstSetup.js';
+import {
+  assessSetup,
+  formatInitMessage,
+  loadRuntimeDotenv,
+  maybePromptSecrets,
+  parseEnvFile,
+  upsertEnvVars,
+  writeRuntimeSkeleton,
+} from './firstSetup.js';
 
 function tmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'etemaro-init-'));
@@ -112,6 +120,13 @@ describe('upsertEnvVars', () => {
     });
     expect(next).toContain('WALLET_PRIVATE_KEY="abc"');
     expect(next).toContain('LLM_API_KEY=""');
+  });
+
+  it('escapes backslashes before quotes so values round-trip', () => {
+    const raw = 'a\\b"c';
+    const next = upsertEnvVars('WALLET_PRIVATE_KEY=""\n', { WALLET_PRIVATE_KEY: raw });
+    expect(next).toContain('WALLET_PRIVATE_KEY="a\\\\b\\"c"');
+    expect(parseEnvFile(next).WALLET_PRIVATE_KEY).toBe(raw);
   });
 });
 

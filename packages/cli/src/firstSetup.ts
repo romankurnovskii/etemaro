@@ -119,10 +119,18 @@ export function writeRuntimeSkeleton(directory: string, opts: { defaultUserConfi
   };
 }
 
+function escapeEnvValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function unescapeEnvValue(value: string): string {
+  return value.replace(/\\([\\"])/g, '$1');
+}
+
 export function upsertEnvVars(fileContents: string, updates: Record<string, string>): string {
   let next = fileContents;
   for (const [key, value] of Object.entries(updates)) {
-    const line = `${key}="${value.replace(/"/g, '\\"')}"`;
+    const line = `${key}="${escapeEnvValue(value)}"`;
     const re = new RegExp(`^${key}=.*$`, 'm');
     if (re.test(next)) next = next.replace(re, line);
     else next += (next.endsWith('\n') ? '' : '\n') + line + '\n';
@@ -140,7 +148,7 @@ export function parseEnvFile(content: string): Record<string, string> {
     const key = line.slice(0, eq).trim();
     let value = line.slice(eq + 1).trim();
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
+      value = unescapeEnvValue(value.slice(1, -1));
     }
     out[key] = value;
   }
