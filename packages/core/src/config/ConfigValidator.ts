@@ -63,7 +63,7 @@ export function loadAndValidateConfig(): ValidatedUserConfig {
       raw = JSON.parse(content);
     }
   } catch (e) {
-    throw new Error(`Failed to parse ${getConfigFileName()}: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(`Failed to parse ${getConfigFileName()}: ${e instanceof Error ? e.message : String(e)}`, { cause: e });
   }
 
   // If running info commands, we can bypass strict parsing

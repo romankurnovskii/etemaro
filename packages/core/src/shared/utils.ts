@@ -12,10 +12,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { REPO_ROOT } from './constants.js';
+import { log } from './logger.js';
 
 // ─── Path Utilities ────────────────────────────────────────────
 
-export { REPO_ROOT, repoPath, dataPath, configPath } from './constants.js';
+export { REPO_ROOT, repoPath, dataPath, sharedDataPath, strategyLibraryPath, configPath } from './constants.js';
 
 // ─── Math Utilities ────────────────────────────────────────────
 
@@ -119,11 +120,18 @@ export function nonEmptyString(...values: unknown[]): string | null {
 
 // ─── JSON File Utilities ───────────────────────────────────────
 
-export function loadJsonFile<T>(filePath: string, fallback: T): T {
+export function loadJsonFile<T>(filePath: string, fallback: T, options?: { label?: string; warnOnCorrupt?: boolean }): T {
   if (!fs.existsSync(filePath)) return fallback;
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T;
-  } catch {
+  } catch (err: any) {
+    if (options?.warnOnCorrupt !== false) {
+      const prefix = options?.label ? `[${options.label}] ` : '';
+      log(
+        'file_error',
+        `${prefix}Failed to parse JSON file at "${filePath}" (corrupt or unreadable): ${err?.message || err}. Using default fallback.`,
+      );
+    }
     return fallback;
   }
 }

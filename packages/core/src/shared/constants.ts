@@ -114,18 +114,24 @@ export function dataPath(...segments: string[]): string {
 }
 
 /**
- * Resolve a path relative to the data directory for the strategy libraries.
+ * Resolve a path relative to the data directory for shared / user-maintained knowledge files.
  *
- * Unlike `dataPath`, the strategy library files must NOT get an agent-name
- * suffix: there are exactly two shared-across-agents strategy libraries
- * (the repo-tracked `strategy-library.shared.json` and the per-deployment,
- * user-maintained `strategy-library.json`). Applying the agent suffix here
- * made `validateActiveStrategy()` fail to find private strategies when a
- * custom agent config was active (see GitHub issue #148).
+ * Unlike `dataPath`, shared knowledge files (e.g. `smart-wallets.json`, `strategy-library.json`,
+ * `strategy-library.shared.json`, `token-blacklist.json`, `dev-blocklist.json`) must NOT get an
+ * agent-name suffix when running under a custom `USER_CONFIG_PATH`.
+ *
+ * Per-agent ephemeral state files (e.g. `state.json`, `decision-log.json`, `lessons.json`,
+ * `performance.json`, `.smart-wallets-snapshot.json`) must continue to use `dataPath()`.
  */
-export function strategyLibraryPath(...segments: string[]): string {
+export function sharedDataPath(...segments: string[]): string {
   return path.join(getDataDir(), ...segments);
 }
+
+/**
+ * Backward compatibility alias for strategy libraries.
+ * @see sharedDataPath
+ */
+export const strategyLibraryPath = sharedDataPath;
 
 /** Resolve a path relative to the config directory. */
 export function configPath(...segments: string[]): string {
