@@ -243,4 +243,61 @@ describe('Daemon — Concurrency & Mutex Guards', () => {
     expect(res).toContain('Screening cycle failed: Screening RPC explosion');
     expect((daemon as any).screeningBusy).toBe(false);
   });
+
+  it('parses and persists structured rejected candidate rationales on NO DEPLOY screening decision', async () => {
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ total_positions: 0, positions: [] });
+    adapters.wallet.getWalletBalances = vi.fn().mockResolvedValue({ sol: 10, tokens: [] });
+    adapters.screening.getTopCandidates = vi.fn().mockResolvedValue({
+      candidates: [
+        { pool: 'pool_1', name: 'TOKEN1/SOL', base: { mint: 'mint_1' }, bin_step: 100 },
+        { pool: 'pool_2', name: 'TOKEN2/SOL', base: { mint: 'mint_2' }, bin_step: 100 },
+      ],
+      filtered_examples: [{ name: 'EARLY_FILTERED/SOL', reason: 'volume too low' }],
+    });
+    adapters.domain.parseRejectedCandidates = (content: string) => {
+      if (content.includes('TOKEN1/SOL: low fees')) {
+        return ['TOKEN1/SOL: low fees', 'TOKEN2/SOL: PvP conflict'];
+      }
+      return [];
+    };
+
+    const screeningReportContent = `
+⛔ NO DEPLOY
+
+Cycle finished with no valid entry.
+
+BEST LOOKING CANDIDATE
+TOKEN1/SOL
+
+WHY SKIPPED
+Candidates failed qualitative thresholds.
+
+REJECTED
+- TOKEN1/SOL: low fees
+- TOKEN2/SOL: PvP conflict
+`;
+
+    vi.spyOn(await import('@etemaro/core'), 'agentLoop').mockResolvedValueOnce({
+      content: screeningReportContent,
+      steps: [],
+      toolCalls: [],
+      finalAnswer: screeningReportContent,
+    } as any);
+
+    const res = await daemon.runScreeningCycle({ silent: true });
+    expect(res).toContain('⛔ NO DEPLOY');
+    expect(adapters.domain.appendDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'no_deploy',
+        actor: 'SCREENER',
+        summary: 'LLM chose no deploy',
+        rejected: expect.arrayContaining([
+          'TOKEN1/SOL: low fees',
+          'TOKEN2/SOL: PvP conflict',
+          'EARLY_FILTERED/SOL: volume too low',
+        ]),
+      }),
+    );
+  });
 });
+

@@ -146,6 +146,9 @@ DEPLOY RULES:
 - Bin steps must be [80-125].
 - Pick ONE pool only when conviction is real. If only one weak candidate survives, skip and explain why none qualify.
 
+CANDIDATE EVALUATION & VERDICTS:
+- In your final report (both DEPLOYED and NO DEPLOY), always include the REJECTED section with a concise verdict for each evaluated candidate that was not deployed (e.g. "- TOKEN/SOL: <why rejected/not selected>").
+
 ${weightsSummary ? `${weightsSummary}\nPrioritize candidates whose strongest attributes align with high-weight signals.\n\n` : ''}${lessons ? `LESSONS LEARNED:\n${lessons}\n` : ''}Timestamp: ${new Date().toISOString()}
 `;
   } else {

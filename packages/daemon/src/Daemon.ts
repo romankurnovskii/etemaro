@@ -20,7 +20,6 @@ import path from 'path';
 import {
   config,
   computeDeployAmount,
-  reloadScreeningThresholds,
   getDataDir,
   dataPath,
   sharedDataPath,
@@ -38,8 +37,6 @@ import {
   log,
   agentLoop,
   type AgentLoopDeps,
-  type AgentLoopResult,
-  buildSystemPrompt,
   type AgentMessage,
   getTrackedPosition,
   getTrackedPositions,
@@ -49,8 +46,6 @@ import {
   registerExitSignal,
   getLastBriefingDate,
   setLastBriefingDate,
-  getStateSummary,
-  type PositionRecord,
   meteora,
   wallet,
   screening,
@@ -128,6 +123,7 @@ export interface DaemonAdapters {
     stageSignals: (pool: string, signals: Record<string, unknown>) => void;
     getWeightsSummary: () => string;
     appendDecision: (entry: any) => void;
+    parseRejectedCandidates?: (content: string) => string[];
   };
   agentLoopDeps: AgentLoopDeps;
 }
@@ -1303,6 +1299,9 @@ STEPS:
 
    WHY THIS WON
    <2-4 concise sentences on why this pool won, key risks, and why it still beat the alternatives>
+
+   REJECTED
+   <short flat list of all other evaluated candidates and why they were not chosen, one per line e.g. "- TOKEN/SOL: reason">
 5. If no pool qualifies, report in this exact format instead:
    ⛔ NO DEPLOY
 
@@ -1315,7 +1314,7 @@ STEPS:
    <2-4 concise sentences explaining why nothing was good enough>
 
    REJECTED
-   <short flat list of top candidate names and why they were skipped>
+   <short flat list of all evaluated candidate names and why they were skipped, one per line e.g. "- TOKEN/SOL: reason">
 IMPORTANT:
 - Keep the whole report compact and highly scannable for Telegram.
       `,
@@ -1340,19 +1339,30 @@ IMPORTANT:
         },
       );
       screenReport = content;
+      const parsedRejected = this.adapters.domain.parseRejectedCandidates
+        ? this.adapters.domain.parseRejectedCandidates(content)
+        : [];
+      const hardFilterRejected = [
+        ...earlyFilteredExamples.map((entry: any) => `${entry.name}: ${entry.reason}`),
+        ...filteredOut.map((entry: any) => `${entry.name}: ${entry.reason}`),
+      ];
+      const combinedRejected = Array.from(new Set([...parsedRejected, ...hardFilterRejected]));
+
       if (/⛔\s*NO DEPLOY/i.test(content)) {
         this.adapters.domain.appendDecision({
           type: 'no_deploy',
           actor: 'SCREENER',
           summary: 'LLM chose no deploy',
-          reason: stripThink(content).slice(0, 500),
+          reason: stripThink(content).slice(0, 2048),
+          rejected: combinedRejected,
         });
       } else if (!deploySucceeded) {
         this.adapters.domain.appendDecision({
           type: 'no_deploy',
           actor: 'SCREENER',
           summary: deployAttempted ? 'Deploy attempt did not succeed' : 'No successful deploy in screening cycle',
-          reason: stripThink(content).slice(0, 500),
+          reason: stripThink(content).slice(0, 2048),
+          rejected: combinedRejected,
         });
       }
     } catch (error: any) {
