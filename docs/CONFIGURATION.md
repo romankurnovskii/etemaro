@@ -16,7 +16,7 @@ Etemaro uses a strict schema-validated configuration system (Version 3): every r
               └────────────────────────┘     ALL required fields must be present.
 ```
 
-> Initialize the configuration file before starting: `pnpm cli init` (or `etemaro init`).
+> First-time setup: `etemaro init` (creates `~/.config/etemaro` and checks wallet + LLM keys). From a source clone you can also run `pnpm cli init`.
 
 ---
 
