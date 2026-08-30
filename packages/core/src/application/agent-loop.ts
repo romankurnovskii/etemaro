@@ -16,7 +16,7 @@ import { jsonrepair } from 'jsonrepair';
 import { buildSystemPrompt } from './prompt-builder.js';
 import { config } from '../config/Config.js';
 import { log, logStructured, createCorrelationId, setCorrelationId, createTimer } from '../shared/logger.js';
-import type { AgentRole, AgentMessage, ToolCall, ToolResult, WalletBalances, OnChainPosition, StateSummary } from '../shared/types.js';
+import type { AgentRole, AgentMessage, WalletBalances, OnChainPosition, StateSummary } from '../shared/types.js';
 
 // ─── Tool definitions (imported dynamically at call site via adapter) ───
 
@@ -601,33 +601,57 @@ export async function agentLoop(
             };
           }
 
-          await onToolStart?.({ name: functionName, args: functionArgs, step });
+          let result: Record<string, unknown>;
+          let toolSuccess: boolean;
           const toolTimer = createTimer();
-          logStructured({
-            category: 'tool_start',
-            message: `Tool executing: ${functionName}`,
-            metadata: { tool: functionName, step, args: summarizeToolArgs(functionArgs) },
-          });
-          const result = await deps.executeTool(functionName, functionArgs);
+
+          try {
+            await onToolStart?.({ name: functionName, args: functionArgs, step });
+          } catch (startErr: any) {
+            log('warn', `onToolStart hook failed for ${functionName}: ${startErr?.message || startErr}`);
+          }
+
+          try {
+            logStructured({
+              category: 'tool_start',
+              message: `Tool executing: ${functionName}`,
+              metadata: { tool: functionName, step, args: summarizeToolArgs(functionArgs) },
+            });
+            result = await deps.executeTool(functionName, functionArgs);
+            toolSuccess = result?.success !== false && !result?.error && !result?.blocked;
+          } catch (execErr: any) {
+            const errorMessage = execErr instanceof Error ? execErr.message : String(execErr);
+            log('error', `Tool execution threw unhandled exception for ${functionName}: ${errorMessage}`);
+            result = {
+              success: false,
+              error: `Unhandled tool error in ${functionName}: ${errorMessage}`,
+            };
+            toolSuccess = false;
+          }
+
           const toolDurationMs = toolTimer.stop();
-          const toolSuccess = result?.success !== false && !result?.error && !result?.blocked;
           logStructured({
             category: toolSuccess ? 'tool_finish' : 'tool_blocked',
             message: `Tool ${toolSuccess ? 'completed' : 'finished'}: ${functionName} (${toolDurationMs}ms)`,
             metadata: { tool: functionName, step, duration_ms: toolDurationMs, success: toolSuccess, result_summary: summarizeToolResult(result) },
           });
-          await onToolFinish?.({
-            name: functionName,
-            args: functionArgs,
-            result,
-            success: toolSuccess,
-            step,
-          });
+
+          try {
+            await onToolFinish?.({
+              name: functionName,
+              args: functionArgs,
+              result,
+              success: toolSuccess,
+              step,
+            });
+          } catch (finishErr: any) {
+            log('warn', `onToolFinish hook failed for ${functionName}: ${finishErr?.message || finishErr}`);
+          }
 
           // Lock deploy_position after first attempt regardless of outcome — retrying is never right
           // For close/swap: only lock on success so genuine failures can be retried
           if (NO_RETRY_TOOLS.has(functionName)) firedOnce.add(functionName);
-          else if (ONCE_PER_SESSION.has(functionName) && result.success === true) firedOnce.add(functionName);
+          else if (ONCE_PER_SESSION.has(functionName) && result?.success === true) firedOnce.add(functionName);
 
           return {
             role: 'tool' as const,

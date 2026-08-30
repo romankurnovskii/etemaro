@@ -10,11 +10,13 @@
  *
  * @dependencies vitest
  */
+import fs from 'node:fs';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { config } from './Config.js';
-import { defaultUserConfigStr } from './defaultUserConfig.js';
-import { getMinSafeBinsBelow } from '../shared/constants.js';
+import { DEFAULT_USER_CONFIG, defaultUserConfigStr } from './defaultUserConfig.js';
+import { configPath, getMinSafeBinsBelow } from '../shared/constants.js';
 import { scaleScreeningToTimeframe } from '../shared/utils.js';
+import { UserConfigSchema } from './schema.js';
 
 // Pool febu-SOL (2CVn...) fee/active-TVL from the Meteora Pool Discovery API.
 const FEE_ACTIVE_TVL_RATIO_5M = 0.02540134632532999;
@@ -84,14 +86,13 @@ describe('hiveMind agentId support', () => {
 
     mockExistsSync = vi.fn((path: string) => {
       if (path.endsWith('user-config.json')) return true;
-      if (path.endsWith('templates/user-config.example.json')) return true;
       return true;
     });
 
     const baseConfig = JSON.parse(defaultUserConfigStr);
 
     mockReadFileSync = vi.fn((path: string, encoding: string) => {
-      if (path.endsWith('user-config.json') || path.endsWith('templates/user-config.example.json')) {
+      if (path.endsWith('user-config.json')) {
         return JSON.stringify({
           ...baseConfig,
           agentId: 'local-top-level-agent',
@@ -129,7 +130,7 @@ describe('hiveMind agentId support', () => {
   it('sets hiveMind.agentId correctly when no top-level agentId is present', async () => {
     const baseConfig = JSON.parse(defaultUserConfigStr);
     mockReadFileSync.mockImplementation((path: string, encoding: string) => {
-      if (path.endsWith('user-config.json') || path.endsWith('templates/user-config.example.json')) {
+      if (path.endsWith('user-config.json')) {
         return JSON.stringify({
           ...baseConfig,
           agentId: null,
@@ -169,5 +170,38 @@ describe('explicit USER_CONFIG_PATH fail-closed behavior', () => {
     await expect(async () => {
       await import('./Config.js');
     }).rejects.toThrow(/Fatal: Failed to load explicit configuration from USER_CONFIG_PATH/);
+  });
+});
+
+describe('DEFAULT_USER_CONFIG template parity and validation', () => {
+  it('defaultUserConfigStr accurately serializes DEFAULT_USER_CONFIG', () => {
+    const parsed = JSON.parse(defaultUserConfigStr);
+    expect(parsed).toEqual(DEFAULT_USER_CONFIG);
+  });
+
+  it('validates DEFAULT_USER_CONFIG against UserConfigSchema with mock env', () => {
+    const mockEnv = {
+      WALLET_PRIVATE_KEY: 'test-key',
+      HELIUS_API_KEY: 'test-helius',
+      LLM_BASE_URL: 'https://openrouter.ai/api/v1',
+      LLM_API_KEY: 'test-llm',
+      LLM_MODEL: 'test-model',
+      TELEGRAM_BOT_TOKEN: 'test-token',
+      TELEGRAM_CHAT_ID: '123456',
+      TELEGRAM_ALLOWED_USER_IDS: '123456',
+      DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY: 'test-key',
+      GMGN_API_KEY: 'test-gmgn',
+      JUPITER_API_KEY: 'test-jup',
+    };
+
+    const originalEnv = { ...process.env };
+    Object.assign(process.env, mockEnv);
+
+    try {
+      const result = UserConfigSchema.safeParse(DEFAULT_USER_CONFIG);
+      expect(result.success).toBe(true);
+    } finally {
+      process.env = originalEnv;
+    }
   });
 });
