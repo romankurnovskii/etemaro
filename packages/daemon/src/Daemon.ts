@@ -957,7 +957,7 @@ After evaluating, write a brief one-line result per position.
       const strategyBlock =
         `DEPLOY STRATEGY: ${deployStrategy} (from config) | bins_above: 0 (FIXED — never change) | deposit: SOL only (amount_y, amount_x=0)` +
         (activeStrategy
-          ? `\nSTRATEGY CONTEXT: ${activeStrategy.name} — entry: ${activeStrategy.entry?.condition || 'n/a'} | exit: ${activeStrategy.exit?.notes || 'n/a'} | best for: ${activeStrategy.best_for}`
+          ? `\nSTRATEGY CONTEXT: ${activeStrategy.name} — entry: ${activeStrategy.entry?.condition || 'n/a'} | exit: ${activeStrategy.exit?.notes || 'n/a'} | best for: ${activeStrategy.bestFor}`
           : '');
 
       const topCandidates = await this.adapters.screening.getTopCandidates({ limit: 10 }).catch(() => null);
@@ -1609,7 +1609,6 @@ IMPORTANT:
     const data = msg.callbackData || msg.text || '';
     const parts = data.split(':');
     const action = parts[1];
-    let page = 'main';
 
     if (action === 'noop') {
       await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId);
@@ -1628,7 +1627,7 @@ IMPORTANT:
       return;
     }
     if (action === 'page') {
-      page = parts[2] || 'main';
+      const page = parts[2] || 'main';
       await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId);
       await this.showSettingsMenu({ messageId: msg.messageId, page });
       return;
@@ -1668,7 +1667,7 @@ IMPORTANT:
       await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, 'Config update failed');
       return;
     }
-    page =
+    const targetPage =
       key.startsWith('indicator') || key === 'chartIndicatorsEnabled' || key === 'rsiLength' || key === 'requireAllIntervals'
         ? 'indicators'
         : [
@@ -1684,7 +1683,7 @@ IMPORTANT:
           ? 'screen'
           : 'risk';
     await this.adapters.telegram.answerCallbackQuery(msg.callbackQueryId, `Updated ${key}`);
-    await this.showSettingsMenu({ messageId: msg.messageId, page });
+    await this.showSettingsMenu({ messageId: msg.messageId, page: targetPage });
   }
 
   private formatConfigSnapshot(): string {
@@ -2478,7 +2477,7 @@ Commands:
           const parts = input.split(' ');
           const poolArg = parts[1] || null;
 
-          let poolsToStudy: any[] = [];
+          let poolsToStudy: any[];
 
           if (poolArg) {
             poolsToStudy = [{ pool: poolArg, name: poolArg }];

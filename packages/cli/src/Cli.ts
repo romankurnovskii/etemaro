@@ -250,7 +250,7 @@ Output: { blacklisted, mint, reason }
 ### etemaro blacklist list
 Lists all blacklisted token mints with reasons and timestamps.
 \`\`\`
-Output: { count, blacklist: [{mint, symbol, reason, added_at}] }
+Output: { count, blacklist: [{mint, symbol, reason, addedAt}] }
 \`\`\`
 
 ### etemaro performance [--limit 200]

@@ -165,25 +165,25 @@ If the user wants a new or customized strategy, generate a new entry for `data/s
   "id": "<snake_case_id>",
   "name": "<Human Readable Name>",
   "author": "<user or custom>",
-  "lp_strategy": "<spot|bid_ask|curve|mixed|any>",
-  "token_criteria": { "notes": "<when to use this>" },
+  "lpStrategy": "<spot|bid_ask|curve|mixed|any>",
+  "tokenCriteria": { "notes": "<when to use this>" },
   "entry": {
     "condition": "<entry trigger>",
-    "single_side": null,
+    "singleSide": null,
     "notes": "<deployment notes>"
   },
   "range": {
     "type": "<default|custom>",
-    "bins_below_pct": 100,
+    "binsBelowPct": 100,
     "notes": "<range notes>"
   },
   "exit": {
-    "take_profit_pct": 10,
+    "takeProfitPct": 10,
     "notes": "<exit rules>"
   },
-  "best_for": "<one-line summary>",
-  "added_at": "<ISO timestamp>",
-  "updated_at": "<ISO timestamp>"
+  "bestFor": "<one-line summary>",
+  "addedAt": "<ISO timestamp>",
+  "updatedAt": "<ISO timestamp>"
 }
 ```
 

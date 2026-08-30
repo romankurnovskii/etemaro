@@ -171,7 +171,7 @@ function assertNoUnsafeSystemTransfer(tx: Transaction | VersionedTransaction, wa
   for (const ix of getTransactionInstructions(tx)) {
     if (!ix.programId.equals(SystemProgram.programId)) continue;
 
-    let type: string | null = null;
+    let type: string;
     try {
       type = SystemInstruction.decodeInstructionType(ix);
     } catch {
@@ -492,6 +492,7 @@ export async function deployPosition({
   entry_tvl,
   entry_volume,
   entry_holders,
+  trigger_source,
 }: {
   pool_address: string;
   amount_sol?: number;
@@ -513,6 +514,7 @@ export async function deployPosition({
   entry_tvl?: number;
   entry_volume?: number;
   entry_holders?: number;
+  trigger_source?: string;
 }): Promise<any> {
   pool_address = normalizeMint(pool_address);
   const activeStrategy = strategy || config.strategy.strategyMeteora;
@@ -899,7 +901,7 @@ export async function deployPosition({
       pool: pool_address,
       pool_name,
       position: newPosition.publicKey.toString(),
-      summary: `Deployed ${finalAmountY} SOL with ${activeStrategy}`,
+      summary: `Deployed ${finalAmountY} SOL with ${activeStrategy}${trigger_source ? ` (Triggered by: ${trigger_source})` : ''}`,
       reason: `Chosen range ${minBinId}→${maxBinId} around active bin ${activeBin.binId}`,
       risks: [
         normalizedVolatility != null ? `volatility ${normalizedVolatility}` : null,
@@ -1167,7 +1169,7 @@ export async function getMyPositions({
   silent = false,
   wallet_address = null,
 }: { force?: boolean; silent?: boolean; wallet_address?: string | null } = {}) {
-  let walletOverride: string | null = null;
+  let walletOverride: string | null;
   try {
     walletOverride = wallet_address ? new PublicKey(wallet_address).toString() : null;
   } catch {

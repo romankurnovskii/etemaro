@@ -455,7 +455,7 @@ export function addPoolNote({ pool_address, note }: AddPoolNoteOpts): Record<str
 
   db[pool_address].notes.push({
     note: safeNote,
-    added_at: new Date().toISOString(),
+    addedAt: new Date().toISOString(),
   });
 
   save(db);

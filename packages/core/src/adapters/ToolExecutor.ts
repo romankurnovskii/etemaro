@@ -1119,6 +1119,17 @@ async function _runSafetyChecks(
         }
       }
 
+      // Check smart wallets and inject trigger_source for logging
+      try {
+        const smartRes = await checkSmartWalletsOnPool({ pool_address: args.pool_address as string });
+        if (smartRes && smartRes.in_pool && smartRes.in_pool.length > 0) {
+          const names = smartRes.in_pool.map((w: any) => w.name || w.address.slice(0, 4)).join(', ');
+          args.trigger_source = names;
+        }
+      } catch (e) {
+        // Silently ignore if it fails, it's just for logging
+      }
+
       // Check amount limits
       const amountY = deployAmountY;
       if (!Number.isFinite(amountY) || amountY <= 0) {
