@@ -26,6 +26,7 @@ import { getAgentMeridianBase, getAgentMeridianHeaders } from '../external/Agent
 
 const DATAPI_JUP = 'https://datapi.jup.ag/v1';
 const POOL_DISCOVERY_BASE = 'https://pool-discovery-api.datapi.meteora.ag';
+const DLMM_BASE = 'https://dlmm.datapi.meteora.ag';
 const MIN_VOLATILITY_TIMEFRAME = '30m';
 const TIMEFRAME_MINUTES: Record<string, number> = {
   '5m': 5,
@@ -119,6 +120,7 @@ export interface RawPool {
   pvp_rival_holders?: number;
   pvp_rival_fees?: number;
   indicator_confirmation?: IndicatorConfirmation | null;
+  dlmm_fallback?: boolean;
   [key: string]: unknown;
 }
 
@@ -404,6 +406,59 @@ async function fetchPoolDiscoveryDetail({ poolAddress, timeframe }: { poolAddres
 
   const data = await res.json();
   return ((data as any).data || [])[0] ?? null;
+}
+
+async function fetchDlmmPoolDetail(poolAddress: string): Promise<RawPool | null> {
+  const url = `${DLMM_BASE}/pools/${encodeURIComponent(poolAddress)}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`DLMM Pool API error: ${res.status} ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  if (!data || typeof data !== 'object' || !(data as any).address) return null;
+
+  const raw = data as any;
+  const binStep = numberOrNull(raw?.pool_config?.bin_step ?? raw?.dlmm_params?.bin_step);
+  const volumeBuckets = (raw?.volume ?? {}) as Record<string, unknown>;
+  const lastVolume = typeof volumeBuckets === 'object' ? Object.values(volumeBuckets).pop() : null;
+  const feeTvlBuckets = (raw?.fee_tvl_ratio ?? {}) as Record<string, unknown>;
+  const lastFeeTvlRatio = typeof feeTvlBuckets === 'object' ? Object.values(feeTvlBuckets).pop() : null;
+
+  return {
+    pool_address: raw.address,
+    name: raw.name,
+    pool_type: 'dlmm',
+    tvl: maybeNum(raw.tvl),
+    active_tvl: maybeNum(raw.active_tvl ?? raw.tvl),
+    bin_step: maybeNum(binStep),
+    dlmm_params: binStep != null ? { bin_step: binStep } : undefined,
+    volume: maybeNum(lastVolume),
+    fee_active_tvl_ratio: maybeNum(lastFeeTvlRatio),
+    token_x: {
+      address: raw?.token_x?.address,
+      symbol: raw?.token_x?.symbol,
+      holders: maybeNum(raw?.token_x?.holders),
+      market_cap: maybeNum(raw?.token_x?.market_cap),
+    },
+    token_y: {
+      address: raw?.token_y?.address,
+      symbol: raw?.token_y?.symbol,
+    },
+    base_token_holders: maybeNum(raw?.token_x?.holders),
+    base_token_market_cap: maybeNum(raw?.token_x?.market_cap),
+    current_price: maybeNum(raw?.current_price),
+    dlmm_fallback: true,
+  };
+}
+
+function numberOrNull(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function maybeNum(value: unknown): number | undefined {
+  return numberOrNull(value) ?? undefined;
 }
 
 // ─── Volatility timeframe enrichment ───────────────────────────
@@ -947,9 +1002,29 @@ export async function getTopCandidates({ limit = 10 } = {}): Promise<TopCandidat
 }
 
 export async function getPoolDetail({ pool_address, timeframe = '5m' }: { pool_address: string; timeframe?: string }): Promise<PoolDetailResult> {
-  const pool = await fetchPoolDiscoveryDetail({ poolAddress: pool_address, timeframe });
-  if (!pool) {
-    throw new Error(`Pool ${pool_address} not found`);
+  let pool: RawPool | null = null;
+  let discoveryError: string | null = null;
+
+  try {
+    pool = await fetchPoolDiscoveryDetail({ poolAddress: pool_address, timeframe });
+  } catch (error: any) {
+    discoveryError = error.message;
   }
+
+  if (!pool) {
+    try {
+      pool = await fetchDlmmPoolDetail(pool_address);
+    } catch (error: any) {
+      discoveryError = discoveryError ?? error.message;
+    }
+  }
+
+  if (!pool) {
+    throw new Error(`Pool ${pool_address} not found (not indexed in Pool Discovery API or DLMM API${discoveryError ? `: ${discoveryError}` : ''})`);
+  }
+  if (pool.dlmm_fallback) {
+    log('screening', `Pool ${pool_address} was not indexed in Pool Discovery API; using DLMM API fallback pair data`);
+  }
+
   return pool as unknown as PoolDetailResult;
 }
