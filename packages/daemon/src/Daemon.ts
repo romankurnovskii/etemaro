@@ -628,19 +628,11 @@ Summarize the current portfolio health, total fees earned, and performance of al
         if (!this.acquireLock('opportunityPoll')) return;
         try {
           if (Date.now() - this.screeningLastTriggered < oppCooldownMs) return;
-          const [positions, balance] = await Promise.all([
-            this.adapters.meteora.getMyPositions({ silent: true }).catch((err: any) => {
-              log('cron_error', `Opportunity poller failed to fetch positions: ${err?.message || err}`);
-              return null;
-            }),
-            this.adapters.wallet.getWalletBalances().catch((err: any) => {
-              log('cron_error', `Opportunity poller failed to fetch wallet balances: ${err?.message || err}`);
-              return null;
-            }),
-          ]);
+          const positions = await this.adapters.meteora.getMyPositions({ silent: true }).catch((err: any) => {
+            log('cron_error', `Opportunity poller failed to fetch positions: ${err?.message || err}`);
+            return null;
+          });
           if (!positions || (positions.total_positions ?? 0) >= config.risk.maxPositions) return;
-          const minRequired = config.management.deployAmountSol + config.management.gasReserve;
-          if (process.env.DRY_RUN !== 'true' && (!balance || balance.sol < minRequired)) return;
 
           const top = await this.adapters.screening.getTopCandidates({ limit: config.opportunity.limit }).catch((err: any) => {
             log('cron_error', `Opportunity poller failed to fetch top candidates: ${err?.message || err}`);
@@ -653,6 +645,13 @@ Summarize the current portfolio health, total fees earned, and performance of al
                 this.adapters.screening.degenScore(b, config.opportunity) - this.adapters.screening.degenScore(a, config.opportunity),
             );
           if (!candidates.length) return;
+
+          const balance = await this.adapters.wallet.getWalletBalances().catch((err: any) => {
+            log('cron_error', `Opportunity poller failed to fetch wallet balances: ${err?.message || err}`);
+            return null;
+          });
+          const minRequired = config.management.deployAmountSol + config.management.gasReserve;
+          if (process.env.DRY_RUN !== 'true' && (!balance || balance.sol < minRequired)) return;
 
           const minScore = config.opportunity.minScore;
           const bonus = Number(config.opportunity.smartWalletScoreBonus ?? 0);
