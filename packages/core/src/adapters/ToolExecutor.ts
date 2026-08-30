@@ -16,10 +16,10 @@ import fs from 'node:fs';
 import { execSync, spawn } from 'node:child_process';
 
 // ─── Shared imports ────────────────────────────────────────────
-import { config, reloadScreeningThresholds } from '../config/Config.js';
-import { REPO_ROOT, configPath, USER_CONFIG_PATH, getMinSafeBinsBelow } from '../shared/constants.js';
+import { config, } from '../config/Config.js';
+import { REPO_ROOT, USER_CONFIG_PATH, getMinSafeBinsBelow } from '../shared/constants.js';
 import { log, logAction, logStructured } from '../shared/logger.js';
-import type { AppConfig, AgentRole } from '../shared/types.js';
+import type { AgentRole } from '../shared/types.js';
 
 // ─── Adapter imports ───────────────────────────────────────────
 import { discoverPools, getPoolDetail, getTopCandidates } from './blockchain/ScreeningAdapter.js';
@@ -54,7 +54,6 @@ import {
   recordSwapFailure,
   recordSwapSuccess,
   isHalted,
-  resetConsecutiveSwapFailures,
 } from '../domain/state.js';
 import { getPoolMemory, addPoolNote } from '../domain/pool-memory.js';
 import { addStrategy, listStrategies, getStrategy, setActiveStrategy, removeStrategy } from '../domain/strategy-library.js';
@@ -814,7 +813,9 @@ async function swapBaseToSolWithRetry(
           amountOut: solReceived != null ? `${solReceived.toFixed(4)} SOL` : String(sr.amount_out ?? '?'),
           tx: sr.tx,
           amountUsd: usdValue,
-        }).catch(() => {});
+        }).catch((err: any) => {
+          log('telegram_warn', `Failed to send swap notification: ${err?.message || err}`);
+        });
         return { swapped: true, result: swapResult as unknown as Record<string, unknown>, token: token as unknown as Record<string, unknown> };
       }
       lastErr = sr?.error || sr?.reason || 'swap returned no tx';
@@ -831,7 +832,9 @@ async function swapBaseToSolWithRetry(
     inputSymbol: symbol,
     outputSymbol: 'SOL',
     reason: lastErr || `Failed after ${attempts} attempts`,
-  }).catch(() => {});
+  }).catch((err: any) => {
+    log('telegram_warn', `Failed to send swap error notification: ${err?.message || err}`);
+  });
   return { swapped: false, result: null, token: null };
 }
 
@@ -1033,7 +1036,9 @@ export async function executeTool(name: string, args: Record<string, unknown> = 
           amountOut: (result as any).amount_out,
           tx: (result as any).tx,
           amountUsd: (result as any).usd_value ?? (result as any).amount_usd ?? null,
-        }).catch(() => {});
+        }).catch((err: any) => {
+          log('telegram_warn', `Failed to send swap notification: ${err?.message || err}`);
+        });
       } else if (name === 'deploy_position') {
         notifyDeploy({
           pair: (result as any).pool_name || (args as any).pool_name || (args.pool_address as string)?.slice(0, 8),
@@ -1044,13 +1049,17 @@ export async function executeTool(name: string, args: Record<string, unknown> = 
           rangeCoverage: (result as any).range_coverage,
           binStep: (result as any).bin_step,
           baseFee: (result as any).base_fee,
-        }).catch(() => {});
+        }).catch((err: any) => {
+          log('telegram_warn', `Failed to send deploy notification: ${err?.message || err}`);
+        });
       } else if (name === 'close_position') {
         notifyClose({
           pair: (result as any).pool_name || (args.position_address as string)?.slice(0, 8),
           pnlUsd: (result as any).pnl_usd ?? 0,
           pnlPct: (result as any).pnl_pct ?? 0,
-        }).catch(() => {});
+        }).catch((err: any) => {
+          log('telegram_warn', `Failed to send close notification: ${err?.message || err}`);
+        });
         // Note low-yield closes in pool memory so screener avoids redeploying
         if ((args.reason as string) && (args.reason as string).toLowerCase().includes('yield')) {
           const poolAddr = (result as any).pool || args.pool_address;
