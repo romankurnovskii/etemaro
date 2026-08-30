@@ -960,7 +960,14 @@ After evaluating, write a brief one-line result per position.
           ? `\nSTRATEGY CONTEXT: ${activeStrategy.name} — entry: ${activeStrategy.entry?.condition || 'n/a'} | exit: ${activeStrategy.exit?.notes || 'n/a'} | best for: ${activeStrategy.bestFor}`
           : '');
 
-      const topCandidates = await this.adapters.screening.getTopCandidates({ limit: 10 }).catch(() => null);
+      await liveMessage?.toolStart('get_top_candidates');
+      const topCandidates = await this.adapters.screening.getTopCandidates({ limit: 10 }).catch(async (error: any) => {
+        await liveMessage?.toolFinish('get_top_candidates', { error: error?.message || 'failed' }, false);
+        return null;
+      });
+      if (topCandidates) {
+        await liveMessage?.toolFinish('get_top_candidates', topCandidates, true);
+      }
       const candidates = (topCandidates?.candidates || topCandidates?.pools || []).slice(0, 10);
       const earlyFilteredExamples = topCandidates?.filtered_examples || [];
 
@@ -1076,7 +1083,7 @@ After evaluating, write a brief one-line result per position.
 
         const block = [
           `POOL: ${pool.name} (${pool.pool})`,
-          `  metrics: bin_step=${pool.bin_step}, fee_pct=${pool.fee_pct}%, fee_tvl=${pool.fee_active_tvl_ratio}, vol=$${pool.volume_window}, tvl=$${pool.tvl ?? pool.active_tvl}, volatility_${pool.volatility_timeframe || '30m'}=${pool.volatility}, mcap=$${pool.mcap}, organic=${pool.organic_score}${pool.token_age_hours != null ? `, age=${pool.token_age_hours}h` : ''}`,
+          `  metrics: bin_step=${pool.bin_step}, fee_pct=${pool.fee_pct}%, windowed_fee/TVL(${config.screening.timeframe || 'window'})=${pool.fee_active_tvl_ratio}, vol=$${pool.volume_window}, tvl=$${pool.tvl ?? pool.active_tvl}, volatility_${pool.volatility_timeframe || '30m'}=${pool.volatility}, mcap=$${pool.mcap}, organic=${pool.organic_score}${pool.token_age_hours != null ? `, age=${pool.token_age_hours}h` : ''}`,
           `  audit: top10=${top10Pct}%, bots=${botPct}%, fees=${feesSol}SOL${launchpad ? `, launchpad=${launchpad}` : ''}`,
           pvpLine,
           `  smart_wallets: ${sw?.in_pool?.length ?? 0} present${sw?.in_pool?.length ? ` → CONFIDENCE BOOST (${sw.in_pool.map((w: any) => w.name).join(', ')})` : ''}`,
@@ -1117,8 +1124,17 @@ SCREENING CYCLE
 ${strategyBlock}
 Positions: ${prePositions.total_positions}/${config.risk.maxPositions} | SOL: ${currentBalance.sol.toFixed(3)} | Deploy: ${deployAmount} SOL
 
+SCAN: ${topCandidates?.total_screened ?? candidates.length} screened / ${passing.length} shortlisted
 PRE-LOADED CANDIDATES (${passing.length} pools):
 ${candidateBlocks.join('\n\n')}
+${
+  earlyFilteredExamples.length
+    ? `\nREJECTED DURING FETCH (${earlyFilteredExamples.length}):\n${earlyFilteredExamples
+        .slice(0, 8)
+        .map((entry: any) => `- ${entry.name}: ${entry.reason}`)
+        .join('\n')}`
+    : ''
+}
 
 STEPS:
 1. Decide if any candidate is actually worth deploying. One surviving candidate is not automatically good enough.
@@ -1146,7 +1162,8 @@ STEPS:
      range_coverage.width_pct
 
    MARKET
-   Fee/TVL: <x>%
+   Windowed Fee/TVL (${config.screening.timeframe || 'window'}): <x>%
+   (Do not confuse this with real-time active-bin fee/TVL from deploy_position blocks.)
    Volume: $<x>
    TVL: $<x>
    Volatility: <x>
@@ -1379,7 +1396,7 @@ IMPORTANT:
       const lines = candidates.map((pool: any, i: number) => {
         const feeTvl = pool.fee_active_tvl_ratio ?? pool.fee_tvl_ratio ?? '?';
         const vol = pool.volume_window ?? pool.volume_24h ?? '?';
-        return `${i + 1}. ${pool.name} | ${pool.pool}\n   fee/aTVL ${feeTvl}% | vol $${vol} | organic ${pool.organic_score ?? '?'}`;
+        return `${i + 1}. ${pool.name} | ${pool.pool}\n   windowed fee/TVL ${feeTvl}% | vol $${vol} | organic ${pool.organic_score ?? '?'}`;
       });
       return `Top candidates (${candidates.length})\n\n${lines.join('\n')}`;
     }
@@ -2185,7 +2202,7 @@ IMPORTANT:
       const vol = pool.volume_window ?? pool.volume_24h ?? '?';
       const active = pool.active_pct ?? '?';
       const organic = pool.organic_score ?? '?';
-      return `${i + 1}. ${pool.name} | fee/aTVL ${feeTvl}% | vol $${vol} | in-range ${active}% | organic ${organic}`;
+      return `${i + 1}. ${pool.name} | windowed fee/TVL ${feeTvl}% | vol $${vol} | in-range ${active}% | organic ${organic}`;
     });
     const age = this.latestCandidatesAt ? new Date(this.latestCandidatesAt).toLocaleString('en-US', { hour12: false }) : 'unknown';
     return `Latest candidates (${this.latestCandidates.length}) — updated ${age}\n\n${lines.join('\n')}`;
@@ -2200,10 +2217,10 @@ IMPORTANT:
       const vol = `$${((p.volume_window || 0) / 1000).toFixed(1)}k`.padStart(8);
       const active = `${p.active_pct}%`.padStart(6);
       const org = String(p.organic_score).padStart(4);
-      return `  [${i + 1}]  ${name}  fee/aTVL:${ftvl}  vol:${vol}  in-range:${active}  organic:${org}`;
+      return `  [${i + 1}]  ${name}  windowed fee/TVL:${ftvl}  vol:${vol}  in-range:${active}  organic:${org}`;
     });
 
-    return ['  #   pool                  fee/aTVL     vol    in-range  organic', '  ' + '─'.repeat(68), ...lines].join('\n');
+    return ['  #   pool                  windowed fee/TVL  vol    in-range  organic', '  ' + '─'.repeat(68), ...lines].join('\n');
   }
 
   // ─── Session History ───────────────────────────────────────────
