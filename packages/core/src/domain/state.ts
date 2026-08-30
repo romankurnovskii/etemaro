@@ -51,6 +51,7 @@ function save(state: StateData): void {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     log('state_error', `Failed to write state.json: ${message}`);
+    throw err;
   }
 }
 

@@ -1,8 +1,16 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { reconcileTrackedPositions, getTrackedPositions, trackPosition, syncOpenPositions, __setStateFilePath } from './state.js';
+import {
+  reconcileTrackedPositions,
+  getTrackedPositions,
+  getTrackedPosition,
+  trackPosition,
+  recordClose,
+  syncOpenPositions,
+  __setStateFilePath,
+} from './state.js';
 
 // Isolate the test from the real data/state.json via the test seam.
 const TMP_STATE = path.join(os.tmpdir(), `etemaro-state-test-${process.pid}.json`);
@@ -85,5 +93,66 @@ describe('reconcileTrackedPositions', () => {
     syncOpenPositions(['PosY']); // PosZ not in on-chain list
     const tracked = getTrackedPositions(true);
     expect(tracked.find((p) => p.position === 'PosZ')).toBeUndefined();
+  });
+});
+
+function deployOpts(position: string) {
+  return {
+    position,
+    pool: 'PoolFail',
+    pool_name: 'FAIL/SOL',
+    strategy: 'bid_ask',
+    bin_range: { min: 1, max: 2 },
+    amount_sol: 0.1,
+    active_bin: 1,
+    bin_step: 100,
+    volatility: 1,
+    fee_tvl_ratio: 1,
+    organic_score: 70,
+    initial_value_usd: 50,
+  } as const;
+}
+
+describe('save() persistence failures', () => {
+  beforeAll(() => {
+    __setStateFilePath(TMP_STATE);
+  });
+
+  afterAll(() => {
+    if (fs.existsSync(TMP_STATE)) fs.unlinkSync(TMP_STATE);
+  });
+
+  beforeEach(() => {
+    if (fs.existsSync(TMP_STATE)) fs.unlinkSync(TMP_STATE);
+  });
+
+  it('trackPosition throws when state.json cannot be written and does not pretend the position was tracked', () => {
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw new Error('disk full');
+    });
+
+    try {
+      expect(() => trackPosition(deployOpts('PosPersistFail') as any)).toThrow('disk full');
+      expect(getTrackedPosition('PosPersistFail')).toBeNull();
+      expect(fs.existsSync(TMP_STATE)).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('recordClose throws when state.json cannot be written and leaves the position open on disk', () => {
+    trackPosition(deployOpts('PosCloseFail') as any);
+    expect(getTrackedPosition('PosCloseFail')?.closed).toBe(false);
+
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw new Error('permission denied');
+    });
+
+    try {
+      expect(() => recordClose('PosCloseFail', 'agent decision')).toThrow('permission denied');
+      expect(getTrackedPosition('PosCloseFail')?.closed).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
