@@ -65,53 +65,53 @@ export const DEFAULT_STRATEGIES: Record<string, Strategy> = {
     id: 'custom_ratio_spot',
     name: 'Custom Ratio Spot',
     author: 'meridian',
-    lp_strategy: 'spot',
-    token_criteria: { notes: 'Any token. Ratio expresses directional bias.' },
+    lpStrategy: 'spot',
+    tokenCriteria: { notes: 'Any token. Ratio expresses directional bias.' },
     entry: {
       condition: 'Directional view on token',
-      single_side: null,
+      singleSide: null,
       notes:
         '75% token = bullish (sell on pump out of range). 75% SOL = bearish/DCA-in (buy on dip). Set bins_below:bins_above proportional to ratio.',
     },
     range: { type: 'custom', notes: 'bins_below:bins_above ratio matches token:SOL ratio. E.g., 75% token → ~52 bins below, ~17 bins above.' },
-    exit: { take_profit_pct: 10, notes: 'Close when OOR or TP hit. Re-deploy with updated ratio based on new momentum signals.' },
-    best_for: 'Expressing directional bias while earning fees both ways',
+    exit: { takeProfitPct: 10, notes: 'Close when OOR or TP hit. Re-deploy with updated ratio based on new momentum signals.' },
+    bestFor: 'Expressing directional bias while earning fees both ways',
   },
   single_sided_reseed: {
     id: 'single_sided_reseed',
     name: 'Single-Sided Bid-Ask + Re-seed',
     author: 'meridian',
-    lp_strategy: 'bid_ask',
-    token_criteria: { notes: 'Volatile tokens with strong narrative. Must have active volume.' },
+    lpStrategy: 'bid_ask',
+    tokenCriteria: { notes: 'Volatile tokens with strong narrative. Must have active volume.' },
     entry: {
       condition: 'Deploy token-only (amount_x only, amount_y=0) bid-ask, bins below active bin only',
-      single_side: 'token',
+      singleSide: 'token',
       notes: 'As price drops through bins, token sold for SOL. Bid-ask concentrates at bottom edge.',
     },
-    range: { type: 'default', bins_below_pct: 100, notes: 'All bins below active bin. bins_above=0.' },
+    range: { type: 'default', notes: 'All bins below active bin. bins_above=0.' },
     exit: {
       notes:
         'When OOR downside: close_position(skip_swap=true) → redeploy token-only bid-ask at new lower price. Do NOT swap to SOL. Full close only when token dead or after N re-seeds with declining performance.',
     },
-    best_for: 'Riding volatile tokens down without cutting losses. DCA out via LP.',
+    bestFor: 'Riding volatile tokens down without cutting losses. DCA out via LP.',
   },
   fee_compounding: {
     id: 'fee_compounding',
     name: 'Fee Compounding',
     author: 'meridian',
-    lp_strategy: 'any',
-    token_criteria: { notes: 'Stable volume pools with consistent fee generation.' },
+    lpStrategy: 'any',
+    tokenCriteria: { notes: 'Stable volume pools with consistent fee generation.' },
     entry: { condition: 'Deploy normally with any shape', notes: 'Strategy is about management, not entry shape.' },
     range: { type: 'default', notes: 'Standard range for the pair.' },
     exit: { notes: 'When unclaimed fees > $5 AND in range: claim_fees → add_liquidity back into same position. Normal close rules otherwise.' },
-    best_for: 'Maximizing yield on stable, range-bound pools via compounding',
+    bestFor: 'Maximizing yield on stable, range-bound pools via compounding',
   },
   multi_layer: {
     id: 'multi_layer',
     name: 'Multi-Layer',
     author: 'meridian',
-    lp_strategy: 'mixed',
-    token_criteria: {
+    lpStrategy: 'mixed',
+    tokenCriteria: {
       notes: 'High volume pools. Layer multiple shapes into ONE position via addLiquidityByStrategy to sculpt a composite distribution.',
     },
     entry: {
@@ -130,22 +130,22 @@ export const DEFAULT_STRATEGIES: Record<string, Strategy> = {
       notes: "All layers share the position's bin range (set at deploy). Choose range wide enough for the widest layer needed.",
     },
     exit: { notes: 'Single position — one close, one claim. The composite shape means fees earned reflect ALL layers combined.' },
-    best_for: 'Creating custom liquidity distributions by stacking shapes in one position. Single position to manage.',
+    bestFor: 'Creating custom liquidity distributions by stacking shapes in one position. Single position to manage.',
   },
   partial_harvest: {
     id: 'partial_harvest',
     name: 'Partial Harvest',
     author: 'meridian',
-    lp_strategy: 'any',
-    token_criteria: { notes: 'High fee pools where taking profit incrementally is preferred.' },
+    lpStrategy: 'any',
+    tokenCriteria: { notes: 'High fee pools where taking profit incrementally is preferred.' },
     entry: { condition: 'Deploy normally', notes: 'Strategy is about progressive profit-taking, not entry.' },
     range: { type: 'default', notes: 'Standard range.' },
     exit: {
-      take_profit_pct: 10,
+      takeProfitPct: 10,
       notes:
         'When total return >= 10% of deployed capital: withdraw_liquidity(bps=5000) to take 50% off. Remaining 50% keeps running. Repeat at next threshold.',
     },
-    best_for: 'Locking in profits without fully exiting winning positions',
+    bestFor: 'Locking in profits without fully exiting winning positions',
   },
 };
 
@@ -155,12 +155,12 @@ interface AddStrategyOpts {
   id: string;
   name: string;
   author?: string;
-  lp_strategy?: string;
-  token_criteria?: Record<string, unknown>;
+  lpStrategy?: string;
+  tokenCriteria?: Record<string, unknown>;
   entry?: Record<string, unknown>;
   range?: Record<string, unknown>;
   exit?: Record<string, unknown>;
-  best_for?: string;
+  bestFor?: string;
   raw?: string;
 }
 
@@ -172,12 +172,12 @@ export function addStrategy({
   id,
   name,
   author = 'unknown',
-  lp_strategy = 'bid_ask', // "bid_ask" | "spot" | "curve"
-  token_criteria = {}, // { min_mcap, min_age_days, requires_kol, notes }
-  entry = {}, // { condition, price_change_threshold_pct, single_side }
-  range = {}, // { type, bins_below_pct, notes }
-  exit = {}, // { take_profit_pct, notes }
-  best_for = '', // short description of ideal conditions
+  lpStrategy = 'bid_ask', // "bid_ask" | "spot" | "curve"
+  tokenCriteria = {}, // { min_mcap, min_age_days, requires_kol, notes }
+  entry = {}, // { condition, price_change_threshold_pct, singleSide }
+  range = {}, // { type, binsBelowPct, notes }
+  exit = {}, // { takeProfitPct, notes }
+  bestFor = '', // short description of ideal conditions
   raw = '', // original tweet/text
 }: AddStrategyOpts): Record<string, unknown> {
   if (!id || !name) return { error: 'id and name are required' };
@@ -194,15 +194,15 @@ export function addStrategy({
     id: slug,
     name,
     author,
-    lp_strategy,
-    token_criteria,
+    lpStrategy,
+    tokenCriteria,
     entry,
     range,
     exit,
-    best_for,
+    bestFor,
     raw,
-    added_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    addedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 
   // Auto-set as active if it's the first strategy
@@ -227,10 +227,10 @@ export function listStrategies(): Record<string, unknown> {
     id: s.id,
     name: s.name,
     author: s.author,
-    lp_strategy: s.lp_strategy,
-    best_for: s.best_for,
+    lpStrategy: s.lpStrategy,
+    bestFor: s.bestFor,
     active: activeId === s.id,
-    added_at: s.added_at?.slice(0, 10),
+    addedAt: s.addedAt?.slice(0, 10),
   }));
   return { active: activeId, count: strategies.length, strategies };
 }
@@ -375,15 +375,15 @@ export function mergePresets(presets: unknown[]): void {
         id: slug,
         name,
         author: (rawStrategy.author as string) || 'hivemind',
-        lp_strategy: (rawStrategy.lp_strategy as string) || 'bid_ask',
-        token_criteria: (rawStrategy.token_criteria as Record<string, unknown>) || {},
+        lpStrategy: (rawStrategy.lpStrategy as string) || 'bid_ask',
+        tokenCriteria: (rawStrategy.tokenCriteria as Record<string, unknown>) || {},
         entry: (rawStrategy.entry as Record<string, unknown>) || {},
         range: (rawStrategy.range as Record<string, unknown>) || {},
         exit: (rawStrategy.exit as Record<string, unknown>) || {},
-        best_for: (rawStrategy.best_for as string) || '',
+        bestFor: (rawStrategy.bestFor as string) || '',
         raw: (rawStrategy.raw as string) || '',
-        added_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        addedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
       changed = true;
       log('strategy', `Merged HiveMind preset: ${name} (${slug})`);

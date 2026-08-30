@@ -60,7 +60,7 @@ export function addToBlacklist({ mint, symbol, reason }: { mint: string; symbol?
   db[mint] = {
     symbol: symbol || 'UNKNOWN',
     reason: reason || 'no reason provided',
-    added_at: new Date().toISOString(),
+    addedAt: new Date().toISOString(),
     added_by: 'agent',
   };
 
