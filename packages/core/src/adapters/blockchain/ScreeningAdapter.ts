@@ -182,7 +182,26 @@ export interface DiscoverPoolsResult {
 export interface TopCandidatesResult {
   candidates: CondensedPool[];
   total_screened: number;
+  total_eligible: number;
   filtered_examples: FilteredExample[];
+}
+
+export function candidateScanTotals(
+  discovery: { pools?: unknown[]; filtered_examples?: unknown[] },
+  eligibleLength: number,
+): { total_screened: number; total_eligible: number } {
+  const poolCount = Array.isArray(discovery.pools) ? discovery.pools.length : 0;
+  const filteredCount = Array.isArray(discovery.filtered_examples) ? discovery.filtered_examples.length : 0;
+  return {
+    total_screened: poolCount + filteredCount,
+    total_eligible: eligibleLength,
+  };
+}
+
+export function windowedFeeTvlRejectReason(feeTvlRatio: number, minFeeTvlRatio: number, timeframe: string): string {
+  const value = Number.isFinite(feeTvlRatio) ? String(feeTvlRatio) : 'unknown';
+  const tf = timeframe || 'window';
+  return `windowed fee/TVL (${tf}) ${value} < min ${minFeeTvlRatio}`;
 }
 
 export interface PoolDetailResult {
@@ -325,7 +344,7 @@ export function getRawPoolScreeningRejectReason(pool: RawPool, s: typeof config.
   if (binStep == null || binStep < s.minBinStep) return `bin_step ${binStep ?? 'unknown'} below minBinStep ${s.minBinStep}`;
   if (binStep > s.maxBinStep) return `bin_step ${binStep} above maxBinStep ${s.maxBinStep}`;
   if (feeActiveTvlRatio == null || feeActiveTvlRatio < s.minFeeActiveTvlRatio) {
-    return `fee/active-TVL ${feeActiveTvlRatio ?? 'unknown'} below minFeeActiveTvlRatio ${s.minFeeActiveTvlRatio}`;
+    return windowedFeeTvlRejectReason(feeActiveTvlRatio ?? Number.NaN, s.minFeeActiveTvlRatio, String(s.timeframe || ''));
   }
   if (!isUsableVolatility(volatility)) {
     return `volatility ${volatility ?? 'unknown'} is unusable`;
@@ -897,7 +916,7 @@ export async function getTopCandidates({ limit = 10 } = {}): Promise<TopCandidat
         pushFilteredReason(
           filteredOut,
           p,
-          `fee/active-TVL ${Number.isFinite(feeActiveTvlRatio) ? feeActiveTvlRatio : 'unknown'} below minFeeActiveTvlRatio ${minFeeActiveTvlRatio}`,
+          windowedFeeTvlRejectReason(feeActiveTvlRatio, minFeeActiveTvlRatio, String(config.screening.timeframe || '')),
         );
         return false;
       }
@@ -994,10 +1013,12 @@ export async function getTopCandidates({ limit = 10 } = {}): Promise<TopCandidat
     }
   }
 
+  const totals = candidateScanTotals(discovery, eligible.length);
   return {
     candidates: eligible,
-    total_screened: pools.length,
-    filtered_examples: filteredOut.slice(0, 3),
+    total_screened: totals.total_screened,
+    total_eligible: totals.total_eligible,
+    filtered_examples: filteredOut.slice(0, 8),
   };
 }
 

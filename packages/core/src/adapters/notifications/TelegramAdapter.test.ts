@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { notifySwap, notifySwapError } from './TelegramAdapter.js';
+import { notifySwap, notifySwapError, summarizeToolResult } from './TelegramAdapter.js';
 import * as NotificationSink from './NotificationSink.js';
 
 vi.mock('./NotificationSink.js', () => ({
@@ -48,6 +48,30 @@ describe('TelegramAdapter notifications', () => {
       'Swapped Council → SOL',
       'In: 1250 | Out: 0.0240 SOL\nTx: 5K8x7q1234567890...',
     );
+  });
+
+  it('summarizeToolResult reports scanned vs shortlisted for get_top_candidates', () => {
+    expect(
+      summarizeToolResult('get_top_candidates', {
+        candidates: [{ name: 'STACY-SOL' }],
+        total_screened: 6,
+        filtered_examples: [{ name: 'fone-SOL' }, { name: 'TOAD-SOL' }],
+      }),
+    ).toBe('6 scanned / 1 shortlisted');
+  });
+
+  it('summarizeToolResult does not say 0 candidates when pools were scanned but none shortlisted', () => {
+    expect(
+      summarizeToolResult('get_top_candidates', {
+        candidates: [],
+        total_screened: 0,
+        filtered_examples: [{ name: 'fone-SOL' }, { name: 'TOAD-SOL' }, { name: 'GTA6-SOL' }, { name: 'Morty-SOL' }, { name: 'GHOST-SOL' }],
+      }),
+    ).toBe('5 scanned / 0 shortlisted');
+  });
+
+  it('summarizeToolResult reserves 0 candidates for a truly empty fetch', () => {
+    expect(summarizeToolResult('get_top_candidates', { candidates: [] })).toBe('0 candidates');
   });
 
   it('notifySwapError formats failure alert', async () => {

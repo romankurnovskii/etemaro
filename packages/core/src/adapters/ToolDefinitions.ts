@@ -26,11 +26,11 @@ Pools are pre-filtered for safety:
 - Base token holders >= 100
 - Volume >= $1k (in timeframe)
 - Active TVL >= $10k
-- Fee/Active TVL ratio >= 0.01 (in timeframe)
+- Windowed fee/TVL (screening timeframe, not real-time active-bin) >= 0.01
 - Both tokens organic score >= 60
 
 Returns condensed pool data: address, name, tokens, bin_step, fee_pct,
-active_tvl, fee_window, volume_window, fee_tvl_ratio, volatility from max(timeframe, 30m), organic_score,
+active_tvl, fee_window, volume_window, windowed fee/TVL (fee_active_tvl_ratio), volatility from max(timeframe, 30m), organic_score,
 holders, mcap, active_positions, price_change_pct, warning count.
 
 Use this as the primary tool for finding new LP opportunities.`,
@@ -62,7 +62,8 @@ Use this as the primary tool for finding new LP opportunities.`,
       name: 'get_top_candidates',
       description: `Get the top pre-scored pool candidates for deployment review.
 All filtering, scoring, and rule-checking is done in code — no analysis needed.
-Returns the top N eligible pools ranked by score (fee/TVL, organic, stability, volume).
+Returns the top N eligible pools ranked by score (windowed fee/TVL, organic, stability, volume).
+Also returns total_screened (raw pools evaluated) and filtered_examples so logs can show scanned vs shortlisted.
 Each pool includes a score (0-100) and has already passed all hard disqualifiers.
 Use this instead of discover_pools for screening cycles.
 If this returns one candidate, still judge whether it is actually worth deploying; one weak candidate should be skipped.`,

@@ -134,6 +134,7 @@ describe('ToolExecutor - deploy_position screening via validateDeployPoolThresho
     const result = await _validateDeployPoolThresholds({ pool_address: discoveryPool.pool_address });
 
     expect(result.pass).toBe(false);
+    expect(result.reason).toContain('Real-time active-bin fee/TVL');
     expect(result.reason).toContain('below configured minFeeActiveTvlRatio');
   });
 });
