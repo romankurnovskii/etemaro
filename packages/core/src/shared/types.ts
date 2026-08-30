@@ -118,6 +118,8 @@ export interface OnChainPosition {
   pnl_usd?: number;
   pnl_pct_suspicious?: boolean;
   unclaimed_fees_usd: number;
+  collected_fees_usd?: number;
+  total_value_usd?: number;
   active_bin?: number;
   lower_bin?: number;
   upper_bin?: number;
@@ -127,7 +129,30 @@ export interface OnChainPosition {
   minutes_out_of_range?: number;
 }
 
+export interface GetMyPositionsResult {
+  wallet: string | null;
+  total_positions: number;
+  positions: OnChainPosition[];
+  error?: string;
+}
+
 // ─── Wallet / Token ────────────────────────────────────────────
+
+export interface WalletBalancesResult {
+  wallet: string | null;
+  sol: number;
+  sol_price: number;
+  sol_usd: number;
+  usdc: number;
+  tokens: Array<{
+    mint: string;
+    symbol: string;
+    balance: number;
+    usd: number | null;
+  }>;
+  total_usd: number;
+  error?: string;
+}
 
 export interface WalletBalances {
   sol: number;

@@ -165,8 +165,22 @@ this.adapters.meteora.getMyPositions({ silent: true }) // Uses 30s TTL cache
 this.adapters.wallet.getWalletBalances({ force: false }) // Uses 30s TTL cache
 ```
 
-### 4.3 Ensuring `config.pnl.source` Defaults to `"portfolio"`
-Ensure `config/defaultUserConfig.ts` and `user-config.json` use `"source": "portfolio"` rather than `"rpc"`. This directs all position monitoring to Meteora's free Datapi.
+### 4.4 Centralized RPC & Wallet Connection Manager (`packages/core/src/shared/connection.ts`)
+Instead of reading `process.env.RPC_URL` or `process.env.WALLET_PRIVATE_KEY` in multiple ad-hoc places, `packages/core/src/shared/connection.ts` serves as the single source of truth:
+- Reads credentials from `config.connection` (with env var fallback).
+- Automatically initializes and manages primary `getConnection(false)` and fallback `getConnection(true)` connection instances based on `config.connection.rpcUrl` and `config.connection.rpcUrl2`.
+- Provides `getWalletKeypair()` and `getWalletAddress()` consistently.
+
+### 4.5 Deferred Balance Checking in Opportunity Poller (`Daemon.ts`)
+Instead of polling wallet balances unconditionally on every 45-second poller tick:
+1. Fast local / cached check: `getMyPositions({ silent: true })`. If positions >= max, stop immediately.
+2. Check candidates: `getTopCandidates()`. If 0 candidates, stop immediately.
+3. Only when valid candidates exist and a position deployment is ready to be evaluated, query `getWalletBalances()`.
+
+### 4.6 Strict Typed Interfaces
+Exported across `@etemaro/core`:
+- `GetMyPositionsResult`: `{ wallet: string | null; total_positions: number; positions: OnChainPosition[]; error?: string; }`
+- `WalletBalancesResult`: `{ wallet: string | null; sol: number; sol_price: number; sol_usd: number; usdc: number; tokens: Array<{ mint: string; symbol: string; balance: number; usd: number | null }>; total_usd: number; error?: string; }`
 
 ---
 
@@ -174,7 +188,8 @@ Ensure `config/defaultUserConfig.ts` and `user-config.json` use `"source": "port
 
 | Metric | Before Optimization | After Optimization | Improvement |
 | :--- | :--- | :--- | :--- |
-| **Monthly Helius Credits** | **1,000,000 – 10,000,000+** | **< 20,000** (Only tx simulations/broadcasts) | **> 98% Savings** |
-| **Daily External HTTP Calls** | ~15,000 / agent | ~500 / agent (via TTL cache) | **96% Reduction** |
+| **Monthly Helius Credits** | **1,000,000 – 10,000,000+** | **0** (Balance queries) / **< 10,000** (Tx simulation & broadcast only) | **> 99% Savings** |
+| **Daily External HTTP Calls** | ~15,000 / agent | ~500 / agent (via TTL cache & deferred checks) | **96% Reduction** |
 | **Daemon Event Loop Latency** | High (waiting on un-cached HTTP on every tick) | Instantaneous (served from memory) | **~10x Faster Polling Cycle** |
 | **Free Tier Feasibility** | Exceeds free Helius plan in 2–3 days | Operates indefinitely within free tiers | **100% Free-tier Sustainable** |
+
