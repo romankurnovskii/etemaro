@@ -9,6 +9,9 @@ import {
   trackPosition,
   recordClose,
   syncOpenPositions,
+  withStateLock,
+  setPositionInstruction,
+  confirmPeak,
   __setStateFilePath,
 } from './state.js';
 
@@ -173,5 +176,41 @@ describe('state.json corruption handling', () => {
   it('fails fast and throws when state.json contains corrupted JSON', () => {
     fs.writeFileSync(TMP_STATE, '{"positions": { invalid json');
     expect(() => getTrackedPositions()).toThrowError(/Failed to parse JSON file at.*Critical file corrupted/);
+  });
+});
+
+describe('withStateLock concurrency synchronization', () => {
+  beforeAll(() => {
+    __setStateFilePath(TMP_STATE);
+  });
+
+  afterAll(() => {
+    if (fs.existsSync(TMP_STATE)) fs.unlinkSync(TMP_STATE);
+  });
+
+  beforeEach(() => {
+    if (fs.existsSync(TMP_STATE)) fs.unlinkSync(TMP_STATE);
+  });
+
+  it('serializes concurrent async state modifications without losing updates', async () => {
+    trackPosition(deployOpts('PosConcurrent') as any);
+
+    // Run 5 concurrent async state updates with simulated async delays
+    const updates = [1, 2, 3, 4, 5].map((idx) =>
+      withStateLock(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        setPositionInstruction('PosConcurrent', `Instruction-${idx}`);
+        confirmPeak('PosConcurrent', idx * 5, 1);
+      }),
+    );
+
+    await Promise.all(updates);
+
+    const pos = getTrackedPosition('PosConcurrent');
+    expect(pos).not.toBeNull();
+    // Peak PnL should reflect the maximum confirmed peak PnL (25)
+    expect(pos?.peak_pnl_pct).toBe(25);
+    // Instruction was set
+    expect(pos?.instruction).toMatch(/^Instruction-\d$/);
   });
 });
