@@ -18,6 +18,7 @@ import { config } from '../../config/Config.js';
 import { configPath } from '../../shared/constants.js';
 import { createTimer, log, logStructured } from '../../shared/logger.js';
 import { loadJsonFile, saveJsonFile, withRpcRetry } from '../../shared/utils.js';
+import { sleep } from '../../utils/time.js';
 
 export interface GeneratedWallet {
   publicKey: string;
@@ -66,7 +67,7 @@ export { getWalletAddress, getWalletKeypair };
 
 const JUPITER_SWAP_V2_API = 'https://api.jup.ag/swap/v2';
 
-import { sleep } from "../../utils/time";
+
 
 interface RateLimitRetryOptions {
   attempts?: number;
