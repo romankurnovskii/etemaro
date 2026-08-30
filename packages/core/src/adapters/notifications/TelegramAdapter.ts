@@ -274,6 +274,16 @@ function createTypingIndicator(): { stop: () => void } {
   };
 }
 
+export function formatCandidateScanSummary(result: any): string {
+  const shortlisted = Array.isArray(result?.candidates) ? result.candidates.length : Array.isArray(result?.pools) ? result.pools.length : 0;
+  const filtered = Array.isArray(result?.filtered_examples) ? result.filtered_examples.length : 0;
+  const reported = Number(result?.total_screened);
+  const inferred = shortlisted + filtered;
+  const scanned = Number.isFinite(reported) && reported > 0 ? Math.max(reported, inferred) : inferred;
+  if (scanned <= 0 && shortlisted <= 0) return '0 candidates';
+  return `${scanned} scanned / ${shortlisted} shortlisted`;
+}
+
 function toolLabel(name: string): string {
   const labels: Record<string, string> = {
     get_token_info: 'get token info',
@@ -298,7 +308,7 @@ function toolLabel(name: string): string {
   return labels[name] || name.replace(/_/g, ' ');
 }
 
-function summarizeToolResult(name: string, result: any): string {
+export function summarizeToolResult(name: string, result: any): string {
   if (!result) return '';
   if (result.error) return result.error;
   if (result.reason && result.blocked) return result.reason;
@@ -312,7 +322,8 @@ function summarizeToolResult(name: string, result: any): string {
     case 'update_config':
       return Object.keys(result.applied || {}).join(', ') || 'updated';
     case 'get_top_candidates':
-      return `${result.candidates?.length ?? 0} candidates`;
+    case 'discover_pools':
+      return formatCandidateScanSummary(result);
     case 'get_my_positions':
       return `${result.total_positions ?? result.positions?.length ?? 0} positions`;
     case 'get_wallet_balance':
