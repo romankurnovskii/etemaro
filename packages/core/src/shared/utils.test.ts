@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { saveJsonFile } from './utils.js';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { saveJsonFile } from './utils.js';
 
 describe('saveJsonFile — atomicity', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'saveJsonFile-test-'));
@@ -151,5 +151,124 @@ describe('loadJsonFileWithInfo — detailed load tracking', () => {
     expect(result.loadedFrom).toBe('file');
     expect(result.filePath).toBe(target);
     expect(result.error).toBeUndefined();
+  });
+});
+
+describe('isTransientRpcError', () => {
+  it('identifies rate limits as transient', async () => {
+    const { isTransientRpcError } = await import('./utils.js');
+    expect(isTransientRpcError(new Error('HTTP 429 Too Many Requests'))).toBe(true);
+    expect(isTransientRpcError(new Error('Rate limit exceeded'))).toBe(true);
+    expect(isTransientRpcError({ status: 429 })).toBe(true);
+  });
+
+  it('identifies server errors as transient', async () => {
+    const { isTransientRpcError } = await import('./utils.js');
+    expect(isTransientRpcError(new Error('503 Service Unavailable'))).toBe(true);
+    expect(isTransientRpcError(new Error('502 Bad Gateway'))).toBe(true);
+    expect(isTransientRpcError(new Error('504 Gateway Timeout'))).toBe(true);
+    expect(isTransientRpcError(new Error('Solana node is behind by 100 slots (-32005)'))).toBe(true);
+  });
+
+  it('identifies network failures as transient', async () => {
+    const { isTransientRpcError } = await import('./utils.js');
+    expect(isTransientRpcError(new Error('read ECONNRESET'))).toBe(true);
+    expect(isTransientRpcError(new Error('ETIMEDOUT'))).toBe(true);
+    expect(isTransientRpcError(new Error('socket hang up'))).toBe(true);
+    expect(isTransientRpcError(new Error('fetch failed'))).toBe(true);
+    expect(isTransientRpcError(new Error('Transaction simulation failed: blockhash not found'))).toBe(true);
+  });
+
+  it('identifies non-transient domain errors as non-retryable', async () => {
+    const { isTransientRpcError } = await import('./utils.js');
+    expect(isTransientRpcError(new Error('Invalid public key'))).toBe(false);
+    expect(isTransientRpcError(new Error('Insufficient balance'))).toBe(false);
+    expect(isTransientRpcError(new Error('WALLET_PRIVATE_KEY not set'))).toBe(false);
+    expect(isTransientRpcError(null)).toBe(false);
+  });
+});
+
+describe('withRpcRetry', () => {
+  it('returns result immediately on first attempt success', async () => {
+    const { withRpcRetry } = await import('./utils.js');
+    const fn = vi.fn().mockResolvedValue('success');
+
+    const result = await withRpcRetry(fn, { maxRetries: 3 });
+    expect(result).toBe('success');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries on transient failure and resolves when subsequent attempt succeeds', async () => {
+    const { withRpcRetry } = await import('./utils.js');
+    const fn = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('HTTP 429 Too Many Requests'))
+      .mockRejectedValueOnce(new Error('socket hang up'))
+      .mockResolvedValueOnce('eventual success');
+
+    const onRetry = vi.fn();
+    const result = await withRpcRetry(fn, {
+      maxRetries: 3,
+      initialDelayMs: 1,
+      maxDelayMs: 5,
+      jitter: false,
+      onRetry,
+    });
+
+    expect(result).toBe('eventual success');
+    expect(fn).toHaveBeenCalledTimes(3);
+    expect(onRetry).toHaveBeenCalledTimes(2);
+    expect(onRetry).toHaveBeenNthCalledWith(1, expect.any(Error), 1, 1);
+    expect(onRetry).toHaveBeenNthCalledWith(2, expect.any(Error), 2, 2);
+  });
+
+  it('rethrows error when maxRetries is exhausted', async () => {
+    const { withRpcRetry } = await import('./utils.js');
+    const fn = vi.fn().mockRejectedValue(new Error('503 Service Unavailable'));
+
+    const onRetry = vi.fn();
+    await expect(
+      withRpcRetry(fn, {
+        maxRetries: 2,
+        initialDelayMs: 1,
+        maxDelayMs: 5,
+        jitter: false,
+        onRetry,
+      }),
+    ).rejects.toThrow('503 Service Unavailable');
+
+    expect(fn).toHaveBeenCalledTimes(3); // attempt 0 + 2 retries
+    expect(onRetry).toHaveBeenCalledTimes(2);
+  });
+
+  it('immediately throws without retry when error is non-retryable', async () => {
+    const { withRpcRetry } = await import('./utils.js');
+    const fn = vi.fn().mockRejectedValue(new Error('Invalid public key format'));
+
+    const onRetry = vi.fn();
+    await expect(
+      withRpcRetry(fn, {
+        maxRetries: 3,
+        initialDelayMs: 1,
+        onRetry,
+      }),
+    ).rejects.toThrow('Invalid public key format');
+
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it('respects custom isRetryable predicate', async () => {
+    const { withRpcRetry } = await import('./utils.js');
+    const fn = vi.fn().mockRejectedValueOnce(new Error('CUSTOM_RETRYABLE_ERROR')).mockResolvedValueOnce('custom success');
+
+    const result = await withRpcRetry(fn, {
+      maxRetries: 2,
+      initialDelayMs: 1,
+      isRetryable: (err: any) => err.message.includes('CUSTOM_RETRYABLE'),
+    });
+
+    expect(result).toBe('custom success');
+    expect(fn).toHaveBeenCalledTimes(2);
   });
 });
