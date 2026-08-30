@@ -569,7 +569,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
           this.managementBusy = true;
           try {
             const actMap = new Map([[p.position, { action: 'CLOSE', rule, reason }]]);
-            const rpt = await this.executeManagementActions([p], actMap, {});
+            const { report: rpt } = await this.executeManagementActions([p], actMap, {});
             log('state', `[PnL poll] ${p.pair}: ${rpt || 'closed'}`);
           } catch (e: any) {
             log('cron_error', `Poll-triggered close failed: ${e.message}`);
@@ -710,9 +710,10 @@ Summarize the current portfolio health, total fees earned, and performance of al
     actionPositions: any[],
     actionMap: Map<string, any>,
     { liveMessage = null as any, cur = '$' } = {},
-  ): Promise<string> {
+  ): Promise<{ report: string; closedCount: number }> {
     const lines: string[] = [];
     const instructionPositions: any[] = [];
+    let closedCount = 0;
 
     const mechanical = actionPositions.filter((p: any) => actionMap.get(p.position).action !== 'INSTRUCTION');
     if (mechanical.length) {
@@ -733,6 +734,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
           .executeTool('close_position', { position_address: p.position, reason })
           .catch((e: any) => ({ error: e.message }));
         const ok = res?.success !== false && !res?.error && !res?.blocked;
+        if (ok) closedCount++;
         await liveMessage?.toolFinish('close_position', res, ok);
         lines.push(`${p.pair}: ${ok ? `closed (${reason})` : `close FAILED — ${res?.error || res?.reason || 'unknown'}`}`);
       } else if (act.action === 'CLAIM') {
@@ -784,6 +786,9 @@ After evaluating, write a brief one-line result per position.
             await liveMessage?.toolStart(name);
           },
           onToolFinish: async ({ name, result, success }: any) => {
+            if (name === 'close_position' && success !== false && !result?.error && !result?.blocked) {
+              closedCount++;
+            }
             await liveMessage?.toolFinish(name, result, success);
           },
         },
@@ -791,7 +796,7 @@ After evaluating, write a brief one-line result per position.
       if (content) lines.push(content);
     }
 
-    return lines.join('\n');
+    return { report: lines.join('\n'), closedCount };
   }
 
   async runManagementCycle({ silent = false } = {}): Promise<string | null> {
@@ -902,19 +907,20 @@ After evaluating, write a brief one-line result per position.
         return a.action !== 'STAY';
       });
 
+      let closedCount = 0;
       if (actionPositions.length > 0) {
-        const execReport = await this.executeManagementActions(actionPositions, actionMap, { liveMessage, cur });
+        const { report: execReport, closedCount: closed } = await this.executeManagementActions(actionPositions, actionMap, { liveMessage, cur });
+        closedCount = closed;
         if (execReport) mgmtReport += `\n\n${execReport}`;
       } else {
         log('cron', 'Management: all positions STAY — skipping');
         await liveMessage?.note('No tool actions needed.');
       }
 
-      // Trigger screening after management
-      const afterPositions = await this.adapters.meteora.getMyPositions({ force: true }).catch(() => null);
-      const afterCount = afterPositions?.positions?.length ?? 0;
-      if (afterCount < config.risk.maxPositions && Date.now() - this.screeningLastTriggered > screeningCooldownMs) {
-        log('cron', `Post-management: ${afterCount}/${config.risk.maxPositions} positions — triggering screening`);
+      // Trigger screening after management if positions slots are available
+      const remainingCount = Math.max(0, positions.length - closedCount);
+      if (remainingCount < config.risk.maxPositions && Date.now() - this.screeningLastTriggered > screeningCooldownMs) {
+        log('cron', `Post-management: ${remainingCount}/${config.risk.maxPositions} positions — triggering screening`);
         this.runScreeningCycle().catch((e: any) => log('cron_error', `Triggered screening failed: ${e.message}`));
       }
     } catch (error: any) {
