@@ -1,20 +1,8 @@
-/**
- * @file Config.test.ts
- * @description Unit tests for Config module, covering fee/active-TVL scaling and config defaults.
- *
- * @features
- * - Validates scaleScreeningToTimeframe produces correct thresholds per timeframe
- * - Asserts default screening.minFeeActiveTvlRatio matches scaled floor for 5m
- * - Spot-checks a known pool ratio against the current default gate
- * - Verifies minSafeBinsBelow config override works
- *
- * @dependencies vitest
- */
-import fs from 'node:fs';
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { config } from './Config.js';
 import { DEFAULT_USER_CONFIG, defaultUserConfigStr } from './defaultUserConfig.js';
-import { configPath, getMinSafeBinsBelow } from '../shared/constants.js';
+import { getMinSafeBinsBelow } from '../shared/constants.js';
 import { scaleScreeningToTimeframe } from '../shared/utils.js';
 import { UserConfigSchema } from './schema.js';
 
@@ -118,6 +106,8 @@ describe('hiveMind agentId support', () => {
   });
 
   afterEach(() => {
+    vi.doUnmock('node:fs');
+    vi.resetModules();
     vi.restoreAllMocks();
   });
 
@@ -166,6 +156,8 @@ describe('fail-closed config load and validation behavior', () => {
     } else {
       process.env.ETEMARO_SKIP_ENV_VALIDATION = originalSkipEnv;
     }
+    vi.doUnmock('node:fs');
+    vi.resetModules();
     vi.restoreAllMocks();
   });
 
@@ -301,5 +293,21 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
     } finally {
       process.env = originalEnv;
     }
+  });
+
+  describe('resetConfig helper', () => {
+    it('resets in-memory config singleton and keeps object reference identical', async () => {
+      const { config, resetConfig } = await import('./Config.js');
+      const originalTimeframe = config.screening.timeframe;
+
+      // Temporarily mutate in place
+      config.screening.timeframe = '1h';
+      expect(config.screening.timeframe).toBe('1h');
+
+      // Call resetConfig to reload
+      const res = resetConfig();
+      expect(res).toBe(config);
+      expect(config.screening.timeframe).toBe(originalTimeframe);
+    });
   });
 });

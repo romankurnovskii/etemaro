@@ -108,3 +108,13 @@ When `DRY_RUN=true` is set in the environment:
 - **Interceptors**: Inside `MeteoraAdapter.ts`, the functions `deployPosition`, `claimFees`, and `closePosition` check for the dry-run flag.
 - **Mock Responses**: Instead of submitting a transaction payload to the Solana blockchain, the adapter intercepts the call and returns a mock object containing `dry_run: true` and a mock transaction ID.
 - _Note:_ Mock positions are only saved to the local `state.json` registry during the deploy step; they are not simulated dynamically by the management loop since they do not exist on the Solana blockchain.
+
+---
+
+## Configuration Lifecycle & State Isolation
+
+1. **Singleton Pattern**: The configuration is parsed once at application start into an immutable-by-convention `config` singleton exported by `@etemaro/core`.
+2. **In-Place Runtime Mutations**: Dynamic parameter modifications (such as screening threshold reloads via `reloadScreeningThresholds()` or active strategy switching via `setActiveStrategy()`) mutate fields directly on the shared `config` instance, ensuring that all consumers maintain synchronized view without stale module cache references.
+3. **Environment Propagation**: User-defined credentials and URLs in `user-config.json` are conditionally populated into `process.env` using `||=` fallback assignment, ensuring that environment variables passed explicitly via CLI or `.env` take precedence.
+4. **Test Isolation**: Test suites that mutate `process.env` or mock file system configs must snapshot and restore `process.env` in `beforeEach`/`afterEach`, and use `resetConfig()` from `@etemaro/core` to cleanly re-initialize the singleton state between test cases.
+
