@@ -629,7 +629,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
         try {
           if (Date.now() - this.screeningLastTriggered < oppCooldownMs) return;
           const [positions, balance] = await Promise.all([
-            this.adapters.meteora.getMyPositions({ force: true, silent: true }).catch((err: any) => {
+            this.adapters.meteora.getMyPositions({ silent: true }).catch((err: any) => {
               log('cron_error', `Opportunity poller failed to fetch positions: ${err?.message || err}`);
               return null;
             }),
