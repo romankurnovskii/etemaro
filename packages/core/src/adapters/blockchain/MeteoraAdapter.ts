@@ -44,7 +44,7 @@ import { getMinSafeBinsBelow } from '../../shared/constants.js';
 import { log, logStructured } from '../../shared/logger.js';
 import { agentMeridianJson, getAgentIdForRequests, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js';
 import { computePositions, fetchDlmmPnlForPool } from '../PnLAdapter.js';
-import { normalizeMint } from './WalletAdapter.js';
+import { invalidateBalanceCache, normalizeMint } from './WalletAdapter.js';
 
 // ─── Lazy SDK loader ───────────────────────────────────────────
 let _DLMM: any = null;
@@ -742,6 +742,7 @@ export async function deployPosition({
 
       await new Promise((resolve) => setTimeout(resolve, 5000));
       _positionsCacheAt = 0;
+      invalidateBalanceCache();
       const refreshed = await getMyPositions({
         force: true,
         silent: true,
@@ -899,6 +900,7 @@ export async function deployPosition({
     });
 
     _positionsCacheAt = 0;
+    invalidateBalanceCache();
     const signalSnapshot = config.darwin?.enabled ? getAndClearStagedSignals(pool_address, baseMint) : null;
     trackPosition({
       position: newPosition.publicKey.toString(),
@@ -1595,6 +1597,7 @@ export async function claimFees({ position_address }: { position_address: string
       },
     });
     _positionsCacheAt = 0;
+    invalidateBalanceCache();
     recordClaim(position_address);
 
     return {
@@ -1712,6 +1715,7 @@ export async function closePosition({ position_address, reason }: { position_add
 
         await new Promise((resolve) => setTimeout(resolve, 5000));
         _positionsCacheAt = 0;
+        invalidateBalanceCache();
 
         let closedConfirmed = false;
         for (let attempt = 0; attempt < 4; attempt++) {
@@ -1954,6 +1958,7 @@ export async function closePosition({ position_address, reason }: { position_add
     log('close', `SUCCESS txs: ${txHashes.join(', ')}`);
     await new Promise((r) => setTimeout(r, 5000));
     _positionsCacheAt = 0;
+    invalidateBalanceCache();
 
     let closedConfirmed = false;
     for (let attempt = 0; attempt < 4; attempt++) {
