@@ -96,7 +96,7 @@ async function agentMeridianJsonOnce(pathname: string, options: RequestInit = {}
   const res = await fetchWithTimeout(`${getAgentMeridianBase()}${pathname}`, options, timeoutMs);
   const durationMs = timer.stop();
   const text = await res.text().catch(() => '');
-  let payload: Record<string, unknown> = {};
+  let payload: Record<string, unknown>;
   try {
     payload = text ? JSON.parse(text) : {};
   } catch {

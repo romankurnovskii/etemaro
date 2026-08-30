@@ -22,6 +22,9 @@ import {
   computeDeployAmount,
   reloadScreeningThresholds,
   getDataDir,
+  dataPath,
+  sharedDataPath,
+  configPath,
   log,
   agentLoop,
   type AgentLoopDeps,
@@ -287,8 +290,38 @@ export class Daemon {
     const dataDir = getDataDir();
     const dataDirSource = process.env.ETEMARO_DATA_DIR ? 'ETEMARO_DATA_DIR' : process.env.DATA_DIR ? 'DATA_DIR' : 'default <repo>/data';
     log('startup', `Data: ${dataDir} (${dataDirSource})`);
+    const resolvedConfigPath = configPath('user-config.json');
+    const configSource = process.env.USER_CONFIG_PATH ? `USER_CONFIG_PATH (${resolvedConfigPath})` : `default (${resolvedConfigPath})`;
+    log('startup', `Config: ${configSource}`);
     log('startup', `Mode: ${process.env.DRY_RUN === 'true' ? 'DRY RUN' : 'LIVE'}`);
     log('startup', `Model: ${process.env.LLM_MODEL || 'hermes-3-405b'}`);
+
+    const activeStrat = this.adapters.domain.getActiveStrategy();
+    log(
+      'startup',
+      `Strategy: ${activeStrat?.name || (config as any).preset || 'default'} (id=${config.agentId || 'none'}, entrySource=${config.screening.entrySource || 'market'})`,
+    );
+    if (config.opportunity.enabled) {
+      log(
+        'startup',
+        `Opportunity Poller: enabled (interval=${config.opportunity.pollIntervalSec}s, minScore=${config.opportunity.minScore}, smartWalletBonus=${config.opportunity.smartWalletScoreBonus})`,
+      );
+    }
+
+    // Knowledge & Resource stats
+    const smartWallets = domain.listSmartWallets();
+    const walletCount = smartWallets?.wallets?.length ?? 0;
+    log('startup', `Smart Wallets: ${walletCount} tracked (${sharedDataPath('smart-wallets.json')})`);
+    if (
+      (config.screening.entrySource === 'smart_wallets' || (config.opportunity.enabled && (config.opportunity.smartWalletScoreBonus ?? 0) > 0)) &&
+      walletCount === 0
+    ) {
+      log('startup_warn', '⚠️ WARNING: Active strategy relies on smart-wallet entries, but 0 smart wallets are tracked in smart-wallets.json!');
+    }
+
+    const blacklistedTokens = domain.listBlacklist();
+    const blacklistedCount = (blacklistedTokens as any)?.count ?? 0;
+    log('startup', `Blacklisted Tokens: ${blacklistedCount} (${sharedDataPath('token-blacklist.json')})`);
 
     this.adapters.hivemind.ensureAgentId();
 
@@ -1255,7 +1288,7 @@ IMPORTANT:
     }
 
     // 2. Load snapshot
-    const snapshotPath = path.join(getDataDir(), '.smart-wallets-snapshot.json');
+    const snapshotPath = dataPath('.smart-wallets-snapshot.json');
     let snapshot: domain.SmartWalletSnapshot | null = null;
     if (fs.existsSync(snapshotPath)) {
       try {

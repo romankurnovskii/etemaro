@@ -12,7 +12,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO_ROOT, configPath, dataPath, getDataDir, strategyLibraryPath } from './constants.js';
+import { REPO_ROOT, configPath, dataPath, getDataDir, sharedDataPath, strategyLibraryPath } from './constants.js';
 
 const ENV_KEYS = ['USER_CONFIG_PATH', 'ETEMARO_DATA_DIR', 'DATA_DIR'] as const;
 
@@ -99,16 +99,23 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     expect(getDataDir()).toBe(path.resolve(home, '.config/etemaro/data'));
   });
 
-  it('strategyLibraryPath does NOT add agent suffix even with a custom USER_CONFIG_PATH (issue #148 regression)', () => {
+  it('sharedDataPath and strategyLibraryPath do NOT add agent suffix even with a custom USER_CONFIG_PATH', () => {
     envSnap = snapshotEnv();
     delete process.env.ETEMARO_DATA_DIR;
     delete process.env.DATA_DIR;
     process.env.USER_CONFIG_PATH = '/path/to/config/agt_a717d5fa29c5d09fe188bc16.json';
 
-    // state.json is intentionally agent-suffixed...
+    // State & ephemeral files are intentionally agent-suffixed...
     expect(dataPath('state.json')).toBe(path.join(REPO_ROOT, 'data', 'state-agt_a717d5fa29c5d09fe188bc16.json'));
-    // ...but the strategy library files must NOT be, so the private/shared
-    // libraries resolve for every agent and validateActiveStrategy() finds the strategy.
+    expect(dataPath('lessons.json')).toBe(path.join(REPO_ROOT, 'data', 'lessons-agt_a717d5fa29c5d09fe188bc16.json'));
+    expect(dataPath('decision-log.json')).toBe(path.join(REPO_ROOT, 'data', 'decision-log-agt_a717d5fa29c5d09fe188bc16.json'));
+    expect(dataPath('.smart-wallets-snapshot.json')).toBe(path.join(REPO_ROOT, 'data', '.smart-wallets-snapshot-agt_a717d5fa29c5d09fe188bc16.json'));
+
+    // ...but shared knowledge files must NOT be suffixed, so they resolve across all agents.
+    expect(sharedDataPath('smart-wallets.json')).toBe(path.join(REPO_ROOT, 'data', 'smart-wallets.json'));
+    expect(sharedDataPath('token-blacklist.json')).toBe(path.join(REPO_ROOT, 'data', 'token-blacklist.json'));
+    expect(sharedDataPath('dev-blocklist.json')).toBe(path.join(REPO_ROOT, 'data', 'dev-blocklist.json'));
+    expect(sharedDataPath('strategy-library.json')).toBe(path.join(REPO_ROOT, 'data', 'strategy-library.json'));
     expect(strategyLibraryPath('strategy-library.json')).toBe(path.join(REPO_ROOT, 'data', 'strategy-library.json'));
     expect(strategyLibraryPath('strategy-library.shared.json')).toBe(path.join(REPO_ROOT, 'data', 'strategy-library.shared.json'));
   });

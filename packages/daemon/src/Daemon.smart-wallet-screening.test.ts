@@ -5,6 +5,7 @@
  * new positions are detected in a single screening cycle.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import path from 'node:path';
 
 // ─── Module-level mocks ─────────────────────────────────────────────────────
 // runSmartWalletScreening uses core imports directly (not through adapters):
@@ -129,6 +130,9 @@ vi.mock('@etemaro/core', () => ({
   },
   computeDeployAmount: mockComputeDeployAmount,
   getDataDir: mockGetDataDir,
+  dataPath: (p: string) => path.join('/tmp/test-data', p),
+  sharedDataPath: (p: string) => path.join('/tmp/test-data', p),
+  configPath: (p: string) => path.join('/tmp/test-config', p),
   log: mockLog,
   getTrackedPosition: vi.fn(),
   getTrackedPositions: mockGetTrackedPositions,
@@ -182,6 +186,7 @@ vi.mock('@etemaro/core', () => ({
     getWeightsSummary: vi.fn().mockReturnValue(''),
     appendDecision: mockAppendDecision,
     listSmartWallets: mockListSmartWallets,
+    listBlacklist: vi.fn().mockReturnValue({ count: 0, blacklist: [] }),
     diffSmartWalletPositions: mockDiffSmartWalletPositions,
     updateSnapshotPositions: mockUpdateSnapshotPositions,
   },

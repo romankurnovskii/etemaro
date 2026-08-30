@@ -149,3 +149,25 @@ describe('hiveMind agentId support', () => {
     expect(testConfig.hiveMind.agentId).toBe('hive-only-agent');
   });
 });
+
+describe('explicit USER_CONFIG_PATH fail-closed behavior', () => {
+  const originalConfigPath = process.env.USER_CONFIG_PATH;
+
+  afterEach(() => {
+    if (originalConfigPath === undefined) {
+      delete process.env.USER_CONFIG_PATH;
+    } else {
+      process.env.USER_CONFIG_PATH = originalConfigPath;
+    }
+    vi.restoreAllMocks();
+  });
+
+  it('throws a fatal error when an explicit USER_CONFIG_PATH does not exist or fails validation', async () => {
+    vi.resetModules();
+    process.env.USER_CONFIG_PATH = '/path/to/nonexistent/custom-config.json';
+
+    await expect(async () => {
+      await import('./Config.js');
+    }).rejects.toThrow(/Fatal: Failed to load explicit configuration from USER_CONFIG_PATH/);
+  });
+});
