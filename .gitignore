@@ -56,6 +56,7 @@ data/*
 # Tauri / Rust build artifacts
 # apps/desktop is a private submodule (tracked), but ignore its build output
 apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
 apps/desktop/target/
 apps/desktop/node_modules/
 
