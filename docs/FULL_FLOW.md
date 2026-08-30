@@ -595,25 +595,25 @@ The Strategy Library (`strategy-library.ts`) provides persistent storage for LP 
 1. Via Telegram:
 
    ```
-   /add_strategy my_strategy "My Custom Strategy" --lp_strategy bid_ask
+   /add_strategy my_strategy "My Custom Strategy" --lpStrategy bid_ask
    ```
 
 2. Via CLI:
 
    ```bash
-   npm run cli add-strategy -- --id my_strategy --name "My Custom Strategy" --lp_strategy bid_ask
+   npm run cli add-strategy -- --id my_strategy --name "My Custom Strategy" --lpStrategy bid_ask
    ```
 
 **Strategy Structure:**
 
 - `id`: Unique identifier (slugified)
 - `name`: Human-readable name
-- `lp_strategy`: Bin distribution type (`spot`, `bid_ask`, `curve`, `mixed`)
-- `token_criteria`: Filtering rules (min market cap, age, notes)
+- `lpStrategy`: Bin distribution type (`spot`, `bid_ask`, `curve`, `mixed`)
+- `tokenCriteria`: Filtering rules (min market cap, age, notes)
 - `entry`: Entry conditions (single-sided, price thresholds)
 - `range`: Bin placement (bins below/above, ratios)
 - `exit`: Exit rules (take profit %, stop loss, re-seed logic)
-- `best_for`: Description of ideal conditions
+- `bestFor`: Description of ideal conditions
 
 ### Bin Range Configuration
 

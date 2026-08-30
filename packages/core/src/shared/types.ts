@@ -313,15 +313,15 @@ export interface Strategy {
   id: string;
   name: string;
   author: string;
-  lp_strategy: string;
-  token_criteria: Record<string, unknown>;
+  lpStrategy: string;
+  tokenCriteria: Record<string, unknown>;
   entry: Record<string, unknown>;
   range: Record<string, unknown>;
   exit: Record<string, unknown>;
-  best_for: string;
+  bestFor: string;
   raw?: string;
-  added_at?: string;
-  updated_at?: string;
+  addedAt?: string;
+  updatedAt?: string;
 }
 
 export interface StrategyLibraryData {
@@ -372,7 +372,7 @@ export interface PoolMemoryEntry {
   cooldown_reason?: string;
   base_mint_cooldown_until?: string;
   base_mint_cooldown_reason?: string;
-  notes: Array<{ note: string; added_at: string }>;
+  notes: Array<{ note: string; addedAt: string }>;
   snapshots?: PoolSnapshot[];
 }
 
@@ -408,7 +408,7 @@ export interface SmartWalletHit {
 export interface BlacklistedToken {
   symbol: string;
   reason: string;
-  added_at: string;
+  addedAt: string;
   added_by: string;
 }
 
@@ -417,7 +417,7 @@ export interface BlacklistedToken {
 export interface BlockedDev {
   label: string;
   reason: string;
-  added_at: string;
+  addedAt: string;
 }
 
 // ─── Agent Roles ───────────────────────────────────────────────

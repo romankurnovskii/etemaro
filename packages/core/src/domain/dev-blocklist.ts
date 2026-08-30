@@ -42,7 +42,7 @@ export function blockDev({ wallet, reason, label }: { wallet: string; reason?: s
   db[wallet] = {
     label: label || 'unknown',
     reason: reason || 'no reason provided',
-    added_at: new Date().toISOString(),
+    addedAt: new Date().toISOString(),
   };
   save(db);
   log('dev_blocklist', `Blocked deployer ${label || wallet}: ${reason}`);
