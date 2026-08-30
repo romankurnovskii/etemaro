@@ -59,7 +59,7 @@ export function generateNewWallet(opts?: { label?: string; configDir?: string })
   return wallet;
 }
 
-import { getConnection, getWalletAddress, getWalletKeypair } from '../../shared/connection.js';
+import { getConnection, getWalletAddress, getWalletKeypair, withRpcFailover } from '../../shared/connection.js';
 import { type WalletBalancesResult } from '../../shared/types.js';
 
 export { getWalletAddress, getWalletKeypair };
@@ -176,15 +176,14 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
   const fetchBalances = async (): Promise<WalletBalancesResult> => {
     // ─── 1. Primary Method: Standard Solana RPC + Jupiter Price API ─
     try {
-      const connection = getConnection();
-      const solLamports = await withRpcRetry(
-        () => connection.getBalance(walletPubkey),
+      const solLamports = await withRpcFailover(
+        (conn) => conn.getBalance(walletPubkey),
         { label: 'getBalance' },
       );
       const solBalance = (solLamports || 0) / 1e9;
 
-      const tokenAccounts = await withRpcRetry(
-        () => connection.getParsedTokenAccountsByOwner(walletPubkey, { programId: TOKEN_PROGRAM_ID }),
+      const tokenAccounts = await withRpcFailover(
+        (conn) => conn.getParsedTokenAccountsByOwner(walletPubkey, { programId: TOKEN_PROGRAM_ID }),
         { label: 'getParsedTokenAccountsByOwner' },
       );
 
