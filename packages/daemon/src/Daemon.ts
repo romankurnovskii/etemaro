@@ -24,6 +24,7 @@ import {
   dataPath,
   sharedDataPath,
   strategyLibraryPath,
+  repoPath,
   USER_CONFIG_PATH,
   SMART_WALLETS_FILENAME,
   STRATEGY_LIB_FILENAME,
@@ -123,6 +124,7 @@ export interface DaemonAdapters {
   domain: {
     validateActiveStrategy: () => void;
     getActiveStrategy: () => any;
+    listStrategies?: () => Record<string, unknown>;
     recordPositionSnapshot: (pool: string, position: any) => void;
     recallForPool: (pool: string) => string | null;
     addPoolNote: (pool: string, note: string) => void;
@@ -346,8 +348,12 @@ export class Daemon {
     log('startup', `Config: ${USER_CONFIG_PATH} (source: ${configSource})`);
 
     // Active strategy info
+    const configuredStrategyId = config.strategy?.activeStrategyId;
     const activeStrategy = this.adapters.domain.getActiveStrategy();
-    log('startup', `Strategy: ${activeStrategy?.name || 'none'} (ID: ${activeStrategy?.id || 'none'})`);
+    const strategyStatus = activeStrategy
+      ? (configuredStrategyId && activeStrategy.id === configuredStrategyId ? 'found' : 'resolved fallback')
+      : (configuredStrategyId ? `not found for ID '${configuredStrategyId}'` : 'none configured');
+    log('startup', `Strategy: ${activeStrategy?.name || configuredStrategyId || 'none'} (ID: ${activeStrategy?.id || configuredStrategyId || 'none'}, status: ${strategyStatus})`);
 
     // Entry source and opportunity poller status
     const entrySource = config.screening?.entrySource || DEFAULT_ENTRY_SOURCE;
@@ -369,23 +375,35 @@ export class Daemon {
       `${SMART_WALLETS_FILENAME}: ${smartWalletsPath} (${smartWalletsLoaded ? 'found' : 'fallback/created'}, ${smartWalletsCount} wallets)`,
     );
 
-    let strategyLibPath = strategyLibraryPath(STRATEGY_LIB_FILENAME);
-    let strategyLibInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(strategyLibPath, { strategies: {} });
-    let isSharedLib = false;
-    if (strategyLibInfo.loadedFrom !== 'file') {
-      const sharedPath = strategyLibraryPath(SHARED_STRATEGY_LIB_FILENAME);
-      const sharedInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(sharedPath, { strategies: {} });
-      if (sharedInfo.loadedFrom === 'file') {
-        strategyLibPath = sharedPath;
-        strategyLibInfo = sharedInfo;
-        isSharedLib = true;
+    // Private strategy library
+    const privateLibPath = strategyLibraryPath(STRATEGY_LIB_FILENAME);
+    const privateLibInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(privateLibPath, { strategies: {} });
+    const privateCount = Object.keys(privateLibInfo.data.strategies || {}).length;
+    const privateLoaded = privateLibInfo.loadedFrom === 'file';
+
+    // Shared strategy library (checks repo data/ first, then strategyLibraryPath fallback)
+    let sharedLibPath = repoPath('data', SHARED_STRATEGY_LIB_FILENAME);
+    let sharedLibInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(sharedLibPath, { strategies: {} });
+    if (sharedLibInfo.loadedFrom !== 'file') {
+      const localShared = strategyLibraryPath(SHARED_STRATEGY_LIB_FILENAME);
+      if (fs.existsSync(localShared)) {
+        sharedLibPath = localShared;
+        sharedLibInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(localShared, { strategies: {} });
       }
     }
-    const strategyLibLoaded = strategyLibInfo.loadedFrom === 'file';
-    const strategyCount = Object.keys(strategyLibInfo.data.strategies || {}).length;
+    const sharedCount = Object.keys(sharedLibInfo.data.strategies || {}).length;
+    const sharedLoaded = sharedLibInfo.loadedFrom === 'file';
+
+    const allStrategies = this.adapters.domain.listStrategies ? (this.adapters.domain.listStrategies() as any) : null;
+    const totalCount = allStrategies?.count ?? (privateCount + (sharedLoaded ? sharedCount : 10));
+
     log(
       'startup',
-      `${STRATEGY_LIB_FILENAME}: ${strategyLibPath} (${strategyLibLoaded ? (isSharedLib ? 'shared fallback' : 'found') : 'fallback'}, ${strategyCount} strategies)`,
+      `${STRATEGY_LIB_FILENAME}: ${privateLibPath} (${privateLoaded ? 'found' : 'none'}, ${privateCount} strategies)`,
+    );
+    log(
+      'startup',
+      `${SHARED_STRATEGY_LIB_FILENAME}: ${sharedLibPath} (${sharedLoaded ? 'found' : 'defaults'}, ${sharedCount || 10} strategies) [total available: ${totalCount}]`,
     );
 
     const tokenBlacklistPath = sharedDataPath(TOKEN_BLACKLIST_FILENAME);
