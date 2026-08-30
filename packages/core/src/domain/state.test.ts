@@ -12,6 +12,8 @@ import {
   withStateLock,
   setPositionInstruction,
   confirmPeak,
+  isPnlSuspect,
+  updatePnlAndCheckExits,
   __setStateFilePath,
 } from './state.js';
 
@@ -214,3 +216,98 @@ describe('withStateLock concurrency synchronization', () => {
     expect(pos?.instruction).toMatch(/^Instruction-\d$/);
   });
 });
+
+describe('isPnlSuspect', () => {
+  it('returns true when pnl_pct_suspicious flag is set', () => {
+    expect(isPnlSuspect({ pnl_pct_suspicious: true, pnl_pct: 10 })).toBe(true);
+  });
+
+  it('returns false when pnl_pct is null or undefined', () => {
+    expect(isPnlSuspect({ pnl_pct: null, total_value_usd: 100 })).toBe(false);
+    expect(isPnlSuspect({ pnl_pct: undefined, total_value_usd: 100 })).toBe(false);
+  });
+
+  it('returns false for normal negative PnL above -90%', () => {
+    expect(isPnlSuspect({ pnl_pct: -15, total_value_usd: 100 })).toBe(false);
+    expect(isPnlSuspect({ pnl_pct: -89.9, total_value_usd: 100 })).toBe(false);
+  });
+
+  it('flags PnL <= -90% as suspect when position retains USD value without local state', () => {
+    // Untracked position on-chain during RPC glitch: trackedAmountSol is null/undefined
+    expect(isPnlSuspect({ pnl_pct: -99.5, total_value_usd: 45.2 }, null)).toBe(true);
+    expect(isPnlSuspect({ pnl_pct: -95, total_value_true_usd: 10.0 }, undefined)).toBe(true);
+  });
+
+  it('flags PnL <= -90% as suspect when position retains SOL value', () => {
+    expect(isPnlSuspect({ pnl_pct: -99, amount_sol: 0.5 })).toBe(true);
+    expect(isPnlSuspect({ pnl_pct: -99 }, 0.5)).toBe(true);
+  });
+
+  it('returns false for PnL <= -90% when position has zero remaining value', () => {
+    expect(isPnlSuspect({ pnl_pct: -99.9, total_value_usd: 0, amount_sol: 0 }, 0)).toBe(false);
+  });
+});
+
+describe('updatePnlAndCheckExits suspect PnL handling', () => {
+  beforeAll(() => {
+    __setStateFilePath(TMP_STATE);
+  });
+
+  afterAll(() => {
+    if (fs.existsSync(TMP_STATE)) fs.unlinkSync(TMP_STATE);
+  });
+
+  beforeEach(() => {
+    if (fs.existsSync(TMP_STATE)) fs.unlinkSync(TMP_STATE);
+  });
+
+  it('skips stop-loss exit when deep negative PnL is suspect', () => {
+    trackPosition(deployOpts('PosSuspect') as any);
+    const result = updatePnlAndCheckExits(
+      'PosSuspect',
+      {
+        pnl_pct: -99,
+        total_value_usd: 50,
+        in_range: true,
+      },
+      {
+        stopLossPct: -10,
+        takeProfitPct: 5,
+        trailingTakeProfit: false,
+        trailingTriggerPct: 3,
+        trailingDropPct: 1,
+        outOfRangeWaitMinutes: 30,
+        outOfRangeBinsToClose: 5,
+        minFeePerTvl24h: 1,
+      } as any,
+    );
+    expect(result).toBeNull();
+  });
+
+  it('triggers stop-loss exit for normal negative PnL exceeding threshold', () => {
+    trackPosition(deployOpts('PosNormalStop') as any);
+    const result = updatePnlAndCheckExits(
+      'PosNormalStop',
+      {
+        pnl_pct: -15,
+        total_value_usd: 50,
+        in_range: true,
+      },
+      {
+        stopLossPct: -10,
+        takeProfitPct: 5,
+        trailingTakeProfit: false,
+        trailingTriggerPct: 3,
+        trailingDropPct: 1,
+        outOfRangeWaitMinutes: 30,
+        outOfRangeBinsToClose: 5,
+        minFeePerTvl24h: 1,
+      } as any,
+    );
+    expect(result).toEqual({
+      action: 'STOP_LOSS',
+      reason: 'Stop loss: PnL -15.00% <= -10%',
+    });
+  });
+});
+
