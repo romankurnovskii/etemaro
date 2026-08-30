@@ -7,7 +7,9 @@ import {
   getRpcUrl,
   getWalletAddress,
   getWalletKeypair,
+  hasFallbackRpc,
   resetConnectionState,
+  withRpcFailover,
 } from './connection.js';
 
 describe('connection module', () => {
@@ -89,6 +91,70 @@ describe('connection module', () => {
 
       expect(getWalletAddress()).toBeNull();
       expect(() => getWalletKeypair()).toThrow(/Wallet private key is not configured/);
+    });
+  });
+
+  describe('hasFallbackRpc and withRpcFailover', () => {
+    it('detects when fallback RPC is configured vs not configured', () => {
+      config.connection = { ...config.connection, rpcUrl2: null };
+      delete process.env.RPC_URL_2;
+      expect(hasFallbackRpc()).toBe(false);
+
+      config.connection = { ...config.connection, rpcUrl2: 'https://fallback.solana.com' };
+      expect(hasFallbackRpc()).toBe(true);
+    });
+
+    it('withRpcFailover succeeds on primary RPC when no error occurs', async () => {
+      config.connection = {
+        ...config.connection,
+        rpcUrl: 'https://primary.solana.com',
+        rpcUrl2: 'https://fallback.solana.com',
+      };
+
+      const result = await withRpcFailover(async (conn) => {
+        expect(conn.rpcEndpoint).toBe('https://primary.solana.com');
+        return 'primary-success';
+      });
+
+      expect(result).toBe('primary-success');
+    });
+
+    it('withRpcFailover fails over to fallback RPC on transient 429 error', async () => {
+      config.connection = {
+        ...config.connection,
+        rpcUrl: 'https://primary.solana.com',
+        rpcUrl2: 'https://fallback.solana.com',
+      };
+
+      let attempts = 0;
+      const result = await withRpcFailover(
+        async (conn) => {
+          attempts++;
+          if (conn.rpcEndpoint === 'https://primary.solana.com') {
+            throw new Error('429 Too Many Requests: rate limit exceeded');
+          }
+          expect(conn.rpcEndpoint).toBe('https://fallback.solana.com');
+          return 'fallback-success';
+        },
+        { initialDelayMs: 1, maxRetries: 1 },
+      );
+
+      expect(result).toBe('fallback-success');
+      expect(attempts).toBeGreaterThan(1);
+    });
+
+    it('withRpcFailover does not catch non-transient errors', async () => {
+      config.connection = {
+        ...config.connection,
+        rpcUrl: 'https://primary.solana.com',
+        rpcUrl2: 'https://fallback.solana.com',
+      };
+
+      await expect(
+        withRpcFailover(async () => {
+          throw new Error('Invalid account public key');
+        }),
+      ).rejects.toThrow('Invalid account public key');
     });
   });
 });
