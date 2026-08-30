@@ -11,11 +11,20 @@
  * @sideEffects One-shot tool execution and console JSON output
  */
 
-import dotenv from 'dotenv';
-dotenv.config({ override: true });
 import fs from 'fs';
 import path from 'path';
+import readline from 'node:readline/promises';
+import { stdin as stdinStream, stdout as stdoutStream } from 'node:process';
 import { parseArgs } from 'util';
+import {
+  assessSetup,
+  formatInitMessage,
+  loadRuntimeDotenv,
+  maybePromptSecrets,
+  parseEnvFile,
+  upsertEnvVars,
+  writeRuntimeSkeleton,
+} from './firstSetup.js';
 // Type-only imports to help tsc
 type CoreExports = typeof import('@etemaro/core');
 type DaemonExports = typeof import('@etemaro/daemon');
@@ -138,6 +147,7 @@ export interface CliAdapters {
     getPerformanceSummary: () => any;
   };
   daemon?: {
+    start?: (options?: { tty?: boolean }) => Promise<void>;
     runScreeningCycle: (opts?: { silent?: boolean }) => Promise<string | null>;
     runManagementCycle: (opts?: { silent?: boolean }) => Promise<string | null>;
     startCronJobs: () => void;
@@ -322,6 +332,9 @@ Shows pending Discord signal queue from the discord-listener process.
 Output: { count, pending, processed, signals: [{id, symbol, pool, author, channel, queued_at, rug_score, status}] }
 \`\`\`
 
+### etemaro init [--dir <path>]
+First-time setup (~1 minute). Creates runtime files and checks wallet + LLM keys.
+
 ### etemaro start [--dry-run]
 Starts the autonomous agent with cron jobs (management + screening).
 
@@ -397,10 +410,13 @@ export class Cli {
         limit: { type: 'string' },
         dir: { type: 'string' },
         label: { type: 'string' },
+        yes: { type: 'boolean' },
       },
       allowPositionals: true,
       strict: false,
     });
+
+    applyCliRuntimeFlags(flags as Record<string, unknown>, process.env);
 
     switch (subcommand) {
       case 'generate-wallet':
@@ -481,63 +497,41 @@ export class Cli {
 
   // ─── Command Handlers ──────────────────────────────────────────
 
-  private handleInit(flags: Record<string, any>): void {
+  private async handleInit(flags: Record<string, any>): Promise<void> {
     const targetDir = typeof flags.dir === 'string' && flags.dir.trim().length > 0 ? path.resolve(flags.dir) : this.etemaroDir;
-    const configDir = path.join(targetDir, 'config');
-    const dataDir = path.join(targetDir, 'data');
-
-    fs.mkdirSync(targetDir, { recursive: true });
-    fs.mkdirSync(configDir, { recursive: true });
-    fs.mkdirSync(dataDir, { recursive: true });
-
-    // .env
-    const envFile = path.join(targetDir, '.env');
-    let envCreated = false;
-    if (!fs.existsSync(envFile)) {
-      const template = `# etemaro process environment variables
-WALLET_PRIVATE_KEY=""
-HELIUS_API_KEY=""
-RPC_URL="https://pump.helius-rpc.com"
-LLM_API_KEY=""
-LLM_BASE_URL="https://openrouter.ai/api/v1"
-LLM_MODEL="anthropic/claude-3.5-sonnet"
-TELEGRAM_BOT_TOKEN=""
-TELEGRAM_CHAT_ID=""
-TELEGRAM_ALLOWED_USER_IDS=""
-JUPITER_API_KEY=""
-`;
-      fs.writeFileSync(envFile, template);
-      envCreated = true;
-    }
-
-    // config/user-config.json
-    const userConfigFile = path.join(configDir, 'user-config.json');
-    let configCreated = false;
-    if (!fs.existsSync(userConfigFile)) {
-      fs.writeFileSync(userConfigFile, defaultUserConfigStr + '\n');
-      configCreated = true;
-    }
-
-    // data/strategy-library.shared.json
-    const sharedStrategyFile = path.join(dataDir, 'strategy-library.shared.json');
-    let strategyCreated = false;
-    if (!fs.existsSync(sharedStrategyFile)) {
-      const sharedData = { strategies: DEFAULT_STRATEGIES };
-      fs.writeFileSync(sharedStrategyFile, JSON.stringify(sharedData, null, 2) + '\n');
-      strategyCreated = true;
-    }
-
-    // SKILL.md
+    const skeleton = writeRuntimeSkeleton(targetDir, {
+      defaultUserConfigStr,
+      defaultStrategies: DEFAULT_STRATEGIES,
+    });
     this.writeSkillMd();
 
-    out({
-      success: true,
-      directory: targetDir,
-      env: { path: envFile, created: envCreated },
-      config: { path: userConfigFile, created: configCreated },
-      strategyLibrary: { path: sharedStrategyFile, created: strategyCreated },
-      message: 'Etemaro runtime directory initialized successfully.',
+    const envFile = skeleton.env.path;
+    const fileEnv = fs.existsSync(envFile) ? parseEnvFile(fs.readFileSync(envFile, 'utf8')) : {};
+    let status = assessSetup({ ...fileEnv, ...process.env });
+
+    const interactive = process.stdin.isTTY === true && flags.yes !== true;
+    const updates = await maybePromptSecrets({
+      interactive,
+      status,
+      ask: askTty,
     });
+    if (Object.keys(updates).length > 0) {
+      const next = upsertEnvVars(fs.readFileSync(envFile, 'utf8'), updates);
+      fs.writeFileSync(envFile, next);
+      for (const [key, value] of Object.entries(updates)) process.env[key] = value;
+      status = assessSetup({ ...parseEnvFile(next), ...process.env });
+    }
+
+    const text = formatInitMessage({
+      directory: targetDir,
+      firstRun: skeleton.env.created || skeleton.config.created,
+      status,
+    });
+    process.stdout.write(text + '\n');
+    if (typeof flags.dir === 'string' && flags.dir.trim()) {
+      process.stdout.write(`\nCustom dir: export ETEMARO_HOME="${targetDir}" before etemaro start\n`);
+    }
+    process.exit(status.readyForDryRun ? 0 : 1);
   }
 
   private handleGenerateWallet(flags: Record<string, any>): void {
@@ -798,10 +792,10 @@ JUPITER_API_KEY=""
     out(await this.adapters.domain.studyTopLPers({ pool_address: flags.pool, limit }));
   }
 
-  private handleStart(): void {
-    if (!this.adapters.daemon) die('Start command requires daemon adapter');
+  private async handleStart(): Promise<void> {
+    if (!this.adapters.daemon?.start) die('Start command requires daemon adapter');
     process.stderr.write('[etemaro] Starting autonomous agent...\n');
-    this.adapters.daemon.startCronJobs();
+    await this.adapters.daemon.start({ tty: process.stdout.isTTY === true });
   }
 
   private async handleLessons(argv: string[], sub2: string | undefined, flags: Record<string, any>): Promise<void> {
@@ -940,6 +934,28 @@ export function resolveGlobalFlagValue(argv: string[], flag: string, alias?: str
   return value;
 }
 
+/** Apply CLI flags that must be visible to core before any tool runs. */
+export function applyCliRuntimeFlags(flags: Record<string, unknown>, env: NodeJS.Dict<string> = process.env): void {
+  if (flags['dry-run'] === true) env.DRY_RUN = 'true';
+}
+
+function defaultEtemaroHome(): string {
+  const fromEnv = process.env.ETEMARO_HOME?.trim();
+  if (fromEnv) return path.resolve(fromEnv);
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  const xdg = process.env.XDG_CONFIG_HOME || (home ? path.join(home, '.config') : '');
+  return path.join(xdg, 'etemaro');
+}
+
+async function askTty(question: string): Promise<string> {
+  const rl = readline.createInterface({ input: stdinStream, output: stdoutStream });
+  try {
+    return (await rl.question(question)).trim();
+  } finally {
+    rl.close();
+  }
+}
+
 async function main() {
   const argv = process.argv.slice(2);
 
@@ -948,6 +964,7 @@ async function main() {
   if (configPathArg) process.env.USER_CONFIG_PATH = path.resolve(configPathArg);
   if (dataDirArg) process.env.ETEMARO_DATA_DIR = path.resolve(dataDirArg);
 
+  loadRuntimeDotenv(defaultEtemaroHome());
   await loadCore();
 
   const agentLoopDeps = {
