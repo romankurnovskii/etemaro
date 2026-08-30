@@ -11,143 +11,131 @@
 
 import fs from 'node:fs';
 import { log } from '../shared/logger.js';
-import { strategyLibraryPath, repoPath, configPath } from '../shared/constants.js';
+import { strategyLibraryPath, repoPath, getDataDir, configPath } from '../shared/constants.js';
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js';
 import { config } from '../config/Config.js';
 import type { Strategy, StrategyLibraryData } from '../shared/types.js';
+import { DEFAULT_STRATEGIES } from './defaultStrategies.js';
 
+export { DEFAULT_STRATEGIES } from './defaultStrategies.js';
+
+// ─── Strategy Library Manager ─────────────────────────────────
 const STRATEGY_FILE = strategyLibraryPath('strategy-library.json');
 const SHARED_STRATEGY_FILE = repoPath('data', 'strategy-library.shared.json');
 
+export type StrategySource = 'shared' | 'private' | 'default';
+
+export interface ResolvedStrategyLibrary {
+  data: StrategyLibraryData;
+  collisions: string[];
+  sources: Record<string, StrategySource>;
+}
+
+interface SharedLibraryInfo {
+  data: StrategyLibraryData;
+  fromDefaults: boolean;
+}
+
+/**
+ * Central owner of strategy library path resolution and source handling.
+ * Resolves the private (local) and shared (repo-tracked, local shared file,
+ * or bundled defaults) strategy libraries, merges them with collision
+ * detection, and validates the active strategy pointer at agent boot.
+ *
+ * See https://github.com/romankurnovskii/etemaro/issues/218
+ */
+export class StrategyLibraryManager {
+  readonly paths = {
+    dataDir: getDataDir(),
+    privatePath: STRATEGY_FILE,
+    sharedPath: SHARED_STRATEGY_FILE,
+  };
+
+  loadPrivate(): StrategyLibraryData {
+    return loadJsonFile<StrategyLibraryData>(this.paths.privatePath, { strategies: {} });
+  }
+
+  savePrivate(data: StrategyLibraryData): void {
+    saveJsonFile(this.paths.privatePath, data);
+  }
+
+  private loadSharedWithInfo(): SharedLibraryInfo {
+    let sharedDb = loadJsonFile<StrategyLibraryData>(this.paths.sharedPath, { strategies: {} });
+
+    if (Object.keys(sharedDb.strategies).length === 0) {
+      const localSharedFile = strategyLibraryPath('strategy-library.shared.json');
+      if (fs.existsSync(localSharedFile)) {
+        sharedDb = loadJsonFile<StrategyLibraryData>(localSharedFile, { strategies: {} });
+      }
+    }
+
+    if (Object.keys(sharedDb.strategies).length === 0) {
+      return { data: { strategies: { ...DEFAULT_STRATEGIES } }, fromDefaults: true };
+    }
+    return { data: sharedDb, fromDefaults: false };
+  }
+
+  loadMerged(): ResolvedStrategyLibrary {
+    const shared = this.loadSharedWithInfo();
+    const privateDb = this.loadPrivate();
+
+    const sources: Record<string, StrategySource> = {};
+    for (const id of Object.keys(shared.data.strategies)) {
+      sources[id] = shared.fromDefaults ? 'default' : 'shared';
+    }
+
+    const collisions: string[] = [];
+    for (const id of Object.keys(privateDb.strategies)) {
+      if (sources[id] === 'shared' || sources[id] === 'default') {
+        collisions.push(id);
+        log('strategy', `Warning: private strategy '${id}' collides with a shared strategy id and overrides it.`);
+        log('strategy', `Duplicate strategy ids between shared and private libraries should be resolved (see issue #148).`);
+      }
+      sources[id] = 'private';
+    }
+
+    return {
+      data: {
+        strategies: {
+          ...shared.data.strategies,
+          ...privateDb.strategies,
+        },
+      },
+      collisions,
+      sources,
+    };
+  }
+
+  /**
+   * Validate that the configured active strategy is present in the merged library.
+   * Throws an error with a clear message if the validation fails. Called at agent boot.
+   */
+  validate(): void {
+    const activeId = config.strategy.activeStrategyId;
+    if (!activeId || activeId.trim() === '') {
+      throw new Error(`Startup failed: 'activeStrategyId' is missing or empty in config.`);
+    }
+    const merged = this.loadMerged();
+    if (!merged.data.strategies[activeId]) {
+      throw new Error(`Startup failed: Strategy '${activeId}' specified in config is not found in the strategy library.`);
+    }
+  }
+}
+
+export const strategyLibraryManager = new StrategyLibraryManager();
+
+// ─── Thin delegates over the manager ─────────────────────────
 function loadPrivate(): StrategyLibraryData {
-  return loadJsonFile<StrategyLibraryData>(STRATEGY_FILE, { strategies: {} });
+  return strategyLibraryManager.loadPrivate();
 }
 
 function savePrivate(data: StrategyLibraryData): void {
-  saveJsonFile(STRATEGY_FILE, data);
+  strategyLibraryManager.savePrivate(data);
 }
 
 function load(): StrategyLibraryData {
-  let sharedDb = loadJsonFile<StrategyLibraryData>(SHARED_STRATEGY_FILE, { strategies: {} });
-
-  if (Object.keys(sharedDb.strategies).length === 0) {
-    const localSharedFile = strategyLibraryPath('strategy-library.shared.json');
-    if (fs.existsSync(localSharedFile)) {
-      sharedDb = loadJsonFile<StrategyLibraryData>(localSharedFile, { strategies: {} });
-    }
-  }
-
-  if (Object.keys(sharedDb.strategies).length === 0) {
-    sharedDb.strategies = DEFAULT_STRATEGIES;
-  }
-
-  const privateDb = loadPrivate();
-
-  const sharedIds = new Set(Object.keys(sharedDb.strategies));
-  for (const id of Object.keys(privateDb.strategies)) {
-    if (sharedIds.has(id)) {
-      log('strategy', `Warning: private strategy '${id}' collides with a shared strategy id and overrides it.`);
-      log('strategy', `Duplicate strategy ids between shared and private libraries should be resolved (see issue #148).`);
-    }
-  }
-
-  return {
-    strategies: {
-      ...sharedDb.strategies,
-      ...privateDb.strategies,
-    },
-  };
+  return strategyLibraryManager.loadMerged().data;
 }
-
-// ─── Default Strategies ─────────────────────────────────────────
-export const DEFAULT_STRATEGIES: Record<string, Strategy> = {
-  custom_ratio_spot: {
-    id: 'custom_ratio_spot',
-    name: 'Custom Ratio Spot',
-    author: 'meridian',
-    lpStrategy: 'spot',
-    tokenCriteria: { notes: 'Any token. Ratio expresses directional bias.' },
-    entry: {
-      condition: 'Directional view on token',
-      singleSide: null,
-      notes:
-        '75% token = bullish (sell on pump out of range). 75% SOL = bearish/DCA-in (buy on dip). Set bins_below:bins_above proportional to ratio.',
-    },
-    range: { type: 'custom', notes: 'bins_below:bins_above ratio matches token:SOL ratio. E.g., 75% token → ~52 bins below, ~17 bins above.' },
-    exit: { takeProfitPct: 10, notes: 'Close when OOR or TP hit. Re-deploy with updated ratio based on new momentum signals.' },
-    bestFor: 'Expressing directional bias while earning fees both ways',
-  },
-  single_sided_reseed: {
-    id: 'single_sided_reseed',
-    name: 'Single-Sided Bid-Ask + Re-seed',
-    author: 'meridian',
-    lpStrategy: 'bid_ask',
-    tokenCriteria: { notes: 'Volatile tokens with strong narrative. Must have active volume.' },
-    entry: {
-      condition: 'Deploy token-only (amount_x only, amount_y=0) bid-ask, bins below active bin only',
-      singleSide: 'token',
-      notes: 'As price drops through bins, token sold for SOL. Bid-ask concentrates at bottom edge.',
-    },
-    range: { type: 'default', notes: 'All bins below active bin. bins_above=0.' },
-    exit: {
-      notes:
-        'When OOR downside: close_position(skip_swap=true) → redeploy token-only bid-ask at new lower price. Do NOT swap to SOL. Full close only when token dead or after N re-seeds with declining performance.',
-    },
-    bestFor: 'Riding volatile tokens down without cutting losses. DCA out via LP.',
-  },
-  fee_compounding: {
-    id: 'fee_compounding',
-    name: 'Fee Compounding',
-    author: 'meridian',
-    lpStrategy: 'any',
-    tokenCriteria: { notes: 'Stable volume pools with consistent fee generation.' },
-    entry: { condition: 'Deploy normally with any shape', notes: 'Strategy is about management, not entry shape.' },
-    range: { type: 'default', notes: 'Standard range for the pair.' },
-    exit: { notes: 'When unclaimed fees > $5 AND in range: claim_fees → add_liquidity back into same position. Normal close rules otherwise.' },
-    bestFor: 'Maximizing yield on stable, range-bound pools via compounding',
-  },
-  multi_layer: {
-    id: 'multi_layer',
-    name: 'Multi-Layer',
-    author: 'meridian',
-    lpStrategy: 'mixed',
-    tokenCriteria: {
-      notes: 'High volume pools. Layer multiple shapes into ONE position via addLiquidityByStrategy to sculpt a composite distribution.',
-    },
-    entry: {
-      condition:
-        'Create ONE position, then layer additional shapes onto it with add-liquidity. Each layer adds a different strategy/shape to the same position, compositing them.',
-      notes:
-        'Step 1: deploy (creates position with first shape). Step 2+: add-liquidity to same position with different shapes. All layers share the same bin range but different distribution curves stack on top of each other.',
-      example_patterns: {
-        smooth_edge: 'Deploy Bid-Ask (edges) → add-liquidity Spot (fills the middle gap). 2 layers, 1 position.',
-        full_composite: 'Deploy Bid-Ask (edges) → add-liquidity Spot (middle) → add-liquidity Curve (center boost). 3 layers, 1 position.',
-        edge_heavy: 'Deploy Bid-Ask → add-liquidity Bid-Ask again (double edge weight). 2 layers, 1 position.',
-      },
-    },
-    range: {
-      type: 'custom',
-      notes: "All layers share the position's bin range (set at deploy). Choose range wide enough for the widest layer needed.",
-    },
-    exit: { notes: 'Single position — one close, one claim. The composite shape means fees earned reflect ALL layers combined.' },
-    bestFor: 'Creating custom liquidity distributions by stacking shapes in one position. Single position to manage.',
-  },
-  partial_harvest: {
-    id: 'partial_harvest',
-    name: 'Partial Harvest',
-    author: 'meridian',
-    lpStrategy: 'any',
-    tokenCriteria: { notes: 'High fee pools where taking profit incrementally is preferred.' },
-    entry: { condition: 'Deploy normally', notes: 'Strategy is about progressive profit-taking, not entry.' },
-    range: { type: 'default', notes: 'Standard range.' },
-    exit: {
-      takeProfitPct: 10,
-      notes:
-        'When total return >= 10% of deployed capital: withdraw_liquidity(bps=5000) to take 50% off. Remaining 50% keeps running. Repeat at next threshold.',
-    },
-    bestFor: 'Locking in profits without fully exiting winning positions',
-  },
-};
 
 // ─── Tool Handlers ─────────────────────────────────────────────
 
@@ -283,7 +271,7 @@ export function removeStrategy({ id }: { id: string }): Record<string, unknown> 
   const privateDb = loadPrivate();
 
   if (!privateDb.strategies[id]) {
-    const sharedDb = loadJsonFile<StrategyLibraryData>(SHARED_STRATEGY_FILE, { strategies: {} });
+    const sharedDb = loadJsonFile<StrategyLibraryData>(strategyLibraryManager.paths.sharedPath, { strategies: {} });
     if (sharedDb.strategies[id] || DEFAULT_STRATEGIES[id]) {
       return { error: `Strategy "${id}" is a shared open-source strategy and cannot be removed locally.` };
     }
@@ -293,7 +281,7 @@ export function removeStrategy({ id }: { id: string }): Record<string, unknown> 
   const name = privateDb.strategies[id].name;
   delete privateDb.strategies[id];
 
-  const sharedDb = loadJsonFile<StrategyLibraryData>(SHARED_STRATEGY_FILE, { strategies: {} });
+  const sharedDb = loadJsonFile<StrategyLibraryData>(strategyLibraryManager.paths.sharedPath, { strategies: {} });
   const hasSharedFallback = !!(sharedDb.strategies[id] || DEFAULT_STRATEGIES[id]);
 
   if (config.strategy.activeStrategyId === id && !hasSharedFallback) {
@@ -336,17 +324,10 @@ export function getActiveStrategy(): Strategy | null {
 
 /**
  * Validate that the configured active strategy is present in the strategy library.
- * Throws an error with a clear message if the validation fails.
+ * Throws an error with a clear message if the validation fails. Runs at agent boot.
  */
 export function validateActiveStrategy(): void {
-  const activeId = config.strategy.activeStrategyId;
-  if (!activeId || activeId.trim() === '') {
-    throw new Error(`Startup failed: 'activeStrategyId' is missing or empty in config.`);
-  }
-  const db = load();
-  if (!db.strategies[activeId]) {
-    throw new Error(`Startup failed: Strategy '${activeId}' specified in config is not found in the strategy library.`);
-  }
+  strategyLibraryManager.validate();
 }
 
 /**
