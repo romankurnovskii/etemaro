@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import type { AppConfig } from '../shared/types.js';
 import { repoPath, dataPath, USER_CONFIG_PATH, MIN_SAFE_BINS_BELOW, TOKEN_MINTS, setMinSafeBinsBelowOverride } from '../shared/constants.js';
 import { loadAndValidateConfig } from './ConfigValidator.js';
-import { defaultUserConfigStr } from './defaultUserConfig.js';
+import { DEFAULT_USER_CONFIG, defaultUserConfigStr } from './defaultUserConfig.js';
 import type { ValidatedUserConfig } from './schema.js';
 import { numericConfig, resolveEnvString } from '../shared/utils.js';
 
@@ -59,7 +59,7 @@ function buildConfig(): AppConfig {
     }
   }
 
-  const defaultFallback = JSON.parse(defaultUserConfigStr) as ValidatedUserConfig;
+  const defaultFallback = DEFAULT_USER_CONFIG as unknown as ValidatedUserConfig;
   const u = {
     ...defaultFallback,
     ...loaded,

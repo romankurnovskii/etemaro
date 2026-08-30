@@ -1,14 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { REPO_ROOT } from './packages/core/src/shared/constants.js';
+import { defaultUserConfigStr } from './packages/core/src/config/defaultUserConfig.js';
 
-// Write a valid user-config.json for tests by copying from example
+// Write a valid user-config.json for tests using defaultUserConfigStr
 const configDir = path.join(REPO_ROOT, 'config');
-const examplePath = path.join(configDir, 'templates', 'user-config.example.json');
 const userPath = path.join(configDir, 'user-config.json');
 
-if (fs.existsSync(examplePath)) {
-  fs.copyFileSync(examplePath, userPath);
+fs.mkdirSync(configDir, { recursive: true });
+if (!fs.existsSync(userPath)) {
+  fs.writeFileSync(userPath, defaultUserConfigStr + '\n', 'utf8');
 }
 
 // Set required env vars for env.* references in config (before config imports)

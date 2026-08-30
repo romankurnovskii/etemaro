@@ -16,7 +16,7 @@ Etemaro uses a strict schema-validated configuration system (Version 3): every r
               └────────────────────────┘     ALL required fields must be present.
 ```
 
-> The canonical template is [`config/templates/user-config.example.json`](../../config/templates/user-config.example.json). Copy it to `config/user-config.json` before starting: `cp config/templates/user-config.example.json config/user-config.json`.
+> Initialize the configuration file before starting: `pnpm cli init` (or `etemaro init`).
 
 ---
 

@@ -54,11 +54,10 @@ This lets you control and monitor the agent from your phone.
 
 ## 3. Configure Environment Variables
 
-Copy the example files and fill in your values:
+Initialize your configuration files and fill in your values:
 
 ```bash
-cp .env.example .env
-cp config/templates/user-config.example.json config/user-config.json
+pnpm cli init
 ```
 
 Edit `.env` and set:

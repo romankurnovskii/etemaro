@@ -89,9 +89,8 @@ git clone https://github.com/romankurnovskii/etemaro
 cd etemaro
 pnpm install
 
-# 2. Copy config templates (.env and user-config.json)
-cp .env.example .env
-cp config/templates/user-config.example.json config/user-config.json
+# 2. Initialize configuration (.env and user-config.json)
+pnpm cli init
 
 # 3. Start in dry-run mode
 pnpm run dev
