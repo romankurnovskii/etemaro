@@ -15,7 +15,7 @@ import { log } from './logger.js';
 
 // ─── Path Utilities ────────────────────────────────────────
 
-export { REPO_ROOT, repoPath, dataPath, sharedDataPath, strategyLibraryPath, configPath } from './constants.js';
+export { configPath, dataPath, REPO_ROOT, repoPath, sharedDataPath, strategyLibraryPath } from './constants.js';
 
 // ─── Math Utilities ────────────────────────────────────────
 
@@ -236,4 +236,126 @@ export function getScreeningDefaultsForTimeframe(timeframe: string | null | unde
 export function scaleScreeningToTimeframe(timeframe: string | null | undefined): { minFeeActiveTvlRatio: number; minVolume: number } {
   const { minFeeActiveTvlRatio, minVolume } = getScreeningDefaultsForTimeframe(timeframe);
   return { minFeeActiveTvlRatio, minVolume };
+}
+
+// ─── RPC Resilience & Exponential Backoff ────────────────────────
+
+export interface RpcRetryOptions {
+  /** Maximum number of retry attempts (default: 3). */
+  maxRetries?: number;
+  /** Initial backoff delay in milliseconds (default: 500ms). */
+  initialDelayMs?: number;
+  /** Maximum backoff delay in milliseconds (default: 5000ms). */
+  maxDelayMs?: number;
+  /** Exponential backoff multiplier factor (default: 2). */
+  factor?: number;
+  /** Whether to add random jitter (0.5x .. 1.0x delay) to backoff (default: true). */
+  jitter?: boolean;
+  /** Custom check for whether an error is transient / retryable. */
+  isRetryable?: (error: unknown) => boolean;
+  /** Callback fired before sleeping between retries. */
+  onRetry?: (error: unknown, attempt: number, delayMs: number) => void;
+  /** Human-readable operation label for logging. */
+  label?: string;
+}
+
+/**
+ * Checks if an error is a transient RPC / network failure that should be retried.
+ */
+export function isTransientRpcError(error: unknown): boolean {
+  if (!error) return false;
+  const msg = error instanceof Error ? error.message : String(error);
+  const lower = msg.toLowerCase();
+
+  // Rate limits
+  if (lower.includes('429') || lower.includes('too many requests') || lower.includes('rate limit')) return true;
+
+  // Server error codes & status
+  if (
+    lower.includes('500 internal') ||
+    lower.includes('502 bad gateway') ||
+    lower.includes('503 service unavailable') ||
+    lower.includes('504 gateway timeout') ||
+    lower.includes('408 request timeout') ||
+    lower.includes('421 misdirected') ||
+    lower.includes('-32005') || // Node is behind
+    lower.includes('-32429') || // Solana RPC rate limit
+    lower.includes('behind by')
+  ) {
+    return true;
+  }
+
+  // Network / socket level errors
+  if (
+    lower.includes('econnreset') ||
+    lower.includes('etimedout') ||
+    lower.includes('econnrefused') ||
+    lower.includes('ehostunreach') ||
+    lower.includes('eai_again') ||
+    lower.includes('enotfound') ||
+    lower.includes('socket hang up') ||
+    lower.includes('network error') ||
+    lower.includes('fetch failed') ||
+    lower.includes('timeout')
+  ) {
+    return true;
+  }
+
+  // Blockhash / transient slot issues
+  if (
+    lower.includes('blockhash not found') ||
+    lower.includes('slot skipped') ||
+    lower.includes('transaction simulation failed: blockhash not found')
+  ) {
+    return true;
+  }
+
+  // Check HTTP status code if present on custom error objects
+  const status = (error as any)?.status ?? (error as any)?.statusCode;
+  if (typeof status === 'number' && [408, 421, 429, 500, 502, 503, 504].includes(status)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Executes an asynchronous operation with exponential backoff and jitter on transient RPC/network failures.
+ */
+export async function withRpcRetry<T>(fn: () => Promise<T>, options: RpcRetryOptions = {}): Promise<T> {
+  const maxRetries = Math.max(0, options.maxRetries ?? 3);
+  const initialDelayMs = Math.max(1, options.initialDelayMs ?? 500);
+  const maxDelayMs = Math.max(initialDelayMs, options.maxDelayMs ?? 5000);
+  const factor = Math.max(1, options.factor ?? 2);
+  const jitter = options.jitter ?? true;
+  const isRetryable = options.isRetryable ?? isTransientRpcError;
+
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxRetries || !isRetryable(error)) {
+        throw error;
+      }
+
+      // Calculate exponential backoff
+      const rawDelay = Math.min(maxDelayMs, initialDelayMs * Math.pow(factor, attempt));
+      const delayMs = jitter ? Math.round(rawDelay * (0.5 + Math.random() * 0.5)) : Math.round(rawDelay);
+
+      if (options.onRetry) {
+        options.onRetry(error, attempt + 1, delayMs);
+      } else {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const label = options.label ? ` [${options.label}]` : '';
+        log('rpc_warn', `RPC call failed${label}: ${errorMsg.slice(0, 100)} — retrying attempt ${attempt + 1}/${maxRetries} in ${delayMs}ms`);
+      }
+
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+
+  throw lastError;
 }

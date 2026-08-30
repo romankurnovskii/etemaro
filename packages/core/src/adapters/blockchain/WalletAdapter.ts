@@ -11,13 +11,13 @@
  * @sideEffects Solana RPC queries and DEX swap transactions
  */
 
-import { Connection, PublicKey, VersionedTransaction, Keypair } from '@solana/web3.js';
-import bs58 from 'bs58';
 import path from 'node:path';
-import { log, logStructured, createTimer } from '../../shared/logger.js';
+import { Connection, Keypair, PublicKey, VersionedTransaction } from '@solana/web3.js';
+import bs58 from 'bs58';
 import { config } from '../../config/Config.js';
 import { configPath } from '../../shared/constants.js';
-import { loadJsonFile, saveJsonFile } from '../../shared/utils.js';
+import { createTimer, log, logStructured } from '../../shared/logger.js';
+import { loadJsonFile, saveJsonFile, withRpcRetry } from '../../shared/utils.js';
 
 export interface GeneratedWallet {
   publicKey: string;
@@ -159,13 +159,31 @@ export async function getWalletBalances(): Promise<WalletBalancesResult> {
   try {
     walletAddress = getWallet().publicKey.toString();
   } catch {
-    return { wallet: null, sol: 0, sol_price: 0, sol_usd: 0, usdc: 0, tokens: [], total_usd: 0, error: 'Wallet not configured' };
+    return {
+      wallet: null,
+      sol: 0,
+      sol_price: 0,
+      sol_usd: 0,
+      usdc: 0,
+      tokens: [],
+      total_usd: 0,
+      error: 'Wallet not configured',
+    };
   }
 
   let HELIUS_API_KEY = process.env.HELIUS_API_KEY;
   if (!HELIUS_API_KEY) {
     log('wallet_error', 'HELIUS_API_KEY not set in .env');
-    return { wallet: walletAddress, sol: 0, sol_price: 0, sol_usd: 0, usdc: 0, tokens: [], total_usd: 0, error: 'Helius API key missing' };
+    return {
+      wallet: walletAddress,
+      sol: 0,
+      sol_price: 0,
+      sol_usd: 0,
+      usdc: 0,
+      tokens: [],
+      total_usd: 0,
+      error: 'Helius API key missing',
+    };
   }
 
   // Normalize: strip "api-key=" prefix if copy-pasted with parameter name
@@ -174,13 +192,16 @@ export async function getWalletBalances(): Promise<WalletBalancesResult> {
 
   try {
     const url = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_API_KEY}`;
-    const res = await fetch(url);
-
-    if (!res.ok) {
-      throw new Error(`Helius API error: ${res.status} ${res.statusText}`);
-    }
-
-    const data = (await res.json()) as any;
+    const data = await withRpcRetry(
+      async () => {
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`Helius API error: ${res.status} ${res.statusText}`);
+        }
+        return (await res.json()) as any;
+      },
+      { label: 'Helius getWalletBalances' },
+    );
     const balances = data.balances || [];
 
     // ─── Find SOL and USDC ────────────────────────────────────
@@ -298,7 +319,7 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
     // ─── Convert to smallest unit ──────────────────────────────
     let decimals = 9; // SOL default
     if (input_mint !== config.tokens.SOL) {
-      const mintInfo = await connection.getParsedAccountInfo(new PublicKey(input_mint));
+      const mintInfo = await withRpcRetry(() => connection.getParsedAccountInfo(new PublicKey(input_mint)), { label: 'getParsedAccountInfo' });
       const parsedData = mintInfo.value?.data;
       decimals = parsedData && typeof parsedData === 'object' && 'parsed' in parsedData ? ((parsedData as any).parsed?.info?.decimals ?? 9) : 9;
     }
@@ -409,7 +430,13 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
     logStructured({
       category: 'swap_error',
       message: `Swap failed: ${error.message}`,
-      metadata: { input_mint, output_mint, amount, error: error.message, duration_ms: swapTimer?.stop?.() ?? 0 },
+      metadata: {
+        input_mint,
+        output_mint,
+        amount,
+        error: error.message,
+        duration_ms: swapTimer?.stop?.() ?? 0,
+      },
     });
     return { success: false, error: error.message };
   }
