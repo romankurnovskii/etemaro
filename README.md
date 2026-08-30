@@ -20,51 +20,28 @@ Etemaro runs continuous screening and management cycles, deploying capital into 
 
 ---
 
-## Prerequisites & Credentials
+## Run the agent
 
-Before running Etemaro, ensure you have:
-
-- **Node.js**: `>= 22.0.0`
-- **Required Credentials**:
-  - `WALLET_PRIVATE_KEY` — Solana wallet base58 private key (for deploying/closing positions)
-  - `LLM_API_KEY` — API key for OpenAI, OpenRouter, or an OpenAI-compatible provider
-  - `JUPITER_API_KEY` — Jupiter swap API key ([get one here](https://developers.jup.ag/portal/))
-
----
-
-## Getting Started
-
-> 💡 **Have questions?** Most common user questions, setup troubleshooting, multi-instance deployment steps, and PnL metric definitions are covered in **[docs/QA.md](docs/QA.md)**.
-
-### ⚡ 1-Line Quick Install (CLI)
+Need **Node.js 22+**. Then two commands:
 
 ```bash
-# Install Etemaro CLI globally (macOS / Linux)
 curl -fsSL https://etemaro.com/install.sh | sh
+etemaro init
 ```
 
-_Or install via npm / Homebrew:_
+`etemaro init` is first-time setup (~1 minute). It creates `~/.config/etemaro`, checks for a wallet key and an LLM key, and tells you what is missing. Jupiter is only needed later for live swaps.
+
+When the checklist is green:
 
 ```bash
-npm install -g @etemaro/cli
-# or: brew install romankurnovskii/awesome-brew/etemaro
-```
-
-### 🚀 30-Second Quickstart
-
-```bash
-# 1. Provide your Solana wallet private key (in a .env file or export)
-export WALLET_PRIVATE_KEY="your_base58_solana_private_key"
-
-# 2. Check live wallet balances
-etemaro balance
-
-# 3. Simulate and test strategies (dry-run mode, no real transactions)
 etemaro start --dry-run
-
-# 4. Start autonomous agent in live trading mode
-etemaro start
 ```
+
+Live mode (real trades): add `JUPITER_API_KEY`, then `etemaro start`.
+
+_Or install via `npm install -g @etemaro/cli` / `brew install romankurnovskii/awesome-brew/etemaro`._
+
+> Common questions: **[docs/QA.md](docs/QA.md)**.
 
 ---
 
@@ -98,25 +75,15 @@ pnpm run dev
 
 ---
 
-## Server Deployment
+## Server
 
-**Option A: PM2 (Production Process Manager)**
-
-```bash
-npm run build
-npm run pm2:start    # Start daemon under PM2 with auto-restart
-npm run pm2:logs     # Tail live logs
-```
-
-**Option B: Docker**
+Same two commands on a VPS. Keep the process running with tmux, systemd, or:
 
 ```bash
-# Development (hot reload, mounts source)
-docker compose -f docker-compose.dev.yml up --build
-
-# Production (on remote server, .env already present)
-docker compose -f docker-compose.prod.yml up -d --build --force-recreate --remove-orphans
+nohup etemaro start --dry-run >> ~/.config/etemaro/data/agent.out 2>&1 &
 ```
+
+Clone + PM2 / Docker is **[source setup](#developer--source-setup)** above.
 
 ---
 

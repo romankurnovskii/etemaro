@@ -48,24 +48,12 @@ The agent loop, role-based tool access, and tool-execution safety checks are doc
 ### First-time Setup
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/romankurnovskii/etemaro
-cd etemaro
-npm install
-
-# 2. Initialize configuration (.env + user-config.json)
-pnpm cli init
-
-# 3. Edit .env and enter your credentials:
-#   - WALLET_PRIVATE_KEY (Solana wallet private key)
-#   - LLM_API_KEY (OpenAI / OpenRouter API key)
-#   - JUPITER_API_KEY (Jupiter swap API key)
-#   - TELEGRAM_BOT_TOKEN & TELEGRAM_CHAT_ID (optional)
-
-# 3. Test in dry-run mode
-npm run dev
-# This starts the REPL + cron but skips all on-chain transactions
+curl -fsSL https://etemaro.com/install.sh | sh
+etemaro init
+etemaro start --dry-run
 ```
+
+From a source clone: `pnpm install` then `pnpm cli init` and `pnpm run dev`.
 
 ### Day-to-Day Operations
 
