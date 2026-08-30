@@ -765,7 +765,7 @@ const toolMap: Record<string, ToolFn> = {
 const WRITE_TOOLS = new Set(['deploy_position', 'claim_fees', 'close_position', 'swap_token']);
 const PROTECTED_TOOLS = new Set([...WRITE_TOOLS, 'self_update']);
 
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+import { sleep } from "../../utils/time";
 
 const deployPositionMutex = new Mutex();
 

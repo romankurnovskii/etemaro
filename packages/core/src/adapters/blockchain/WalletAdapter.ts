@@ -66,7 +66,7 @@ export { getWalletAddress, getWalletKeypair };
 
 const JUPITER_SWAP_V2_API = 'https://api.jup.ag/swap/v2';
 
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+import { sleep } from "../../utils/time";
 
 interface RateLimitRetryOptions {
   attempts?: number;
