@@ -62,6 +62,7 @@ import { blockDev, unblockDev, listBlockedDevs } from '../domain/dev-blocklist.j
 import { addSmartWallet, removeSmartWallet, listSmartWallets, checkSmartWalletsOnPool } from '../domain/smart-wallets.js';
 import { getRecentDecisions } from '../domain/decision-log.js';
 import { normalizeTimeframe, scaleScreeningToTimeframe } from '../shared/utils.js';
+import { Mutex } from '../shared/mutex.js';
 import { notifyDeploy, notifyClose, notifySwap, notifySwapError } from './notifications/TelegramAdapter.js';
 
 // ─── Constants ─────────────────────────────────────────────────
@@ -766,6 +767,12 @@ const PROTECTED_TOOLS = new Set([...WRITE_TOOLS, 'self_update']);
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+const deployPositionMutex = new Mutex();
+
+async function withDeployPositionLock<T>(operation: () => Promise<T>): Promise<T> {
+  return deployPositionMutex.runExclusive(operation);
+}
+
 /**
  * Swap a base token back to SOL with retry. Jupiter can transiently fail (no route,
  * quote error) and a single attempt silently leaves the token unsold — this retries
@@ -980,6 +987,14 @@ export async function closeAllPositions(skipSwapInput: boolean | { skipSwap?: bo
  * Execute a tool call with safety checks and logging.
  */
 export async function executeTool(name: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  const normalizedName = name.replace(/<.*$/, '').trim();
+  if (normalizedName === 'deploy_position') {
+    return withDeployPositionLock(() => executeToolUnlocked(normalizedName, args));
+  }
+  return executeToolUnlocked(normalizedName, args);
+}
+
+async function executeToolUnlocked(name: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
   const startTime = Date.now();
 
   // Strip model artifacts like "<|channel|>commentary" appended to tool names
