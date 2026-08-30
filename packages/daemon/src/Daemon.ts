@@ -24,7 +24,17 @@ import {
   getDataDir,
   dataPath,
   sharedDataPath,
-  configPath,
+  strategyLibraryPath,
+  USER_CONFIG_PATH,
+  SMART_WALLETS_FILENAME,
+  STRATEGY_LIB_FILENAME,
+  SHARED_STRATEGY_LIB_FILENAME,
+  TOKEN_BLACKLIST_FILENAME,
+  DEV_BLOCKLIST_FILENAME,
+  STATE_FILENAME,
+  DECISION_LOG_FILENAME,
+  DEFAULT_ENTRY_SOURCE,
+  loadJsonFileWithInfo,
   log,
   agentLoop,
   type AgentLoopDeps,
@@ -286,42 +296,87 @@ export class Daemon {
   async start(options: { tty?: boolean } = {}): Promise<void> {
     log('startup', 'DLMM LP Agent starting...');
     log('startup', `Repo: ${process.cwd()}`);
-    // Surface ETEMARO_DATA_DIR|DATA_DIR so Desktop log paths and daemon writes stay aligned
+
+    // === Config Source & Mode ===
     const dataDir = getDataDir();
     const dataDirSource = process.env.ETEMARO_DATA_DIR ? 'ETEMARO_DATA_DIR' : process.env.DATA_DIR ? 'DATA_DIR' : 'default <repo>/data';
-    log('startup', `Data: ${dataDir} (${dataDirSource})`);
-    const resolvedConfigPath = configPath('user-config.json');
-    const configSource = process.env.USER_CONFIG_PATH ? `USER_CONFIG_PATH (${resolvedConfigPath})` : `default (${resolvedConfigPath})`;
-    log('startup', `Config: ${configSource}`);
-    log('startup', `Mode: ${process.env.DRY_RUN === 'true' ? 'DRY RUN' : 'LIVE'}`);
-    log('startup', `Model: ${process.env.LLM_MODEL || 'hermes-3-405b'}`);
 
-    const activeStrat = this.adapters.domain.getActiveStrategy();
+    // Config file source - single source of truth from config system
+    const configSource = process.env.USER_CONFIG_PATH ? 'USER_CONFIG_PATH env var' : 'default';
+    log('startup', `Config: ${USER_CONFIG_PATH} (source: ${configSource})`);
+
+    // Active strategy info
+    const activeStrategy = this.adapters.domain.getActiveStrategy();
+    log('startup', `Strategy: ${activeStrategy?.name || 'none'} (ID: ${activeStrategy?.id || 'none'})`);
+
+    // Entry source and opportunity poller status
+    const entrySource = config.screening?.entrySource || DEFAULT_ENTRY_SOURCE;
+    const opportunityEnabled = config.opportunity?.enabled ?? false;
+    log('startup', `Entry source: ${entrySource}`);
+    log('startup', `Opportunity poller: ${opportunityEnabled ? 'enabled' : 'disabled'}`);
+
+    log('startup', `Data: ${dataDir} (${dataDirSource})`);
+    log('startup', `Mode: ${process.env.DRY_RUN === 'true' ? 'DRY RUN' : 'LIVE'}`);
+    log('startup', `Model: ${config.llm.defaultModel}`);
+
+    // === Resolved Data Paths & Counts ===
+    const smartWalletsPath = sharedDataPath(SMART_WALLETS_FILENAME);
+    const smartWalletsInfo = loadJsonFileWithInfo<{ wallets?: unknown[] }>(smartWalletsPath, { wallets: [] });
+    const smartWalletsLoaded = smartWalletsInfo.loadedFrom === 'file';
+    const smartWalletsCount = smartWalletsInfo.data.wallets?.length || 0;
     log(
       'startup',
-      `Strategy: ${activeStrat?.name || (config as any).preset || 'default'} (id=${config.agentId || 'none'}, entrySource=${config.screening.entrySource || 'market'})`,
+      `${SMART_WALLETS_FILENAME}: ${smartWalletsPath} (${smartWalletsLoaded ? 'found' : 'fallback/created'}, ${smartWalletsCount} wallets)`,
     );
-    if (config.opportunity.enabled) {
-      log(
-        'startup',
-        `Opportunity Poller: enabled (interval=${config.opportunity.pollIntervalSec}s, minScore=${config.opportunity.minScore}, smartWalletBonus=${config.opportunity.smartWalletScoreBonus})`,
-      );
-    }
 
-    // Knowledge & Resource stats
-    const smartWallets = domain.listSmartWallets();
-    const walletCount = smartWallets?.wallets?.length ?? 0;
-    log('startup', `Smart Wallets: ${walletCount} tracked (${sharedDataPath('smart-wallets.json')})`);
-    if (
-      (config.screening.entrySource === 'smart_wallets' || (config.opportunity.enabled && (config.opportunity.smartWalletScoreBonus ?? 0) > 0)) &&
-      walletCount === 0
-    ) {
-      log('startup_warn', '⚠️ WARNING: Active strategy relies on smart-wallet entries, but 0 smart wallets are tracked in smart-wallets.json!');
+    let strategyLibPath = strategyLibraryPath(STRATEGY_LIB_FILENAME);
+    let strategyLibInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(strategyLibPath, { strategies: {} });
+    let isSharedLib = false;
+    if (strategyLibInfo.loadedFrom !== 'file') {
+      const sharedPath = strategyLibraryPath(SHARED_STRATEGY_LIB_FILENAME);
+      const sharedInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(sharedPath, { strategies: {} });
+      if (sharedInfo.loadedFrom === 'file') {
+        strategyLibPath = sharedPath;
+        strategyLibInfo = sharedInfo;
+        isSharedLib = true;
+      }
     }
+    const strategyLibLoaded = strategyLibInfo.loadedFrom === 'file';
+    const strategyCount = Object.keys(strategyLibInfo.data.strategies || {}).length;
+    log(
+      'startup',
+      `${STRATEGY_LIB_FILENAME}: ${strategyLibPath} (${strategyLibLoaded ? (isSharedLib ? 'shared fallback' : 'found') : 'fallback'}, ${strategyCount} strategies)`,
+    );
 
-    const blacklistedTokens = domain.listBlacklist();
-    const blacklistedCount = (blacklistedTokens as any)?.count ?? 0;
-    log('startup', `Blacklisted Tokens: ${blacklistedCount} (${sharedDataPath('token-blacklist.json')})`);
+    const tokenBlacklistPath = sharedDataPath(TOKEN_BLACKLIST_FILENAME);
+    const tokenBlacklistInfo = loadJsonFileWithInfo<Record<string, unknown>>(tokenBlacklistPath, {});
+    const tokenBlacklistLoaded = tokenBlacklistInfo.loadedFrom === 'file';
+    const tokenBlacklistCount = Object.keys(tokenBlacklistInfo.data || {}).length;
+    log(
+      'startup',
+      `${TOKEN_BLACKLIST_FILENAME}: ${tokenBlacklistPath} (${tokenBlacklistLoaded ? 'found' : 'fallback'}, ${tokenBlacklistCount} items)`,
+    );
+
+    const devBlocklistPath = sharedDataPath(DEV_BLOCKLIST_FILENAME);
+    const devBlocklistInfo = loadJsonFileWithInfo<Record<string, unknown>>(devBlocklistPath, {});
+    const devBlocklistLoaded = devBlocklistInfo.loadedFrom === 'file';
+    const devBlocklistCount = Object.keys(devBlocklistInfo.data || {}).length;
+    log('startup', `${DEV_BLOCKLIST_FILENAME}: ${devBlocklistPath} (${devBlocklistLoaded ? 'found' : 'fallback'}, ${devBlocklistCount} items)`);
+
+    const statePath = dataPath(STATE_FILENAME);
+    log('startup', `State log: ${statePath}`);
+
+    const decisionLogPath = dataPath(DECISION_LOG_FILENAME);
+    log('startup', `Decision log: ${decisionLogPath}`);
+
+    // === Warnings for Missing Resources ===
+    if (smartWalletsCount === 0 && (entrySource === 'smart_wallets' || (config.opportunity?.smartWalletScoreBonus ?? 0) > 0)) {
+      const warningMsg = 'WARNING: Smart wallet list resolves to 0 wallets, but strategy specifies smart-wallets or high score bonus';
+      log('startup_warn', warningMsg);
+      if (this.adapters.telegram?.isEnabled?.()) {
+        this.adapters.telegram.sendMessage(warningMsg).catch(() => {});
+      }
+    }
 
     this.adapters.hivemind.ensureAgentId();
 

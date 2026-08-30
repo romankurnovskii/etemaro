@@ -16,7 +16,7 @@ import { jsonrepair } from 'jsonrepair';
 import { buildSystemPrompt } from './prompt-builder.js';
 import { config } from '../config/Config.js';
 import { log, logStructured, createCorrelationId, setCorrelationId, createTimer } from '../shared/logger.js';
-import type { AgentRole, AgentMessage, WalletBalances, OnChainPosition, StateSummary } from '../shared/types.js';
+import type { AgentRole, AgentMessage, ToolCall, ToolResult, WalletBalances, OnChainPosition, StateSummary } from '../shared/types.js';
 
 // ─── Tool definitions (imported dynamically at call site via adapter) ───
 
@@ -366,12 +366,12 @@ export async function agentLoop(
 
   // Initialize OpenAI client
   const client = new OpenAI({
-    baseURL: process.env.LLM_BASE_URL || 'https://openrouter.ai/api/v1',
-    apiKey: process.env.LLM_API_KEY,
+    baseURL: config.llm.baseUrl,
+    apiKey: config.llm.apiKey,
     timeout: 5 * 60 * 1000,
   });
 
-  const DEFAULT_MODEL = process.env.LLM_MODEL || 'openrouter/healer-alpha';
+  const DEFAULT_MODEL = config.llm.defaultModel;
   const FALLBACK_MODEL = 'stepfun/step-3.5-flash:free';
 
   const emptyStreak = 0;

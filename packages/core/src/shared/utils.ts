@@ -14,11 +14,11 @@ import path from 'node:path';
 import { REPO_ROOT } from './constants.js';
 import { log } from './logger.js';
 
-// ─── Path Utilities ────────────────────────────────────────────
+// ─── Path Utilities ────────────────────────────────────────
 
 export { REPO_ROOT, repoPath, dataPath, sharedDataPath, strategyLibraryPath, configPath } from './constants.js';
 
-// ─── Math Utilities ────────────────────────────────────────────
+// ─── Math Utilities ────────────────────────────────────────
 
 export function safeNumber(value: unknown, fallback = 0): number {
   const n = Number(value);
@@ -54,7 +54,7 @@ export function isFiniteNum(n: unknown): n is number {
   return typeof n === 'number' && isFinite(n);
 }
 
-// ─── String Utilities ──────────────────────────────────────────
+// ─── String Utilities ────────────────────────────────────────
 
 export function sanitizeStoredText(text: unknown, maxLen = 280): string | null {
   if (text == null) return null;
@@ -133,6 +133,38 @@ export function loadJsonFile<T>(filePath: string, fallback: T, options?: { label
       );
     }
     return fallback;
+  }
+}
+
+export interface LoadedJsonFile<T> {
+  data: T;
+  loadedFrom: 'file' | 'fallback';
+  filePath: string;
+  error?: string;
+}
+
+export function loadJsonFileWithInfo<T>(filePath: string, fallback: T): LoadedJsonFile<T> {
+  if (!fs.existsSync(filePath)) {
+    return {
+      data: fallback,
+      loadedFrom: 'fallback',
+      filePath,
+    };
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8')) as T;
+    return {
+      data,
+      loadedFrom: 'file',
+      filePath,
+    };
+  } catch (error) {
+    return {
+      data: fallback,
+      loadedFrom: 'fallback',
+      filePath,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
