@@ -156,3 +156,22 @@ describe('save() persistence failures', () => {
     }
   });
 });
+
+describe('state.json corruption handling', () => {
+  beforeAll(() => {
+    __setStateFilePath(TMP_STATE);
+  });
+
+  afterAll(() => {
+    if (fs.existsSync(TMP_STATE)) fs.unlinkSync(TMP_STATE);
+  });
+
+  beforeEach(() => {
+    if (fs.existsSync(TMP_STATE)) fs.unlinkSync(TMP_STATE);
+  });
+
+  it('fails fast and throws when state.json contains corrupted JSON', () => {
+    fs.writeFileSync(TMP_STATE, '{"positions": { invalid json');
+    expect(() => getTrackedPositions()).toThrowError(/Failed to parse JSON file at.*Critical file corrupted/);
+  });
+});

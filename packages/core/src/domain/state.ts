@@ -13,7 +13,7 @@
 import { log } from '../shared/logger.js';
 import { dataPath, MAX_RECENT_EVENTS, MAX_INSTRUCTION_LENGTH, SYNC_GRACE_MS } from '../shared/constants.js';
 import { sanitizeStoredText, loadJsonFile, saveJsonFile } from '../shared/utils.js';
-import type { PositionRecord, StateEvent, BinRange, ExitResult, ExitAction, StateSummary } from '../shared/types.js';
+import type { PositionRecord, StateEvent, BinRange, ExitResult, StateSummary } from '../shared/types.js';
 
 export type { PositionRecord } from '../shared/types.js';
 import type { AppConfig } from '../shared/types.js';
@@ -37,11 +37,15 @@ interface StateData {
 }
 
 function load(): StateData {
-  return loadJsonFile<StateData>(STATE_FILE, {
-    positions: {},
-    recentEvents: [],
-    lastUpdated: null,
-  });
+  return loadJsonFile<StateData>(
+    STATE_FILE,
+    {
+      positions: {},
+      recentEvents: [],
+      lastUpdated: null,
+    },
+    { label: 'state', critical: true },
+  );
 }
 
 function save(state: StateData): void {
