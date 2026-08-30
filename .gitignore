@@ -33,6 +33,7 @@ dev-blocklist.json
 # Local agent documentation
 .agents/rules/*.local.md
 .kilo/
+.dev/
 
 # Build and IDE files
 logs/
