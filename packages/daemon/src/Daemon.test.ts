@@ -165,4 +165,82 @@ describe('Daemon — Concurrency & Mutex Guards', () => {
     expect(adapters.meteora.getMyPositions).toHaveBeenCalledTimes(1);
     expect(runScreeningSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('atomically prevents concurrent runManagementCycle executions', async () => {
+    let resolveFirst: any;
+    adapters.meteora.getMyPositions = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+
+    // Start cycle 1
+    const p1 = daemon.runManagementCycle({ silent: true });
+    // Attempt concurrent cycle 2 immediately
+    const p2 = daemon.runManagementCycle({ silent: true });
+
+    // p2 should immediately return null because lock is held synchronously
+    const res2 = await p2;
+    expect(res2).toBeNull();
+
+    // Resolve cycle 1
+    resolveFirst({ total_positions: 0, positions: [] });
+    const res1 = await p1;
+    expect(res1).toContain('No open positions');
+
+    // Lock is now released, a subsequent call succeeds
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ total_positions: 0, positions: [] });
+    const res3 = await daemon.runManagementCycle({ silent: true });
+    expect(res3).toContain('No open positions');
+  });
+
+  it('atomically prevents concurrent runScreeningCycle executions', async () => {
+    let resolvePositions: any;
+    adapters.meteora.getMyPositions = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePositions = resolve;
+        }),
+    );
+
+    // Start screening 1
+    const p1 = daemon.runScreeningCycle({ silent: true });
+    // Attempt concurrent screening 2 immediately
+    const p2 = daemon.runScreeningCycle({ silent: true });
+
+    // p2 should immediately return null because screeningBusy lock is held synchronously
+    const res2 = await p2;
+    expect(res2).toBeNull();
+
+    // Resolve screening 1 pre-checks
+    resolvePositions({ total_positions: 5, positions: [] }); // exceeds max positions, skips
+    const res1 = await p1;
+    expect(res1).toContain('max positions reached');
+
+    // Lock is released after completion
+    expect((daemon as any).screeningBusy).toBe(false);
+  });
+
+  it('releases lock cleanly even when runManagementCycle throws', async () => {
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({
+      total_positions: 1,
+      positions: [{ position: 'pos_1', pool: 'pool_1', pair: 'SOL-USDC' }],
+    });
+    adapters.domain.recordPositionSnapshot = vi.fn().mockImplementation(() => {
+      throw new Error('State explosion');
+    });
+
+    const res = await daemon.runManagementCycle({ silent: true });
+    expect(res).toContain('Management cycle failed: State explosion');
+    expect((daemon as any).managementBusy).toBe(false);
+  });
+
+  it('releases lock cleanly even when runScreeningCycle throws', async () => {
+    adapters.meteora.getMyPositions = vi.fn().mockRejectedValue(new Error('Screening RPC explosion'));
+
+    const res = await daemon.runScreeningCycle({ silent: true });
+    expect(res).toContain('Screening cycle failed: Screening RPC explosion');
+    expect((daemon as any).screeningBusy).toBe(false);
+  });
 });
