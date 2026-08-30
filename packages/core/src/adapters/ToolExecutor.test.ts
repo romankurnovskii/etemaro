@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { executeTool, swapAllTokensToSol } from './ToolExecutor.js';
 import * as WalletAdapter from './blockchain/WalletAdapter.js';
 import * as MeteoraAdapter from './blockchain/MeteoraAdapter.js';
@@ -96,6 +96,11 @@ describe('ToolExecutor - deploy_position serialization', () => {
     vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({ sol: 10, tokens: [] } as any);
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
   it('does not run a second balance check until the first deploy has completed', async () => {
     let releaseFirstDeploy!: () => void;
     const firstDeployFinished = new Promise<void>((resolve) => {
@@ -121,7 +126,7 @@ describe('ToolExecutor - deploy_position serialization', () => {
     await vi.waitFor(() => expect(MeteoraAdapter.deployPosition).toHaveBeenCalledTimes(1));
     const second = executeTool('deploy_position', { ...args, pool_address: 'pool-two' });
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await Promise.resolve();
     expect(MeteoraAdapter.getMyPositions).toHaveBeenCalledTimes(1);
     expect(MeteoraAdapter.deployPosition).toHaveBeenCalledTimes(1);
     expect(maxInFlightDeploys).toBe(1);
@@ -131,5 +136,26 @@ describe('ToolExecutor - deploy_position serialization', () => {
     expect(MeteoraAdapter.getMyPositions).toHaveBeenCalledTimes(2);
     expect(MeteoraAdapter.deployPosition).toHaveBeenCalledTimes(2);
     expect(maxInFlightDeploys).toBe(1);
+  });
+
+  it('releases the lock when a safety check rejects', async () => {
+    vi.mocked(MeteoraAdapter.getMyPositions)
+      .mockRejectedValueOnce(new Error('safety check failed'))
+      .mockResolvedValue({ positions: [], total_positions: 0 } as any);
+    vi.mocked(MeteoraAdapter.deployPosition).mockResolvedValue({ success: true, position: 'position-two' } as any);
+
+    const args = {
+      pool_address: 'pool-one',
+      amount_y: 0.5,
+      bins_below: 35,
+      bins_above: 0,
+    };
+    const first = executeTool('deploy_position', args);
+    await expect(first).rejects.toThrow('safety check failed');
+
+    await expect(executeTool('deploy_position', { ...args, pool_address: 'pool-two' })).resolves.toMatchObject({
+      success: true,
+    });
+    expect(MeteoraAdapter.deployPosition).toHaveBeenCalledTimes(1);
   });
 });

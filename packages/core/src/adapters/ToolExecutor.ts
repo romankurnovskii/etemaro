@@ -63,6 +63,7 @@ import { blockDev, unblockDev, listBlockedDevs } from '../domain/dev-blocklist.j
 import { addSmartWallet, removeSmartWallet, listSmartWallets, checkSmartWalletsOnPool } from '../domain/smart-wallets.js';
 import { getRecentDecisions } from '../domain/decision-log.js';
 import { normalizeTimeframe, scaleScreeningToTimeframe } from '../shared/utils.js';
+import { Mutex } from '../shared/mutex.js';
 import { notifyDeploy, notifyClose, notifySwap, notifySwapError } from './notifications/TelegramAdapter.js';
 
 // ─── Constants ─────────────────────────────────────────────────
@@ -767,20 +768,10 @@ const PROTECTED_TOOLS = new Set([...WRITE_TOOLS, 'self_update']);
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-let deployPositionQueue: Promise<void> = Promise.resolve();
+const deployPositionMutex = new Mutex();
 
 async function withDeployPositionLock<T>(operation: () => Promise<T>): Promise<T> {
-  let release!: () => void;
-  const previous = deployPositionQueue;
-  deployPositionQueue = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await previous;
-  try {
-    return await operation();
-  } finally {
-    release();
-  }
+  return deployPositionMutex.runExclusive(operation);
 }
 
 /**
