@@ -13,6 +13,7 @@
 
 import fs from 'node:fs';
 import { log } from '../../shared/logger.js';
+import { sleep } from '../../utils/time.js';
 import { USER_CONFIG_PATH } from '../../shared/constants.js';
 import { config } from '../../config/Config.js';
 import { notify } from './NotificationSink.js';
@@ -636,71 +637,9 @@ export async function notifyOutOfRange({ pair, minutesOOR }: NotifyOutOfRangeArg
   await sendPlain(`⚠️ Out of Range ${pair}\n` + body);
 }
 
-interface NotifyRpcErrorArgs {
-  operation: string;
-  error: string;
-  endpoint?: string;
-}
-
-const _lastRpcErrorAlerts: Record<string, number> = {};
-const RPC_ALERT_THROTTLE_MS = 5 * 60 * 1000; // 5 minutes per operation
-
-export function resetRpcErrorThrottle(): void {
-  for (const key of Object.keys(_lastRpcErrorAlerts)) {
-    delete _lastRpcErrorAlerts[key];
-  }
-}
-
-/**
- * Notifies the user on Telegram when all RPC / API retry attempts fail.
- * Throttles duplicate alerts to once every 5 minutes per unique operation.
- */
-export async function notifyRpcError({ operation, error, endpoint }: NotifyRpcErrorArgs): Promise<void> {
-  if (hasActiveLiveMessage()) return;
-  const now = Date.now();
-  const lastAlert = _lastRpcErrorAlerts[operation] || 0;
-  if (now - lastAlert < RPC_ALERT_THROTTLE_MS) return;
-  _lastRpcErrorAlerts[operation] = now;
-
-  const endpointStr = endpoint ? `\nEndpoint: ${endpoint}` : '';
-  const body = `Operation: ${operation}\nError: ${error.slice(0, 300)}${endpointStr}\n(All retry attempts failed)`;
-  notify('rpc_error', '⚠️', `RPC/Network Error: ${operation}`, body);
-  await sendPlain(`⚠️ RPC / Network Failure\n${body}`);
-}
-
-interface NotifyTransactionErrorArgs {
-  type: 'deploy' | 'close' | 'claim' | 'swap' | 'confirm';
-  pair?: string;
-  position?: string;
-  tx?: string;
-  reason: string;
-}
-
-/**
- * Notifies the user on Telegram when an on-chain transaction execution or confirmation fails.
- */
-export async function notifyTransactionError({
-  type,
-  pair,
-  position,
-  tx,
-  reason,
-}: NotifyTransactionErrorArgs): Promise<void> {
-  if (hasActiveLiveMessage()) return;
-  const typeLabel = type.toUpperCase();
-  const pairStr = pair ? ` | ${pair}` : '';
-  const posStr = position ? `\nPosition: ${position.slice(0, 8)}...` : '';
-  const txStr = tx ? `\nTx: ${tx.slice(0, 16)}...` : '';
-  const body = `Type: ${typeLabel}${pairStr}${posStr}${txStr}\nReason: ${reason.slice(0, 300)}`;
-  notify('tx_error', '❌', `Transaction Failed: ${typeLabel}${pairStr}`, body);
-  await sendPlain(`❌ Transaction Failed (${typeLabel})\n${body}`);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
 
 function fmtPct(value: number): string {
+
   const n = Number(value);
   return Number.isFinite(n) ? `${n.toFixed(2)}%` : '?';
 }
