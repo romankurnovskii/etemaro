@@ -12,8 +12,6 @@
 import fs from 'node:fs';
 import type { AppConfig } from '../shared/types.js';
 import {
-  repoPath,
-  dataPath,
   USER_CONFIG_PATH,
   MIN_SAFE_BINS_BELOW,
   TOKEN_MINTS,
@@ -21,7 +19,7 @@ import {
   DEFAULT_LLM_BASE_URL,
 } from '../shared/constants.js';
 import { loadAndValidateConfig, isHelpOrInfoCommand } from './ConfigValidator.js';
-import { DEFAULT_USER_CONFIG, defaultUserConfigStr } from './defaultUserConfig.js';
+import { DEFAULT_USER_CONFIG, } from './defaultUserConfig.js';
 import type { ValidatedUserConfig } from './schema.js';
 import { numericConfig, resolveEnvString } from '../shared/utils.js';
 
@@ -32,6 +30,15 @@ export class ConfigLoadError extends Error {
   }
 }
 
+/**
+ * Applies user config connection and API keys to process.env as fallback values (using ||=).
+ *
+ * NOTE ON ENVIRONMENT MUTATIONS:
+ * In a running daemon process, this propagates user configuration into environment variables
+ * expected by underlying SDKs (e.g. Helius, Telegram, OpenAI).
+ * In automated unit tests, test suites that modify process.env or invoke config reloads
+ * should snapshot process.env in beforeEach and restore it in afterEach to prevent test pollution.
+ */
 function applyUserConfigToEnv(u: ValidatedUserConfig): void {
   const connection = u.connection;
   if (connection?.rpcUrl) process.env.RPC_URL ||= connection?.rpcUrl;
@@ -291,6 +298,9 @@ export function computeDeployAmount(walletSol: number): number {
   return parseFloat(result.toFixed(2));
 }
 
+/**
+ * Dynamically reloads partial screening thresholds from user-config.json into the active config singleton.
+ */
 export function reloadScreeningThresholds(): void {
   try {
     // Dynamic reloading can just re-read the nested schema
@@ -347,6 +357,19 @@ export function reloadScreeningThresholds(): void {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Re-reads user configuration from disk, evaluates process.env fallbacks,
+ * and updates the in-memory `config` singleton in-place.
+ *
+ * Use this in unit tests or when switching configuration files at runtime.
+ */
+export function resetConfig(): AppConfig {
+  const fresh = buildConfig();
+  Object.assign(config, fresh);
+  setMinSafeBinsBelowOverride(config.strategy.minSafeBinsBelow);
+  return config;
 }
 
 function resolveField(key: string, value: unknown): unknown {
