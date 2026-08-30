@@ -89,6 +89,16 @@ describe('loadJsonFile — missing vs corrupt file handling', () => {
     expect(result).toEqual({ fallback: 123 });
   });
 
+  it('throws error when file contains corrupt JSON and critical: true', async () => {
+    const { loadJsonFile } = await import('./utils.js');
+    const target = path.join(tmpDir, 'corrupt-critical.json');
+    fs.writeFileSync(target, '{ broken json');
+
+    expect(() => loadJsonFile(target, { fallback: true }, { label: 'state', critical: true })).toThrowError(
+      /Failed to parse JSON file at.*Critical file corrupted/,
+    );
+  });
+
   it('correctly parses and returns valid JSON', async () => {
     const { loadJsonFile } = await import('./utils.js');
     const target = path.join(tmpDir, 'valid.json');
