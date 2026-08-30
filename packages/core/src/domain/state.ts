@@ -18,7 +18,25 @@ import type { PositionRecord, StateEvent, BinRange, ExitResult, StateSummary } f
 export type { PositionRecord } from '../shared/types.js';
 import type { AppConfig } from '../shared/types.js';
 
+import { Mutex } from '../shared/mutex.js';
+
 let STATE_FILE = dataPath('state.json');
+const stateMutex = new Mutex();
+
+/**
+ * Execute a synchronous or asynchronous transaction exclusively under the state mutex.
+ * Serializes read-modify-write state operations across concurrent async tasks.
+ */
+export async function withStateLock<T>(fn: () => Promise<T> | T): Promise<T> {
+  return stateMutex.runExclusive(fn);
+}
+
+/**
+ * Access the in-process state mutex instance directly.
+ */
+export function getStateMutex(): Mutex {
+  return stateMutex;
+}
 
 /**
  * Test-only seam: redirect the state file so tests don't read/write the real
