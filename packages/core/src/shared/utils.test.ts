@@ -98,3 +98,48 @@ describe('loadJsonFile — missing vs corrupt file handling', () => {
     expect(result).toEqual({ success: true, count: 42 });
   });
 });
+
+describe('loadJsonFileWithInfo — detailed load tracking', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loadJsonFileWithInfo-test-'));
+
+  afterEach(() => {
+    for (const f of fs.readdirSync(tmpDir)) {
+      fs.unlinkSync(path.join(tmpDir, f));
+    }
+  });
+
+  it('returns fallback and loadedFrom: fallback when file does not exist', async () => {
+    const { loadJsonFileWithInfo } = await import('./utils.js');
+    const target = path.join(tmpDir, 'nonexistent.json');
+    const result = loadJsonFileWithInfo(target, { fallback: true });
+
+    expect(result.data).toEqual({ fallback: true });
+    expect(result.loadedFrom).toBe('fallback');
+    expect(result.filePath).toBe(target);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('returns fallback and captures error when file is corrupt JSON', async () => {
+    const { loadJsonFileWithInfo } = await import('./utils.js');
+    const target = path.join(tmpDir, 'corrupt.json');
+    fs.writeFileSync(target, 'not valid json {{{');
+
+    const result = loadJsonFileWithInfo(target, { defaultVal: 123 });
+    expect(result.data).toEqual({ defaultVal: 123 });
+    expect(result.loadedFrom).toBe('fallback');
+    expect(result.filePath).toBe(target);
+    expect(result.error).toBeDefined();
+  });
+
+  it('returns parsed data with loadedFrom: file when JSON is valid', async () => {
+    const { loadJsonFileWithInfo } = await import('./utils.js');
+    const target = path.join(tmpDir, 'valid.json');
+    fs.writeFileSync(target, JSON.stringify({ wallets: ['walletA', 'walletB'] }));
+
+    const result = loadJsonFileWithInfo<{ wallets: string[] }>(target, { wallets: [] });
+    expect(result.data).toEqual({ wallets: ['walletA', 'walletB'] });
+    expect(result.loadedFrom).toBe('file');
+    expect(result.filePath).toBe(target);
+    expect(result.error).toBeUndefined();
+  });
+});

@@ -154,6 +154,23 @@ export function configPath(...segments: string[]): string {
 /** Canonical path to user-config.json (honors USER_CONFIG_PATH env override). */
 export const USER_CONFIG_PATH = configPath('user-config.json');
 
+/** Get the etemaro runtime/config home directory (e.g. ~/.config/etemaro).
+ *  Resolution order:
+ *   1. ETEMARO_HOME env var (explicit override)
+ *   2. XDG_CONFIG_HOME/etemaro or ~/.config/etemaro (desktop standard)
+ *   3. Fallback to repo-relative path (useful for dev/test)
+ */
+export function getEtemaroDir(): string {
+  const etemaroHome = process.env.ETEMARO_HOME;
+  if (etemaroHome) {
+    return expandUserPath(etemaroHome);
+  }
+
+  const home = process.env.HOME || process.env.USERPROFILE;
+  const xdgConfigHome = process.env.XDG_CONFIG_HOME || (home ? path.join(home, '.config') : undefined);
+  return xdgConfigHome ? path.join(xdgConfigHome, 'etemaro') : path.join(home || '', '.config', 'etemaro');
+}
+
 export const MAX_INSTRUCTION_LENGTH = 280;
 export const MAX_NOTE_LENGTH = 280;
 export const MAX_MANUAL_LESSON_LENGTH = 400;
@@ -181,9 +198,48 @@ export const SOLANA_PUBKEY_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 export const DEFAULT_HIVEMIND_URL = 'https://api.agentmeridian.xyz';
 export const DEFAULT_AGENT_MERIDIAN_API_URL = 'https://api.agentmeridian.xyz/api';
+export const DEFAULT_LLM_BASE_URL = 'https://openrouter.ai/api/v1';
+export const DEFAULT_LLM_MODEL = 'openrouter/healer-alpha';
+
 // TODO 2026-09-30: add option to override this in user config, and/or read from env var
 export const DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY = 'bWVyaWRpYW4taXMtdGhlLWJlc3QtYWdlbnRz';
 export const DEFAULT_HIVEMIND_API_KEY = 'bWVyaWRpYW4taXMtdGhlLWJlc3QtYWdlbnRz';
+
+// File names and paths for data stores
+export const SMART_WALLETS_FILENAME = 'smart-wallets.json';
+export const STRATEGY_LIB_FILENAME = 'strategy-library.json';
+export const SHARED_STRATEGY_LIB_FILENAME = 'strategy-library.shared.json';
+export const WALLETS_KEYPAIR_FILENAME = 'wallets.json';
+export const CHAT_PORT_FILENAME = 'chat_port.json';
+export const CHAT_HISTORY_FILENAME = 'chat_history.json';
+export const TOKEN_BLACKLIST_FILENAME = 'token-blacklist.json';
+export const DEV_BLOCKLIST_FILENAME = 'dev-blocklist.json';
+export const STATE_FILENAME = 'state.json';
+export const DECISION_LOG_FILENAME = 'decision-log.json';
+export const LESSONS_FILENAME = 'lessons.json';
+export const POOL_MEMORY_FILENAME = 'pool-memory.json';
+export const SIGNAL_WEIGHTS_FILENAME = 'signal-weights.json';
+export const DISCORD_SIGNALS_FILENAME = 'discord-signals.json';
+
+// Source identifiers and constants
+export const DEFAULT_ENTRY_SOURCE = 'market';
+export const DEFAULT_PNL_SOURCE = 'rpc';
+export const DEFAULT_DISCORD_SIGNAL_MODE = 'merge';
+export const DEFAULT_GMGN_FEE_SOURCE = 'gmgn';
+export const DEFAULT_DISCORD_MODE = 'merge';
+
+// Default preset names
+export const DEFAULT_ACTIVE_STRATEGY_ID = 'single_sided_reseed';
+export const DEFAULT_STRATEGY_TYPE = 'bid_ask';
+export const DEFAULT_DISCORD_MODE_MERGE = 'merge';
+
+// Desktop chat defaults
+export const DEFAULT_DESKTOP_CHAT_ENDPOINT = '/chat';
+
+// Timing defaults (in seconds/minutes/hours)
+export const DEFAULT_HEALTH_CHECK_INTERVAL_MIN = 60;
+export const DEFAULT_STRATEGY_RECALC_INTERVAL_MIN = 5;
+export const DEFAULT_STRATEGY_WINDOW_DAYS = 60;
 
 export const TOKEN_MINTS = {
   SOL: 'So11111111111111111111111111111111111111112',
