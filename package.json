@@ -26,7 +26,8 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --passWithNoTests",
     "test:coverage": "vitest run --coverage",
-    "lint": "pnpm -r run typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "prepare": "husky",
     "pm2:start": "pm2 start config/ecosystem.config.cjs",
     "pm2:restart": "pm2 restart config/ecosystem.config.cjs --update-env",
@@ -37,10 +38,7 @@
     "postinstall": "node scripts/patch-anchor.js"
   },
   "knip": {
-    "ignore": [
-      "discord-listener/**",
-      "dist/**"
-    ]
+    "ignore": ["discord-listener/**", "dist/**"]
   },
   "dependencies": {
     "@meteora-ag/dlmm": "1.9.14",
@@ -58,26 +56,16 @@
     "node": ">=22.0.0"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@biomejs/biome": "^2.5.10",
     "@types/bn.js": "^5.2.0",
     "@types/node": "^26.3.0",
     "@types/node-cron": "^3.0.11",
-    "eslint": "^10.9.1",
-    "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
-    "prettier": "^3.9.6",
     "tsx": "^4.23.12",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.68.0",
     "vitest": "^4.1.11"
   },
   "lint-staged": {
-    "**/*.{ts,tsx,js,jsx}": [
-      "eslint --fix --no-warn-ignored",
-      "prettier --write"
-    ],
-    "**/*.{json,md,html,css}": [
-      "prettier --write"
-    ]
+    "**/*.{ts,tsx,js,jsx,json,md,html,css,sh}": ["biome check --write --unsafe --no-errors-on-unmatched"]
   }
 }

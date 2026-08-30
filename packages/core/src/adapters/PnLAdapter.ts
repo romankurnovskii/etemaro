@@ -13,10 +13,11 @@
  */
 import { Connection, PublicKey } from '@solana/web3.js';
 import { config } from '../config/Config.js';
-import { log } from '../shared/logger.js';
 // State module not yet converted to TS — import from repo root
 // @ts-ignore — state.js has no type declarations yet
-import { getTrackedPosition, markOutOfRange, markInRange, minutesOutOfRange } from '../domain/state.js';
+import { getTrackedPosition, markInRange, markOutOfRange, minutesOutOfRange } from '../domain/state.js';
+import { log } from '../shared/logger.js';
+import { withRpcRetry } from '../shared/utils.js';
 
 // ─── Public-infra PnL engine ───────────────────────────────────
 // Live position value (current liquidity + claimable fees) is read ON-CHAIN
@@ -302,7 +303,9 @@ export async function computePositions(walletAddress: string): Promise<ComputePo
   const conn = getPnlConnection();
   const DLMM = await loadDlmmSdk();
 
-  const map = await DLMM.getAllLbPairPositionsByUser(conn, new PublicKey(walletAddress));
+  const map = await withRpcRetry(() => DLMM.getAllLbPairPositionsByUser(conn, new PublicKey(walletAddress)), {
+    label: 'DLMM.getAllLbPairPositionsByUser computePositions',
+  });
   _pollCount++;
   if (_pollCount % 20 === 1) {
     const n = [...mapEntries(map)].reduce((s, [, i]) => s + (i?.lbPairPositionsData?.length ?? 0), 0);
