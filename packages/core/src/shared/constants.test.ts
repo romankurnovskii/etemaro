@@ -45,6 +45,15 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     expect(configPath('user-config.json')).not.toContain('packages/core/config');
   });
 
+  it('configPath honors custom USER_CONFIG_PATH override', () => {
+    envSnap = snapshotEnv();
+    process.env.USER_CONFIG_PATH = '/custom/path/agent-1.json';
+    expect(configPath('user-config.json')).toBe('/custom/path/agent-1.json');
+
+    process.env.USER_CONFIG_PATH = 'config/relative-custom.json';
+    expect(configPath('user-config.json')).toBe(path.resolve(REPO_ROOT, 'config/relative-custom.json'));
+  });
+
   it('dataPath resolves standard filenames when using default config', () => {
     envSnap = snapshotEnv();
     delete process.env.USER_CONFIG_PATH;

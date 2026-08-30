@@ -137,15 +137,9 @@ export const strategyLibraryPath = sharedDataPath;
 export function configPath(...segments: string[]): string {
   // Honor USER_CONFIG_PATH env var for the main config file
   if (segments.length === 1 && segments[0] === 'user-config.json') {
-    const envPath = process.env.USER_CONFIG_PATH;
+    const envPath = process.env.USER_CONFIG_PATH?.trim();
     if (envPath) {
-      const resolved = path.isAbsolute(envPath) ? envPath : path.resolve(REPO_ROOT, envPath);
-      if (fs.existsSync(resolved)) {
-        return resolved;
-      }
-      if (fs.existsSync(envPath)) {
-        return path.resolve(envPath);
-      }
+      return path.isAbsolute(envPath) ? envPath : path.resolve(REPO_ROOT, envPath);
     }
   }
   return path.join(REPO_ROOT, 'config', ...segments);
