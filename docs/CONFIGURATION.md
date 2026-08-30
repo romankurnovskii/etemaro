@@ -358,3 +358,20 @@ Use the `update_config` tool (Telegram `/setcfg` or agent self-tuning) to change
 ```
 
 Changes are persisted to the active config file immediately and take effect on the next screening cycle.
+
+---
+
+## 6. Configuration Lifecycle & Test Isolation Conventions
+
+### In-Memory Singleton (`config`)
+- Etemaro exports a singleton `config: AppConfig` built on process startup from `user-config.json` and evaluated environment variables.
+- Modules import `config` directly to read active runtime settings.
+- When dynamic settings are updated (e.g. via `reloadScreeningThresholds()` or `setActiveStrategy()`), the in-memory singleton is mutated in-place to keep all references synchronized.
+
+### Environment Variable Fallbacks
+- On config load, `applyUserConfigToEnv` propagates user credentials (RPC URL, Telegram tokens, wallet keys) into `process.env` using `||=` fallback semantics so explicit CLI/shell environment variables maintain precedence.
+
+### Test Isolation Best Practices
+- **Snapshot & Restore**: Test suites that mutate `process.env` (e.g., `USER_CONFIG_PATH`, `RPC_URL`) must snapshot `process.env` in `beforeEach` and restore it in `afterEach`.
+- **`resetConfig()` Helper**: Call `resetConfig()` from `@etemaro/core` in test fixtures whenever simulating different configuration files or environment state. This re-evaluates all defaults and refreshes the singleton without requiring module reloading.
+
