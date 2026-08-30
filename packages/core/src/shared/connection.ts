@@ -7,6 +7,8 @@
 import { Connection, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { config } from '../config/Config.js';
+import { log } from './logger.js';
+import { isTransientRpcError, withRpcRetry, type RpcRetryOptions } from './utils.js';
 
 let _primaryConnection: Connection | null = null;
 let _primaryRpcUrl: string | null = null;
@@ -75,6 +77,48 @@ export function getWalletAddress(): string | null {
     return getWalletKeypair().publicKey.toString();
   } catch {
     return null;
+  }
+}
+
+/**
+ * Returns true if a fallback RPC URL is configured.
+ */
+export function hasFallbackRpc(): boolean {
+  return Boolean(config.connection?.rpcUrl2 || process.env.RPC_URL_2);
+}
+
+/**
+ * Executes an asynchronous RPC operation with automatic failover between primary and fallback RPC connections.
+ * If the operation on the primary connection encounters a transient RPC error (429, timeout, 502/503/504),
+ * it seamlessly switches to the fallback connection and retries with backoff.
+ */
+export async function withRpcFailover<T>(
+  fn: (connection: Connection) => Promise<T>,
+  options: RpcRetryOptions = {},
+): Promise<T> {
+  const primaryConn = getConnection(false);
+  if (!hasFallbackRpc()) {
+    return withRpcRetry(() => fn(primaryConn), options);
+  }
+
+  try {
+    return await withRpcRetry(() => fn(primaryConn), {
+      ...options,
+      maxRetries: options.maxRetries ?? 2,
+    });
+  } catch (primaryErr) {
+    if (isTransientRpcError(primaryErr)) {
+      const fallbackConn = getConnection(true);
+      const fallbackUrl = getRpcUrl(true);
+      const errMessage = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+      const label = options.label ? ` [${options.label}]` : '';
+      log('rpc_warn', `Primary RPC failed${label} (${errMessage.slice(0, 100)}) — switching to fallback RPC: ${fallbackUrl}`);
+      return await withRpcRetry(() => fn(fallbackConn), {
+        ...options,
+        maxRetries: options.maxRetries ?? 2,
+      });
+    }
+    throw primaryErr;
   }
 }
 
