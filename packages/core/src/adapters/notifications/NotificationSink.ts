@@ -19,7 +19,7 @@ import { log } from '../../shared/logger.js';
 
 // ─── Types ────────────────────────────────────────────────────────
 
-export type NotificationType = 'deploy' | 'close' | 'swap' | 'swap_error' | 'oor' | 'briefing' | 'message';
+export type NotificationType = 'deploy' | 'close' | 'swap' | 'swap_error' | 'oor' | 'briefing' | 'message' | 'rpc_error' | 'tx_error';
 
 export interface DesktopNotification {
   /** ISO-8601 UTC timestamp */

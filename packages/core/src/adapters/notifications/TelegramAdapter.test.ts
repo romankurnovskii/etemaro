@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { notifySwap, notifySwapError, summarizeToolResult } from './TelegramAdapter.js';
+import {
+  notifySwap,
+  notifySwapError,
+  notifyRpcError,
+  notifyTransactionError,
+  resetRpcErrorThrottle,
+  summarizeToolResult,
+} from './TelegramAdapter.js';
 import * as NotificationSink from './NotificationSink.js';
 
 vi.mock('./NotificationSink.js', () => ({
@@ -82,5 +89,52 @@ describe('TelegramAdapter notifications', () => {
     });
 
     expect(NotificationSink.notify).toHaveBeenCalledWith('swap_error', '⚠️', 'Auto-swap failed: Council → SOL', 'Reason: Slippage exceeded');
+  });
+
+  it('notifyRpcError formats alert and throttles repeated alerts within 5 minutes', async () => {
+    resetRpcErrorThrottle();
+
+    await notifyRpcError({
+      operation: 'Management Cycle',
+      error: 'Solana RPC rate limited (429)',
+      endpoint: 'https://api.mainnet-beta.solana.com',
+    });
+
+    expect(NotificationSink.notify).toHaveBeenCalledTimes(1);
+    expect(NotificationSink.notify).toHaveBeenCalledWith(
+      'rpc_error',
+      '⚠️',
+      'RPC/Network Error: Management Cycle',
+      expect.stringContaining('Solana RPC rate limited (429)'),
+    );
+
+    // Call again immediately for same operation -> should be throttled (no second notify call)
+    await notifyRpcError({
+      operation: 'Management Cycle',
+      error: 'Solana RPC rate limited (429)',
+    });
+    expect(NotificationSink.notify).toHaveBeenCalledTimes(1);
+
+    // Call for different operation -> should alert
+    await notifyRpcError({
+      operation: 'Screening Cycle',
+      error: 'Timeout fetching candidates',
+    });
+    expect(NotificationSink.notify).toHaveBeenCalledTimes(2);
+  });
+
+  it('notifyTransactionError formats failure alert for failed transaction execution', async () => {
+    await notifyTransactionError({
+      type: 'deploy',
+      pair: 'SOL/USDC',
+      reason: 'Transaction simulation failed: Custom program error 0x1',
+    });
+
+    expect(NotificationSink.notify).toHaveBeenCalledWith(
+      'tx_error',
+      '❌',
+      'Transaction Failed: DEPLOY | SOL/USDC',
+      expect.stringContaining('Custom program error 0x1'),
+    );
   });
 });

@@ -63,7 +63,7 @@ import { addSmartWallet, removeSmartWallet, listSmartWallets, checkSmartWalletsO
 import { getRecentDecisions } from '../domain/decision-log.js';
 import { normalizeTimeframe, scaleScreeningToTimeframe } from '../shared/utils.js';
 import { Mutex } from '../shared/mutex.js';
-import { notifyDeploy, notifyClose, notifySwap, notifySwapError } from './notifications/TelegramAdapter.js';
+import { notifyDeploy, notifyClose, notifySwap, notifySwapError, notifyTransactionError } from './notifications/TelegramAdapter.js';
 
 // ─── Constants ─────────────────────────────────────────────────
 
@@ -1055,44 +1055,78 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
           log('telegram_warn', `Failed to send swap notification: ${err?.message || err}`);
         });
       } else if (name === 'deploy_position') {
-        notifyDeploy({
-          pair: (result as any).pool_name || (args as any).pool_name || (args.pool_address as string)?.slice(0, 8),
-          amountSol: (args.amount_y as number) ?? (args.amount_sol as number) ?? 0,
-          position: (result as any).position,
-          tx: (result as any).txs?.[0] ?? (result as any).tx,
-          priceRange: (result as any).price_range,
-          rangeCoverage: (result as any).range_coverage,
-          binStep: (result as any).bin_step,
-          baseFee: (result as any).base_fee,
-        }).catch((err: any) => {
-          log('telegram_warn', `Failed to send deploy notification: ${err?.message || err}`);
-        });
-      } else if (name === 'close_position') {
-        notifyClose({
-          pair: (result as any).pool_name || (args.position_address as string)?.slice(0, 8),
-          pnlUsd: (result as any).pnl_usd ?? 0,
-          pnlPct: (result as any).pnl_pct ?? 0,
-        }).catch((err: any) => {
-          log('telegram_warn', `Failed to send close notification: ${err?.message || err}`);
-        });
-        // Note low-yield closes in pool memory so screener avoids redeploying
-        if ((args.reason as string) && (args.reason as string).toLowerCase().includes('yield')) {
-          const poolAddr = (result as any).pool || args.pool_address;
-          if (poolAddr)
-            addPoolNote({ pool_address: poolAddr, note: `Closed: low yield (fee/TVL below threshold) at ${new Date().toISOString().slice(0, 10)}` });
+        const isSuccess = (result as any)?.success !== false && !(result as any)?.error && !(result as any)?.blocked;
+        if (!isSuccess) {
+          notifyTransactionError({
+            type: 'deploy',
+            pair: (result as any)?.pool_name || (args as any)?.pool_name || (args.pool_address as string)?.slice(0, 8),
+            reason: (result as any)?.error || (result as any)?.reason || 'Deployment execution failed',
+          }).catch((err: any) => {
+            log('telegram_warn', `Failed to send deploy error notification: ${err?.message || err}`);
+          });
+        } else {
+          notifyDeploy({
+            pair: (result as any).pool_name || (args as any).pool_name || (args.pool_address as string)?.slice(0, 8),
+            amountSol: (args.amount_y as number) ?? (args.amount_sol as number) ?? 0,
+            position: (result as any).position,
+            tx: (result as any).txs?.[0] ?? (result as any).tx,
+            priceRange: (result as any).price_range,
+            rangeCoverage: (result as any).range_coverage,
+            binStep: (result as any).bin_step,
+            baseFee: (result as any).base_fee,
+          }).catch((err: any) => {
+            log('telegram_warn', `Failed to send deploy notification: ${err?.message || err}`);
+          });
         }
-        // Auto-swap base token back to SOL unless user said to hold (retried).
-        if (!args.skip_swap && (result as any).base_mint) {
-          const { swapped, result: swapResult } = await swapBaseToSolWithRetry((result as any).base_mint, 'after close');
-          if (swapped) {
-            (result as any).auto_swapped = true;
-            (result as any).auto_swap_note =
-              `Base token already auto-swapped back to SOL (${(result as any).base_mint.slice(0, 8)} → SOL). Do NOT call swap_token again.`;
-            if ((swapResult as any)?.amount_out) (result as any).sol_received = (swapResult as any).amount_out;
+      } else if (name === 'close_position') {
+        const isSuccess = (result as any)?.success !== false && !(result as any)?.error && !(result as any)?.blocked;
+        if (!isSuccess) {
+          notifyTransactionError({
+            type: 'close',
+            pair: (result as any)?.pool_name || (args.position_address as string)?.slice(0, 8),
+            position: args.position_address as string,
+            reason: (result as any)?.error || (result as any)?.reason || 'Position close failed',
+          }).catch((err: any) => {
+            log('telegram_warn', `Failed to send close error notification: ${err?.message || err}`);
+          });
+        } else {
+          notifyClose({
+            pair: (result as any).pool_name || (args.position_address as string)?.slice(0, 8),
+            pnlUsd: (result as any).pnl_usd ?? 0,
+            pnlPct: (result as any).pnl_pct ?? 0,
+          }).catch((err: any) => {
+            log('telegram_warn', `Failed to send close notification: ${err?.message || err}`);
+          });
+          // Note low-yield closes in pool memory so screener avoids redeploying
+          if ((args.reason as string) && (args.reason as string).toLowerCase().includes('yield')) {
+            const poolAddr = (result as any).pool || args.pool_address;
+            if (poolAddr)
+              addPoolNote({ pool_address: poolAddr, note: `Closed: low yield (fee/TVL below threshold) at ${new Date().toISOString().slice(0, 10)}` });
+          }
+          // Auto-swap base token back to SOL unless user said to hold (retried).
+          if (!args.skip_swap && (result as any).base_mint) {
+            const { swapped, result: swapResult } = await swapBaseToSolWithRetry((result as any).base_mint, 'after close');
+            if (swapped) {
+              (result as any).auto_swapped = true;
+              (result as any).auto_swap_note =
+                `Base token already auto-swapped back to SOL (${(result as any).base_mint.slice(0, 8)} → SOL). Do NOT call swap_token again.`;
+              if ((swapResult as any)?.amount_out) (result as any).sol_received = (swapResult as any).amount_out;
+            }
           }
         }
-      } else if (name === 'claim_fees' && config.management.autoSwapAfterClaim && (result as any).base_mint) {
-        await swapBaseToSolWithRetry((result as any).base_mint, 'after claim');
+      } else if (name === 'claim_fees') {
+        const isSuccess = (result as any)?.success !== false && !(result as any)?.error && !(result as any)?.blocked;
+        if (!isSuccess) {
+          notifyTransactionError({
+            type: 'claim',
+            position: args.position_address as string,
+            reason: (result as any)?.error || (result as any)?.reason || 'Fee claim failed',
+          }).catch((err: any) => {
+            log('telegram_warn', `Failed to send claim error notification: ${err?.message || err}`);
+          });
+        } else if (config.management.autoSwapAfterClaim && (result as any).base_mint) {
+          await swapBaseToSolWithRetry((result as any).base_mint, 'after claim');
+        }
       }
     }
 
@@ -1107,6 +1141,23 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
       duration_ms: duration,
       success: false,
     });
+
+    if (['deploy_position', 'close_position', 'claim_fees', 'swap_token'].includes(name)) {
+      const typeMap: Record<string, 'deploy' | 'close' | 'claim' | 'swap'> = {
+        deploy_position: 'deploy',
+        close_position: 'close',
+        claim_fees: 'claim',
+        swap_token: 'swap',
+      };
+      notifyTransactionError({
+        type: typeMap[name] || 'confirm',
+        pair: (args.pool_name || args.pool_address) as string,
+        position: args.position_address as string,
+        reason: error.message,
+      }).catch((err: any) => {
+        log('telegram_warn', `Failed to send tool exception notification: ${err?.message || err}`);
+      });
+    }
 
     return {
       error: error.message,
