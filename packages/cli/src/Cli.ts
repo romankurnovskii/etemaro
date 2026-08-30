@@ -16,7 +16,6 @@ dotenv.config({ override: true });
 import fs from 'fs';
 import path from 'path';
 import { parseArgs } from 'util';
-
 // Type-only imports to help tsc
 type CoreExports = typeof import('@etemaro/core');
 type DaemonExports = typeof import('@etemaro/daemon');
@@ -27,6 +26,17 @@ let computeDeployAmount: CoreExports['computeDeployAmount'] = null as any;
 let getTrackedPosition: CoreExports['getTrackedPosition'] = null as any;
 let log: CoreExports['log'] = null as any;
 let dataPath: CoreExports['dataPath'] = null as any;
+let getDataDir: CoreExports['getDataDir'] = null as any;
+let getEtemaroDir: CoreExports['getEtemaroDir'] = null as any;
+let USER_CONFIG_PATH: CoreExports['USER_CONFIG_PATH'] = null as any;
+let DEFAULT_ENTRY_SOURCE: CoreExports['DEFAULT_ENTRY_SOURCE'] = null as any;
+let SMART_WALLETS_FILENAME: CoreExports['SMART_WALLETS_FILENAME'] = null as any;
+let DISCORD_SIGNALS_FILENAME: CoreExports['DISCORD_SIGNALS_FILENAME'] = null as any;
+let LESSONS_FILENAME: CoreExports['LESSONS_FILENAME'] = null as any;
+let WALLETS_KEYPAIR_FILENAME: CoreExports['WALLETS_KEYPAIR_FILENAME'] = null as any;
+let DEFAULT_ACTIVE_STRATEGY_ID: CoreExports['DEFAULT_ACTIVE_STRATEGY_ID'] = null as any;
+let DEFAULT_STRATEGY_TYPE: CoreExports['DEFAULT_STRATEGY_TYPE'] = null as any;
+let DEFAULT_DISCORD_MODE_MERGE: CoreExports['DEFAULT_DISCORD_MODE_MERGE'] = null as any;
 let meteora: CoreExports['meteora'] = null as any;
 let wallet: CoreExports['wallet'] = null as any;
 let screening: CoreExports['screening'] = null as any;
@@ -57,6 +67,17 @@ async function loadCore(): Promise<void> {
   getTrackedPosition = coreMod.getTrackedPosition;
   log = coreMod.log;
   dataPath = coreMod.dataPath;
+  getDataDir = coreMod.getDataDir;
+  getEtemaroDir = coreMod.getEtemaroDir;
+  USER_CONFIG_PATH = coreMod.USER_CONFIG_PATH;
+  DEFAULT_ENTRY_SOURCE = coreMod.DEFAULT_ENTRY_SOURCE;
+  SMART_WALLETS_FILENAME = coreMod.SMART_WALLETS_FILENAME;
+  DISCORD_SIGNALS_FILENAME = coreMod.DISCORD_SIGNALS_FILENAME;
+  LESSONS_FILENAME = coreMod.LESSONS_FILENAME;
+  WALLETS_KEYPAIR_FILENAME = coreMod.WALLETS_KEYPAIR_FILENAME;
+  DEFAULT_ACTIVE_STRATEGY_ID = coreMod.DEFAULT_ACTIVE_STRATEGY_ID;
+  DEFAULT_STRATEGY_TYPE = coreMod.DEFAULT_STRATEGY_TYPE;
+  DEFAULT_DISCORD_MODE_MERGE = coreMod.DEFAULT_DISCORD_MODE_MERGE;
   meteora = coreMod.meteora;
   wallet = coreMod.wallet;
   screening = coreMod.screening;
@@ -331,7 +352,7 @@ export class Cli {
 
   constructor(adapters: CliAdapters) {
     this.adapters = adapters;
-    this.etemaroDir = path.join(process.env.XDG_CONFIG_HOME || path.join(process.env.HOME || '', '.config'), 'etemaro');
+    this.etemaroDir = getEtemaroDir();
   }
 
   // ─── Lifecycle ─────────────────────────────────────────────────
@@ -841,16 +862,16 @@ JUPITER_API_KEY=""
   }
 
   private handleDiscordSignals(sub2: string | undefined): void {
-    const sigFile = dataPath('discord-signals.json');
+    const sigFile = dataPath(DISCORD_SIGNALS_FILENAME);
     if (!fs.existsSync(sigFile)) {
-      out({ count: 0, pending: 0, signals: [], message: 'No discord-signals.json found. Is the listener running?' });
+      out({ count: 0, pending: 0, signals: [], message: `No ${DISCORD_SIGNALS_FILENAME} found. Is the listener running?` });
       return;
     }
     let signals: any[] = [];
     try {
       signals = JSON.parse(fs.readFileSync(sigFile, 'utf8'));
     } catch {
-      die('Failed to parse discord-signals.json');
+      die(`Failed to parse ${DISCORD_SIGNALS_FILENAME}`);
     }
 
     if (sub2 === 'clear') {

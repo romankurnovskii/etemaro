@@ -119,4 +119,24 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     expect(strategyLibraryPath('strategy-library.json')).toBe(path.join(REPO_ROOT, 'data', 'strategy-library.json'));
     expect(strategyLibraryPath('strategy-library.shared.json')).toBe(path.join(REPO_ROOT, 'data', 'strategy-library.shared.json'));
   });
+
+  it('getEtemaroDir respects ETEMARO_HOME and defaults to user config home', async () => {
+    const { getEtemaroDir } = await import('./constants.js');
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+
+    // Explicit ETEMARO_HOME
+    process.env.ETEMARO_HOME = '/custom/etemaro/home';
+    expect(getEtemaroDir()).toBe(path.resolve('/custom/etemaro/home'));
+    delete process.env.ETEMARO_HOME;
+
+    // XDG_CONFIG_HOME
+    process.env.XDG_CONFIG_HOME = '/custom/xdg/config';
+    expect(getEtemaroDir()).toBe(path.join('/custom/xdg/config', 'etemaro'));
+    delete process.env.XDG_CONFIG_HOME;
+
+    // Default ~/.config/etemaro
+    if (home) {
+      expect(getEtemaroDir()).toBe(path.join(home, '.config', 'etemaro'));
+    }
+  });
 });

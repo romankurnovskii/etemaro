@@ -650,6 +650,8 @@ export interface LlmConfig {
   managementModel: string;
   screeningModel: string;
   generalModel: string;
+  baseUrl: string;
+  apiKey: string;
 }
 
 export interface DarwinConfig {

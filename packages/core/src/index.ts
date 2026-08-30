@@ -17,6 +17,7 @@ export * from './config/Config.js';
 export * from './config/defaultUserConfig.js';
 export * from './shared/logger.js';
 export * from './shared/constants.js';
+export * from './shared/utils.js';
 export * from './shared/types.js';
 export * from './adapters/blockchain/WalletAdapter.js';
 export * from './adapters/ToolDefinitions.js';

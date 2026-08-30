@@ -11,7 +11,15 @@
 
 import fs from 'node:fs';
 import type { AppConfig } from '../shared/types.js';
-import { repoPath, dataPath, USER_CONFIG_PATH, MIN_SAFE_BINS_BELOW, TOKEN_MINTS, setMinSafeBinsBelowOverride } from '../shared/constants.js';
+import {
+  repoPath,
+  dataPath,
+  USER_CONFIG_PATH,
+  MIN_SAFE_BINS_BELOW,
+  TOKEN_MINTS,
+  setMinSafeBinsBelowOverride,
+  DEFAULT_LLM_BASE_URL,
+} from '../shared/constants.js';
 import { loadAndValidateConfig } from './ConfigValidator.js';
 import { DEFAULT_USER_CONFIG, defaultUserConfigStr } from './defaultUserConfig.js';
 import type { ValidatedUserConfig } from './schema.js';
@@ -179,6 +187,8 @@ function buildConfig(): AppConfig {
       managementModel: u.llm.managementModel,
       screeningModel: u.llm.screeningModel,
       generalModel: u.llm.generalModel,
+      baseUrl: process.env.LLM_BASE_URL || u.llm.baseUrl || DEFAULT_LLM_BASE_URL,
+      apiKey: process.env.LLM_API_KEY || u.llm.apiKey || '',
     },
     darwin: {
       enabled: u.darwin.enabled,
