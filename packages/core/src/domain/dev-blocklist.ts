@@ -10,16 +10,16 @@
  */
 
 import { log } from '../shared/logger.js';
-import { dataPath } from '../shared/constants.js';
+import { sharedDataPath } from '../shared/constants.js';
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js';
 import type { BlockedDev } from '../shared/types.js';
 
-const BLOCKLIST_FILE = dataPath('dev-blocklist.json');
+const BLOCKLIST_FILE = sharedDataPath('dev-blocklist.json');
 
 type DevBlocklistDb = Record<string, BlockedDev>;
 
 function load(): DevBlocklistDb {
-  return loadJsonFile<DevBlocklistDb>(BLOCKLIST_FILE, {});
+  return loadJsonFile<DevBlocklistDb>(BLOCKLIST_FILE, {}, { label: 'dev-blocklist' });
 }
 
 function save(data: DevBlocklistDb): void {

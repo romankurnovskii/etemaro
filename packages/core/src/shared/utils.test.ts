@@ -63,3 +63,38 @@ describe('saveJsonFile — atomicity', () => {
     }
   });
 });
+
+describe('loadJsonFile — missing vs corrupt file handling', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loadJsonFile-test-'));
+
+  afterEach(() => {
+    for (const f of fs.readdirSync(tmpDir)) {
+      fs.unlinkSync(path.join(tmpDir, f));
+    }
+  });
+
+  it('returns fallback without throwing when file does not exist', async () => {
+    const { loadJsonFile } = await import('./utils.js');
+    const target = path.join(tmpDir, 'nonexistent.json');
+    const result = loadJsonFile(target, { default: true });
+    expect(result).toEqual({ default: true });
+  });
+
+  it('returns fallback and logs warning when file contains corrupt JSON', async () => {
+    const { loadJsonFile } = await import('./utils.js');
+    const target = path.join(tmpDir, 'corrupt.json');
+    fs.writeFileSync(target, '{ bad json syntax !!!');
+
+    const result = loadJsonFile(target, { fallback: 123 }, { label: 'test-corrupt' });
+    expect(result).toEqual({ fallback: 123 });
+  });
+
+  it('correctly parses and returns valid JSON', async () => {
+    const { loadJsonFile } = await import('./utils.js');
+    const target = path.join(tmpDir, 'valid.json');
+    fs.writeFileSync(target, JSON.stringify({ success: true, count: 42 }));
+
+    const result = loadJsonFile(target, { success: false });
+    expect(result).toEqual({ success: true, count: 42 });
+  });
+});

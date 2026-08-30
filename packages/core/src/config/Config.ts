@@ -48,6 +48,12 @@ function buildConfig(): AppConfig {
   try {
     loaded = loadAndValidateConfig();
   } catch (err: any) {
+    const explicitConfig = process.env.USER_CONFIG_PATH?.trim();
+    if (explicitConfig) {
+      throw new Error(`[config] Fatal: Failed to load explicit configuration from USER_CONFIG_PATH="${explicitConfig}": ${err.message}`, {
+        cause: err,
+      });
+    }
     if (process.env.NODE_ENV !== 'test') {
       console.warn(`[config] Warning: using fallback defaults for info/init: ${err.message}`);
     }

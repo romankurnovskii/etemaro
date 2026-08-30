@@ -106,7 +106,7 @@ async function gmgnFetch(
       body: body ? JSON.stringify(body) : null,
     });
     const text = await res.text().catch(() => '');
-    let payload: Record<string, unknown> = {};
+    let payload: Record<string, unknown>;
     try {
       payload = text ? JSON.parse(text) : {};
     } catch {
