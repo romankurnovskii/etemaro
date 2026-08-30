@@ -68,7 +68,7 @@ let DaemonCtor: DaemonExports['Daemon'] = null as any;
  * Load core and daemon modules after environment is prepared.
  * Must be called before using any core functionality.
  */
-async function loadCore(): Promise<void> {
+export async function loadCore(): Promise<void> {
   const [coreMod, daemonMod] = await Promise.all([import('@etemaro/core'), import('@etemaro/daemon')]);
   // Assign core exports
   config = coreMod.config;
@@ -365,7 +365,7 @@ export class Cli {
 
   constructor(adapters: CliAdapters) {
     this.adapters = adapters;
-    this.etemaroDir = getEtemaroDir();
+    this.etemaroDir = typeof getEtemaroDir === 'function' ? getEtemaroDir() : defaultEtemaroHome();
   }
 
   // ─── Lifecycle ─────────────────────────────────────────────────
@@ -819,7 +819,7 @@ export class Cli {
   }
 
   private handleEvolve(): void {
-    const lessonsFile = path.join(process.cwd(), 'lessons.json');
+    const lessonsFile = dataPath(LESSONS_FILENAME);
     let perfData: any[] = [];
     if (fs.existsSync(lessonsFile)) {
       try {
@@ -898,6 +898,7 @@ export class Cli {
 
 function isCliTarget(filePath: string | undefined): boolean {
   if (!filePath) return false;
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') return false;
   const lower = filePath.toLowerCase();
   return (
     lower.endsWith('cli.ts') ||
