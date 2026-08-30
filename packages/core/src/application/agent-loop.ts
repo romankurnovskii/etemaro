@@ -197,7 +197,7 @@ function getToolsForRole(agentType: AgentRole, allTools: ToolDef[], goal = ''): 
 }
 
 function shouldRequireRealToolUse(goal: string, agentType: AgentRole, interactive = false): boolean {
-  if (agentType === 'MANAGER') return false;
+  if (agentType === 'MANAGER' || agentType === 'SCREENER') return false;
   if (DECISION_EXPLANATION_INTENTS.test(goal)) return false;
   if (CONFIG_READ_ONLY_INTENTS.test(goal)) return false;
   if (MUTATING_TOOL_INTENTS.test(goal)) return true;
@@ -648,10 +648,17 @@ export async function agentLoop(
             log('warn', `onToolFinish hook failed for ${functionName}: ${finishErr?.message || finishErr}`);
           }
 
-          // Lock deploy_position after first attempt regardless of outcome — retrying is never right
-          // For close/swap: only lock on success so genuine failures can be retried
-          if (NO_RETRY_TOOLS.has(functionName)) firedOnce.add(functionName);
-          else if (ONCE_PER_SESSION.has(functionName) && result?.success === true) firedOnce.add(functionName);
+          // Lock deploy_position after first attempt unless it was blocked by pre-flight safety checks (no on-chain action occurred).
+          // If blocked at pre-flight (result?.blocked === true), allow the agent to attempt a fallback candidate in the same session.
+          // If execution proceeded (success or on-chain failure/rejection), lock to prevent duplicate deployment.
+          // For other ONCE_PER_SESSION tools (close/swap): only lock on success so genuine failures can be retried.
+          if (NO_RETRY_TOOLS.has(functionName)) {
+            if (result?.blocked !== true) {
+              firedOnce.add(functionName);
+            }
+          } else if (ONCE_PER_SESSION.has(functionName) && result?.success === true) {
+            firedOnce.add(functionName);
+          }
 
           return {
             role: 'tool' as const,
