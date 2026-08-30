@@ -247,16 +247,16 @@ async function validateDeployPoolThresholds(args: Record<string, unknown>): Prom
       if (!usingDlmmFallback) {
         return {
           pass: false,
-          reason: 'Could not verify pool fee/active-TVL before deploy.',
+          reason: 'Could not verify pool real-time active-bin fee/TVL before deploy.',
         };
       }
       warnings.push(
-        'Pool fee/active-TVL ratio unavailable (Pool Discovery API indexing lag); using DLMM fallback pair data — skipped strict ratio filter.',
+        'Pool real-time active-bin fee/TVL ratio unavailable (Pool Discovery API indexing lag); using DLMM fallback pair data — skipped strict ratio filter.',
       );
     } else if (feeActiveTvlRatio < minFeeActiveTvlRatio) {
       return {
         pass: false,
-        reason: `Pool fee/active-TVL ${feeActiveTvlRatio}% is below configured minFeeActiveTvlRatio ${minFeeActiveTvlRatio}%.`,
+        reason: `Real-time active-bin fee/TVL ${feeActiveTvlRatio}% is below configured minFeeActiveTvlRatio ${minFeeActiveTvlRatio}%.`,
       };
     }
   }
