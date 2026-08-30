@@ -135,4 +135,34 @@ describe('Daemon — Concurrency & Mutex Guards', () => {
     }
     expect((daemon as any).managementBusy).toBe(true);
   });
+
+  it('calls getMyPositions only once during runManagementCycle and calculates remaining positions in memory', async () => {
+    const mockPositions = [
+      {
+        position: 'pos_1',
+        pool: 'pool_1',
+        pair: 'SOL-USDC',
+        pnl_pct: -55.0, // triggers stop loss close (default stopLossPct is -50)
+        unclaimed_fees_usd: 0,
+        total_value_usd: 100,
+        in_range: true,
+      },
+    ];
+
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({
+      total_positions: 1,
+      positions: mockPositions,
+    });
+    adapters.toolExecutor.executeTool = vi.fn().mockResolvedValue({ success: true });
+    const runScreeningSpy = vi.spyOn(daemon, 'runScreeningCycle').mockResolvedValue(null);
+
+    // Set cooldown to past so screening can trigger
+    (daemon as any).screeningLastTriggered = 0;
+
+    await daemon.runManagementCycle({ silent: true });
+
+    // getMyPositions should only be called once at start of cycle, NOT at the end
+    expect(adapters.meteora.getMyPositions).toHaveBeenCalledTimes(1);
+    expect(runScreeningSpy).toHaveBeenCalledTimes(1);
+  });
 });
