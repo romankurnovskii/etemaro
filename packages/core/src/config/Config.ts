@@ -42,6 +42,7 @@ export class ConfigLoadError extends Error {
 function applyUserConfigToEnv(u: ValidatedUserConfig): void {
   const connection = u.connection;
   if (connection?.rpcUrl) process.env.RPC_URL ||= connection?.rpcUrl;
+  if (connection?.rpcUrl2) process.env.RPC_URL_2 ||= connection.rpcUrl2;
   if (connection?.walletPrivateKey) process.env.WALLET_PRIVATE_KEY ||= connection?.walletPrivateKey;
   if (connection?.heliusApiKey) process.env.HELIUS_API_KEY ||= connection.heliusApiKey;
   if (connection?.telegramBotToken) process.env.TELEGRAM_BOT_TOKEN ||= connection.telegramBotToken;

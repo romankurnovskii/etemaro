@@ -9,6 +9,7 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
     description:
       'Network endpoints, API credentials, wallet key, LLM provider settings, and runtime mode. These values are also propagated to environment variables on startup.',
     rpcUrl: 'https://pump.helius-rpc.com',
+    rpcUrl2: 'env.RPC_URL_2',
     walletPrivateKey: 'env.WALLET_PRIVATE_KEY',
     heliusApiKey: 'env.HELIUS_API_KEY',
     telegramBotToken: 'env.TELEGRAM_BOT_TOKEN',

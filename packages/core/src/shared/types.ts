@@ -532,6 +532,7 @@ export interface AgentLoopResult {
 
 export interface ConnectionConfig {
   rpcUrl?: string;
+  rpcUrl2?: string | null;
   walletPrivateKey?: string;
   heliusApiKey?: string | null;
   telegramBotToken?: string | null;

@@ -118,3 +118,15 @@ When `DRY_RUN=true` is set in the environment:
 3. **Environment Propagation**: User-defined credentials and URLs in `user-config.json` are conditionally populated into `process.env` using `||=` fallback assignment, ensuring that environment variables passed explicitly via CLI or `.env` take precedence.
 4. **Test Isolation**: Test suites that mutate `process.env` or mock file system configs must snapshot and restore `process.env` in `beforeEach`/`afterEach`, and use `resetConfig()` from `@etemaro/core` to cleanly re-initialize the singleton state between test cases.
 
+---
+
+## RPC & API Efficiency Architecture
+
+Etemaro separates state-read workflows from transaction-write workflows to prevent runaway RPC credit usage:
+
+- **Free REST Datapis for Monitoring**: Active DLMM positions, range status, and real-time PnL/fees are monitored through Meteora's REST Datapi (`dlmm.datapi.meteora.ag`), avoiding expensive on-chain `getProgramAccounts` RPC calls.
+- **Jupiter for Valuation**: Token prices and USD conversions use Jupiter Free Price API v2 (`api.jup.ag/price/v2`) and Token list (`tokens.jup.ag`).
+- **RPC Exclusivity**: On-chain RPC calls (`simulateTransaction`, `sendAndConfirmTransaction`, `getLatestBlockhash`) are reserved strictly for pre-flight transaction simulations and execution.
+- See [RPC_AND_API_OPTIMIZATION.md](RPC_AND_API_OPTIMIZATION.md) for the complete decision matrix and caching blueprint.
+
+
