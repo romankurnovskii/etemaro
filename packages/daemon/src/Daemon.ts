@@ -284,6 +284,51 @@ export class Daemon {
   private latestCandidates: any[] = [];
   private latestCandidatesAt: string | null = null;
 
+  /**
+   * Synchronous atomic check-and-set lock acquisition for daemon async cycles.
+   * Prevents overlapping timer ticks or event-loop delays from entering guarded sections concurrently.
+   */
+  private acquireLock(lockName: 'management' | 'screening' | 'pnlPoll' | 'opportunityPoll'): boolean {
+    switch (lockName) {
+      case 'management':
+        if (this.managementBusy || this.pnlPollBusy) return false;
+        this.managementBusy = true;
+        return true;
+      case 'screening':
+        if (this.screeningBusy) return false;
+        this.screeningBusy = true;
+        return true;
+      case 'pnlPoll':
+        if (this.managementBusy || this.screeningBusy || this.pnlPollBusy) return false;
+        this.pnlPollBusy = true;
+        return true;
+      case 'opportunityPoll':
+        if (this.screeningBusy || this.managementBusy || this.pnlPollBusy || this.opportunityPollBusy) return false;
+        this.opportunityPollBusy = true;
+        return true;
+    }
+  }
+
+  /**
+   * Synchronous lock release helper.
+   */
+  private releaseLock(lockName: 'management' | 'screening' | 'pnlPoll' | 'opportunityPoll'): void {
+    switch (lockName) {
+      case 'management':
+        this.managementBusy = false;
+        break;
+      case 'screening':
+        this.screeningBusy = false;
+        break;
+      case 'pnlPoll':
+        this.pnlPollBusy = false;
+        break;
+      case 'opportunityPoll':
+        this.opportunityPollBusy = false;
+        break;
+    }
+  }
+
   // Countdown timer
   private countdownInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -480,17 +525,12 @@ export class Daemon {
     this.stopCronJobs(); // stop any running tasks before (re)starting
     this.adapters.domain.validateActiveStrategy();
 
-    const mgmtTask = cron.schedule(`*/${Math.max(1, config.schedule.managementIntervalMin)} * * * *`, async () => {
-      if (this.managementBusy || this.pnlPollBusy) return;
-      this.managementLastRun = Date.now();
-      await this.runManagementCycle();
-    });
+    const mgmtTask = cron.schedule(`*/${Math.max(1, config.schedule.managementIntervalMin)} * * * *`, () => this.runManagementCycle());
 
     const screenTask = cron.schedule(`*/${Math.max(1, config.schedule.screeningIntervalMin)} * * * *`, () => this.runScreeningCycle());
 
     const healthTask = cron.schedule(`0 * * * *`, async () => {
-      if (this.managementBusy || this.pnlPollBusy) return;
-      this.managementBusy = true;
+      if (!this.acquireLock('management')) return;
       log('cron', 'Starting health check');
       try {
         await agentLoop(
@@ -509,7 +549,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
       } catch (error: any) {
         log('cron_error', `Health check failed: ${error.message}`);
       } finally {
-        this.managementBusy = false;
+        this.releaseLock('management');
       }
     });
 
@@ -536,9 +576,8 @@ Summarize the current portfolio health, total fees earned, and performance of al
     const confirmTicks = Math.max(1, Number(config.pnl.confirmTicks ?? 2));
 
     this.pnlPollInterval = setInterval(async () => {
-      if (this.managementBusy || this.screeningBusy || this.pnlPollBusy) return;
       if (getTrackedPositions(true).length === 0) return;
-      this.pnlPollBusy = true;
+      if (!this.acquireLock('pnlPoll')) return;
       try {
         const result = await this.adapters.meteora.getMyPositions({ force: true, silent: true }).catch(() => null);
         if (!result?.positions?.length) return;
@@ -566,6 +605,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
 
           log('state', `[PnL poll] ${signal} confirmed (${confirmTicks} ticks): ${p.pair} — ${reason} — closing directly`);
           // Hold the management lock so the cron cycle can't double-act on this position.
+          const wasManagementBusy = this.managementBusy;
           this.managementBusy = true;
           try {
             const actMap = new Map([[p.position, { action: 'CLOSE', rule, reason }]]);
@@ -574,14 +614,14 @@ Summarize the current portfolio health, total fees earned, and performance of al
           } catch (e: any) {
             log('cron_error', `Poll-triggered close failed: ${e.message}`);
           } finally {
-            this.managementBusy = false;
+            this.managementBusy = wasManagementBusy;
           }
           break; // one action per tick
         }
       } catch (e: any) {
         log('cron_error', `PnL poll failed: ${e.message}`);
       } finally {
-        this.pnlPollBusy = false;
+        this.releaseLock('pnlPoll');
       }
     }, pnlPollMs);
 
@@ -591,10 +631,9 @@ Summarize the current portfolio health, total fees earned, and performance of al
       const oppCooldownMs = 5 * 60 * 1000;
 
       this.opportunityPollInterval = setInterval(async () => {
-        if (this.screeningBusy || this.managementBusy || this.pnlPollBusy || this.opportunityPollBusy) return;
-        if (Date.now() - this.screeningLastTriggered < oppCooldownMs) return;
-        this.opportunityPollBusy = true;
+        if (!this.acquireLock('opportunityPoll')) return;
         try {
+          if (Date.now() - this.screeningLastTriggered < oppCooldownMs) return;
           const [positions, balance] = await Promise.all([
             this.adapters.meteora.getMyPositions({ force: true, silent: true }).catch(() => null),
             this.adapters.wallet.getWalletBalances().catch(() => null),
@@ -644,7 +683,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
         } catch (e: any) {
           log('cron_error', `Opportunity poll failed: ${e.message}`);
         } finally {
-          this.opportunityPollBusy = false;
+          this.releaseLock('opportunityPoll');
         }
       }, oppMs);
     }
@@ -800,8 +839,7 @@ After evaluating, write a brief one-line result per position.
   }
 
   async runManagementCycle({ silent = false } = {}): Promise<string | null> {
-    if (this.managementBusy || this.pnlPollBusy) return null;
-    this.managementBusy = true;
+    if (!this.acquireLock('management')) return null;
     this.managementLastRun = Date.now();
     log('cron', 'Starting management cycle');
     let mgmtReport: string | null = null;
@@ -927,7 +965,7 @@ After evaluating, write a brief one-line result per position.
       log('cron_error', `Management cycle failed: ${error.message}`);
       mgmtReport = `Management cycle failed: ${error.message}`;
     } finally {
-      this.managementBusy = false;
+      this.releaseLock('management');
       if (!silent && this.adapters.telegram.isEnabled()) {
         if (mgmtReport) {
           if (liveMessage) await liveMessage.finalize(stripThink(mgmtReport)).catch(() => {});
@@ -979,11 +1017,10 @@ After evaluating, write a brief one-line result per position.
   }
 
   async runScreeningCycle({ silent = false } = {}): Promise<string | null> {
-    if (this.screeningBusy) {
+    if (!this.acquireLock('screening')) {
       log('cron', 'Screening skipped — previous cycle still running');
       return null;
     }
-    this.screeningBusy = true;
     this.screeningLastTriggered = Date.now();
 
     let prePositions: any, preBalance: any;
@@ -1003,7 +1040,6 @@ After evaluating, write a brief one-line result per position.
           summary: 'Screening skipped',
           reason: `Max positions reached (${prePositions.total_positions}/${config.risk.maxPositions})`,
         });
-        this.screeningBusy = false;
         return screenReport;
       }
       const minRequired = config.management.deployAmountSol + config.management.gasReserve;
@@ -1017,33 +1053,25 @@ After evaluating, write a brief one-line result per position.
           summary: 'Screening skipped',
           reason: `Insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired.toFixed(3)})`,
         });
-        this.screeningBusy = false;
         return screenReport;
       }
-    } catch (e: any) {
-      log('cron_error', `Screening pre-check failed: ${e.message}`);
-      screenReport = `Screening pre-check failed: ${e.message}`;
-      this.screeningBusy = false;
-      return screenReport;
-    }
-    if (!silent && this.adapters.telegram.isEnabled()) {
-      liveMessage = await this.adapters.telegram.createLiveMessage('🔍 Screening Cycle', 'Scanning candidates...');
-    }
-    this.screeningLastRun = Date.now();
 
-    if (config.screening.entrySource === 'smart_wallets') {
-      try {
-        screenReport = await this.runSmartWalletScreening({ liveMessage, deployAmount: computeDeployAmount(preBalance.sol) });
-      } catch (e: any) {
-        log('cron_error', `Smart wallet screening failed: ${e.message}`);
-        screenReport = `Smart wallet screening failed: ${e.message}`;
+      if (!silent && this.adapters.telegram.isEnabled()) {
+        liveMessage = await this.adapters.telegram.createLiveMessage('🔍 Screening Cycle', 'Scanning candidates...');
       }
-      this.screeningBusy = false;
-      return screenReport;
-    }
+      this.screeningLastRun = Date.now();
 
-    log('cron', `Starting screening cycle [model: ${config.llm.screeningModel}]`);
-    try {
+      if (config.screening.entrySource === 'smart_wallets') {
+        try {
+          screenReport = await this.runSmartWalletScreening({ liveMessage, deployAmount: computeDeployAmount(preBalance.sol) });
+        } catch (e: any) {
+          log('cron_error', `Smart wallet screening failed: ${e.message}`);
+          screenReport = `Smart wallet screening failed: ${e.message}`;
+        }
+        return screenReport;
+      }
+
+      log('cron', `Starting screening cycle [model: ${config.llm.screeningModel}]`);
       const currentBalance = preBalance;
       const deployAmount = computeDeployAmount(currentBalance.sol);
       log('cron', `Computed deploy amount: ${deployAmount} SOL (wallet: ${currentBalance.sol} SOL)`);
@@ -1331,7 +1359,7 @@ IMPORTANT:
       log('cron_error', `Screening cycle failed: ${error.message}`);
       screenReport = `Screening cycle failed: ${error.message}`;
     } finally {
-      this.screeningBusy = false;
+      this.releaseLock('screening');
       if (!silent && this.adapters.telegram.isEnabled()) {
         if (screenReport) {
           if (liveMessage) await liveMessage.finalize(stripThink(screenReport)).catch(() => {});
