@@ -1361,14 +1361,25 @@ IMPORTANT:
       return 'No smart LP wallets tracked.';
     }
 
-    // 2. Load snapshot
+    // 2. Load snapshot (with migration fallback from legacy unsuffixed snapshot)
     const snapshotPath = dataPath('.smart-wallets-snapshot.json');
+    const legacySnapshotPath = path.join(getDataDir(), '.smart-wallets-snapshot.json');
     let snapshot: domain.SmartWalletSnapshot | null = null;
     if (fs.existsSync(snapshotPath)) {
       try {
         snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
       } catch (e: any) {
         log('cron_error', `[SmartWallets] Failed to load snapshot: ${e.message}`);
+      }
+    } else if (snapshotPath !== legacySnapshotPath && fs.existsSync(legacySnapshotPath)) {
+      try {
+        snapshot = JSON.parse(fs.readFileSync(legacySnapshotPath, 'utf8'));
+        if (snapshot) {
+          saveJsonFile(snapshotPath, snapshot);
+          log('cron', `[SmartWallets] Migrated legacy snapshot to agent snapshot: ${snapshotPath}`);
+        }
+      } catch (e: any) {
+        log('cron_error', `[SmartWallets] Failed to load legacy snapshot: ${e.message}`);
       }
     }
 
