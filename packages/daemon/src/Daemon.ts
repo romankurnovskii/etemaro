@@ -44,6 +44,7 @@ import {
   updatePnlAndCheckExits,
   confirmPeak,
   registerExitSignal,
+  isPnlSuspect,
   getLastBriefingDate,
   setLastBriefingDate,
   meteora,
@@ -138,17 +139,7 @@ interface DeterministicCloseResult {
 
 export function getDeterministicCloseRule(position: any, managementConfig: typeof config.management): DeterministicCloseResult | null {
   const tracked = getTrackedPosition(position.position);
-  const pnlSuspect = (() => {
-    // Couldn't-price-this-tick flag (e.g. Jupiter outage) — never act on PnL rules.
-    if (position.pnl_pct_suspicious) return true;
-    if (position.pnl_pct == null) return false;
-    if (position.pnl_pct > -90) return false;
-    if (tracked?.amount_sol && (position.total_value_usd ?? 0) > 0.01) {
-      log('cron_warn', `Suspect PnL for ${position.pair}: ${position.pnl_pct}% but position still has value — skipping PnL rules`);
-      return true;
-    }
-    return false;
-  })();
+  const pnlSuspect = isPnlSuspect(position, tracked?.amount_sol);
 
   if (!pnlSuspect && position.pnl_pct != null && position.pnl_pct <= managementConfig.stopLossPct) {
     return {

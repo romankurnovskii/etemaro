@@ -406,6 +406,41 @@ interface PositionData {
   in_range: boolean;
   fee_per_tvl_24h?: number | null;
   age_minutes?: number | null;
+  total_value_usd?: number | null;
+  total_value_true_usd?: number | null;
+  amount_sol?: number | null;
+}
+
+/**
+ * Detects whether a position's PnL reading is suspicious (e.g. RPC pricing glitch or Jupiter outage).
+ * A deep negative PnL (<= -90%) is flagged as suspect if the position retains measurable value (> $0.01 or > 0 SOL),
+ * regardless of whether local state tracking is present.
+ */
+export function isPnlSuspect(
+  position: {
+    pnl_pct?: number | null;
+    pnl_pct_suspicious?: boolean;
+    total_value_usd?: number | null;
+    total_value_true_usd?: number | null;
+    amount_sol?: number | null;
+    pair?: string;
+    position?: string;
+  },
+  trackedAmountSol?: number | null,
+): boolean {
+  if (position.pnl_pct_suspicious) return true;
+  if (position.pnl_pct == null) return false;
+  if (position.pnl_pct > -90) return false;
+  const totalValue = position.total_value_usd ?? position.total_value_true_usd ?? 0;
+  const solValue = position.amount_sol ?? trackedAmountSol ?? 0;
+  if (totalValue > 0.01 || solValue > 0) {
+    log(
+      'cron_warn',
+      `Suspect PnL for ${position.pair || position.position || 'position'}: ${position.pnl_pct}% but position still has value ($${totalValue || `${solValue} SOL`}) — skipping PnL rules`,
+    );
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -444,8 +479,17 @@ export function updatePnlAndCheckExits(position_address: string, positionData: P
 
   if (changed) save(state);
 
+  const pnlSuspect = isPnlSuspect(
+    {
+      ...positionData,
+      position: position_address,
+      pair: pos.pool_name || pos.pool,
+    },
+    pos.amount_sol,
+  );
+
   // ── Stop loss ──────────────────────────────────────────────────
-  if (!pnl_pct_suspicious && currentPnlPct != null && mgmtConfig.stopLossPct != null && currentPnlPct <= mgmtConfig.stopLossPct) {
+  if (!pnlSuspect && currentPnlPct != null && mgmtConfig.stopLossPct != null && currentPnlPct <= mgmtConfig.stopLossPct) {
     return {
       action: 'STOP_LOSS',
       reason: `Stop loss: PnL ${currentPnlPct.toFixed(2)}% <= ${mgmtConfig.stopLossPct}%`,
@@ -453,7 +497,7 @@ export function updatePnlAndCheckExits(position_address: string, positionData: P
   }
 
   // ── Trailing TP ────────────────────────────────────────────────
-  if (!pnl_pct_suspicious && pos.trailing_active) {
+  if (!pnlSuspect && pos.trailing_active) {
     const dropFromPeak = pos.peak_pnl_pct - currentPnlPct!;
     if (dropFromPeak >= mgmtConfig.trailingDropPct) {
       return {

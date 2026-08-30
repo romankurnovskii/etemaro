@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Daemon, type DaemonAdapters } from './Daemon.js';
+import { Daemon, getDeterministicCloseRule, type DaemonAdapters } from './Daemon.js';
 
 function createMockAdapters(): DaemonAdapters {
   return {
@@ -316,4 +316,64 @@ REJECTED
     await expect((daemon as any).sendTelegramSafe('Test message')).resolves.toBeNull();
   });
 });
+
+describe('getDeterministicCloseRule suspect PnL handling', () => {
+  const mgmtConfig: any = {
+    stopLossPct: -10,
+    takeProfitPct: 20,
+    outOfRangeBinsToClose: 5,
+    outOfRangeWaitMinutes: 30,
+    minFeePerTvl24h: 1,
+  };
+
+  it('skips stop loss close rule when untracked position has deep negative PnL but retains value', () => {
+    // Position is active on-chain, not tracked in state.json, but has USD value during an RPC glitch
+    const rule = getDeterministicCloseRule(
+      {
+        position: 'PosUntrackedGlitch',
+        pair: 'SOL/USDC',
+        pnl_pct: -99.9,
+        total_value_usd: 25.0,
+      },
+      mgmtConfig,
+    );
+    expect(rule).toBeNull();
+  });
+
+  it('triggers stop loss close rule when untracked position has legitimate negative PnL exceeding threshold', () => {
+    const rule = getDeterministicCloseRule(
+      {
+        position: 'PosUntrackedRealLoss',
+        pair: 'SOL/USDC',
+        pnl_pct: -15.0,
+        total_value_usd: 25.0,
+      },
+      mgmtConfig,
+    );
+    expect(rule).toEqual({
+      action: 'CLOSE',
+      rule: 1,
+      reason: 'stop loss (pnl=-15.00% threshold=-10%)',
+    });
+  });
+
+  it('triggers stop loss close rule when deep negative PnL has zero value', () => {
+    const rule = getDeterministicCloseRule(
+      {
+        position: 'PosRuggedZeroValue',
+        pair: 'RUG/SOL',
+        pnl_pct: -99.9,
+        total_value_usd: 0,
+        amount_sol: 0,
+      },
+      mgmtConfig,
+    );
+    expect(rule).toEqual({
+      action: 'CLOSE',
+      rule: 1,
+      reason: 'stop loss (pnl=-99.90% threshold=-10%)',
+    });
+  });
+});
+
 
