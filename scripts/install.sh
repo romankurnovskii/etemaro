@@ -52,10 +52,14 @@ echo "Found latest release: $LATEST_RELEASE"
 echo "Installing Etemaro CLI via npm..."
 if command -v npm >/dev/null 2>&1; then
     npm install -g @etemaro/cli
-    echo "Etemaro CLI installed successfully!"
-    echo "Run 'etemaro help' to get started."
+    echo "Etemaro CLI installed."
+    echo ""
+    echo "Next (first-time setup, ~1 minute):"
+    echo "  etemaro init"
+    echo "Then:"
+    echo "  etemaro start --dry-run"
 else
     echo "Error: npm is required to install Etemaro CLI globally."
-    echo "Please install Node.js and npm first: https://nodejs.org/"
+    echo "Install Node.js 22+ first: https://nodejs.org/"
     exit 1
 fi
