@@ -151,8 +151,9 @@ describe('hiveMind agentId support', () => {
   });
 });
 
-describe('explicit USER_CONFIG_PATH fail-closed behavior', () => {
+describe('fail-closed config load and validation behavior', () => {
   const originalConfigPath = process.env.USER_CONFIG_PATH;
+  const originalSkipEnv = process.env.ETEMARO_SKIP_ENV_VALIDATION;
 
   afterEach(() => {
     if (originalConfigPath === undefined) {
@@ -160,16 +161,113 @@ describe('explicit USER_CONFIG_PATH fail-closed behavior', () => {
     } else {
       process.env.USER_CONFIG_PATH = originalConfigPath;
     }
+    if (originalSkipEnv === undefined) {
+      delete process.env.ETEMARO_SKIP_ENV_VALIDATION;
+    } else {
+      process.env.ETEMARO_SKIP_ENV_VALIDATION = originalSkipEnv;
+    }
     vi.restoreAllMocks();
   });
 
-  it('throws a fatal error when an explicit USER_CONFIG_PATH does not exist or fails validation', async () => {
+  it('throws ConfigLoadError when an explicit USER_CONFIG_PATH does not exist', async () => {
     vi.resetModules();
     process.env.USER_CONFIG_PATH = '/path/to/nonexistent/custom-config.json';
 
-    await expect(async () => {
+    let error: any;
+    try {
       await import('./Config.js');
-    }).rejects.toThrow(/Fatal: Failed to load explicit configuration from USER_CONFIG_PATH/);
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeDefined();
+    expect(error.name).toBe('ConfigLoadError');
+    expect(error.message).toMatch(/Fatal: Failed to load explicit configuration from USER_CONFIG_PATH/);
+  });
+
+  it('throws ConfigLoadError when an explicit USER_CONFIG_PATH contains corrupted JSON', async () => {
+    vi.resetModules();
+    process.env.USER_CONFIG_PATH = '/path/to/corrupted-config.json';
+
+    vi.doMock('node:fs', () => ({
+      default: {
+        existsSync: () => true,
+        readFileSync: () => '{"invalid json: true',
+      },
+      existsSync: () => true,
+      readFileSync: () => '{"invalid json: true',
+    }));
+
+    let error: any;
+    try {
+      await import('./Config.js');
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeDefined();
+    expect(error.name).toBe('ConfigLoadError');
+    expect(error.message).toMatch(/Failed to parse corrupted-config\.json/);
+  });
+
+  it('throws ConfigLoadError when an explicit USER_CONFIG_PATH fails schema validation', async () => {
+    vi.resetModules();
+    process.env.USER_CONFIG_PATH = '/path/to/invalid-schema.json';
+
+    vi.doMock('node:fs', () => ({
+      default: {
+        existsSync: () => true,
+        readFileSync: () => JSON.stringify({ _version: 'not-a-number' }),
+      },
+      existsSync: () => true,
+      readFileSync: () => JSON.stringify({ _version: 'not-a-number' }),
+    }));
+
+    let error: any;
+    try {
+      await import('./Config.js');
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeDefined();
+    expect(error.name).toBe('ConfigLoadError');
+    expect(error.message).toMatch(/invalid-schema\.json has invalid or missing fields/);
+  });
+
+  it('throws ConfigLoadError when default user-config.json contains corrupted JSON without explicit USER_CONFIG_PATH', async () => {
+    vi.resetModules();
+    delete process.env.USER_CONFIG_PATH;
+
+    vi.doMock('node:fs', () => ({
+      default: {
+        existsSync: (p: string) => p.endsWith('user-config.json'),
+        readFileSync: () => '{"corrupted": true,',
+      },
+      existsSync: (p: string) => p.endsWith('user-config.json'),
+      readFileSync: () => '{"corrupted": true,',
+    }));
+
+    let error: any;
+    try {
+      await import('./Config.js');
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeDefined();
+    expect(error.name).toBe('ConfigLoadError');
+    expect(error.message).toMatch(/Failed to parse user-config\.json/);
+  });
+
+  it('bypasses fatal error and falls back when ETEMARO_SKIP_ENV_VALIDATION is enabled for info/help commands', async () => {
+    vi.resetModules();
+    process.env.USER_CONFIG_PATH = '/path/to/nonexistent/custom-config.json';
+    process.env.ETEMARO_SKIP_ENV_VALIDATION = '1';
+
+    const { config: testConfig } = await import('./Config.js');
+    expect(testConfig).toBeDefined();
+    expect(testConfig.strategy).toBeDefined();
   });
 });
 
