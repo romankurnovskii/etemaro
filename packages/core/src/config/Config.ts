@@ -20,10 +20,17 @@ import {
   setMinSafeBinsBelowOverride,
   DEFAULT_LLM_BASE_URL,
 } from '../shared/constants.js';
-import { loadAndValidateConfig } from './ConfigValidator.js';
+import { loadAndValidateConfig, isHelpOrInfoCommand } from './ConfigValidator.js';
 import { DEFAULT_USER_CONFIG, defaultUserConfigStr } from './defaultUserConfig.js';
 import type { ValidatedUserConfig } from './schema.js';
 import { numericConfig, resolveEnvString } from '../shared/utils.js';
+
+export class ConfigLoadError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'ConfigLoadError';
+  }
+}
 
 function applyUserConfigToEnv(u: ValidatedUserConfig): void {
   const connection = u.connection;
@@ -56,14 +63,16 @@ function buildConfig(): AppConfig {
   try {
     loaded = loadAndValidateConfig();
   } catch (err: any) {
-    const explicitConfig = process.env.USER_CONFIG_PATH?.trim();
-    if (explicitConfig) {
-      throw new Error(`[config] Fatal: Failed to load explicit configuration from USER_CONFIG_PATH="${explicitConfig}": ${err.message}`, {
-        cause: err,
-      });
-    }
-    if (process.env.NODE_ENV !== 'test') {
-      console.warn(`[config] Warning: using fallback defaults for info/init: ${err.message}`);
+    if (isHelpOrInfoCommand()) {
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn(`[config] Warning: using fallback defaults for info/init: ${err.message}`);
+      }
+    } else {
+      const explicitConfig = process.env.USER_CONFIG_PATH?.trim();
+      const message = explicitConfig
+        ? `[config] Fatal: Failed to load explicit configuration from USER_CONFIG_PATH="${explicitConfig}": ${err.message}`
+        : `[config] Fatal: Failed to load configuration: ${err.message}`;
+      throw new ConfigLoadError(message, { cause: err });
     }
   }
 
