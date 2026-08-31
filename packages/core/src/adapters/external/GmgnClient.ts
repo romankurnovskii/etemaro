@@ -13,6 +13,7 @@
 
 import { config } from '../../config/Config.js';
 import { log } from '../../shared/logger.js';
+import { sleep } from '../../utils/time.js';
 
 // Safely force IPv4 in Node environments without breaking browser/Vite bundling
 if (typeof process !== 'undefined' && process.versions?.node) {
@@ -39,9 +40,7 @@ function safeUUID(): string {
 
 let lastGmgnRequestAt = 0;
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+
 
 async function paceGmgnRequest(): Promise<void> {
   const delayMs = Math.max(0, Number(config.gmgn?.requestDelayMs ?? 2500));

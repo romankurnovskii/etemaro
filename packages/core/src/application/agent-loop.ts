@@ -16,6 +16,7 @@ import { jsonrepair } from 'jsonrepair';
 import { buildSystemPrompt } from './prompt-builder.js';
 import { config } from '../config/Config.js';
 import { log, logStructured, createCorrelationId, setCorrelationId, createTimer } from '../shared/logger.js';
+import { sleep } from '../utils/time.js';
 import type { AgentRole, AgentMessage, ToolCall, ToolResult, WalletBalances, OnChainPosition, StateSummary } from '../shared/types.js';
 
 // ─── Tool definitions (imported dynamically at call site via adapter) ───
@@ -238,9 +239,7 @@ function isThinkingModeToolChoiceError(error: unknown): boolean {
   return /thinking mode does not support/i.test(message) && /tool_choice/i.test(message);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+
 
 /**
  * Summarize tool args for structured logging — truncates long values,
