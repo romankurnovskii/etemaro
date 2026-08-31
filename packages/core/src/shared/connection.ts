@@ -10,11 +10,12 @@ import { config } from '../config/Config.js';
 import { log } from './logger.js';
 import { isTransientRpcError, withRpcRetry, type RpcRetryOptions } from './utils.js';
 
-let _primaryConnection: Connection | null = null;
-let _primaryRpcUrl: string | null = null;
+interface ConnectionSlot {
+  conn: Connection;
+  url: string;
+}
 
-let _fallbackConnection: Connection | null = null;
-let _fallbackRpcUrl: string | null = null;
+const _connections = new Map<string, ConnectionSlot>();
 
 let _walletKeypair: Keypair | null = null;
 let _walletPrivateKey: string | null = null;
@@ -34,23 +35,28 @@ export function getRpcUrl(fallback = false): string {
 }
 
 /**
+ * Returns a cached Connection instance for a named slot and target RPC endpoint URL.
+ * Dynamically re-initializes if the target URL changes.
+ */
+export function getNamedConnection(slot: string, rpcUrl?: string): Connection {
+  const url = rpcUrl || getRpcUrl(slot === 'fallback');
+  const cached = _connections.get(slot);
+  if (!cached || cached.url !== url) {
+    const conn = new Connection(url, 'confirmed');
+    _connections.set(slot, { conn, url });
+    return conn;
+  }
+  return cached.conn;
+}
+
+/**
  * Returns a cached Connection instance for primary or fallback RPC endpoint.
  * Dynamically re-initializes if configuration changes.
  */
 export function getConnection(fallback = false): Connection {
+  const slot = fallback ? 'fallback' : 'primary';
   const rpc = getRpcUrl(fallback);
-  if (fallback) {
-    if (!_fallbackConnection || _fallbackRpcUrl !== rpc) {
-      _fallbackConnection = new Connection(rpc, 'confirmed');
-      _fallbackRpcUrl = rpc;
-    }
-    return _fallbackConnection;
-  }
-  if (!_primaryConnection || _primaryRpcUrl !== rpc) {
-    _primaryConnection = new Connection(rpc, 'confirmed');
-    _primaryRpcUrl = rpc;
-  }
-  return _primaryConnection;
+  return getNamedConnection(slot, rpc);
 }
 
 /**
@@ -126,10 +132,7 @@ export async function withRpcFailover<T>(
  * Resets cached connection and wallet singletons (primarily used for test isolation).
  */
 export function resetConnectionState(): void {
-  _primaryConnection = null;
-  _primaryRpcUrl = null;
-  _fallbackConnection = null;
-  _fallbackRpcUrl = null;
+  _connections.clear();
   _walletKeypair = null;
   _walletPrivateKey = null;
 }
