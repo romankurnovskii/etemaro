@@ -21,8 +21,10 @@ vi.mock('../../config/Config.js', () => ({
   shouldUseLpAgentRelay: vi.fn().mockReturnValue(false),
 }));
 
-import { closePosition } from './MeteoraAdapter.js';
+import { closePosition, getWalletPositions } from './MeteoraAdapter.js';
 import { recordClose } from '../../domain/state.js';
+import { getConnection, resetConnectionState } from '../../shared/connection.js';
+import { config } from '../../config/Config.js';
 
 describe('MeteoraAdapter — closePosition state reconciliation for on-chain closed positions', () => {
   beforeEach(() => {
@@ -64,5 +66,47 @@ describe('MeteoraAdapter — closePosition state reconciliation for on-chain clo
       position: 'ClosedPositionPDA',
     });
     expect(recordClose).toHaveBeenCalledWith('ClosedPositionPDA', 'already closed on-chain (externally)');
+  });
+});
+
+describe('MeteoraAdapter — RPC failover on read calls', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    resetConnectionState();
+  });
+
+  it('getWalletPositions transparently fails over to secondary RPC on transient 429 error', async () => {
+    config.connection = {
+      ...config.connection,
+      rpcUrl: 'https://primary.solana.com',
+      rpcUrl2: 'https://fallback.solana.com',
+    };
+
+    const primaryConn = getConnection(false);
+    const fallbackConn = getConnection(true);
+
+    let primaryAttempts = 0;
+    let fallbackAttempts = 0;
+
+    vi.spyOn(primaryConn, 'getProgramAccounts').mockImplementation(async () => {
+      primaryAttempts++;
+      throw new Error('429 Too Many Requests: rate limit exceeded');
+    });
+
+    vi.spyOn(fallbackConn, 'getProgramAccounts').mockImplementation(async () => {
+      fallbackAttempts++;
+      return [];
+    });
+
+    const wallet = '11111111111111111111111111111111';
+    const result = await getWalletPositions({ wallet_address: wallet });
+
+    expect(result).toEqual({
+      wallet,
+      total_positions: 0,
+      positions: [],
+    });
+    expect(primaryAttempts).toBeGreaterThan(0);
+    expect(fallbackAttempts).toBe(1);
   });
 });
