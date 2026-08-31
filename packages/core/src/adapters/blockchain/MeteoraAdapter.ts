@@ -218,7 +218,7 @@ async function signAndSimulateRelayTransactions(
       (conn) =>
         (conn as any).simulateTransaction(tx, {
           sigVerify: false,
-          replaceRecentBlockhash: false,
+          replaceRecentBlockhash: true,
         }),
       { label: 'simulateRelayTransaction' },
     );
