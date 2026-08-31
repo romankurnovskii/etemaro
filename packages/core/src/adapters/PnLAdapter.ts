@@ -16,6 +16,7 @@ import { config } from '../config/Config.js';
 // State module not yet converted to TS — import from repo root
 // @ts-ignore — state.js has no type declarations yet
 import { getTrackedPosition, markInRange, markOutOfRange, minutesOutOfRange } from '../domain/state.js';
+import { getNamedConnection } from '../shared/connection.js';
 import { log } from '../shared/logger.js';
 import { withRpcRetry } from '../shared/utils.js';
 
@@ -40,12 +41,8 @@ async function loadDlmmSdk(): Promise<any> {
   return _DLMM;
 }
 
-let _pnlConnection: Connection | null = null;
 export function getPnlConnection(): Connection {
-  if (!_pnlConnection) {
-    _pnlConnection = new Connection(config.pnl.rpcUrl, 'confirmed');
-  }
-  return _pnlConnection;
+  return getNamedConnection('pnl', config.pnl?.rpcUrl);
 }
 
 function safeNum(value: unknown): number {
