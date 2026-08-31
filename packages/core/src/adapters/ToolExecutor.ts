@@ -17,6 +17,7 @@ import { execSync, spawn } from 'node:child_process';
 
 // ─── Shared imports ────────────────────────────────────────────
 import { config, } from '../config/Config.js';
+import { sleep } from '../utils/time.js';
 import { REPO_ROOT, USER_CONFIG_PATH, getMinSafeBinsBelow } from '../shared/constants.js';
 import { log, logAction, logStructured } from '../shared/logger.js';
 import type { AgentRole } from '../shared/types.js';
@@ -765,7 +766,7 @@ const toolMap: Record<string, ToolFn> = {
 const WRITE_TOOLS = new Set(['deploy_position', 'claim_fees', 'close_position', 'swap_token']);
 const PROTECTED_TOOLS = new Set([...WRITE_TOOLS, 'self_update']);
 
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 
 const deployPositionMutex = new Mutex();
 

@@ -13,6 +13,7 @@
 
 import { config } from '../../config/Config.js';
 import { logStructured, createTimer } from '../../shared/logger.js';
+import { sleep } from '../../utils/time.js';
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -50,9 +51,7 @@ export function getAgentIdForRequests(): string {
   return config.agentId || 'agent-etemaro-local';
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+
 
 function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
