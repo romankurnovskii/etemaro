@@ -4,6 +4,7 @@ import bs58 from 'bs58';
 import { config } from '../config/Config.js';
 import {
   getConnection,
+  getNamedConnection,
   getRpcUrl,
   getWalletAddress,
   getWalletKeypair,
@@ -11,10 +12,12 @@ import {
   resetConnectionState,
   withRpcFailover,
 } from './connection.js';
+import { getPnlConnection } from '../adapters/PnLAdapter.js';
 
 describe('connection module', () => {
   const originalEnv = { ...process.env };
   const originalConnectionConfig = { ...config.connection };
+  const originalPnlConfig = { ...config.pnl };
 
   beforeEach(() => {
     resetConnectionState();
@@ -23,6 +26,7 @@ describe('connection module', () => {
   afterEach(() => {
     process.env = { ...originalEnv };
     config.connection = { ...originalConnectionConfig };
+    config.pnl = { ...originalPnlConfig };
     resetConnectionState();
   });
 
@@ -59,6 +63,48 @@ describe('connection module', () => {
       delete process.env.RPC_URL_2;
 
       expect(getRpcUrl(true)).toBe('https://primary-only.solana.com');
+    });
+  });
+
+  describe('getNamedConnection', () => {
+    it('caches and returns same Connection instance for same slot and URL', () => {
+      const conn1 = getNamedConnection('custom-slot', 'https://custom-rpc.solana.com');
+      const conn2 = getNamedConnection('custom-slot', 'https://custom-rpc.solana.com');
+      expect(conn1).toBe(conn2);
+      expect(conn1.rpcEndpoint).toBe('https://custom-rpc.solana.com');
+    });
+
+    it('recreates Connection instance when URL changes for the slot', () => {
+      const conn1 = getNamedConnection('custom-slot', 'https://custom-rpc-1.solana.com');
+      const conn2 = getNamedConnection('custom-slot', 'https://custom-rpc-2.solana.com');
+      expect(conn1).not.toBe(conn2);
+      expect(conn2.rpcEndpoint).toBe('https://custom-rpc-2.solana.com');
+    });
+
+    it('maintains isolated connections across different named slots', () => {
+      const pnlConn = getNamedConnection('pnl', 'https://pnl.solana.com');
+      const customConn = getNamedConnection('custom', 'https://custom.solana.com');
+      expect(pnlConn).not.toBe(customConn);
+      expect(pnlConn.rpcEndpoint).toBe('https://pnl.solana.com');
+      expect(customConn.rpcEndpoint).toBe('https://custom.solana.com');
+    });
+
+    it('clears all cached named connections on resetConnectionState', () => {
+      const conn1 = getNamedConnection('slot-a', 'https://slot-a.solana.com');
+      resetConnectionState();
+      const conn2 = getNamedConnection('slot-a', 'https://slot-a.solana.com');
+      expect(conn1).not.toBe(conn2);
+    });
+
+    it('getPnlConnection delegates to pnl named slot with dynamic URL support', () => {
+      config.pnl = { ...config.pnl, rpcUrl: 'https://helius-pnl.solana.com' };
+      const conn1 = getPnlConnection();
+      expect(conn1.rpcEndpoint).toBe('https://helius-pnl.solana.com');
+
+      config.pnl = { ...config.pnl, rpcUrl: 'https://updated-helius-pnl.solana.com' };
+      const conn2 = getPnlConnection();
+      expect(conn2.rpcEndpoint).toBe('https://updated-helius-pnl.solana.com');
+      expect(conn1).not.toBe(conn2);
     });
   });
 
