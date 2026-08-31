@@ -41,7 +41,7 @@ import {
 import { getMinSafeBinsBelow } from '../../shared/constants.js';
 import { log, logStructured } from '../../shared/logger.js';
 import { agentMeridianJson, getAgentIdForRequests, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js';
-import { getConnection, getWalletKeypair as getWallet } from '../../shared/connection.js';
+import { getConnection, getWalletKeypair as getWallet, withRpcFailover } from '../../shared/connection.js';
 import { type GetMyPositionsResult } from '../../shared/types.js';
 import { computePositions, fetchDlmmPnlForPool } from '../PnLAdapter.js';
 import { invalidateBalanceCache, normalizeMint } from './WalletAdapter.js';
@@ -214,10 +214,14 @@ async function signAndSimulateRelayTransactions(
     }
 
     const ownerIndex = staticKeys.indexOf(owner);
-    const simulation = await (getConnection() as any).simulateTransaction(tx, {
-      sigVerify: false,
-      replaceRecentBlockhash: false,
-    });
+    const simulation: any = await withRpcFailover(
+      (conn) =>
+        (conn as any).simulateTransaction(tx, {
+          sigVerify: false,
+          replaceRecentBlockhash: false,
+        }),
+      { label: 'simulateRelayTransaction' },
+    );
     const value = simulation.value as any;
     if (value.err) {
       throw new Error(`Relay ${label || 'transaction'} ${index + 1} simulation failed: ${JSON.stringify(value.err)}`);
@@ -304,7 +308,10 @@ async function assertRangeDoesNotRequireBinArrayInitialization(pool: any, minBin
   const upper = new BN(Math.max(minBinId, maxBinId));
   const indexes = getBinArrayIndexesCoverage(lower, upper);
   const keys = getBinArrayKeysCoverage(lower, upper, poolPubkey, programId);
-  const accounts = await getConnection().getMultipleAccountsInfo(keys, 'confirmed');
+  const accounts = await withRpcFailover(
+    (conn) => conn.getMultipleAccountsInfo(keys, 'confirmed'),
+    { label: 'getMultipleAccountsInfo:binArrayCoverage' },
+  );
   const missing = accounts
     .map((account: any, index: number) =>
       account
@@ -333,7 +340,10 @@ async function assertRangeDoesNotRequireBinArrayInitialization(pool: any, minBin
     const needsBitmapExtension = indexes.some((index: any) => isOverflowDefaultBinArrayBitmap(index));
     if (needsBitmapExtension) {
       const [bitmapExtension] = deriveBinArrayBitmapExtension(poolPubkey, programId);
-      const account = await getConnection().getAccountInfo(bitmapExtension, 'confirmed');
+      const account = await withRpcFailover(
+        (conn) => conn.getAccountInfo(bitmapExtension, 'confirmed'),
+        { label: 'getAccountInfo:bitmapExtension' },
+      );
       if (!account) {
         throw new Error(
           'Deploy skipped: selected range requires Meteora bin-array bitmap extension initialization ' +
@@ -400,7 +410,10 @@ async function getPool(poolAddress: string): Promise<any> {
   const key = poolAddress.toString();
   if (!poolCache.has(key)) {
     const { DLMM } = await getDLMM();
-    const pool = await DLMM.create(getConnection(), new PublicKey(poolAddress));
+    const pool = await withRpcFailover(
+      (conn) => DLMM.create(conn, new PublicKey(poolAddress)),
+      { label: 'DLMM.create:getPool' },
+    );
     poolCache.set(key, pool);
   }
   return poolCache.get(key);
@@ -662,7 +675,10 @@ export async function deployPosition({
   const totalYLamports = new BN(Math.floor(finalAmountY * 1e9));
   let totalXLamports = new BN(0);
   if (finalAmountX > 0) {
-    const mintInfo = await getConnection().getParsedAccountInfo(new PublicKey(pool.lbPair.tokenXMint));
+    const mintInfo = await withRpcFailover(
+      (conn) => conn.getParsedAccountInfo(new PublicKey(pool.lbPair.tokenXMint)),
+      { label: 'getParsedAccountInfo:tokenXMint' },
+    );
     const decimals = (mintInfo.value?.data as any)?.parsed?.info?.decimals ?? 9;
     totalXLamports = new BN(Math.floor(finalAmountX * Math.pow(10, decimals)));
   }
@@ -1423,16 +1439,20 @@ export async function getWalletPositions({ wallet_address }: { wallet_address: s
   try {
     const DLMM_PROGRAM = new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo');
 
-    const accounts = await getConnection().getProgramAccounts(DLMM_PROGRAM, {
-      filters: [
-        {
-          memcmp: {
-            offset: 40,
-            bytes: new PublicKey(wallet_address).toBase58(),
-          },
-        },
-      ],
-    });
+    const accounts = await withRpcFailover(
+      (conn) =>
+        conn.getProgramAccounts(DLMM_PROGRAM, {
+          filters: [
+            {
+              memcmp: {
+                offset: 40,
+                bytes: new PublicKey(wallet_address).toBase58(),
+              },
+            },
+          ],
+        }),
+      { label: 'getProgramAccounts:positionsByPool' },
+    );
 
     if (accounts.length === 0) {
       return { wallet: wallet_address, total_positions: 0, positions: [] };
@@ -2209,9 +2229,12 @@ async function lookupPoolForPosition(position_address: string, walletAddress: st
   if (cached?.pool) return cached.pool;
 
   const { DLMM } = await getDLMM();
-  const allPositions = await DLMM.getAllLbPairPositionsByUser(getConnection(), new PublicKey(walletAddress));
+  const allPositions = (await withRpcFailover(
+    (conn) => DLMM.getAllLbPairPositionsByUser(conn, new PublicKey(walletAddress)),
+    { label: 'DLMM.getAllLbPairPositionsByUser' },
+  )) as Record<string, any>;
 
-  for (const [lbPairKey, positionData] of Object.entries(allPositions)) {
+  for (const [lbPairKey, positionData] of Object.entries(allPositions || {})) {
     for (const pos of (positionData as any).lbPairPositionsData || []) {
       if (pos.publicKey.toString() === position_address) return lbPairKey;
     }
