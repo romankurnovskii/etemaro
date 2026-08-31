@@ -2,29 +2,69 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../shared/logger.js', () => ({
   log: vi.fn(),
+  logStructured: vi.fn(),
 }));
 
 vi.mock('../../domain/state.js', () => ({
-  getTrackedPosition: vi.fn().mockReturnValue({ pool: 'TestPoolAddress', pool_name: 'TEST-SOL' }),
+  getTrackedPosition: vi.fn().mockReturnValue({ pool: '11111111111111111111111111111111', pool_name: 'TEST-SOL' }),
   recordClose: vi.fn(),
 }));
 
+vi.mock('@meteora-ag/dlmm', () => {
+  const mockDLMM = {
+    create: vi.fn().mockResolvedValue({
+      lbPair: {
+        tokenXMint: { toString: () => 'So11111111111111111111111111111111111111112' },
+        tokenYMint: { toString: () => 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' },
+      },
+    }),
+    getAllLbPairPositionsByUser: vi.fn().mockResolvedValue({}),
+    getBinIdFromPrice: vi.fn(),
+  };
+  return {
+    DLMM: mockDLMM,
+    default: mockDLMM,
+    StrategyType: { Spot: 0, Curve: 1, BidAsk: 2 },
+    getPriceOfBinByBinId: vi.fn(),
+    getBinArrayKeysCoverage: vi.fn(),
+    getBinArrayIndexesCoverage: vi.fn(),
+    deriveBinArrayBitmapExtension: vi.fn(),
+    isOverflowDefaultBinArrayBitmap: vi.fn(),
+    BIN_ARRAY_FEE: 0,
+    BIN_ARRAY_BITMAP_FEE: 0,
+  };
+});
+
 vi.mock('./WalletAdapter.js', () => ({
-  getWallet: vi.fn().mockReturnValue({ publicKey: { toString: () => 'TestWalletPublicKey' } }),
+  getWallet: vi.fn().mockReturnValue(Keypair.generate()),
   normalizeMint: (mint: string) => mint,
+  invalidateBalanceCache: vi.fn(),
+}));
+
+vi.mock('../external/AgentMeridianClient.js', () => ({
+  agentMeridianJson: vi.fn(),
+  getAgentIdForRequests: vi.fn().mockReturnValue('test-agent'),
+  getAgentMeridianHeaders: vi.fn().mockReturnValue({}),
 }));
 
 vi.mock('../../config/Config.js', () => ({
   config: {
     tokens: { SOL: 'So11111111111111111111111111111111111111112' },
+    pnl: { source: 'api' },
+    management: {},
+    api: { meridian: {} },
+    connection: {},
   },
   shouldUseLpAgentRelay: vi.fn().mockReturnValue(false),
 }));
 
+import { Transaction, Keypair, PublicKey } from '@solana/web3.js';
+import bs58 from 'bs58';
 import { closePosition, getWalletPositions } from './MeteoraAdapter.js';
 import { recordClose } from '../../domain/state.js';
 import { getConnection, resetConnectionState } from '../../shared/connection.js';
 import { config } from '../../config/Config.js';
+import { agentMeridianJson } from '../external/AgentMeridianClient.js';
 
 describe('MeteoraAdapter — closePosition state reconciliation for on-chain closed positions', () => {
   beforeEach(() => {
@@ -109,4 +149,128 @@ describe('MeteoraAdapter — RPC failover on read calls', () => {
     expect(primaryAttempts).toBeGreaterThan(0);
     expect(fallbackAttempts).toBe(1);
   });
+});
+
+describe('MeteoraAdapter — relay transaction simulation', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    resetConnectionState();
+  });
+
+  it('passes replaceRecentBlockhash: true in simulateTransaction options to prevent blockhash expiry errors', async () => {
+    const testWallet = Keypair.generate();
+    config.connection = {
+      rpcUrl: 'https://api.mainnet-beta.solana.com',
+      walletPrivateKey: bs58.encode(testWallet.secretKey),
+    } as any;
+    config.api = {
+      meridian: {
+        lpAgentRelayEnabled: true,
+      },
+    } as any;
+    config.pnl = { source: 'api' } as any;
+    config.tokens = { SOL: 'So11111111111111111111111111111111111111112' } as any;
+
+    const positionAddress = Keypair.generate().publicKey.toString();
+
+    const dummyTx = new Transaction();
+    dummyTx.recentBlockhash = Keypair.generate().publicKey.toString();
+    dummyTx.feePayer = testWallet.publicKey;
+    const dummyProgramId = Keypair.generate().publicKey;
+    // Add positionAddress so requiredStaticAccounts passes
+    dummyTx.add({
+      programId: dummyProgramId,
+      keys: [
+        { pubkey: testWallet.publicKey, isSigner: true, isWritable: true },
+        { pubkey: new PublicKey(positionAddress), isSigner: false, isWritable: false },
+      ],
+      data: Buffer.from([1, 2, 3]),
+    });
+
+    const serializedBase64 = dummyTx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64');
+
+    vi.mocked(agentMeridianJson).mockImplementation(async (path: string) => {
+      if (path === '/execution/zap-out/order') {
+        return {
+          requestId: 'req_123',
+          order: {
+            transactions: {
+              close: [serializedBase64],
+              swap: [],
+            },
+            lastValidBlockHeight: 123456,
+          },
+        };
+      }
+      if (path === '/execution/zap-out/submit') {
+        return { signatures: ['sig_relay_close_123'] };
+      }
+      return {};
+    });
+
+    // Mock fetch for pool metadata, portfolio, and closed PnL
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/portfolio/')) {
+        return {
+          ok: true,
+          json: async () => ({ pools: [] }),
+        };
+      }
+      if (url.includes('/pnl')) {
+        return {
+          ok: true,
+          json: async () => ({
+            positions: [
+              {
+                positionAddress,
+                pnlUsd: '0',
+                allTimeWithdrawals: { total: { usd: '0' } },
+                allTimeDeposits: { total: { usd: '0' } },
+                allTimeFees: { total: { usd: '0' } },
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          token_x: { symbol: 'TEST' },
+          token_y: { symbol: 'SOL' },
+        }),
+      };
+    }) as any;
+
+    const primaryConn = getConnection(false);
+    const simulateSpy = vi.spyOn(primaryConn, 'simulateTransaction').mockResolvedValue({
+      context: { slot: 100 },
+      value: {
+        err: null,
+        logs: [],
+        accounts: null,
+        unitsConsumed: 1000,
+        returnData: null,
+        preBalances: [1000000000, 0],
+        postBalances: [1000000000, 0],
+        preTokenBalances: [],
+        postTokenBalances: [],
+      },
+    } as any);
+
+    try {
+      const result = await closePosition({ position_address: positionAddress });
+      expect(result.success).toBe(true);
+    } finally {
+      global.fetch = originalFetch;
+    }
+
+    expect(simulateSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        sigVerify: false,
+        replaceRecentBlockhash: true,
+      }),
+    );
+  }, 10000);
 });
