@@ -823,13 +823,20 @@ const toolMap: Record<string, ToolFn> = {
 
 // ─── Protected tools ───────────────────────────────────────────
 
-const WRITE_TOOLS = new Set(['deploy_position', 'claim_fees', 'close_position', 'swap_token'])
+const WRITE_TOOLS = new Set([
+  'deploy_position',
+  'claim_fees',
+  'close_position',
+  'close_all_positions',
+  'swap_token',
+  'swap_all_tokens_to_sol',
+])
 const PROTECTED_TOOLS = new Set([...WRITE_TOOLS, 'self_update'])
 
-const deployPositionMutex = new Mutex()
+const writeToolsMutex = new Mutex()
 
-async function withDeployPositionLock<T>(operation: () => Promise<T>): Promise<T> {
-  return deployPositionMutex.runExclusive(operation)
+async function withWriteToolsLock<T>(operation: () => Promise<T>): Promise<T> {
+  return writeToolsMutex.runExclusive(operation)
 }
 
 /**
@@ -1065,8 +1072,8 @@ export async function closeAllPositions(
  */
 export async function executeTool(name: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
   const normalizedName = name.replace(/<.*$/, '').trim()
-  if (normalizedName === 'deploy_position') {
-    return withDeployPositionLock(() => executeToolUnlocked(normalizedName, args))
+  if (WRITE_TOOLS.has(normalizedName)) {
+    return withWriteToolsLock(() => executeToolUnlocked(normalizedName, args))
   }
   return executeToolUnlocked(normalizedName, args)
 }

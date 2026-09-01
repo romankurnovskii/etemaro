@@ -379,6 +379,43 @@ describe('ToolExecutor - deploy_position serialization', () => {
     })
     expect(MeteoraAdapter.deployPosition).toHaveBeenCalledTimes(1)
   })
+
+  it('serializes concurrent swap_token calls to prevent parallel execution', async () => {
+    let inFlightSwaps = 0
+    let maxInFlightSwaps = 0
+    let releaseFirstSwap!: () => void
+    const firstSwapFinished = new Promise<void>((resolve) => {
+      releaseFirstSwap = resolve
+    })
+
+    vi.mocked(WalletAdapter.swapToken).mockImplementation(async () => {
+      inFlightSwaps++
+      maxInFlightSwaps = Math.max(maxInFlightSwaps, inFlightSwaps)
+      if (inFlightSwaps === 1) await firstSwapFinished
+      inFlightSwaps--
+      return { success: true, tx: `tx-${Date.now()}` } as any
+    })
+
+    const swap1 = executeTool('swap_token', {
+      input_mint: 'TOKEN_A',
+      output_mint: 'SOL',
+      amount: 100,
+    })
+    const swap2 = executeTool('swap_token', {
+      input_mint: 'TOKEN_B',
+      output_mint: 'SOL',
+      amount: 200,
+    })
+
+    await vi.waitFor(() => expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(1))
+    expect(maxInFlightSwaps).toBe(1)
+
+    releaseFirstSwap()
+    await Promise.all([swap1, swap2])
+
+    expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(2)
+    expect(maxInFlightSwaps).toBe(1)
+  })
 })
 
 describe('ToolExecutor - close_position auto-swap', () => {
