@@ -12,23 +12,23 @@
  * - Duration tracking helper via `createTimer()`
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
-import crypto from 'node:crypto';
-import { dataPath } from './constants.js';
-import { getAgentIdForRequests } from '../adapters/external/AgentMeridianClient.js';
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
+import { getAgentIdForRequests } from '../adapters/external/AgentMeridianClient.js'
+import { dataPath } from './constants.js'
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 const LOG_LEVELS: Record<LogLevel, number> = {
   debug: 0,
   info: 1,
   warn: 2,
   error: 3,
-};
+}
 
-const currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
-const minLevel = LOG_LEVELS[currentLevel] ?? LOG_LEVELS.info;
+const currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info'
+const minLevel = LOG_LEVELS[currentLevel] ?? LOG_LEVELS.info
 
 // ─── Sensitive Data Redaction ─────────────────────────────────
 
@@ -43,29 +43,29 @@ const SENSITIVE_PATTERNS: RegExp[] = [
   /(?:api[_-]?key|apikey|secret|token|password|private[_-]?key)\s*[=:]\s*["']?([A-Za-z0-9_\-./]{20,})["']?/gi,
   // Generic key=value in URLs (e.g. ?api-key=xxx or &key=xxx)
   /[?&](?:api[_-]?key|key|apikey|secret|token)=([A-Za-z0-9_-]{16,})/gi,
-];
+]
 
 /** Characters that indicate a redacted value was sanitized. */
-const REDACTED = '[REDACTED]';
+const REDACTED = '[REDACTED]'
 
 /**
  * Scan a string for sensitive patterns and replace matches with [REDACTED].
  * This is the centralized redaction layer — all log output should pass through here.
  */
 export function redactSensitive(text: string): string {
-  if (!text) return text;
-  let result = text;
+  if (!text) return text
+  let result = text
   for (const pattern of SENSITIVE_PATTERNS) {
     // Reset lastIndex for global regexes
-    pattern.lastIndex = 0;
-    result = result.replace(pattern, REDACTED);
+    pattern.lastIndex = 0
+    result = result.replace(pattern, REDACTED)
   }
-  return result;
+  return result
 }
 
 // ─── Correlation ID ───────────────────────────────────────────
 
-let _correlationId: string | null = null;
+let _correlationId: string | null = null
 
 /**
  * Generate a short, unique correlation ID for tracing a cron cycle, agent loop
@@ -74,9 +74,9 @@ let _correlationId: string | null = null;
  */
 export function createCorrelationId(): string {
   try {
-    return crypto.randomUUID().slice(0, 12);
+    return crypto.randomUUID().slice(0, 12)
   } catch {
-    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   }
 }
 
@@ -86,23 +86,23 @@ export function createCorrelationId(): string {
  * `setCorrelationId(null)` is called.
  */
 export function setCorrelationId(id: string | null): void {
-  _correlationId = id;
+  _correlationId = id
 }
 
 /**
  * Get the current active correlation ID (or null if none set).
  */
 export function getCorrelationId(): string | null {
-  return _correlationId;
+  return _correlationId
 }
 
 // ─── Duration Timer ───────────────────────────────────────────
 
 export interface TimerResult {
   /** Elapsed time in milliseconds since the timer was created. */
-  elapsed_ms: number;
+  elapsed_ms: number
   /** Stop the timer and return elapsed_ms. */
-  stop: () => number;
+  stop: () => number
 }
 
 /**
@@ -110,51 +110,51 @@ export interface TimerResult {
  * Useful for timing operations: `const timer = createTimer(); ... timer.stop()`
  */
 export function createTimer(): TimerResult {
-  const start = Date.now();
-  let stopped = false;
-  let elapsed = 0;
+  const start = Date.now()
+  let stopped = false
+  let elapsed = 0
   return {
     get elapsed_ms() {
-      return stopped ? elapsed : Date.now() - start;
+      return stopped ? elapsed : Date.now() - start
     },
     stop() {
       if (!stopped) {
-        elapsed = Date.now() - start;
-        stopped = true;
+        elapsed = Date.now() - start
+        stopped = true
       }
-      return elapsed;
+      return elapsed
     },
-  };
+  }
 }
 
 // ─── Log Path Resolution ─────────────────────────────────────
 
 /** Resolve logs dir on each write so ETEMARO_DATA_DIR/DATA_DIR is always honored. */
 function ensureLogsDir(): string {
-  const logsDir = dataPath('logs');
+  const logsDir = dataPath('logs')
   if (!fs.existsSync(logsDir)) {
-    fs.mkdirSync(logsDir, { recursive: true });
+    fs.mkdirSync(logsDir, { recursive: true })
   }
-  return logsDir;
+  return logsDir
 }
 
 function getAgentSlug(): string {
-  return (getAgentIdForRequests() || 'agent-local').replace(/[^a-zA-Z0-9_-]/g, '_');
+  return (getAgentIdForRequests() || 'agent-local').replace(/[^a-zA-Z0-9_-]/g, '_')
 }
 
 function getLogPath(): string {
-  const date = new Date().toISOString().slice(0, 10);
-  return path.join(ensureLogsDir(), `agent-${getAgentSlug()}-${date}.log`);
+  const date = new Date().toISOString().slice(0, 10)
+  return path.join(ensureLogsDir(), `agent-${getAgentSlug()}-${date}.log`)
 }
 
 function getAuditPath(): string {
-  const date = new Date().toISOString().slice(0, 10);
-  return path.join(ensureLogsDir(), `actions-${getAgentSlug()}-${date}.jsonl`);
+  const date = new Date().toISOString().slice(0, 10)
+  return path.join(ensureLogsDir(), `actions-${getAgentSlug()}-${date}.jsonl`)
 }
 
 function getStructuredLogPath(): string {
-  const date = new Date().toISOString().slice(0, 10);
-  return path.join(ensureLogsDir(), `structured-${getAgentSlug()}-${date}.jsonl`);
+  const date = new Date().toISOString().slice(0, 10)
+  return path.join(ensureLogsDir(), `structured-${getAgentSlug()}-${date}.jsonl`)
 }
 
 // ─── Core Log Function (backward-compatible) ──────────────────
@@ -168,20 +168,21 @@ function getStructuredLogPath(): string {
  * Sensitive data in the message is automatically redacted before writing.
  */
 export function log(level: string, message: string): void {
-  const ts = new Date().toISOString();
-  const agentId = getAgentIdForRequests();
-  const dryTag = process.env.DRY_RUN === 'true' ? ' [DRY RUN]' : '';
-  const redacted = redactSensitive(message);
-  const line = `[${ts}] [${level}] [${agentId}]${dryTag} ${redacted}\n`;
+  const ts = new Date().toISOString()
+  const agentId = getAgentIdForRequests()
+  const dryTag = process.env.DRY_RUN === 'true' ? ' [DRY RUN]' : ''
+  const redacted = redactSensitive(message)
+  const line = `[${ts}] [${level}] [${agentId}]${dryTag} ${redacted}\n`
   try {
-    fs.appendFileSync(getLogPath(), line);
+    fs.appendFileSync(getLogPath(), line)
   } catch {
     /* ignore */
   }
   const categoryLevel =
-    LOG_LEVELS[level as LogLevel] ?? (level.includes('error') ? LOG_LEVELS.error : level.includes('warn') ? LOG_LEVELS.warn : LOG_LEVELS.info);
+    LOG_LEVELS[level as LogLevel] ??
+    (level.includes('error') ? LOG_LEVELS.error : level.includes('warn') ? LOG_LEVELS.warn : LOG_LEVELS.info)
   if (categoryLevel >= minLevel) {
-    process.stdout.write(line);
+    process.stdout.write(line)
   }
 }
 
@@ -189,11 +190,11 @@ export function log(level: string, message: string): void {
 
 export interface StructuredLogEntry {
   /** Log category (e.g. 'tool_start', 'safety_block', 'tx_state'). */
-  category: string;
+  category: string
   /** Human-readable message. */
-  message: string;
+  message: string
   /** Additional structured metadata. */
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -210,44 +211,44 @@ export function logStructured({ category, message, metadata }: StructuredLogEntr
     agentId: getAgentIdForRequests(),
     dryRun: process.env.DRY_RUN === 'true',
     message: redactSensitive(message),
-  };
-  if (_correlationId) record.correlationId = _correlationId;
+  }
+  if (_correlationId) record.correlationId = _correlationId
   if (metadata && Object.keys(metadata).length > 0) {
     // Deep-redact all string values in metadata
-    const redactedMeta: Record<string, unknown> = {};
+    const redactedMeta: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(metadata)) {
       if (typeof value === 'string') {
-        redactedMeta[key] = redactSensitive(value);
+        redactedMeta[key] = redactSensitive(value)
       } else {
-        redactedMeta[key] = value;
+        redactedMeta[key] = value
       }
     }
-    record.metadata = redactedMeta;
+    record.metadata = redactedMeta
   }
 
-  const line = JSON.stringify(record) + '\n';
+  const line = `${JSON.stringify(record)}\n`
   try {
-    fs.appendFileSync(getStructuredLogPath(), line);
+    fs.appendFileSync(getStructuredLogPath(), line)
   } catch {
     /* ignore */
   }
 
   // Also echo to stdout if category maps to a standard level
-  const levelHint = category.endsWith('_error') ? 'error' : category.endsWith('_warn') ? 'warn' : 'info';
+  const levelHint = category.endsWith('_error') ? 'error' : category.endsWith('_warn') ? 'warn' : 'info'
   if (LOG_LEVELS[levelHint as LogLevel] >= minLevel) {
-    process.stdout.write(redactSensitive(line));
+    process.stdout.write(redactSensitive(line))
   }
 }
 
 // ─── Audit Trail (backward-compatible) ────────────────────────
 
 export interface LogActionEntry {
-  tool: string;
-  args?: Record<string, unknown>;
-  result?: unknown;
-  duration_ms?: number;
-  success?: boolean;
-  error?: string;
+  tool: string
+  args?: Record<string, unknown>
+  result?: unknown
+  duration_ms?: number
+  success?: boolean
+  error?: string
 }
 
 /**
@@ -260,14 +261,14 @@ export function logAction(entry: LogActionEntry): void {
     agentId: getAgentIdForRequests(),
     dryRun: process.env.DRY_RUN === 'true',
     ...entry,
-  };
-  if (_correlationId) record.correlationId = _correlationId;
+  }
+  if (_correlationId) record.correlationId = _correlationId
 
   // Redact sensitive data in string fields
-  if (typeof record.error === 'string') record.error = redactSensitive(record.error);
+  if (typeof record.error === 'string') record.error = redactSensitive(record.error)
 
   try {
-    fs.appendFileSync(getAuditPath(), JSON.stringify(record) + '\n');
+    fs.appendFileSync(getAuditPath(), `${JSON.stringify(record)}\n`)
   } catch {
     /* ignore */
   }

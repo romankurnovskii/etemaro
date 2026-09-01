@@ -9,24 +9,24 @@
  *
  */
 
-import fs from 'node:fs';
-import type { AppConfig } from '../shared/types.js';
+import fs from 'node:fs'
 import {
-  USER_CONFIG_PATH,
-  MIN_SAFE_BINS_BELOW,
-  TOKEN_MINTS,
-  setMinSafeBinsBelowOverride,
   DEFAULT_LLM_BASE_URL,
-} from '../shared/constants.js';
-import { loadAndValidateConfig, isHelpOrInfoCommand } from './ConfigValidator.js';
-import { DEFAULT_USER_CONFIG, } from './defaultUserConfig.js';
-import type { ValidatedUserConfig } from './schema.js';
-import { numericConfig, resolveEnvString } from '../shared/utils.js';
+  MIN_SAFE_BINS_BELOW,
+  setMinSafeBinsBelowOverride,
+  TOKEN_MINTS,
+  USER_CONFIG_PATH,
+} from '../shared/constants.js'
+import type { AppConfig } from '../shared/types.js'
+import { numericConfig, resolveEnvString } from '../shared/utils.js'
+import { isHelpOrInfoCommand, loadAndValidateConfig } from './ConfigValidator.js'
+import { DEFAULT_USER_CONFIG } from './defaultUserConfig.js'
+import type { ValidatedUserConfig } from './schema.js'
 
 export class ConfigLoadError extends Error {
   constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = 'ConfigLoadError';
+    super(message, options)
+    this.name = 'ConfigLoadError'
   }
 }
 
@@ -40,51 +40,51 @@ export class ConfigLoadError extends Error {
  * should snapshot process.env in beforeEach and restore it in afterEach to prevent test pollution.
  */
 function applyUserConfigToEnv(u: ValidatedUserConfig): void {
-  const connection = u.connection;
-  if (connection?.rpcUrl) process.env.RPC_URL ||= connection?.rpcUrl;
-  if (connection?.rpcUrl2) process.env.RPC_URL_2 ||= connection.rpcUrl2;
-  if (connection?.walletPrivateKey) process.env.WALLET_PRIVATE_KEY ||= connection?.walletPrivateKey;
-  if (connection?.heliusApiKey) process.env.HELIUS_API_KEY ||= connection.heliusApiKey;
-  if (connection?.telegramBotToken) process.env.TELEGRAM_BOT_TOKEN ||= connection.telegramBotToken;
-  if (connection?.telegramAllowedUserIds) process.env.TELEGRAM_ALLOWED_USER_IDS ||= connection.telegramAllowedUserIds;
+  const connection = u.connection
+  if (connection?.rpcUrl) process.env.RPC_URL ||= connection?.rpcUrl
+  if (connection?.rpcUrl2) process.env.RPC_URL_2 ||= connection.rpcUrl2
+  if (connection?.walletPrivateKey) process.env.WALLET_PRIVATE_KEY ||= connection?.walletPrivateKey
+  if (connection?.heliusApiKey) process.env.HELIUS_API_KEY ||= connection.heliusApiKey
+  if (connection?.telegramBotToken) process.env.TELEGRAM_BOT_TOKEN ||= connection.telegramBotToken
+  if (connection?.telegramAllowedUserIds) process.env.TELEGRAM_ALLOWED_USER_IDS ||= connection.telegramAllowedUserIds
   if (u.llm?.defaultModel || u.llm?.managementModel) {
-    process.env.LLM_MODEL ||= u.llm?.defaultModel || u.llm?.managementModel;
+    process.env.LLM_MODEL ||= u.llm?.defaultModel || u.llm?.managementModel
   }
-  if (u.llm?.baseUrl) process.env.LLM_BASE_URL ||= u.llm?.baseUrl;
-  if (u.llm?.apiKey) process.env.LLM_API_KEY ||= u.llm?.apiKey;
-  if (connection?.dryRun !== undefined) process.env.DRY_RUN ||= String(connection.dryRun);
-  if (connection?.telegramChatId) process.env.TELEGRAM_CHAT_ID ||= connection.telegramChatId;
-  const meridian = u.api?.meridian;
-  const lpAgent = u.api?.lpAgent;
+  if (u.llm?.baseUrl) process.env.LLM_BASE_URL ||= u.llm?.baseUrl
+  if (u.llm?.apiKey) process.env.LLM_API_KEY ||= u.llm?.apiKey
+  if (connection?.dryRun !== undefined) process.env.DRY_RUN ||= String(connection.dryRun)
+  if (connection?.telegramChatId) process.env.TELEGRAM_CHAT_ID ||= connection.telegramChatId
+  const meridian = u.api?.meridian
+  const lpAgent = u.api?.lpAgent
   if (meridian?.enabled !== false && meridian?.publicApiKey) {
-    process.env.AGENT_MERIDIAN_PUBLIC_API_KEY ||= meridian?.publicApiKey;
+    process.env.AGENT_MERIDIAN_PUBLIC_API_KEY ||= meridian?.publicApiKey
   }
   if (meridian?.enabled !== false && meridian?.url) {
-    process.env.AGENT_MERIDIAN_API_URL ||= meridian?.url;
+    process.env.AGENT_MERIDIAN_API_URL ||= meridian?.url
   }
-  if (lpAgent?.apiKey) process.env.LPAGENT_API_KEY ||= lpAgent.apiKey;
-  if (lpAgent?.url) process.env.LPAGENT_API_URL ||= lpAgent.url;
+  if (lpAgent?.apiKey) process.env.LPAGENT_API_KEY ||= lpAgent.apiKey
+  if (lpAgent?.url) process.env.LPAGENT_API_URL ||= lpAgent.url
 }
 
 function buildConfig(): AppConfig {
-  let loaded: Partial<ValidatedUserConfig> = {};
+  let loaded: Partial<ValidatedUserConfig> = {}
   try {
-    loaded = loadAndValidateConfig();
+    loaded = loadAndValidateConfig()
   } catch (err: any) {
     if (isHelpOrInfoCommand()) {
       if (process.env.NODE_ENV !== 'test') {
-        console.warn(`[config] Warning: using fallback defaults for info/init: ${err.message}`);
+        console.warn(`[config] Warning: using fallback defaults for info/init: ${err.message}`)
       }
     } else {
-      const explicitConfig = process.env.USER_CONFIG_PATH?.trim();
+      const explicitConfig = process.env.USER_CONFIG_PATH?.trim()
       const message = explicitConfig
         ? `[config] Fatal: Failed to load explicit configuration from USER_CONFIG_PATH="${explicitConfig}": ${err.message}`
-        : `[config] Fatal: Failed to load configuration: ${err.message}`;
-      throw new ConfigLoadError(message, { cause: err });
+        : `[config] Fatal: Failed to load configuration: ${err.message}`
+      throw new ConfigLoadError(message, { cause: err })
     }
   }
 
-  const defaultFallback = DEFAULT_USER_CONFIG as unknown as ValidatedUserConfig;
+  const defaultFallback = DEFAULT_USER_CONFIG as unknown as ValidatedUserConfig
   const u = {
     ...defaultFallback,
     ...loaded,
@@ -101,9 +101,9 @@ function buildConfig(): AppConfig {
     },
     llm: { ...defaultFallback.llm, ...loaded.llm },
     chartIndicators: { ...defaultFallback.chartIndicators, ...loaded.chartIndicators },
-  } as unknown as ValidatedUserConfig;
+  } as unknown as ValidatedUserConfig
 
-  applyUserConfigToEnv(u);
+  applyUserConfigToEnv(u)
 
   // The shape of u now closely matches AppConfig since Zod validates the nested structure.
   return {
@@ -201,6 +201,7 @@ function buildConfig(): AppConfig {
       maxTokens: u.llm.maxTokens,
       maxSteps: u.llm.maxSteps,
       defaultModel: u.llm.defaultModel,
+      fallbackModel: (u.llm as any)?.fallbackModel ?? null,
       managementModel: u.llm.managementModel,
       screeningModel: u.llm.screeningModel,
       generalModel: u.llm.generalModel,
@@ -280,23 +281,23 @@ function buildConfig(): AppConfig {
       rsiOverbought: u.chartIndicators.rsiOverbought,
       requireAllIntervals: u.chartIndicators.requireAllIntervals,
     },
-  };
+  }
 }
 
-export const config: AppConfig = buildConfig();
+export const config: AppConfig = buildConfig()
 
 // Initialize the minSafeBinsBelow override from config
-setMinSafeBinsBelowOverride(config.strategy.minSafeBinsBelow);
+setMinSafeBinsBelowOverride(config.strategy.minSafeBinsBelow)
 
 export function computeDeployAmount(walletSol: number): number {
-  const reserve = config.management.gasReserve;
-  const pct = config.management.positionSizePct;
-  const floor = config.management.deployAmountSol;
-  const ceil = config.risk.maxDeployAmount;
-  const deployable = Math.max(0, walletSol - reserve);
-  const dynamic = deployable * pct;
-  const result = Math.min(ceil, Math.max(floor, dynamic));
-  return parseFloat(result.toFixed(2));
+  const reserve = config.management.gasReserve
+  const pct = config.management.positionSizePct
+  const floor = config.management.deployAmountSol
+  const ceil = config.risk.maxDeployAmount
+  const deployable = Math.max(0, walletSol - reserve)
+  const dynamic = deployable * pct
+  const result = Math.min(ceil, Math.max(floor, dynamic))
+  return parseFloat(result.toFixed(2))
 }
 
 /**
@@ -305,55 +306,78 @@ export function computeDeployAmount(walletSol: number): number {
 export function reloadScreeningThresholds(): void {
   try {
     // Dynamic reloading can just re-read the nested schema
-    if (!fs.existsSync(USER_CONFIG_PATH)) return;
-    const raw = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'));
+    if (!fs.existsSync(USER_CONFIG_PATH)) return
+    const raw = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'))
 
     // Partially parse just what we need or assume the structure
     // Since this is just screening thresholds, we can extract them directly.
-    if (raw && raw.screening) {
-      const u = raw.screening;
-      const s = config.screening;
+    if (raw?.screening) {
+      const u = raw.screening
+      const s = config.screening
 
-      if (u.minFeeActiveTvlRatio != null) s.minFeeActiveTvlRatio = resolveField('minFeeActiveTvlRatio', u.minFeeActiveTvlRatio) as number;
-      if (u.minTokenFeesSol != null) s.minTokenFeesSol = resolveField('minTokenFeesSol', u.minTokenFeesSol) as number;
-      if (u.maxTop10Pct != null) s.maxTop10Pct = resolveField('maxTop10Pct', u.maxTop10Pct) as number;
-      if (u.useDiscordSignals !== undefined) s.useDiscordSignals = resolveField('useDiscordSignals', u.useDiscordSignals) as boolean;
-      if (u.discordSignalMode != null) s.discordSignalMode = resolveField('discordSignalMode', u.discordSignalMode) as string;
+      if (u.minFeeActiveTvlRatio != null)
+        s.minFeeActiveTvlRatio = resolveField('minFeeActiveTvlRatio', u.minFeeActiveTvlRatio) as number
+      if (u.minTokenFeesSol != null) s.minTokenFeesSol = resolveField('minTokenFeesSol', u.minTokenFeesSol) as number
+      if (u.maxTop10Pct != null) s.maxTop10Pct = resolveField('maxTop10Pct', u.maxTop10Pct) as number
+      if (u.useDiscordSignals !== undefined)
+        s.useDiscordSignals = resolveField('useDiscordSignals', u.useDiscordSignals) as boolean
+      if (u.discordSignalMode != null)
+        s.discordSignalMode = resolveField('discordSignalMode', u.discordSignalMode) as string
       if (u.excludeHighSupplyConcentration !== undefined)
-        s.excludeHighSupplyConcentration = resolveField('excludeHighSupplyConcentration', u.excludeHighSupplyConcentration) as boolean;
-      if (u.minOrganic != null) s.minOrganic = resolveField('minOrganic', u.minOrganic) as number;
-      if (u.minQuoteOrganic != null) s.minQuoteOrganic = resolveField('minQuoteOrganic', u.minQuoteOrganic) as number;
-      if (u.minHolders != null) s.minHolders = resolveField('minHolders', u.minHolders) as number;
-      if (u.minMcap != null) s.minMcap = resolveField('minMcap', u.minMcap) as number;
-      if (u.maxMcap != null) s.maxMcap = resolveField('maxMcap', u.maxMcap) as number;
-      if (u.minTvl != null) s.minTvl = resolveField('minTvl', u.minTvl) as number;
-      if (u.maxTvl !== undefined) s.maxTvl = resolveField('maxTvl', u.maxTvl) as number;
-      if (u.minVolume != null) s.minVolume = resolveField('minVolume', u.minVolume) as number;
-      if (u.minBinStep != null) s.minBinStep = resolveField('minBinStep', u.minBinStep) as number;
-      if (u.maxBinStep != null) s.maxBinStep = resolveField('maxBinStep', u.maxBinStep) as number;
-      if (u.timeframe != null) s.timeframe = resolveField('timeframe', u.timeframe) as string;
-      if (u.category != null) s.category = resolveField('category', u.category) as string;
-      if (u.minTokenAgeHours !== undefined) s.minTokenAgeHours = resolveField('minTokenAgeHours', u.minTokenAgeHours) as number | null;
-      if (u.maxTokenAgeHours !== undefined) s.maxTokenAgeHours = resolveField('maxTokenAgeHours', u.maxTokenAgeHours) as number | null;
-      if (u.avoidPvpSymbols !== undefined) s.avoidPvpSymbols = resolveField('avoidPvpSymbols', u.avoidPvpSymbols) as boolean;
-      if (u.blockPvpSymbols !== undefined) s.blockPvpSymbols = resolveField('blockPvpSymbols', u.blockPvpSymbols) as boolean;
-      if (u.maxBotHoldersPct != null) s.maxBotHoldersPct = resolveField('maxBotHoldersPct', u.maxBotHoldersPct) as number;
-      if (u.allowedLaunchpads !== undefined) s.allowedLaunchpads = resolveField('allowedLaunchpads', u.allowedLaunchpads) as string[];
-      if (u.blockedLaunchpads !== undefined) s.blockedLaunchpads = resolveField('blockedLaunchpads', u.blockedLaunchpads) as string[];
-      if (u.loneCandidateMinDegen != null) s.loneCandidateMinDegen = resolveField('loneCandidateMinDegen', u.loneCandidateMinDegen) as number;
+        s.excludeHighSupplyConcentration = resolveField(
+          'excludeHighSupplyConcentration',
+          u.excludeHighSupplyConcentration,
+        ) as boolean
+      if (u.minOrganic != null) s.minOrganic = resolveField('minOrganic', u.minOrganic) as number
+      if (u.minQuoteOrganic != null) s.minQuoteOrganic = resolveField('minQuoteOrganic', u.minQuoteOrganic) as number
+      if (u.minHolders != null) s.minHolders = resolveField('minHolders', u.minHolders) as number
+      if (u.minMcap != null) s.minMcap = resolveField('minMcap', u.minMcap) as number
+      if (u.maxMcap != null) s.maxMcap = resolveField('maxMcap', u.maxMcap) as number
+      if (u.minTvl != null) s.minTvl = resolveField('minTvl', u.minTvl) as number
+      if (u.maxTvl !== undefined) s.maxTvl = resolveField('maxTvl', u.maxTvl) as number
+      if (u.minVolume != null) s.minVolume = resolveField('minVolume', u.minVolume) as number
+      if (u.minBinStep != null) s.minBinStep = resolveField('minBinStep', u.minBinStep) as number
+      if (u.maxBinStep != null) s.maxBinStep = resolveField('maxBinStep', u.maxBinStep) as number
+      if (u.timeframe != null) s.timeframe = resolveField('timeframe', u.timeframe) as string
+      if (u.category != null) s.category = resolveField('category', u.category) as string
+      if (u.minTokenAgeHours !== undefined)
+        s.minTokenAgeHours = resolveField('minTokenAgeHours', u.minTokenAgeHours) as number | null
+      if (u.maxTokenAgeHours !== undefined)
+        s.maxTokenAgeHours = resolveField('maxTokenAgeHours', u.maxTokenAgeHours) as number | null
+      if (u.avoidPvpSymbols !== undefined)
+        s.avoidPvpSymbols = resolveField('avoidPvpSymbols', u.avoidPvpSymbols) as boolean
+      if (u.blockPvpSymbols !== undefined)
+        s.blockPvpSymbols = resolveField('blockPvpSymbols', u.blockPvpSymbols) as boolean
+      if (u.maxBotHoldersPct != null)
+        s.maxBotHoldersPct = resolveField('maxBotHoldersPct', u.maxBotHoldersPct) as number
+      if (u.allowedLaunchpads !== undefined)
+        s.allowedLaunchpads = resolveField('allowedLaunchpads', u.allowedLaunchpads) as string[]
+      if (u.blockedLaunchpads !== undefined)
+        s.blockedLaunchpads = resolveField('blockedLaunchpads', u.blockedLaunchpads) as string[]
+      if (u.loneCandidateMinDegen != null)
+        s.loneCandidateMinDegen = resolveField('loneCandidateMinDegen', u.loneCandidateMinDegen) as number
     }
 
-    if (raw && raw.strategy) {
-      const u = raw.strategy;
-      const minBinsBelow = numericConfig(u.minBinsBelow) ?? config.strategy.minBinsBelow;
-      const maxBinsBelow = numericConfig(u.maxBinsBelow) ?? config.strategy.maxBinsBelow;
-      const defaultBinsBelow = numericConfig(u.defaultBinsBelow) ?? config.strategy.defaultBinsBelow ?? maxBinsBelow;
-      config.strategy.minBinsBelow = Math.max(MIN_SAFE_BINS_BELOW, Math.round(resolveField('minBinsBelow', minBinsBelow) as number));
-      config.strategy.maxBinsBelow = Math.max(config.strategy.minBinsBelow, Math.round(resolveField('maxBinsBelow', maxBinsBelow) as number));
+    if (raw?.strategy) {
+      const u = raw.strategy
+      const minBinsBelow = numericConfig(u.minBinsBelow) ?? config.strategy.minBinsBelow
+      const maxBinsBelow = numericConfig(u.maxBinsBelow) ?? config.strategy.maxBinsBelow
+      const defaultBinsBelow = numericConfig(u.defaultBinsBelow) ?? config.strategy.defaultBinsBelow ?? maxBinsBelow
+      config.strategy.minBinsBelow = Math.max(
+        MIN_SAFE_BINS_BELOW,
+        Math.round(resolveField('minBinsBelow', minBinsBelow) as number),
+      )
+      config.strategy.maxBinsBelow = Math.max(
+        config.strategy.minBinsBelow,
+        Math.round(resolveField('maxBinsBelow', maxBinsBelow) as number),
+      )
       config.strategy.defaultBinsBelow = Math.max(
         config.strategy.minBinsBelow,
-        Math.min(config.strategy.maxBinsBelow, Math.round(resolveField('defaultBinsBelow', defaultBinsBelow) as number)),
-      );
+        Math.min(
+          config.strategy.maxBinsBelow,
+          Math.round(resolveField('defaultBinsBelow', defaultBinsBelow) as number),
+        ),
+      )
     }
   } catch {
     /* ignore */
@@ -367,15 +391,15 @@ export function reloadScreeningThresholds(): void {
  * Use this in unit tests or when switching configuration files at runtime.
  */
 export function resetConfig(): AppConfig {
-  const fresh = buildConfig();
-  Object.assign(config, fresh);
-  setMinSafeBinsBelowOverride(config.strategy.minSafeBinsBelow);
-  return config;
+  const fresh = buildConfig()
+  Object.assign(config, fresh)
+  setMinSafeBinsBelowOverride(config.strategy.minSafeBinsBelow)
+  return config
 }
 
-function resolveField(key: string, value: unknown): unknown {
+function resolveField(_key: string, value: unknown): unknown {
   if (typeof value === 'string' && value.startsWith('env.')) {
-    return resolveEnvString(value);
+    return resolveEnvString(value)
   }
-  return value;
+  return value
 }

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Daemon, getDeterministicCloseRule, type DaemonAdapters } from './Daemon.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Daemon, type DaemonAdapters, getDeterministicCloseRule } from './Daemon.js'
 
 function createMockAdapters(): DaemonAdapters {
   return {
@@ -59,48 +59,48 @@ function createMockAdapters(): DaemonAdapters {
       appendDecision: vi.fn(),
     },
     agentLoopDeps: {} as any,
-  };
+  }
 }
 
 describe('Daemon — Concurrency & Mutex Guards', () => {
-  let adapters: DaemonAdapters;
-  let daemon: Daemon;
+  let adapters: DaemonAdapters
+  let daemon: Daemon
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    adapters = createMockAdapters();
-    daemon = new Daemon(adapters);
-  });
+    vi.clearAllMocks()
+    adapters = createMockAdapters()
+    daemon = new Daemon(adapters)
+  })
 
   it('runManagementCycle skips when managementBusy is true', async () => {
-    (daemon as any).managementBusy = true;
+    ;(daemon as any).managementBusy = true
 
-    const res = await daemon.runManagementCycle();
-    expect(res).toBeNull();
-    expect(adapters.meteora.getMyPositions).not.toHaveBeenCalled();
-  });
+    const res = await daemon.runManagementCycle()
+    expect(res).toBeNull()
+    expect(adapters.meteora.getMyPositions).not.toHaveBeenCalled()
+  })
 
   it('runManagementCycle skips when pnlPollBusy is true', async () => {
-    (daemon as any).pnlPollBusy = true;
+    ;(daemon as any).pnlPollBusy = true
 
-    const res = await daemon.runManagementCycle();
-    expect(res).toBeNull();
-    expect(adapters.meteora.getMyPositions).not.toHaveBeenCalled();
-  });
+    const res = await daemon.runManagementCycle()
+    expect(res).toBeNull()
+    expect(adapters.meteora.getMyPositions).not.toHaveBeenCalled()
+  })
 
   it('runManagementCycle runs when not busy and resets managementBusy on completion', async () => {
-    expect((daemon as any).managementBusy).toBe(false);
-    expect((daemon as any).pnlPollBusy).toBe(false);
+    expect((daemon as any).managementBusy).toBe(false)
+    expect((daemon as any).pnlPollBusy).toBe(false)
 
     adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({
       total_positions: 0,
       positions: [],
-    });
+    })
 
-    const res = await daemon.runManagementCycle({ silent: true });
-    expect(res).toContain('No open positions');
-    expect((daemon as any).managementBusy).toBe(false);
-  });
+    const res = await daemon.runManagementCycle({ silent: true })
+    expect(res).toContain('No open positions')
+    expect((daemon as any).managementBusy).toBe(false)
+  })
 
   it('preserves existing managementBusy state when executing PnL poll action', async () => {
     const actionPositions = [
@@ -110,31 +110,31 @@ describe('Daemon — Concurrency & Mutex Guards', () => {
         pair: 'SOL-USDC',
         pnl_pct: -6.5,
       },
-    ];
-    const actionMap = new Map([['pos_xyz', { action: 'CLOSE', rule: 'stop_loss', reason: 'Stop loss hit' }]]);
+    ]
+    const actionMap = new Map([['pos_xyz', { action: 'CLOSE', rule: 'stop_loss', reason: 'Stop loss hit' }]])
 
     // Case 1: managementBusy was FALSE before
-    (daemon as any).managementBusy = false;
-    const wasManagementBusy = (daemon as any).managementBusy;
-    (daemon as any).managementBusy = true;
+    ;(daemon as any).managementBusy = false
+    const wasManagementBusy = (daemon as any).managementBusy
+    ;(daemon as any).managementBusy = true
     try {
-      await daemon.executeManagementActions(actionPositions, actionMap, {});
+      await daemon.executeManagementActions(actionPositions, actionMap, {})
     } finally {
-      (daemon as any).managementBusy = wasManagementBusy;
+      ;(daemon as any).managementBusy = wasManagementBusy
     }
-    expect((daemon as any).managementBusy).toBe(false);
+    expect((daemon as any).managementBusy).toBe(false)
 
     // Case 2: managementBusy was TRUE before (e.g. nested call)
-    (daemon as any).managementBusy = true;
-    const wasManagementBusy2 = (daemon as any).managementBusy;
-    (daemon as any).managementBusy = true;
+    ;(daemon as any).managementBusy = true
+    const wasManagementBusy2 = (daemon as any).managementBusy
+    ;(daemon as any).managementBusy = true
     try {
-      await daemon.executeManagementActions(actionPositions, actionMap, {});
+      await daemon.executeManagementActions(actionPositions, actionMap, {})
     } finally {
-      (daemon as any).managementBusy = wasManagementBusy2;
+      ;(daemon as any).managementBusy = wasManagementBusy2
     }
-    expect((daemon as any).managementBusy).toBe(true);
-  });
+    expect((daemon as any).managementBusy).toBe(true)
+  })
 
   it('calls getMyPositions only once during runManagementCycle and calculates remaining positions in memory', async () => {
     const mockPositions = [
@@ -147,119 +147,119 @@ describe('Daemon — Concurrency & Mutex Guards', () => {
         total_value_usd: 100,
         in_range: true,
       },
-    ];
+    ]
 
     adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({
       total_positions: 1,
       positions: mockPositions,
-    });
-    adapters.toolExecutor.executeTool = vi.fn().mockResolvedValue({ success: true });
-    const runScreeningSpy = vi.spyOn(daemon, 'runScreeningCycle').mockResolvedValue(null);
+    })
+    adapters.toolExecutor.executeTool = vi.fn().mockResolvedValue({ success: true })
+    const runScreeningSpy = vi.spyOn(daemon, 'runScreeningCycle').mockResolvedValue(null)
 
     // Set cooldown to past so screening can trigger
-    (daemon as any).screeningLastTriggered = 0;
+    ;(daemon as any).screeningLastTriggered = 0
 
-    await daemon.runManagementCycle({ silent: true });
+    await daemon.runManagementCycle({ silent: true })
 
     // getMyPositions should only be called once at start of cycle, NOT at the end
-    expect(adapters.meteora.getMyPositions).toHaveBeenCalledTimes(1);
-    expect(runScreeningSpy).toHaveBeenCalledTimes(1);
-  });
+    expect(adapters.meteora.getMyPositions).toHaveBeenCalledTimes(1)
+    expect(runScreeningSpy).toHaveBeenCalledTimes(1)
+  })
 
   it('atomically prevents concurrent runManagementCycle executions', async () => {
-    let resolveFirst: any;
+    let resolveFirst: any
     adapters.meteora.getMyPositions = vi.fn().mockImplementation(
       () =>
         new Promise((resolve) => {
-          resolveFirst = resolve;
+          resolveFirst = resolve
         }),
-    );
+    )
 
     // Start cycle 1
-    const p1 = daemon.runManagementCycle({ silent: true });
+    const p1 = daemon.runManagementCycle({ silent: true })
     // Attempt concurrent cycle 2 immediately
-    const p2 = daemon.runManagementCycle({ silent: true });
+    const p2 = daemon.runManagementCycle({ silent: true })
 
     // p2 should immediately return null because lock is held synchronously
-    const res2 = await p2;
-    expect(res2).toBeNull();
+    const res2 = await p2
+    expect(res2).toBeNull()
 
     // Resolve cycle 1
-    resolveFirst({ total_positions: 0, positions: [] });
-    const res1 = await p1;
-    expect(res1).toContain('No open positions');
+    resolveFirst({ total_positions: 0, positions: [] })
+    const res1 = await p1
+    expect(res1).toContain('No open positions')
 
     // Lock is now released, a subsequent call succeeds
-    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ total_positions: 0, positions: [] });
-    const res3 = await daemon.runManagementCycle({ silent: true });
-    expect(res3).toContain('No open positions');
-  });
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ total_positions: 0, positions: [] })
+    const res3 = await daemon.runManagementCycle({ silent: true })
+    expect(res3).toContain('No open positions')
+  })
 
   it('atomically prevents concurrent runScreeningCycle executions', async () => {
-    let resolvePositions: any;
+    let resolvePositions: any
     adapters.meteora.getMyPositions = vi.fn().mockImplementation(
       () =>
         new Promise((resolve) => {
-          resolvePositions = resolve;
+          resolvePositions = resolve
         }),
-    );
+    )
 
     // Start screening 1
-    const p1 = daemon.runScreeningCycle({ silent: true });
+    const p1 = daemon.runScreeningCycle({ silent: true })
     // Attempt concurrent screening 2 immediately
-    const p2 = daemon.runScreeningCycle({ silent: true });
+    const p2 = daemon.runScreeningCycle({ silent: true })
 
     // p2 should immediately return null because screeningBusy lock is held synchronously
-    const res2 = await p2;
-    expect(res2).toBeNull();
+    const res2 = await p2
+    expect(res2).toBeNull()
 
     // Resolve screening 1 pre-checks
-    resolvePositions({ total_positions: 5, positions: [] }); // exceeds max positions, skips
-    const res1 = await p1;
-    expect(res1).toContain('max positions reached');
+    resolvePositions({ total_positions: 5, positions: [] }) // exceeds max positions, skips
+    const res1 = await p1
+    expect(res1).toContain('max positions reached')
 
     // Lock is released after completion
-    expect((daemon as any).screeningBusy).toBe(false);
-  });
+    expect((daemon as any).screeningBusy).toBe(false)
+  })
 
   it('releases lock cleanly even when runManagementCycle throws', async () => {
     adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({
       total_positions: 1,
       positions: [{ position: 'pos_1', pool: 'pool_1', pair: 'SOL-USDC' }],
-    });
+    })
     adapters.domain.recordPositionSnapshot = vi.fn().mockImplementation(() => {
-      throw new Error('State explosion');
-    });
+      throw new Error('State explosion')
+    })
 
-    const res = await daemon.runManagementCycle({ silent: true });
-    expect(res).toContain('Management cycle failed: State explosion');
-    expect((daemon as any).managementBusy).toBe(false);
-  });
+    const res = await daemon.runManagementCycle({ silent: true })
+    expect(res).toContain('Management cycle failed: State explosion')
+    expect((daemon as any).managementBusy).toBe(false)
+  })
 
   it('releases lock cleanly even when runScreeningCycle throws', async () => {
-    adapters.meteora.getMyPositions = vi.fn().mockRejectedValue(new Error('Screening RPC explosion'));
+    adapters.meteora.getMyPositions = vi.fn().mockRejectedValue(new Error('Screening RPC explosion'))
 
-    const res = await daemon.runScreeningCycle({ silent: true });
-    expect(res).toContain('Screening cycle failed: Screening RPC explosion');
-    expect((daemon as any).screeningBusy).toBe(false);
-  });
+    const res = await daemon.runScreeningCycle({ silent: true })
+    expect(res).toContain('Screening cycle failed: Screening RPC explosion')
+    expect((daemon as any).screeningBusy).toBe(false)
+  })
 
   it('parses and persists structured rejected candidate rationales on NO DEPLOY screening decision', async () => {
-    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ total_positions: 0, positions: [] });
-    adapters.wallet.getWalletBalances = vi.fn().mockResolvedValue({ sol: 10, tokens: [] });
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ total_positions: 0, positions: [] })
+    adapters.wallet.getWalletBalances = vi.fn().mockResolvedValue({ sol: 10, tokens: [] })
     adapters.screening.getTopCandidates = vi.fn().mockResolvedValue({
       candidates: [
         { pool: 'pool_1', name: 'TOKEN1/SOL', base: { mint: 'mint_1' }, bin_step: 100 },
         { pool: 'pool_2', name: 'TOKEN2/SOL', base: { mint: 'mint_2' }, bin_step: 100 },
       ],
       filtered_examples: [{ name: 'EARLY_FILTERED/SOL', reason: 'volume too low' }],
-    });
+    })
     adapters.domain.parseRejectedCandidates = (content: string) => {
       if (content.includes('TOKEN1/SOL: low fees')) {
-        return ['TOKEN1/SOL: low fees', 'TOKEN2/SOL: PvP conflict'];
+        return ['TOKEN1/SOL: low fees', 'TOKEN2/SOL: PvP conflict']
       }
-      return [];
-    };
+      return []
+    }
 
     const screeningReportContent = `
 ⛔ NO DEPLOY
@@ -275,17 +275,17 @@ Candidates failed qualitative thresholds.
 REJECTED
 - TOKEN1/SOL: low fees
 - TOKEN2/SOL: PvP conflict
-`;
+`
 
     vi.spyOn(await import('@etemaro/core'), 'agentLoop').mockResolvedValueOnce({
       content: screeningReportContent,
       steps: [],
       toolCalls: [],
       finalAnswer: screeningReportContent,
-    } as any);
+    } as any)
 
-    const res = await daemon.runScreeningCycle({ silent: true });
-    expect(res).toContain('⛔ NO DEPLOY');
+    const res = await daemon.runScreeningCycle({ silent: true })
+    expect(res).toContain('⛔ NO DEPLOY')
     expect(adapters.domain.appendDecision).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'no_deploy',
@@ -297,25 +297,25 @@ REJECTED
           'EARLY_FILTERED/SOL: volume too low',
         ]),
       }),
-    );
-  });
+    )
+  })
 
   it('logs cron_error when getMyPositions fails in runManagementCycle', async () => {
-    adapters.meteora.getMyPositions = vi.fn().mockRejectedValue(new Error('RPC rate limited'));
+    adapters.meteora.getMyPositions = vi.fn().mockRejectedValue(new Error('RPC rate limited'))
 
-    const res = await daemon.runManagementCycle({ silent: true });
-    expect(res).toBe('No open positions.');
-    expect((daemon as any).managementBusy).toBe(false);
-  });
+    const res = await daemon.runManagementCycle({ silent: true })
+    expect(res).toBe('No open positions.')
+    expect((daemon as any).managementBusy).toBe(false)
+  })
 
   it('logs telegram_warn and handles error gracefully when sendTelegramSafe fails', async () => {
-    adapters.telegram.isEnabled = () => true;
-    adapters.telegram.sendMessage = vi.fn().mockRejectedValue(new Error('Network offline'));
+    adapters.telegram.isEnabled = () => true
+    adapters.telegram.sendMessage = vi.fn().mockRejectedValue(new Error('Network offline'))
 
     // Should not throw even when sendMessage rejects
-    await expect((daemon as any).sendTelegramSafe('Test message')).resolves.toBeNull();
-  });
-});
+    await expect((daemon as any).sendTelegramSafe('Test message')).resolves.toBeNull()
+  })
+})
 
 describe('getDeterministicCloseRule suspect PnL handling', () => {
   const mgmtConfig: any = {
@@ -324,7 +324,7 @@ describe('getDeterministicCloseRule suspect PnL handling', () => {
     outOfRangeBinsToClose: 5,
     outOfRangeWaitMinutes: 30,
     minFeePerTvl24h: 1,
-  };
+  }
 
   it('skips stop loss close rule when untracked position has deep negative PnL but retains value', () => {
     // Position is active on-chain, not tracked in state.json, but has USD value during an RPC glitch
@@ -336,9 +336,9 @@ describe('getDeterministicCloseRule suspect PnL handling', () => {
         total_value_usd: 25.0,
       },
       mgmtConfig,
-    );
-    expect(rule).toBeNull();
-  });
+    )
+    expect(rule).toBeNull()
+  })
 
   it('triggers stop loss close rule when untracked position has legitimate negative PnL exceeding threshold', () => {
     const rule = getDeterministicCloseRule(
@@ -349,13 +349,13 @@ describe('getDeterministicCloseRule suspect PnL handling', () => {
         total_value_usd: 25.0,
       },
       mgmtConfig,
-    );
+    )
     expect(rule).toEqual({
       action: 'CLOSE',
       rule: 1,
       reason: 'stop loss (pnl=-15.00% threshold=-10%)',
-    });
-  });
+    })
+  })
 
   it('triggers stop loss close rule when deep negative PnL has zero value', () => {
     const rule = getDeterministicCloseRule(
@@ -367,13 +367,11 @@ describe('getDeterministicCloseRule suspect PnL handling', () => {
         amount_sol: 0,
       },
       mgmtConfig,
-    );
+    )
     expect(rule).toEqual({
       action: 'CLOSE',
       rule: 1,
       reason: 'stop loss (pnl=-99.90% threshold=-10%)',
-    });
-  });
-});
-
-
+    })
+  })
+})

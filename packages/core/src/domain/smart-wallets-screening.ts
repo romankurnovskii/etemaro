@@ -4,20 +4,20 @@
  */
 
 export interface SmartWalletSnapshot {
-  initialized: boolean;
-  positions: string[];
+  initialized: boolean
+  positions: string[]
 }
 
 export interface WalletPositionItem {
-  position: string;
-  pool: string;
+  position: string
+  pool: string
 }
 
 export interface SmartWalletDiffResult {
-  isFirstRun: boolean;
-  newPositions: WalletPositionItem[];
-  uniquePools: string[];
-  nextSnapshot: SmartWalletSnapshot;
+  isFirstRun: boolean
+  newPositions: WalletPositionItem[]
+  uniquePools: string[]
+  nextSnapshot: SmartWalletSnapshot
 }
 
 /**
@@ -30,11 +30,14 @@ export function diffSmartWalletPositions(
 ): SmartWalletDiffResult {
   const snapshot: SmartWalletSnapshot =
     existingSnapshot && typeof existingSnapshot === 'object'
-      ? { initialized: Boolean(existingSnapshot.initialized), positions: Array.isArray(existingSnapshot.positions) ? existingSnapshot.positions : [] }
-      : { initialized: false, positions: [] };
+      ? {
+          initialized: Boolean(existingSnapshot.initialized),
+          positions: Array.isArray(existingSnapshot.positions) ? existingSnapshot.positions : [],
+        }
+      : { initialized: false, positions: [] }
 
   if (!snapshot.initialized) {
-    const allPos = Array.from(new Set(currentPositions.map((p) => p.position)));
+    const allPos = Array.from(new Set(currentPositions.map((p) => p.position)))
     return {
       isFirstRun: true,
       newPositions: [],
@@ -43,19 +46,19 @@ export function diffSmartWalletPositions(
         initialized: true,
         positions: allPos,
       },
-    };
+    }
   }
 
-  const knownSet = new Set(snapshot.positions);
-  const newPositions = currentPositions.filter((p) => !knownSet.has(p.position));
-  const uniquePools = Array.from(new Set(newPositions.map((p) => p.pool).filter(Boolean)));
+  const knownSet = new Set(snapshot.positions)
+  const newPositions = currentPositions.filter((p) => !knownSet.has(p.position))
+  const uniquePools = Array.from(new Set(newPositions.map((p) => p.pool).filter(Boolean)))
 
   return {
     isFirstRun: false,
     newPositions,
     uniquePools,
     nextSnapshot: { ...snapshot },
-  };
+  }
 }
 
 /**
@@ -67,14 +70,14 @@ export function updateSnapshotPositions(
   snapshot: SmartWalletSnapshot,
   processedPositions: { position: string; resolved: boolean }[],
 ): SmartWalletSnapshot {
-  const knownSet = new Set(snapshot.positions);
+  const knownSet = new Set(snapshot.positions)
   for (const item of processedPositions) {
     if (item.resolved) {
-      knownSet.add(item.position);
+      knownSet.add(item.position)
     }
   }
   return {
     initialized: true,
     positions: Array.from(knownSet),
-  };
+  }
 }

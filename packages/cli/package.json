@@ -11,9 +11,7 @@
     "typecheck": "tsc --noEmit",
     "start": "node --import tsx src/Cli.ts"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "dependencies": {},
   "devDependencies": {
     "@etemaro/core": "workspace:*",

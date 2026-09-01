@@ -1,4 +1,4 @@
-import type { UserConfigRaw } from './schema.js';
+import type { UserConfigRaw } from './schema.js'
 
 export const DEFAULT_USER_CONFIG: UserConfigRaw = {
   _version: 3,
@@ -25,7 +25,8 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
   },
 
   screening: {
-    description: 'Filters applied when scanning for new pool candidates. Tighten these to reduce noise; loosen them to explore more pools.',
+    description:
+      'Filters applied when scanning for new pool candidates. Tighten these to reduce noise; loosen them to explore more pools.',
     entrySource: 'market',
     timeframe: '5m',
     category: 'trending',
@@ -56,7 +57,8 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
   },
 
   management: {
-    description: 'Rules for managing open positions: claims, rebalances, stop-loss, take-profit, trailing stops, and cooldowns.',
+    description:
+      'Rules for managing open positions: claims, rebalances, stop-loss, take-profit, trailing stops, and cooldowns.',
     minClaimAmount: 5,
     autoSwapAfterClaim: true,
     autoSwapRetryAttempts: 3,
@@ -100,7 +102,8 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
   },
 
   schedule: {
-    description: 'Cadence for background loops. Keep managementIntervalMin shorter than outOfRangeWaitMinutes so the agent can act in time.',
+    description:
+      'Cadence for background loops. Keep managementIntervalMin shorter than outOfRangeWaitMinutes so the agent can act in time.',
     managementIntervalMin: 10,
     screeningIntervalMin: 30,
     healthCheckIntervalMin: 60,
@@ -114,6 +117,7 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
     maxTokens: 10000,
     maxSteps: 20,
     defaultModel: 'env.LLM_MODEL',
+    fallbackModel: null,
     generalModel: 'env.LLM_MODEL',
     managementModel: 'env.LLM_MODEL',
     screeningModel: 'env.LLM_MODEL',
@@ -133,7 +137,8 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
   },
 
   hiveMind: {
-    description: 'Collective learning layer. Pulls shared lessons and presets from a remote HiveMind backend; pushes local lessons back.',
+    description:
+      'Collective learning layer. Pulls shared lessons and presets from a remote HiveMind backend; pushes local lessons back.',
     enabled: true,
     url: 'https://api.agentmeridian.xyz',
     apiKey: 'env.DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY',
@@ -142,7 +147,8 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
   },
 
   api: {
-    description: 'External API integrations. Enable only the services needed for research, position lookup, or relay execution.',
+    description:
+      'External API integrations. Enable only the services needed for research, position lookup, or relay execution.',
     meridian: {
       description: 'Agent Meridian API for study data, open-position lookup, and optional relay execution.',
       enabled: true,
@@ -151,7 +157,8 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
       lpAgentRelayEnabled: false,
     },
     lpAgent: {
-      description: 'LPAgent API for external open-position data. Enable it and provide LPAGENT_API_KEY when this data source is required.',
+      description:
+        'LPAgent API for external open-position data. Enable it and provide LPAGENT_API_KEY when this data source is required.',
       enabled: false,
       url: 'https://api.lpagent.io/open-api/v1',
       apiKey: 'env.LPAGENT_API_KEY',
@@ -168,7 +175,8 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
   },
 
   opportunity: {
-    description: 'Background opportunity poller that scans for new high-yield pools using smart-wallet and liquidity metrics.',
+    description:
+      'Background opportunity poller that scans for new high-yield pools using smart-wallet and liquidity metrics.',
     enabled: true,
     pollIntervalSec: 45,
     limit: 10,
@@ -181,7 +189,8 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
   },
 
   gmgn: {
-    description: 'Optional GMGN API integration used to provide the token-fee value for screening. Enable it only when GMGN_API_KEY is configured.',
+    description:
+      'Optional GMGN API integration used to provide the token-fee value for screening. Enable it only when GMGN_API_KEY is configured.',
     enabled: false,
     feeSource: 'gmgn',
     apiKey: 'env.GMGN_API_KEY',
@@ -209,6 +218,6 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
     rsiOverbought: 80,
     requireAllIntervals: false,
   },
-};
+}
 
-export const defaultUserConfigStr = JSON.stringify(DEFAULT_USER_CONFIG, null, 2);
+export const defaultUserConfigStr = JSON.stringify(DEFAULT_USER_CONFIG, null, 2)

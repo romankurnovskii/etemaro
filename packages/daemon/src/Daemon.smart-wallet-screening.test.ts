@@ -4,8 +4,9 @@
  * Validates the cap is checked per-iteration, preventing over-allocation when multiple
  * new positions are detected in a single screening cycle.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import path from 'node:path';
+
+import path from 'node:path'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ─── Module-level mocks ─────────────────────────────────────────────────────
 // runSmartWalletScreening uses core imports directly (not through adapters):
@@ -53,64 +54,64 @@ const {
   mockGetDataDir: vi.fn().mockReturnValue('/tmp/test-data'),
   mockComputeDeployAmount: vi.fn().mockReturnValue(1),
   mockAppendDecision: vi.fn(),
-}));
+}))
 
 // Mock fs operations for snapshot file
 vi.mock('fs', async () => {
-  const actual = await vi.importActual<typeof import('fs')>('fs');
+  const actual = await vi.importActual<typeof import('fs')>('fs')
   const existsSync = vi.fn().mockImplementation((filePath: any) => {
     if (String(filePath).includes('.smart-wallets-snapshot')) {
-      const p = String(filePath);
-      if (p in fsStore) return true;
-      return snapshotState.exists;
+      const p = String(filePath)
+      if (p in fsStore) return true
+      return snapshotState.exists
     }
-    return actual.existsSync(filePath);
-  });
+    return actual.existsSync(filePath)
+  })
   const readFileSync = vi.fn().mockImplementation((filePath: any, encoding?: any) => {
     if (String(filePath).includes('.smart-wallets-snapshot')) {
-      const p = String(filePath);
-      if (p in fsStore) return fsStore[p];
+      const p = String(filePath)
+      if (p in fsStore) return fsStore[p]
       if (snapshotState.content === null) {
-        throw new Error('ENOENT: no such file or directory');
+        throw new Error('ENOENT: no such file or directory')
       }
-      return snapshotState.content;
+      return snapshotState.content
     }
-    return actual.readFileSync(filePath, encoding);
-  });
+    return actual.readFileSync(filePath, encoding)
+  })
   const writeFileSync = vi.fn().mockImplementation((filePath: any, data: any, options?: any) => {
     if (String(filePath).includes('.smart-wallets-snapshot')) {
-      const p = String(filePath);
-      fsStore[p] = String(data);
-      snapshotState.content = data;
-      snapshotState.exists = true;
-      return undefined;
+      const p = String(filePath)
+      fsStore[p] = String(data)
+      snapshotState.content = data
+      snapshotState.exists = true
+      return undefined
     }
-    return actual.writeFileSync(filePath, data, options);
-  });
+    return actual.writeFileSync(filePath, data, options)
+  })
   const renameSync = vi.fn().mockImplementation((oldPath: any, newPath: any) => {
     if (String(oldPath).includes('.smart-wallets-snapshot') || String(newPath).includes('.smart-wallets-snapshot')) {
-      const data = fsStore[String(oldPath)] || snapshotState.content;
+      const data = fsStore[String(oldPath)] || snapshotState.content
       if (data) {
-        fsStore[String(newPath)] = data;
+        fsStore[String(newPath)] = data
       }
-      snapshotState.exists = true;
-      return undefined;
+      snapshotState.exists = true
+      return undefined
     }
-    return actual.renameSync(oldPath, newPath);
-  });
+    return actual.renameSync(oldPath, newPath)
+  })
   const unlinkSync = vi.fn().mockImplementation((filePath: any) => {
     if (String(filePath).includes('.smart-wallets-snapshot')) {
-      delete fsStore[String(filePath)];
-      return undefined;
+      delete fsStore[String(filePath)]
+      return undefined
     }
-    return actual.unlinkSync(filePath);
-  });
+    return actual.unlinkSync(filePath)
+  })
   const mkdirSync = vi.fn().mockImplementation((path: string, options?: any) => {
     if (path === '/tmp/test-data') {
-      return undefined;
+      return undefined
     }
-    return actual.mkdirSync(path, options);
-  });
+    return actual.mkdirSync(path, options)
+  })
 
   return {
     ...actual,
@@ -129,8 +130,8 @@ vi.mock('fs', async () => {
       unlinkSync,
       mkdirSync,
     },
-  };
-});
+  }
+})
 
 vi.mock('@etemaro/core', () => ({
   // Stubs for all Daemon.ts imports (minimized — only what matters)
@@ -206,10 +207,10 @@ vi.mock('@etemaro/core', () => ({
     updateSnapshotPositions: mockUpdateSnapshotPositions,
   },
   token: { getPrice: vi.fn(), getDecimals: vi.fn(), getSymbol: vi.fn() },
-}));
+}))
 
 // Must import Daemon AFTER vi.mock so it gets the mocked module
-import { Daemon, type DaemonAdapters } from './Daemon.js';
+import { Daemon, type DaemonAdapters } from './Daemon.js'
 
 // ─── Adapter factory ────────────────────────────────────────────────────────
 function createMockAdapters(): DaemonAdapters {
@@ -269,249 +270,257 @@ function createMockAdapters(): DaemonAdapters {
       updateSnapshotPositions: mockUpdateSnapshotPositions,
     } as any,
     agentLoopDeps: {} as any,
-  };
+  }
 }
 
 // ─── Helper to reset snapshot state ───────────────────────────────────────
 function resetSnapshot() {
-  snapshotState.content = null;
-  snapshotState.exists = false;
+  snapshotState.content = null
+  snapshotState.exists = false
   for (const key of Object.keys(fsStore)) {
-    delete fsStore[key];
+    delete fsStore[key]
   }
-  mockDataPath.mockImplementation((p: string) => path.join('/tmp/test-data', p));
+  mockDataPath.mockImplementation((p: string) => path.join('/tmp/test-data', p))
 }
 
 // ─── Shared helpers ─────────────────────────────────────────────────────────
 function walletPos(position: string, pool: string) {
-  return { position, pool };
+  return { position, pool }
 }
 
 function okDetail(name: string) {
-  return { name, fee_tvl_ratio: 0.1 };
+  return { name, fee_tvl_ratio: 0.1 }
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 describe('runSmartWalletScreening — maxPositions enforcement', () => {
-  let adapters: DaemonAdapters;
-  let daemon: Daemon;
+  let adapters: DaemonAdapters
+  let daemon: Daemon
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetSnapshot();
-    adapters = createMockAdapters();
-    daemon = new Daemon(adapters);
+    vi.clearAllMocks()
+    resetSnapshot()
+    adapters = createMockAdapters()
+    daemon = new Daemon(adapters)
 
     // Defaults for tests that don't need specifics
-    mockGetWalletPositions.mockResolvedValue({ positions: [] });
-    mockGetPoolDetail.mockResolvedValue({ name: 'pool' });
-    mockGetRawPoolScreeningRejectReason.mockReturnValue(null);
-    mockRecordPositionSnapshot.mockImplementation(() => {});
-    mockDeployPosition.mockImplementation((opts: any) => Promise.resolve({ position: { position: opts.pool_address + '_pos' } }));
+    mockGetWalletPositions.mockResolvedValue({ positions: [] })
+    mockGetPoolDetail.mockResolvedValue({ name: 'pool' })
+    mockGetRawPoolScreeningRejectReason.mockReturnValue(null)
+    mockRecordPositionSnapshot.mockImplementation(() => {})
+    mockDeployPosition.mockImplementation((opts: any) =>
+      Promise.resolve({ position: { position: `${opts.pool_address}_pos` } }),
+    )
     mockUpdateSnapshotPositions.mockImplementation((snap: any, processed: any) => ({
       ...snap,
       positions: [...(snap.positions || []), ...processed.map((p: any) => p.position)],
-    }));
-  });
+    }))
+  })
 
   // ── Case 1: multiple new pools, zero open → deploy exactly maxPositions ──
   it('deploys up to maxPositions when starting from zero', async () => {
-    mockGetTrackedPositions.mockReturnValue([]);
+    mockGetTrackedPositions.mockReturnValue([])
     mockListSmartWallets.mockReturnValue({
       wallets: [
         { address: 'w1', type: 'lp' },
         { address: 'w2', type: 'lp' },
       ],
-    });
+    })
     mockGetWalletPositions
       .mockResolvedValueOnce({ positions: [walletPos('p1', 'poolA')] })
-      .mockResolvedValueOnce({ positions: [walletPos('p2', 'poolB')] });
+      .mockResolvedValueOnce({ positions: [walletPos('p2', 'poolB')] })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB')],
       uniquePools: ['poolA', 'poolB'],
       nextSnapshot: { initialized: true, positions: [] },
-    });
-    mockGetPoolDetail.mockImplementation((o: any) => (o.pool_address === 'poolA' ? okDetail('A') : okDetail('B')));
+    })
+    mockGetPoolDetail.mockImplementation((o: any) => (o.pool_address === 'poolA' ? okDetail('A') : okDetail('B')))
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
-    expect(mockDeployPosition).toHaveBeenCalledTimes(2);
-    expect(result).toContain('Deployed to 2 new pools');
-  });
+    expect(mockDeployPosition).toHaveBeenCalledTimes(2)
+    expect(result).toContain('Deployed to 2 new pools')
+  })
 
   // ── Case 2: already at cap → deploy zero ──────────────────────────────────
   it('deploys zero when already at maxPositions', async () => {
     mockGetTrackedPositions.mockReturnValue([
       { position: 'e1', pool: 'existingPool1' },
       { position: 'e2', pool: 'existingPool2' },
-    ]);
+    ])
     mockListSmartWallets.mockReturnValue({
       wallets: [
         { address: 'w1', type: 'lp' },
         { address: 'w2', type: 'lp' },
       ],
-    });
+    })
     mockGetWalletPositions
       .mockResolvedValueOnce({ positions: [walletPos('p1', 'poolA')] })
-      .mockResolvedValueOnce({ positions: [walletPos('p2', 'poolB')] });
+      .mockResolvedValueOnce({ positions: [walletPos('p2', 'poolB')] })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB')],
       uniquePools: ['poolA', 'poolB'],
       nextSnapshot: { initialized: true, positions: [] },
-    });
+    })
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
-    expect(mockDeployPosition).toHaveBeenCalledTimes(0);
-    expect(result).toContain('Deployed to 0 new pools');
-  });
+    expect(mockDeployPosition).toHaveBeenCalledTimes(0)
+    expect(result).toContain('Deployed to 0 new pools')
+  })
 
   // ── Case 3: cap-1 open, 3 new → deploy exactly 1, then stop ──────────────
   it('stops deploying when cap reached mid-loop', async () => {
-    mockGetTrackedPositions.mockReturnValue([{ position: 'e1', pool: 'existingPool' }]);
+    mockGetTrackedPositions.mockReturnValue([{ position: 'e1', pool: 'existingPool' }])
     mockListSmartWallets.mockReturnValue({
       wallets: [
         { address: 'w1', type: 'lp' },
         { address: 'w2', type: 'lp' },
         { address: 'w3', type: 'lp' },
       ],
-    });
+    })
     mockGetWalletPositions
       .mockResolvedValueOnce({ positions: [walletPos('p1', 'poolA')] })
       .mockResolvedValueOnce({ positions: [walletPos('p2', 'poolB')] })
-      .mockResolvedValueOnce({ positions: [walletPos('p3', 'poolC')] });
+      .mockResolvedValueOnce({ positions: [walletPos('p3', 'poolC')] })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB'), walletPos('p3', 'poolC')],
       uniquePools: ['poolA', 'poolB', 'poolC'],
       nextSnapshot: { initialized: true, positions: [] },
-    });
+    })
     mockGetPoolDetail.mockImplementation((o: any) => {
-      const m: Record<string, string> = { poolA: 'A', poolB: 'B', poolC: 'C' };
-      return okDetail(m[o.pool_address] || 'x');
-    });
+      const m: Record<string, string> = { poolA: 'A', poolB: 'B', poolC: 'C' }
+      return okDetail(m[o.pool_address] || 'x')
+    })
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
     // maxPositions=2, already 1 open → can deploy only 1
-    expect(mockDeployPosition).toHaveBeenCalledTimes(1);
-    expect(result).toContain('Deployed to 1 new pools');
-    expect(mockDeployPosition.mock.calls[0]?.[0]?.pool_address).toBe('poolA');
-  });
+    expect(mockDeployPosition).toHaveBeenCalledTimes(1)
+    expect(result).toContain('Deployed to 1 new pools')
+    expect(mockDeployPosition.mock.calls[0]?.[0]?.pool_address).toBe('poolA')
+  })
 
   // ── Case 4: single wallet with multiple positions, cap applies ────────────
   it('enforces cap when one wallet opens multiple positions', async () => {
-    mockGetTrackedPositions.mockReturnValue([]);
-    mockListSmartWallets.mockReturnValue({ wallets: [{ address: 'w1', type: 'lp' }] });
+    mockGetTrackedPositions.mockReturnValue([])
+    mockListSmartWallets.mockReturnValue({ wallets: [{ address: 'w1', type: 'lp' }] })
     mockGetWalletPositions.mockResolvedValue({
       positions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB'), walletPos('p3', 'poolC')],
-    });
+    })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB'), walletPos('p3', 'poolC')],
       uniquePools: ['poolA', 'poolB', 'poolC'],
       nextSnapshot: { initialized: true, positions: [] },
-    });
+    })
     mockGetPoolDetail.mockImplementation((o: any) => {
-      const m: Record<string, string> = { poolA: 'A', poolB: 'B', poolC: 'C' };
-      return okDetail(m[o.pool_address] || 'x');
-    });
+      const m: Record<string, string> = { poolA: 'A', poolB: 'B', poolC: 'C' }
+      return okDetail(m[o.pool_address] || 'x')
+    })
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
-    expect(mockDeployPosition).toHaveBeenCalledTimes(2);
-    expect(result).toContain('Deployed to 2 new pools');
-  });
+    expect(mockDeployPosition).toHaveBeenCalledTimes(2)
+    expect(result).toContain('Deployed to 2 new pools')
+  })
 
   // ── Case 5: no new positions → early return before loop ───────────────────
   it('returns early when no new positions detected', async () => {
-    mockGetTrackedPositions.mockReturnValue([]);
-    mockListSmartWallets.mockReturnValue({ wallets: [{ address: 'w1', type: 'lp' }] });
-    mockGetWalletPositions.mockResolvedValue({ positions: [walletPos('p1', 'poolA')] });
+    mockGetTrackedPositions.mockReturnValue([])
+    mockListSmartWallets.mockReturnValue({ wallets: [{ address: 'w1', type: 'lp' }] })
+    mockGetWalletPositions.mockResolvedValue({ positions: [walletPos('p1', 'poolA')] })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [],
       uniquePools: [],
       nextSnapshot: { initialized: true, positions: ['p1'] },
-    });
+    })
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
-    expect(mockDeployPosition).toHaveBeenCalledTimes(0);
-    expect(result).toBe('No new positions detected by smart wallets.');
-  });
+    expect(mockDeployPosition).toHaveBeenCalledTimes(0)
+    expect(result).toBe('No new positions detected by smart wallets.')
+  })
 
   // ── Case 6: vetoed positions don't consume cap slots ──────────────────────
   it('does not count vetoed positions toward cap', async () => {
-    mockGetTrackedPositions.mockReturnValue([]);
+    mockGetTrackedPositions.mockReturnValue([])
     mockListSmartWallets.mockReturnValue({
       wallets: [
         { address: 'w1', type: 'lp' },
         { address: 'w2', type: 'lp' },
         { address: 'w3', type: 'lp' },
       ],
-    });
+    })
     mockGetWalletPositions
       .mockResolvedValueOnce({ positions: [walletPos('p1', 'poolA')] })
       .mockResolvedValueOnce({ positions: [walletPos('p2', 'poolB')] })
-      .mockResolvedValueOnce({ positions: [walletPos('p3', 'poolC')] });
+      .mockResolvedValueOnce({ positions: [walletPos('p3', 'poolC')] })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB'), walletPos('p3', 'poolC')],
       uniquePools: ['poolA', 'poolB', 'poolC'],
       nextSnapshot: { initialized: true, positions: [] },
-    });
+    })
     mockGetPoolDetail.mockImplementation((o: any) => {
-      const m: Record<string, string> = { poolA: 'A', poolB: 'B', poolC: 'C' };
-      return okDetail(m[o.pool_address] || 'x');
-    });
+      const m: Record<string, string> = { poolA: 'A', poolB: 'B', poolC: 'C' }
+      return okDetail(m[o.pool_address] || 'x')
+    })
     // Veto poolB — it should be skipped, not count toward the cap
-    mockGetRawPoolScreeningRejectReason.mockImplementation((detail: any) => (detail.name === 'B' ? 'Low TVL' : null));
+    mockGetRawPoolScreeningRejectReason.mockImplementation((detail: any) => (detail.name === 'B' ? 'Low TVL' : null))
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
     // poolA deployed, poolB vetoed (skipped, not a slot), poolC deployed → 2 deploys
-    expect(mockDeployPosition).toHaveBeenCalledTimes(2);
-    expect(result).toContain('Deployed to 2 new pools');
-    expect(mockDeployPosition.mock.calls.map((c: any) => c[0].pool_address)).toEqual(['poolA', 'poolC']);
-  });
+    expect(mockDeployPosition).toHaveBeenCalledTimes(2)
+    expect(result).toContain('Deployed to 2 new pools')
+    expect(mockDeployPosition.mock.calls.map((c: any) => c[0].pool_address)).toEqual(['poolA', 'poolC'])
+  })
 
   // ── Case 7: duplicate pool in newPositions → only first deploys ───────────
   it('skips duplicate pool already deployed in same loop iteration', async () => {
-    mockGetTrackedPositions.mockReturnValue([]);
-    mockListSmartWallets.mockReturnValue({ wallets: [{ address: 'w1', type: 'lp' }] });
+    mockGetTrackedPositions.mockReturnValue([])
+    mockListSmartWallets.mockReturnValue({ wallets: [{ address: 'w1', type: 'lp' }] })
     mockGetWalletPositions.mockResolvedValue({
       positions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolA')], // same pool
-    });
+    })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolA')],
       uniquePools: ['poolA'],
       nextSnapshot: { initialized: true, positions: [] },
-    });
-    mockGetPoolDetail.mockImplementation((o: any) => okDetail('A'));
+    })
+    mockGetPoolDetail.mockImplementation((_o: any) => okDetail('A'))
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
     // p1 deploys, p2 skipped (poolA already open) → 1 deploy
-    expect(mockDeployPosition).toHaveBeenCalledTimes(1);
-    expect(result).toContain('Deployed to 1 new pools');
-  });
+    expect(mockDeployPosition).toHaveBeenCalledTimes(1)
+    expect(result).toContain('Deployed to 1 new pools')
+  })
 
   // ── Case 8: cap-2 open, 5 new → deploy exactly 2 ─────────────────────────
   it('deploys remaining capacity when many candidates', async () => {
     mockGetTrackedPositions.mockReturnValue([
       { position: 'e1', pool: 'existingPool1' },
       { position: 'e2', pool: 'existingPool2' },
-    ]);
+    ])
     mockListSmartWallets.mockReturnValue({
       wallets: [{ address: 'w1', type: 'lp' }],
-    });
+    })
     mockGetWalletPositions.mockResolvedValue({
-      positions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB'), walletPos('p3', 'poolC'), walletPos('p4', 'poolD'), walletPos('p5', 'poolE')],
-    });
+      positions: [
+        walletPos('p1', 'poolA'),
+        walletPos('p2', 'poolB'),
+        walletPos('p3', 'poolC'),
+        walletPos('p4', 'poolD'),
+        walletPos('p5', 'poolE'),
+      ],
+    })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [
@@ -523,203 +532,205 @@ describe('runSmartWalletScreening — maxPositions enforcement', () => {
       ],
       uniquePools: ['poolA', 'poolB', 'poolC', 'poolD', 'poolE'],
       nextSnapshot: { initialized: true, positions: [] },
-    });
-    mockGetPoolDetail.mockImplementation((o: any) => okDetail(o.pool_address));
+    })
+    mockGetPoolDetail.mockImplementation((o: any) => okDetail(o.pool_address))
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
     // maxPositions=2, already at 2 → deploy 0
-    expect(mockDeployPosition).toHaveBeenCalledTimes(0);
-    expect(result).toContain('Deployed to 0 new pools');
-  });
+    expect(mockDeployPosition).toHaveBeenCalledTimes(0)
+    expect(result).toContain('Deployed to 0 new pools')
+  })
 
   // ── Case 9: deploy error on one doesn't consume a cap slot ────────────────
   it('failed deploy does not count toward cap', async () => {
-    mockGetTrackedPositions.mockReturnValue([{ position: 'e1', pool: 'existingPool' }]);
+    mockGetTrackedPositions.mockReturnValue([{ position: 'e1', pool: 'existingPool' }])
     mockListSmartWallets.mockReturnValue({
       wallets: [
         { address: 'w1', type: 'lp' },
         { address: 'w2', type: 'lp' },
       ],
-    });
+    })
     mockGetWalletPositions
       .mockResolvedValueOnce({ positions: [walletPos('p1', 'poolA')] })
-      .mockResolvedValueOnce({ positions: [walletPos('p2', 'poolB')] });
+      .mockResolvedValueOnce({ positions: [walletPos('p2', 'poolB')] })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB')],
       uniquePools: ['poolA', 'poolB'],
       nextSnapshot: { initialized: true, positions: [] },
-    });
+    })
     mockGetPoolDetail.mockImplementation((o: any) => {
-      const m: Record<string, string> = { poolA: 'A', poolB: 'B' };
-      return okDetail(m[o.pool_address] || 'x');
-    });
+      const m: Record<string, string> = { poolA: 'A', poolB: 'B' }
+      return okDetail(m[o.pool_address] || 'x')
+    })
     // First deploy fails, second succeeds
-    mockDeployPosition.mockRejectedValueOnce(new Error('RPC timeout')).mockResolvedValueOnce({ position: { position: 'poolB_pos' } });
+    mockDeployPosition
+      .mockRejectedValueOnce(new Error('RPC timeout'))
+      .mockResolvedValueOnce({ position: { position: 'poolB_pos' } })
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
     // Both attempted; cap check happens before deploy, not after
     // p1 fails (no open position tracked for it), p2 succeeds
-    expect(mockDeployPosition).toHaveBeenCalledTimes(2);
-    expect(result).toContain('Deployed to 1 new pools');
-  });
+    expect(mockDeployPosition).toHaveBeenCalledTimes(2)
+    expect(result).toContain('Deployed to 1 new pools')
+  })
 
   // ── Case 10: cap-1 open, 3 new with one vetoed → deploy 2 (cap) ──────────
   it('deploys up to remaining capacity, skipping vetoed', async () => {
-    mockGetTrackedPositions.mockReturnValue([{ position: 'e1', pool: 'existingPool' }]);
+    mockGetTrackedPositions.mockReturnValue([{ position: 'e1', pool: 'existingPool' }])
     mockListSmartWallets.mockReturnValue({
       wallets: [
         { address: 'w1', type: 'lp' },
         { address: 'w2', type: 'lp' },
         { address: 'w3', type: 'lp' },
       ],
-    });
+    })
     mockGetWalletPositions
       .mockResolvedValueOnce({ positions: [walletPos('p1', 'poolA')] })
       .mockResolvedValueOnce({ positions: [walletPos('p2', 'poolB')] })
-      .mockResolvedValueOnce({ positions: [walletPos('p3', 'poolC')] });
+      .mockResolvedValueOnce({ positions: [walletPos('p3', 'poolC')] })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB'), walletPos('p3', 'poolC')],
       uniquePools: ['poolA', 'poolB', 'poolC'],
       nextSnapshot: { initialized: true, positions: [] },
-    });
+    })
     mockGetPoolDetail.mockImplementation((o: any) => {
-      const m: Record<string, string> = { poolA: 'A', poolB: 'B', poolC: 'C' };
-      return okDetail(m[o.pool_address] || 'x');
-    });
-    mockGetRawPoolScreeningRejectReason.mockImplementation((detail: any) => (detail.name === 'A' ? 'Bad pool' : null));
+      const m: Record<string, string> = { poolA: 'A', poolB: 'B', poolC: 'C' }
+      return okDetail(m[o.pool_address] || 'x')
+    })
+    mockGetRawPoolScreeningRejectReason.mockImplementation((detail: any) => (detail.name === 'A' ? 'Bad pool' : null))
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
     // poolA vetoed → skip (no cap slot), poolB deployed, cap reached → stop
-    expect(mockDeployPosition).toHaveBeenCalledTimes(1);
-    expect(result).toContain('Deployed to 1 new pools');
-  });
+    expect(mockDeployPosition).toHaveBeenCalledTimes(1)
+    expect(result).toContain('Deployed to 1 new pools')
+  })
 
   // ── Case 11: firstRun → early return, no loop at all ─────────────────────
   it('returns early on first run (baseline snapshot)', async () => {
-    mockGetTrackedPositions.mockReturnValue([]);
-    mockListSmartWallets.mockReturnValue({ wallets: [{ address: 'w1', type: 'lp' }] });
+    mockGetTrackedPositions.mockReturnValue([])
+    mockListSmartWallets.mockReturnValue({ wallets: [{ address: 'w1', type: 'lp' }] })
     mockGetWalletPositions.mockResolvedValue({
       positions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB')],
-    });
+    })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: true,
       newPositions: [],
       uniquePools: [],
       nextSnapshot: { initialized: true, positions: ['p1', 'p2'] },
-    });
+    })
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
-    expect(mockDeployPosition).toHaveBeenCalledTimes(0);
-    expect(result).toContain('Smart wallets initialized');
-  });
+    expect(mockDeployPosition).toHaveBeenCalledTimes(0)
+    expect(result).toContain('Smart wallets initialized')
+  })
 
   // ── Case 12: no wallets → early return ────────────────────────────────────
   it('returns early when no smart wallets tracked', async () => {
-    mockGetTrackedPositions.mockReturnValue([]);
-    mockListSmartWallets.mockReturnValue({ wallets: [] });
+    mockGetTrackedPositions.mockReturnValue([])
+    mockListSmartWallets.mockReturnValue({ wallets: [] })
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
-    expect(mockDeployPosition).toHaveBeenCalledTimes(0);
-    expect(result).toBe('No smart LP wallets tracked.');
-  });
+    expect(mockDeployPosition).toHaveBeenCalledTimes(0)
+    expect(result).toBe('No smart LP wallets tracked.')
+  })
 
   // ── Case 13: verify snapshot updated with resolved-only positions ──────────
   it('updates snapshot with resolved positions only', async () => {
-    mockGetTrackedPositions.mockReturnValue([]);
+    mockGetTrackedPositions.mockReturnValue([])
     mockListSmartWallets.mockReturnValue({
       wallets: [
         { address: 'w1', type: 'lp' },
         { address: 'w2', type: 'lp' },
       ],
-    });
+    })
     mockGetWalletPositions
       .mockResolvedValueOnce({ positions: [walletPos('p1', 'poolA')] })
-      .mockResolvedValueOnce({ positions: [walletPos('p2', 'poolB')] });
+      .mockResolvedValueOnce({ positions: [walletPos('p2', 'poolB')] })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB')],
       uniquePools: ['poolA', 'poolB'],
       nextSnapshot: { initialized: true, positions: [] },
-    });
-    mockGetPoolDetail.mockImplementation((o: any) => okDetail(o.pool_address));
+    })
+    mockGetPoolDetail.mockImplementation((o: any) => okDetail(o.pool_address))
 
-    await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
-    expect(mockUpdateSnapshotPositions).toHaveBeenCalledTimes(1);
-    const [snap, processed] = mockUpdateSnapshotPositions.mock.calls[0] ?? [{}, []];
-    expect(snap.initialized).toBe(true);
+    expect(mockUpdateSnapshotPositions).toHaveBeenCalledTimes(1)
+    const [snap, processed] = mockUpdateSnapshotPositions.mock.calls[0] ?? [{}, []]
+    expect(snap.initialized).toBe(true)
     // Both resolved (poolA deployed, poolB deployed)
-    expect(processed).toHaveLength(2);
-    expect(processed.every((p: any) => p.resolved)).toBe(true);
-  });
+    expect(processed).toHaveLength(2)
+    expect(processed.every((p: any) => p.resolved)).toBe(true)
+  })
 
   // ── Case 14: cap=1, 3 new → deploy exactly 1, remaining saved for later ──
   it('respects maxPositions=1 and deploys only one', async () => {
     // Override config for this test
-    const coreModule = await import('@etemaro/core');
-    const originalConfig = { ...coreModule.config };
-    coreModule.config.risk.maxPositions = 1;
+    const coreModule = await import('@etemaro/core')
+    const originalConfig = { ...coreModule.config }
+    coreModule.config.risk.maxPositions = 1
 
-    mockGetTrackedPositions.mockReturnValue([]);
+    mockGetTrackedPositions.mockReturnValue([])
     mockListSmartWallets.mockReturnValue({
       wallets: [{ address: 'w1', type: 'lp' }],
-    });
+    })
     mockGetWalletPositions.mockResolvedValue({
       positions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB'), walletPos('p3', 'poolC')],
-    });
+    })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [walletPos('p1', 'poolA'), walletPos('p2', 'poolB'), walletPos('p3', 'poolC')],
       uniquePools: ['poolA', 'poolB', 'poolC'],
       nextSnapshot: { initialized: true, positions: [] },
-    });
+    })
     mockGetPoolDetail.mockImplementation((o: any) => {
-      const m: Record<string, string> = { poolA: 'A', poolB: 'B', poolC: 'C' };
-      return okDetail(m[o.pool_address] || 'x');
-    });
+      const m: Record<string, string> = { poolA: 'A', poolB: 'B', poolC: 'C' }
+      return okDetail(m[o.pool_address] || 'x')
+    })
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
-    expect(mockDeployPosition).toHaveBeenCalledTimes(1);
-    expect(result).toContain('Deployed to 1 new pools');
-    expect(mockDeployPosition.mock.calls[0]?.[0]?.pool_address).toBe('poolA');
+    expect(mockDeployPosition).toHaveBeenCalledTimes(1)
+    expect(result).toContain('Deployed to 1 new pools')
+    expect(mockDeployPosition.mock.calls[0]?.[0]?.pool_address).toBe('poolA')
 
     // Restore config
-    coreModule.config.risk.maxPositions = originalConfig.risk.maxPositions;
-  });
+    coreModule.config.risk.maxPositions = originalConfig.risk.maxPositions
+  })
 
   // ── Case 15: Migration fallback from legacy unsuffixed snapshot ──
   it('migrates legacy unsuffixed snapshot to agent-suffixed snapshot when agent snapshot is missing', async () => {
-    mockDataPath.mockImplementation((p: string) => path.join('/tmp/test-data', '.smart-wallets-snapshot-agt_1.json'));
-    const legacyPath = path.join(mockGetDataDir(), '.smart-wallets-snapshot.json');
+    mockDataPath.mockImplementation((_p: string) => path.join('/tmp/test-data', '.smart-wallets-snapshot-agt_1.json'))
+    const legacyPath = path.join(mockGetDataDir(), '.smart-wallets-snapshot.json')
     fsStore[legacyPath] = JSON.stringify({
       initialized: true,
       positions: [{ position: 'legacy-p1', pool: 'legacy-pool1' }],
-    });
+    })
 
-    mockGetTrackedPositions.mockReturnValue([]);
+    mockGetTrackedPositions.mockReturnValue([])
     mockListSmartWallets.mockReturnValue({
       wallets: [{ address: 'w1', type: 'lp' }],
-    });
+    })
     mockGetWalletPositions.mockResolvedValue({
       positions: [walletPos('legacy-p1', 'legacy-pool1')],
-    });
+    })
     mockDiffSmartWalletPositions.mockReturnValue({
       isFirstRun: false,
       newPositions: [],
       uniquePools: [],
       nextSnapshot: { initialized: true, positions: [{ position: 'legacy-p1', pool: 'legacy-pool1' }] },
-    });
+    })
 
-    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 });
-    expect(result).toBe('No new positions detected by smart wallets.');
-    expect(fsStore['/tmp/test-data/.smart-wallets-snapshot-agt_1.json']).toContain('legacy-p1');
-  });
-});
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
+    expect(result).toBe('No new positions detected by smart wallets.')
+    expect(fsStore['/tmp/test-data/.smart-wallets-snapshot-agt_1.json']).toContain('legacy-p1')
+  })
+})

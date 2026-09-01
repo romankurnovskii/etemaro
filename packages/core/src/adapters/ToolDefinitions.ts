@@ -8,7 +8,7 @@
  *
  * @dependencies none (pure data)
  */
-import type { ToolDefinition } from '../shared/types.js';
+import type { ToolDefinition } from '../shared/types.js'
 
 const toolDefinitions: ToolDefinition[] = [
   // ═══════════════════════════════════════════
@@ -49,7 +49,8 @@ Use this as the primary tool for finding new LP opportunities.`,
           category: {
             type: 'string',
             enum: ['top', 'new', 'trending'],
-            description: "Pool category. 'top' = highest fee/TVL, 'new' = recently created, 'trending' = gaining activity.",
+            description:
+              "Pool category. 'top' = highest fee/TVL, 'new' = recently created, 'trending' = gaining activity.",
           },
         },
       },
@@ -204,10 +205,16 @@ WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
               'Optional human-friendly upside range in percent above the current active price. Do not use this for single-side SOL deploys.',
           },
           pool_name: { type: 'string', description: 'Human-readable pool name for record-keeping' },
-          base_mint: { type: 'string', description: 'Base token mint address — used to prevent duplicate token exposure across pools' },
+          base_mint: {
+            type: 'string',
+            description: 'Base token mint address — used to prevent duplicate token exposure across pools',
+          },
           bin_step: { type: 'number', description: 'Pool bin step (from discover_pools)' },
           base_fee: { type: 'number', description: 'Pool base fee percentage (from discover_pools)' },
-          volatility: { type: 'number', description: 'Pool volatility at deploy time, sourced from max(screening timeframe, 30m)' },
+          volatility: {
+            type: 'number',
+            description: 'Pool volatility at deploy time, sourced from max(screening timeframe, 30m)',
+          },
           fee_tvl_ratio: { type: 'number', description: 'fee/TVL ratio at deploy time' },
           organic_score: { type: 'number', description: 'Base token organic score at deploy time' },
           initial_value_usd: { type: 'number', description: 'Estimated USD value being deployed' },
@@ -480,7 +487,11 @@ Use when the user says "add smart wallet", "track this wallet", "add to smart wa
         properties: {
           name: { type: 'string', description: "Label for this wallet (e.g. 'alpha-1', 'whale-sol')" },
           address: { type: 'string', description: 'Solana wallet address (base58)' },
-          category: { type: 'string', enum: ['alpha', 'smart', 'fast', 'multi'], description: 'Wallet category (default: alpha)' },
+          category: {
+            type: 'string',
+            enum: ['alpha', 'smart', 'fast', 'multi'],
+            description: 'Wallet category (default: alpha)',
+          },
           type: {
             type: 'string',
             enum: ['lp', 'holder'],
@@ -569,7 +580,10 @@ NOTE: Requires mint address. If you only have a symbol/name, call get_token_info
       parameters: {
         type: 'object',
         properties: {
-          mint: { type: 'string', description: 'Token mint address (base58). Use get_token_info first if you only have a symbol.' },
+          mint: {
+            type: 'string',
+            description: 'Token mint address (base58). Use get_token_info first if you only have a symbol.',
+          },
           limit: { type: 'number', description: 'How many holders to return (default 20, max 100)' },
         },
         required: ['mint'],
@@ -824,7 +838,10 @@ The strategy will be available for selection before future deployments.`,
             description: 'Entry conditions',
             properties: {
               condition: { type: 'string', description: 'Entry condition description' },
-              price_change_threshold_pct: { type: 'number', description: 'Price change % that triggers entry (e.g. -30 for -30% from ATH)' },
+              price_change_threshold_pct: {
+                type: 'number',
+                description: 'Price change % that triggers entry (e.g. -30 for -30% from ATH)',
+              },
               singleSide: { type: 'string', description: 'sol or token' },
             },
           },
@@ -860,7 +877,8 @@ The strategy will be available for selection before future deployments.`,
     type: 'function',
     function: {
       name: 'list_strategies',
-      description: 'List all saved strategies in the library with a summary of each. Shows which one is currently active.',
+      description:
+        'List all saved strategies in the library with a summary of each. Shows which one is currently active.',
       parameters: { type: 'object', properties: {} },
     },
   },
@@ -869,7 +887,8 @@ The strategy will be available for selection before future deployments.`,
     type: 'function',
     function: {
       name: 'get_strategy',
-      description: 'Get full details of a specific strategy including all criteria, range settings, and original raw text.',
+      description:
+        'Get full details of a specific strategy including all criteria, range settings, and original raw text.',
       parameters: {
         type: 'object',
         properties: {
@@ -1165,12 +1184,15 @@ strategy-library metadata (named profiles), NOT the actual running operational p
       parameters: { type: 'object', properties: {} },
     },
   },
-];
+]
 
 export const tools: ToolDefinition[] = toolDefinitions.map((tool) => ({
   ...tool,
   function: {
     ...tool.function,
-    parameters: tool.function.parameters?.type === 'object' ? { additionalProperties: false, ...tool.function.parameters } : tool.function.parameters,
+    parameters:
+      tool.function.parameters?.type === 'object'
+        ? { additionalProperties: false, ...tool.function.parameters }
+        : tool.function.parameters,
   },
-}));
+}))

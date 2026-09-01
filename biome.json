@@ -2,45 +2,40 @@
   "$schema": "https://biomejs.dev/schemas/2.5.11/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "includes": [
-      "packages/**/*.{ts,tsx,js,jsx,json}",
-      "apps/**/*.{ts,tsx,js,jsx,json}",
-      "!**/dist/**",
-      "!**/node_modules/**"
-    ]
+    "includes": ["packages/**/*.{ts,tsx,js,jsx,json}", "apps/**/*.{ts,tsx,js,jsx,json}", "!**/dist", "!**/node_modules"]
   },
   "formatter": {
-    "enabled": false
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineEnding": "lf",
+    "lineWidth": 120,
+    "bracketSameLine": false,
+    "expand": "auto"
   },
   "linter": {
     "enabled": true,
     "rules": {
-      "preset": "none",
-      "complexity": {
-        "noUselessSwitchCase": "error"
-      },
-      "correctness": {
-        "noConstAssign": "error",
-        "noConstantCondition": "error",
-        "noUnusedImports": "warn",
-        "noUnreachable": "error"
-      },
+      "preset": "recommended",
+      "complexity": { "noUselessSwitchCase": "error" },
+      "correctness": { "noUnusedImports": "error" },
       "style": {
-        "noUnusedTemplateLiteral": "off"
+        "noUnusedTemplateLiteral": "error",
+        "useTemplate": "error"
       },
       "suspicious": {
-        "noAsyncPromiseExecutor": "error",
-        "noDuplicateCase": "error"
+        "noExplicitAny": "warn"
       }
     }
   },
   "javascript": {
     "formatter": {
       "quoteStyle": "single",
-      "semicolons": "always"
+      "semicolons": "asNeeded"
     }
   },
   "assist": {
-    "enabled": false
+    "enabled": true,
+    "actions": { "source": { "organizeImports": "on" } }
   }
 }

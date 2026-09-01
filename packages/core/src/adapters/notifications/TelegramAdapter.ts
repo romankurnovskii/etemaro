@@ -11,182 +11,192 @@
  * @sideEffects Long polling and HTTP requests to Telegram Bot API
  */
 
-import fs from 'node:fs';
-import { log } from '../../shared/logger.js';
-import { sleep } from '../../utils/time.js';
-import { USER_CONFIG_PATH } from '../../shared/constants.js';
-import { config } from '../../config/Config.js';
-import { notify } from './NotificationSink.js';
+import fs from 'node:fs'
+import { config } from '../../config/Config.js'
+import { USER_CONFIG_PATH } from '../../shared/constants.js'
+import { log } from '../../shared/logger.js'
+import { sleep } from '../../utils/time.js'
+import { notify } from './NotificationSink.js'
 
 function getToken(): string | null {
-  const token = config.connection?.telegramBotToken;
-  return token && !token.startsWith('env.') ? token : null;
+  const token = config.connection?.telegramBotToken
+  return token && !token.startsWith('env.') ? token : null
 }
 
 function getBase(): string | null {
-  const token = getToken();
-  return token ? `https://api.telegram.org/bot${token}` : null;
+  const token = getToken()
+  return token ? `https://api.telegram.org/bot${token}` : null
 }
 
 function getAllowedUserIds(): Set<string> {
-  const raw = config.connection?.telegramAllowedUserIds || '';
+  const raw = config.connection?.telegramAllowedUserIds || ''
   return new Set(
     raw
       .split(',')
       .map((id) => id.trim())
       .filter((id) => Boolean(id) && !id.startsWith('env.')),
-  );
+  )
 }
 
-const TOKEN: string | null = getToken();
-const BASE: string | null = getBase();
+const TOKEN: string | null = getToken()
+const BASE: string | null = getBase()
 
-let chatId: string | null = null;
-let _offset = 0;
-let _polling = false;
-let _liveMessageDepth = 0;
-let _warnedMissingChatId = false;
-let _warnedMissingAllowedUsers = false;
+let chatId: string | null = null
+let _offset = 0
+let _polling = false
+let _liveMessageDepth = 0
+let _warnedMissingChatId = false
+let _warnedMissingAllowedUsers = false
 
 // ─── chatId persistence ──────────────────────────────────────────
 function resolveChatId(): string | null {
-  const cfgChatId = config.connection?.telegramChatId;
-  return cfgChatId && !cfgChatId.startsWith('env.') ? cfgChatId : null;
+  const cfgChatId = config.connection?.telegramChatId
+  return cfgChatId && !cfgChatId.startsWith('env.') ? cfgChatId : null
 }
 
 function loadChatId(): void {
-  chatId = resolveChatId();
+  chatId = resolveChatId()
 }
 
 function saveChatId(id: string): void {
   try {
-    if (typeof fs?.existsSync !== 'function' || typeof fs?.writeFileSync !== 'function') return;
+    if (typeof fs?.existsSync !== 'function' || typeof fs?.writeFileSync !== 'function') return
     if (config.connection) {
-      config.connection.telegramChatId = id;
+      config.connection.telegramChatId = id
     }
-    const cfg: Record<string, unknown> = fs.existsSync(USER_CONFIG_PATH) ? JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8')) : {};
+    const cfg: Record<string, unknown> = fs.existsSync(USER_CONFIG_PATH)
+      ? JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'))
+      : {}
     const connection =
-      cfg.connection && typeof cfg.connection === 'object' && !Array.isArray(cfg.connection) ? (cfg.connection as Record<string, unknown>) : {};
-    connection.telegramChatId = id;
-    cfg.connection = connection;
-    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(cfg, null, 2));
+      cfg.connection && typeof cfg.connection === 'object' && !Array.isArray(cfg.connection)
+        ? (cfg.connection as Record<string, unknown>)
+        : {}
+    connection.telegramChatId = id
+    cfg.connection = connection
+    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(cfg, null, 2))
   } catch (e: any) {
-    log('telegram_error', `Failed to persist chatId: ${e.message}`);
+    log('telegram_error', `Failed to persist chatId: ${e.message}`)
   }
 }
 
-loadChatId();
+loadChatId()
 
 interface IncomingTelegramMessage {
-  chat?: { id: number | string; type?: string };
-  from?: { id: number; first_name?: string; username?: string };
-  text?: string;
-  isCallback?: boolean;
-  callbackQueryId?: string;
-  callbackData?: string;
-  messageId?: number;
+  chat?: { id: number | string; type?: string }
+  from?: { id: number; first_name?: string; username?: string }
+  text?: string
+  isCallback?: boolean
+  callbackQueryId?: string
+  callbackData?: string
+  messageId?: number
 }
 
 function isAuthorizedIncomingMessage(msg: IncomingTelegramMessage): boolean {
-  const incomingChatId = String(msg.chat?.id || '');
-  const senderUserId = msg.from?.id != null ? String(msg.from.id) : null;
-  const chatType = msg.chat?.type || 'unknown';
-  const allowedUserIds = getAllowedUserIds();
+  const incomingChatId = String(msg.chat?.id || '')
+  const senderUserId = msg.from?.id != null ? String(msg.from.id) : null
+  const chatType = msg.chat?.type || 'unknown'
+  const allowedUserIds = getAllowedUserIds()
 
   if (!chatId) {
     if (!_warnedMissingChatId) {
       log(
         'telegram_warn',
         'Ignoring inbound Telegram messages because TELEGRAM_CHAT_ID / user-config.telegramChatId is not configured. Auto-registration is disabled for safety.',
-      );
-      _warnedMissingChatId = true;
+      )
+      _warnedMissingChatId = true
     }
-    return false;
+    return false
   }
 
-  if (incomingChatId !== String(chatId)) return false;
+  if (incomingChatId !== String(chatId)) return false
 
   if (chatType !== 'private' && allowedUserIds.size === 0) {
     if (!_warnedMissingAllowedUsers) {
       log(
         'telegram_warn',
         'Ignoring group Telegram messages because TELEGRAM_ALLOWED_USER_IDS is not configured. Set explicit allowed user IDs for command/control.',
-      );
-      _warnedMissingAllowedUsers = true;
+      )
+      _warnedMissingAllowedUsers = true
     }
-    return false;
+    return false
   }
 
   if (allowedUserIds.size > 0) {
-    if (!senderUserId || !allowedUserIds.has(senderUserId)) return false;
+    if (!senderUserId || !allowedUserIds.has(senderUserId)) return false
   }
 
-  return true;
+  return true
 }
 
 // ─── Core send ───────────────────────────────────────────────────
 export function isEnabled(): boolean {
-  return !!TOKEN;
+  return !!TOKEN
 }
 
 interface TelegramApiResponse {
-  ok: boolean;
-  result?: any;
-  description?: string;
+  ok: boolean
+  result?: any
+  description?: string
 }
 
 async function postTelegram(method: string, body: Record<string, unknown>): Promise<TelegramApiResponse | null> {
-  if (!TOKEN || !chatId) return null;
+  if (!TOKEN || !chatId) return null
   try {
     const res = await fetch(`${BASE}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, ...body }),
-    });
+    })
     if (!res.ok) {
-      const err = await res.text();
+      const err = await res.text()
       if (res.status === 401) {
-        log('telegram_error', `${method} 401 Unauthorized — check TELEGRAM_BOT_TOKEN in .env (invalid, revoked, or encrypted without .envrypt key)`);
+        log(
+          'telegram_error',
+          `${method} 401 Unauthorized — check TELEGRAM_BOT_TOKEN in .env (invalid, revoked, or encrypted without .envrypt key)`,
+        )
       } else {
-        log('telegram_error', `${method} ${res.status}: ${err.slice(0, 200)}`);
+        log('telegram_error', `${method} ${res.status}: ${err.slice(0, 200)}`)
       }
-      return null;
+      return null
     }
-    return (await res.json()) as TelegramApiResponse;
+    return (await res.json()) as TelegramApiResponse
   } catch (e: any) {
-    log('telegram_error', `${method} failed: ${e.message}`);
-    return null;
+    log('telegram_error', `${method} failed: ${e.message}`)
+    return null
   }
 }
 
 async function postTelegramRaw(method: string, body: Record<string, unknown>): Promise<TelegramApiResponse | null> {
-  if (!TOKEN) return null;
+  if (!TOKEN) return null
   try {
     const res = await fetch(`${BASE}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-    });
+    })
     if (!res.ok) {
-      const err = await res.text();
+      const err = await res.text()
       if (res.status === 401) {
-        log('telegram_error', `${method} 401 Unauthorized — check TELEGRAM_BOT_TOKEN in .env (invalid, revoked, or encrypted without .envrypt key)`);
+        log(
+          'telegram_error',
+          `${method} 401 Unauthorized — check TELEGRAM_BOT_TOKEN in .env (invalid, revoked, or encrypted without .envrypt key)`,
+        )
       } else {
-        log('telegram_error', `${method} ${res.status}: ${err.slice(0, 200)}`);
+        log('telegram_error', `${method} ${res.status}: ${err.slice(0, 200)}`)
       }
-      return null;
+      return null
     }
-    return (await res.json()) as TelegramApiResponse;
+    return (await res.json()) as TelegramApiResponse
   } catch (e: any) {
-    log('telegram_error', `${method} failed: ${e.message}`);
-    return null;
+    log('telegram_error', `${method} failed: ${e.message}`)
+    return null
   }
 }
 
 export async function sendMessage(text: string): Promise<TelegramApiResponse | null> {
-  notify('message', '💬', text.slice(0, 80), text);
-  if (!TOKEN || !chatId) return null;
-  return postTelegram('sendMessage', { text: String(text).slice(0, 4096) });
+  notify('message', '💬', text.slice(0, 80), text)
+  if (!TOKEN || !chatId) return null
+  return postTelegram('sendMessage', { text: String(text).slice(0, 4096) })
 }
 
 /**
@@ -197,30 +207,33 @@ export async function sendMessage(text: string): Promise<TelegramApiResponse | n
  * 'message' sink entry that sendMessage() produces.
  */
 async function sendPlain(text: string): Promise<TelegramApiResponse | null> {
-  if (!TOKEN || !chatId) return null;
-  return postTelegram('sendMessage', { text: String(text).slice(0, 4096) });
+  if (!TOKEN || !chatId) return null
+  return postTelegram('sendMessage', { text: String(text).slice(0, 4096) })
 }
 
 interface InlineKeyboardButton {
-  text: string;
-  callback_data?: string;
-  url?: string;
+  text: string
+  callback_data?: string
+  url?: string
 }
 
-export async function sendMessageWithButtons(text: string, inlineKeyboard: InlineKeyboardButton[][]): Promise<TelegramApiResponse | null> {
-  if (!TOKEN || !chatId) return null;
+export async function sendMessageWithButtons(
+  text: string,
+  inlineKeyboard: InlineKeyboardButton[][],
+): Promise<TelegramApiResponse | null> {
+  if (!TOKEN || !chatId) return null
   return postTelegram('sendMessage', {
     text: String(text).slice(0, 4096),
     reply_markup: { inline_keyboard: inlineKeyboard },
-  });
+  })
 }
 
 export async function editMessage(text: string, messageId: number): Promise<TelegramApiResponse | null> {
-  if (!TOKEN || !chatId || !messageId) return null;
+  if (!TOKEN || !chatId || !messageId) return null
   return postTelegram('editMessageText', {
     message_id: messageId,
     text: String(text).slice(0, 4096),
-  });
+  })
 }
 
 export async function editMessageWithButtons(
@@ -228,61 +241,73 @@ export async function editMessageWithButtons(
   messageId: number,
   inlineKeyboard: InlineKeyboardButton[][],
 ): Promise<TelegramApiResponse | null> {
-  if (!TOKEN || !chatId || !messageId) return null;
+  if (!TOKEN || !chatId || !messageId) return null
   return postTelegram('editMessageText', {
     message_id: messageId,
     text: String(text).slice(0, 4096),
     reply_markup: { inline_keyboard: inlineKeyboard },
-  });
+  })
 }
 
-export async function answerCallbackQuery(callbackQueryId: string, text: string = ''): Promise<TelegramApiResponse | null> {
-  if (!TOKEN || !callbackQueryId) return null;
+export async function answerCallbackQuery(
+  callbackQueryId: string,
+  text: string = '',
+): Promise<TelegramApiResponse | null> {
+  if (!TOKEN || !callbackQueryId) return null
   return postTelegramRaw('answerCallbackQuery', {
     callback_query_id: callbackQueryId,
     ...(text ? { text: String(text).slice(0, 200) } : {}),
-  });
+  })
 }
 
 export function hasActiveLiveMessage(): boolean {
-  return _liveMessageDepth > 0;
+  return _liveMessageDepth > 0
 }
 
 function createTypingIndicator(): { stop: () => void } {
   if (!TOKEN || !chatId) {
-    return { stop() {} };
+    return { stop() {} }
   }
 
-  let stopped = false;
-  let timer: any = null;
+  let stopped = false
+  let timer: any = null
 
   async function tick(): Promise<void> {
-    if (stopped) return;
-    await postTelegram('sendChatAction', { action: 'typing' });
+    if (stopped) return
+    try {
+      await postTelegram('sendChatAction', { action: 'typing' })
+    } catch (err: any) {
+      log('telegram_warn', `Typing indicator failed: ${err?.message || err}`)
+    }
+    if (stopped) return
     timer = setTimeout(() => {
-      tick().catch(() => null);
-    }, 4000);
+      tick().catch(() => null)
+    }, 5000)
   }
 
-  tick().catch(() => null);
+  tick().catch(() => null)
 
   return {
     stop() {
-      stopped = true;
-      if (timer) clearTimeout(timer);
-      timer = null;
+      stopped = true
+      if (timer) clearTimeout(timer)
+      timer = null
     },
-  };
+  }
 }
 
 export function formatCandidateScanSummary(result: any): string {
-  const shortlisted = Array.isArray(result?.candidates) ? result.candidates.length : Array.isArray(result?.pools) ? result.pools.length : 0;
-  const filtered = Array.isArray(result?.filtered_examples) ? result.filtered_examples.length : 0;
-  const reported = Number(result?.total_screened);
-  const inferred = shortlisted + filtered;
-  const scanned = Number.isFinite(reported) && reported > 0 ? Math.max(reported, inferred) : inferred;
-  if (scanned <= 0 && shortlisted <= 0) return '0 candidates';
-  return `${scanned} scanned / ${shortlisted} shortlisted`;
+  const shortlisted = Array.isArray(result?.candidates)
+    ? result.candidates.length
+    : Array.isArray(result?.pools)
+      ? result.pools.length
+      : 0
+  const filtered = Array.isArray(result?.filtered_examples) ? result.filtered_examples.length : 0
+  const reported = Number(result?.total_screened)
+  const inferred = shortlisted + filtered
+  const scanned = Number.isFinite(reported) && reported > 0 ? Math.max(reported, inferred) : inferred
+  if (scanned <= 0 && shortlisted <= 0) return '0 candidates'
+  return `${scanned} scanned / ${shortlisted} shortlisted`
 }
 
 function toolLabel(name: string): string {
@@ -305,49 +330,49 @@ function toolLabel(name: string): string {
     get_top_lpers: 'get top LPers',
     search_pools: 'search pools',
     discover_pools: 'discover pools',
-  };
-  return labels[name] || name.replace(/_/g, ' ');
+  }
+  return labels[name] || name.replace(/_/g, ' ')
 }
 
 export function summarizeToolResult(name: string, result: any): string {
-  if (!result) return '';
-  if (result.error) return result.error;
-  if (result.reason && result.blocked) return result.reason;
+  if (!result) return ''
+  if (result.error) return result.error
+  if (result.reason && result.blocked) return result.reason
   switch (name) {
     case 'deploy_position':
-      return result.position ? `position ${String(result.position).slice(0, 8)}...` : 'submitted';
+      return result.position ? `position ${String(result.position).slice(0, 8)}...` : 'submitted'
     case 'close_position':
-      return result.success ? 'closed' : result.reason || 'failed';
+      return result.success ? 'closed' : result.reason || 'failed'
     case 'claim_fees':
-      return result.claimed_amount != null ? `claimed ${result.claimed_amount}` : 'done';
+      return result.claimed_amount != null ? `claimed ${result.claimed_amount}` : 'done'
     case 'update_config':
-      return Object.keys(result.applied || {}).join(', ') || 'updated';
+      return Object.keys(result.applied || {}).join(', ') || 'updated'
     case 'get_top_candidates':
     case 'discover_pools':
-      return formatCandidateScanSummary(result);
+      return formatCandidateScanSummary(result)
     case 'get_my_positions':
-      return `${result.total_positions ?? result.positions?.length ?? 0} positions`;
+      return `${result.total_positions ?? result.positions?.length ?? 0} positions`
     case 'get_wallet_balance':
-      return `${result.sol ?? '?'} SOL`;
+      return `${result.sol ?? '?'} SOL`
     case 'study_top_lpers':
     case 'get_top_lpers':
-      return `${result.lpers?.length ?? 0} LPers`;
+      return `${result.lpers?.length ?? 0} LPers`
     default:
-      return result.success === false ? 'failed' : 'done';
+      return result.success === false ? 'failed' : 'done'
   }
 }
 
 export interface LiveMessage {
-  toolStart: (name: string) => Promise<void>;
-  toolFinish: (name: string, result: any, success: boolean) => Promise<void>;
-  note: (text: string) => Promise<void>;
-  finalize: (finalText: string) => Promise<void>;
-  fail: (errorText: string) => Promise<void>;
+  toolStart: (name: string) => Promise<void>
+  toolFinish: (name: string, result: any, success: boolean) => Promise<void>
+  note: (text: string) => Promise<void>
+  finalize: (finalText: string) => Promise<void>
+  fail: (errorText: string) => Promise<void>
 }
 
 export async function createLiveMessage(title: string, intro: string = 'Starting...'): Promise<LiveMessage | null> {
-  if (!TOKEN || !chatId) return null;
-  const typing = createTypingIndicator();
+  if (!TOKEN || !chatId) return null
+  const typing = createTypingIndicator()
 
   const state = {
     title,
@@ -358,134 +383,136 @@ export async function createLiveMessage(title: string, intro: string = 'Starting
     flushTimer: null as any,
     flushPromise: null as Promise<any> | null,
     flushRequested: false,
-  };
+  }
 
   function render(): string {
-    const sections = [state.title];
-    if (state.intro) sections.push(state.intro);
-    if (state.toolLines.length > 0) sections.push(state.toolLines.join('\n'));
-    if (state.footer) sections.push(state.footer);
-    return sections.join('\n\n').slice(0, 4096);
+    const sections = [state.title]
+    if (state.intro) sections.push(state.intro)
+    if (state.toolLines.length > 0) sections.push(state.toolLines.join('\n'))
+    if (state.footer) sections.push(state.footer)
+    return sections.join('\n\n').slice(0, 4096)
   }
 
   async function flushNow(): Promise<void> {
-    state.flushTimer = null;
-    state.flushRequested = false;
-    const text = render();
+    state.flushTimer = null
+    state.flushRequested = false
+    const text = render()
     if (!state.messageId) {
-      const sent = await sendMessage(text);
-      state.messageId = sent?.result?.message_id ?? null;
-      return;
+      const sent = await sendMessage(text)
+      state.messageId = sent?.result?.message_id ?? null
+      return
     }
-    await editMessage(text, state.messageId);
+    await editMessage(text, state.messageId)
   }
 
   function scheduleFlush(delay: number = 300): void {
     if (state.flushTimer) {
-      state.flushRequested = true;
-      return;
+      state.flushRequested = true
+      return
     }
     state.flushTimer = setTimeout(() => {
-      state.flushPromise = flushNow().catch(() => null);
-    }, delay);
+      state.flushPromise = flushNow().catch(() => null)
+    }, delay)
   }
 
   async function upsertToolLine(name: string, icon: string, suffix: string = ''): Promise<void> {
-    const label = toolLabel(name);
-    const line = `${icon} ${label}${suffix ? ` ${suffix}` : ''}`;
-    const idx = state.toolLines.findIndex((entry) => entry.includes(` ${label}`));
-    if (idx >= 0) state.toolLines[idx] = line;
-    else state.toolLines.push(line);
-    scheduleFlush();
+    const label = toolLabel(name)
+    const line = `${icon} ${label}${suffix ? ` ${suffix}` : ''}`
+    const idx = state.toolLines.findIndex((entry) => entry.includes(` ${label}`))
+    if (idx >= 0) state.toolLines[idx] = line
+    else state.toolLines.push(line)
+    scheduleFlush()
   }
 
-  _liveMessageDepth += 1;
-  await flushNow();
+  _liveMessageDepth += 1
+  await flushNow()
 
   return {
     async toolStart(name: string): Promise<void> {
-      await upsertToolLine(name, 'ℹ️', '...');
+      await upsertToolLine(name, 'ℹ️', '...')
     },
     async toolFinish(name: string, result: any, success: boolean): Promise<void> {
-      const icon = success ? '✅' : '❌';
-      const summary = summarizeToolResult(name, result);
-      await upsertToolLine(name, icon, summary ? `— ${summary}` : '');
+      const icon = success ? '✅' : '❌'
+      const summary = summarizeToolResult(name, result)
+      await upsertToolLine(name, icon, summary ? `— ${summary}` : '')
     },
     async note(text: string): Promise<void> {
-      state.intro = text;
-      scheduleFlush();
+      state.intro = text
+      scheduleFlush()
     },
     async finalize(finalText: string): Promise<void> {
       if (state.flushTimer) {
-        clearTimeout(state.flushTimer);
-        state.flushTimer = null;
+        clearTimeout(state.flushTimer)
+        state.flushTimer = null
       }
-      if (state.flushPromise) await state.flushPromise;
-      state.footer = finalText;
-      await flushNow();
-      _liveMessageDepth = Math.max(0, _liveMessageDepth - 1);
-      typing.stop();
+      if (state.flushPromise) await state.flushPromise
+      state.footer = finalText
+      await flushNow()
+      _liveMessageDepth = Math.max(0, _liveMessageDepth - 1)
+      typing.stop()
     },
     async fail(errorText: string): Promise<void> {
       if (state.flushTimer) {
-        clearTimeout(state.flushTimer);
-        state.flushTimer = null;
+        clearTimeout(state.flushTimer)
+        state.flushTimer = null
       }
-      if (state.flushPromise) await state.flushPromise;
-      state.footer = `❌ ${errorText}`;
-      await flushNow();
-      _liveMessageDepth = Math.max(0, _liveMessageDepth - 1);
-      typing.stop();
+      if (state.flushPromise) await state.flushPromise
+      state.footer = `❌ ${errorText}`
+      await flushNow()
+      _liveMessageDepth = Math.max(0, _liveMessageDepth - 1)
+      typing.stop()
     },
-  };
+  }
 }
 
 // ─── Long polling ────────────────────────────────────────────────
 async function poll(onMessage: (msg: IncomingTelegramMessage) => Promise<void>): Promise<void> {
   while (_polling) {
     try {
-      const res = await fetch(`${BASE}/getUpdates?offset=${_offset}&timeout=30`, { signal: AbortSignal.timeout(35_000) });
+      const res = await fetch(`${BASE}/getUpdates?offset=${_offset}&timeout=30`, {
+        signal: AbortSignal.timeout(35_000),
+      })
       if (!res.ok) {
-        await sleep(5000);
-        continue;
+        await sleep(5000)
+        continue
       }
-      const data = (await res.json()) as any;
+      const data = (await res.json()) as any
       for (const update of data.result || []) {
-        _offset = update.update_id + 1;
-        const callback = update.callback_query;
+        _offset = update.update_id + 1
+        const callback = update.callback_query
         if (callback?.data && callback?.message) {
           const callbackMsg: IncomingTelegramMessage = {
             chat: callback.message.chat,
             from: callback.from,
             text: callback.data,
-          };
-          if (!isAuthorizedIncomingMessage(callbackMsg)) continue;
+          }
+          if (!isAuthorizedIncomingMessage(callbackMsg)) continue
           await onMessage({
             ...callbackMsg,
             isCallback: true,
             callbackQueryId: callback.id,
             callbackData: callback.data,
             messageId: callback.message.message_id,
-          });
-          continue;
+          })
+          continue
         }
-        const msg = update.message;
-        if (!msg?.text) continue;
-        if (!isAuthorizedIncomingMessage(msg)) continue;
-        await onMessage(msg);
+        const msg = update.message
+        if (!msg?.text) continue
+        if (!isAuthorizedIncomingMessage(msg)) continue
+        await onMessage(msg)
       }
     } catch (e: any) {
       if (!e.message?.includes('aborted')) {
-        log('telegram_error', `Poll error: ${e.message}`);
+        log('telegram_error', `Poll error: ${e.message}`)
       }
-      await sleep(5000);
+      await sleep(5000)
     }
   }
 }
 
 interface BotCommand {
-  command: string;
-  description: string;
+  command: string
+  description: string
 }
 
 const BOT_COMMANDS: BotCommand[] = [
@@ -508,64 +535,74 @@ const BOT_COMMANDS: BotCommand[] = [
   { command: 'pause', description: 'Stop cron cycles' },
   { command: 'resume', description: 'Start cron cycles again' },
   { command: 'stop', description: 'Shut down agent' },
-];
+]
 
 async function registerCommands(): Promise<void> {
-  if (!BASE) return;
+  if (!BASE) return
   try {
     await fetch(`${BASE}/setMyCommands`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ commands: BOT_COMMANDS }),
-    });
-    log('telegram', 'Bot commands registered');
+    })
+    log('telegram', 'Bot commands registered')
   } catch (e: any) {
-    log('telegram_warn', `Failed to register bot commands: ${e.message}`);
+    log('telegram_warn', `Failed to register bot commands: ${e.message}`)
   }
 }
 
 export function startPolling(onMessage: (msg: IncomingTelegramMessage) => Promise<void>): void {
-  if (!TOKEN) return;
-  loadChatId();
+  if (!TOKEN) return
+  loadChatId()
   if (!chatId) {
     log(
       'telegram_warn',
       'TELEGRAM_CHAT_ID not set in .env or user-config.telegramChatId — outbound notifications and inbound control disabled until configured.',
-    );
+    )
   }
-  _polling = true;
-  poll(onMessage); // fire-and-forget
-  registerCommands();
-  log('telegram', 'Bot polling started');
+  _polling = true
+  poll(onMessage) // fire-and-forget
+  registerCommands()
+  log('telegram', 'Bot polling started')
 }
 
 export function stopPolling(): void {
-  _polling = false;
+  _polling = false
 }
 
 // ─── Notification helpers ────────────────────────────────────────
 interface NotifyDeployArgs {
-  pair: string;
-  amountSol: number;
-  position: string;
-  tx: string;
-  priceRange?: { min: number; max: number };
-  rangeCoverage?: { downside_pct: number; upside_pct: number; width_pct: number };
-  binStep?: number;
-  baseFee?: number;
+  pair: string
+  amountSol: number
+  position: string
+  tx: string
+  priceRange?: { min: number; max: number }
+  rangeCoverage?: { downside_pct: number; upside_pct: number; width_pct: number }
+  binStep?: number
+  baseFee?: number
 }
 
-export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, rangeCoverage, binStep, baseFee }: NotifyDeployArgs): Promise<void> {
-  if (hasActiveLiveMessage()) return;
+export async function notifyDeploy({
+  pair,
+  amountSol,
+  position,
+  tx,
+  priceRange,
+  rangeCoverage,
+  binStep,
+  baseFee,
+}: NotifyDeployArgs): Promise<void> {
+  if (hasActiveLiveMessage()) return
   const priceStr = priceRange
     ? `Price range: ${priceRange.min < 0.0001 ? priceRange.min.toExponential(3) : priceRange.min.toFixed(6)} – ${priceRange.max < 0.0001 ? priceRange.max.toExponential(3) : priceRange.max.toFixed(6)}\n`
-    : '';
+    : ''
   const coverageStr = rangeCoverage
     ? `Range cover: ${fmtPct(rangeCoverage.downside_pct)} downside | ${fmtPct(rangeCoverage.upside_pct)} upside | ${fmtPct(rangeCoverage.width_pct)} total\n`
-    : '';
-  const poolStr = binStep || baseFee ? `Bin step: ${binStep ?? '?'}  |  Base fee: ${baseFee != null ? baseFee + '%' : '?'}\n` : '';
-  const body = `Amount: ${amountSol} SOL\n${priceStr}${coverageStr}${poolStr}Position: ${position?.slice(0, 8)}... | Tx: ${tx?.slice(0, 16)}...`;
-  notify('deploy', '✅', `Deployed ${pair}`, body);
+    : ''
+  const poolStr =
+    binStep || baseFee ? `Bin step: ${binStep ?? '?'}  |  Base fee: ${baseFee != null ? `${baseFee}%` : '?'}\n` : ''
+  const body = `Amount: ${amountSol} SOL\n${priceStr}${coverageStr}${poolStr}Position: ${position?.slice(0, 8)}... | Tx: ${tx?.slice(0, 16)}...`
+  notify('deploy', '✅', `Deployed ${pair}`, body)
   await sendPlain(
     `✅ Deployed ${pair}\n` +
       `Amount: ${amountSol} SOL\n` +
@@ -574,40 +611,49 @@ export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, 
       poolStr +
       `Position: ${position?.slice(0, 8)}...\n` +
       `Tx: ${tx?.slice(0, 16)}...`,
-  );
+  )
 }
 
 interface NotifyCloseArgs {
-  pair: string;
-  pnlUsd: number;
-  pnlPct: number;
+  pair: string
+  pnlUsd: number
+  pnlPct: number
 }
 
 export async function notifyClose({ pair, pnlUsd, pnlPct }: NotifyCloseArgs): Promise<void> {
-  if (hasActiveLiveMessage()) return;
-  const sign = pnlUsd >= 0 ? '+' : '';
-  const body = `PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)`;
-  notify('close', '🔒', `Closed ${pair}`, body);
-  await sendPlain(`🔒 Closed ${pair}\n` + body);
+  if (hasActiveLiveMessage()) return
+  const sign = pnlUsd >= 0 ? '+' : ''
+  const body = `PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)`
+  notify('close', '🔒', `Closed ${pair}`, body)
+  await sendPlain(`🔒 Closed ${pair}\n${body}`)
 }
 
 interface NotifySwapArgs {
-  inputSymbol: string;
-  outputSymbol: string;
-  amountIn: string;
-  amountOut: string;
-  tx: string;
-  amountUsd?: number | null;
+  inputSymbol: string
+  outputSymbol: string
+  amountIn: string
+  amountOut: string
+  tx: string
+  amountUsd?: number | null
 }
 
-export async function notifySwap({ inputSymbol, outputSymbol, amountIn, amountOut, tx, amountUsd }: NotifySwapArgs): Promise<void> {
-  if (hasActiveLiveMessage()) return;
-  const usdPart = amountUsd != null && !isNaN(Number(amountUsd)) ? ` (~$${Number(amountUsd).toFixed(2)})` : '';
-  const body = `In: ${amountIn ?? '?'}${usdPart} | Out: ${amountOut ?? '?'}\nTx: ${tx?.slice(0, 16)}...`;
-  notify('swap', '🔄', `Swapped ${inputSymbol} → ${outputSymbol}`, body);
+export async function notifySwap({
+  inputSymbol,
+  outputSymbol,
+  amountIn,
+  amountOut,
+  tx,
+  amountUsd,
+}: NotifySwapArgs): Promise<void> {
+  if (hasActiveLiveMessage()) return
+  const usdPart = amountUsd != null && !Number.isNaN(Number(amountUsd)) ? ` (~$${Number(amountUsd).toFixed(2)})` : ''
+  const body = `In: ${amountIn ?? '?'}${usdPart} | Out: ${amountOut ?? '?'}\nTx: ${tx?.slice(0, 16)}...`
+  notify('swap', '🔄', `Swapped ${inputSymbol} → ${outputSymbol}`, body)
   await sendPlain(
-    `🔄 Swapped ${inputSymbol} → ${outputSymbol}\n` + `In: ${amountIn ?? '?'}${usdPart} | Out: ${amountOut ?? '?'}\n` + `Tx: ${tx?.slice(0, 16)}...`,
-  );
+    `🔄 Swapped ${inputSymbol} → ${outputSymbol}\n` +
+      `In: ${amountIn ?? '?'}${usdPart} | Out: ${amountOut ?? '?'}\n` +
+      `Tx: ${tx?.slice(0, 16)}...`,
+  )
 }
 
 export async function notifySwapError({
@@ -615,41 +661,60 @@ export async function notifySwapError({
   outputSymbol,
   reason,
 }: {
-  inputSymbol: string;
-  outputSymbol: string;
-  reason?: string;
+  inputSymbol: string
+  outputSymbol: string
+  reason?: string
 }): Promise<void> {
-  if (hasActiveLiveMessage()) return;
-  const body = `Reason: ${reason || 'Unknown error'}`;
-  notify('swap_error', '⚠️', `Auto-swap failed: ${inputSymbol} → ${outputSymbol}`, body);
-  await sendPlain(`⚠️ Auto-swap failed: ${inputSymbol} → ${outputSymbol}\n` + body);
+  if (hasActiveLiveMessage()) return
+  const body = `Reason: ${reason || 'Unknown error'}`
+  notify('swap_error', '⚠️', `Auto-swap failed: ${inputSymbol} → ${outputSymbol}`, body)
+  await sendPlain(`⚠️ Auto-swap failed: ${inputSymbol} → ${outputSymbol}\n${body}`)
 }
 
 interface NotifyOutOfRangeArgs {
-  pair: string;
-  minutesOOR: number;
+  pair: string
+  minutesOOR: number
 }
 
 export async function notifyOutOfRange({ pair, minutesOOR }: NotifyOutOfRangeArgs): Promise<void> {
-  if (hasActiveLiveMessage()) return;
-  const body = `Been OOR for ${minutesOOR} minutes`;
-  notify('oor', '⚠️', `Out of Range: ${pair}`, body);
-  await sendPlain(`⚠️ Out of Range ${pair}\n` + body);
+  if (hasActiveLiveMessage()) return
+  const body = `Been OOR for ${minutesOOR} minutes`
+  notify('oor', '⚠️', `Out of Range: ${pair}`, body)
+  await sendPlain(`⚠️ Out of Range ${pair}\n${body}`)
 }
 
+export async function notifyTransactionError({
+  type,
+  pair,
+  position,
+  reason,
+  tx,
+}: {
+  type: string
+  pair?: string
+  position?: string
+  reason: string
+  tx?: string
+}): Promise<void> {
+  if (hasActiveLiveMessage()) return
+  const identifier = pair || (position ? position.slice(0, 8) : 'unknown')
+  const title = `Transaction Failed: ${type.toUpperCase()} | ${identifier}`
+  const details = tx ? `Reason: ${reason}\nTx: ${tx.slice(0, 16)}...` : `Reason: ${reason}`
+  notify('tx_error', '❌', title, details)
+  await sendPlain(`❌ ${title}\n${details}`)
+}
 
 function fmtPct(value: number): string {
-
-  const n = Number(value);
-  return Number.isFinite(n) ? `${n.toFixed(2)}%` : '?';
+  const n = Number(value)
+  return Number.isFinite(n) ? `${n.toFixed(2)}%` : '?'
 }
 
 // ─── Expose chatId for other adapters ──────────────────────────
 export function getChatId(): string | null {
-  return chatId;
+  return chatId
 }
 
 export function setChatId(id: string): void {
-  chatId = id;
-  saveChatId(id);
+  chatId = id
+  saveChatId(id)
 }
