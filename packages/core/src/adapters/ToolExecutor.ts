@@ -839,9 +839,10 @@ async function withDeployPositionLock<T>(operation: () => Promise<T>): Promise<T
  * fills). Treats both a throw AND result.success===false / missing tx as failure.
  * Returns { swapped, result, token } — swapped=false if nothing to do or all attempts failed.
  */
-async function swapBaseToSolWithRetry(
+export async function swapBaseToSolWithRetry(
   baseMint: string,
   label: string,
+  minUsd: number = 0.05,
 ): Promise<{
   swapped: boolean
   result: Record<string, unknown> | null
@@ -860,8 +861,8 @@ async function swapBaseToSolWithRetry(
       if (!token || token.balance <= 0) {
         return { swapped: attempt > 1, result: null, token: null }
       }
-      // If USD value is known and strictly below dust threshold (< $0.05), skip swap
-      if (typeof token.usd === 'number' && token.usd > 0 && token.usd < 0.05) {
+      // If USD value is known and strictly below dust threshold (< minUsd), skip swap
+      if (typeof token.usd === 'number' && token.usd > 0 && token.usd < minUsd) {
         return { swapped: attempt > 1, result: null, token: null }
       }
       lastToken = token
@@ -976,7 +977,7 @@ export async function swapAllTokensToSol(skipMintsInput: string[] | { skipMints?
     swapAttempted = true
 
     try {
-      const res = await swapBaseToSolWithRetry(token.mint, 'batch cleanup')
+      const res = await swapBaseToSolWithRetry(token.mint, 'batch cleanup', 0.02)
       if (res.swapped) {
         successful++
         results.push({ mint: token.mint, success: true, result: res.result })
