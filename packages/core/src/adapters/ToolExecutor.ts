@@ -839,9 +839,10 @@ async function withDeployPositionLock<T>(operation: () => Promise<T>): Promise<T
  * fills). Treats both a throw AND result.success===false / missing tx as failure.
  * Returns { swapped, result, token } — swapped=false if nothing to do or all attempts failed.
  */
-async function swapBaseToSolWithRetry(
+export async function swapBaseToSolWithRetry(
   baseMint: string,
   label: string,
+  minUsd: number = 0.05,
 ): Promise<{
   swapped: boolean
   result: Record<string, unknown> | null
@@ -857,13 +858,18 @@ async function swapBaseToSolWithRetry(
     try {
       const balances = await getWalletBalances()
       const token = balances.tokens?.find((t: any) => t.mint === baseMint)
-      if (!token || (token.usd ?? 0) < 0.1) {
+      if (!token || token.balance <= 0) {
+        return { swapped: attempt > 1, result: null, token: null }
+      }
+      // If USD value is known and strictly below dust threshold (< minUsd), skip swap
+      if (typeof token.usd === 'number' && token.usd > 0 && token.usd < minUsd) {
         return { swapped: attempt > 1, result: null, token: null }
       }
       lastToken = token
+      const usdDisplay = typeof token.usd === 'number' ? ` ($${token.usd.toFixed(2)})` : ''
       log(
         'executor',
-        `Auto-swapping ${label} ${token.symbol || baseMint.slice(0, 8)} ($${(token.usd ?? 0).toFixed(2)}) back to SOL (attempt ${attempt}/${attempts})`,
+        `Auto-swapping ${label} ${token.symbol || baseMint.slice(0, 8)}${usdDisplay} back to SOL (attempt ${attempt}/${attempts})`,
       )
       const swapResult = await swapToken({ input_mint: baseMint, output_mint: 'SOL', amount: token.balance })
       const sr = swapResult as any
@@ -955,9 +961,10 @@ export async function swapAllTokensToSol(skipMintsInput: string[] | { skipMints?
     total++
     const symbolUpper = (token.symbol || '').toUpperCase()
     const isSolOrUsdc = symbolUpper === 'SOL' || symbolUpper === 'WSOL' || symbolUpper === 'USDC'
-    const isDust = (token.usd ?? 0) < 0.02 // 2 usd cents is still more than SOL network fee
+    const isDust = typeof token.usd === 'number' && token.usd > 0 && token.usd < 0.02
+    const hasBalance = (token.balance ?? 0) > 0
 
-    if (skips.has(token.mint) || isSolOrUsdc || isDust) {
+    if (skips.has(token.mint) || isSolOrUsdc || !hasBalance || isDust) {
       skipped++
       continue
     }
@@ -970,7 +977,7 @@ export async function swapAllTokensToSol(skipMintsInput: string[] | { skipMints?
     swapAttempted = true
 
     try {
-      const res = await swapBaseToSolWithRetry(token.mint, 'batch cleanup')
+      const res = await swapBaseToSolWithRetry(token.mint, 'batch cleanup', 0.02)
       if (res.swapped) {
         successful++
         results.push({ mint: token.mint, success: true, result: res.result })
