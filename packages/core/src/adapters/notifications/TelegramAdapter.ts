@@ -19,14 +19,16 @@ import { sleep } from '../../utils/time.js'
 import { notify } from './NotificationSink.js'
 
 function getEffectiveToken(): string | null {
-  const token = config.connection?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN
+  const cfgToken = config.connection?.telegramBotToken
+  const token = cfgToken && !cfgToken.startsWith('env.') ? cfgToken : process.env.TELEGRAM_BOT_TOKEN
   return token && !token.startsWith('env.') ? token : null
 }
 
 function getEffectiveChatId(): string | null {
   if (chatId) return chatId
-  const cfgChatId = config.connection?.telegramChatId || process.env.TELEGRAM_CHAT_ID
-  return cfgChatId && !cfgChatId.startsWith('env.') ? cfgChatId : null
+  const cfgChatId = config.connection?.telegramChatId
+  const currentChatId = cfgChatId && !cfgChatId.startsWith('env.') ? cfgChatId : process.env.TELEGRAM_CHAT_ID
+  return currentChatId && !currentChatId.startsWith('env.') ? currentChatId : null
 }
 
 function getBase(): string | null {
@@ -746,7 +748,9 @@ export function getChatId(): string | null {
   return chatId
 }
 
-export function setChatId(id: string): void {
+export function setChatId(id: string | null): void {
   chatId = id
-  saveChatId(id)
+  if (id) {
+    saveChatId(id)
+  }
 }

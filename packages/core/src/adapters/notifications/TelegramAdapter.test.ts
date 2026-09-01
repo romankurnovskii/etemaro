@@ -1,6 +1,19 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { config } from '../../config/Config.js'
+import { log } from '../../shared/logger.js'
 import * as NotificationSink from './NotificationSink.js'
-import { notifySwap, notifySwapError, notifyTransactionError, summarizeToolResult } from './TelegramAdapter.js'
+import {
+  createLiveMessage,
+  editMessage,
+  isEnabled,
+  isTelegramConfigured,
+  notifySwap,
+  notifySwapError,
+  notifyTransactionError,
+  sendMessage,
+  setChatId,
+  summarizeToolResult,
+} from './TelegramAdapter.js'
 
 vi.mock('./NotificationSink.js', () => ({
   notify: vi.fn(),
@@ -13,6 +26,14 @@ vi.mock('../../shared/logger.js', () => ({
 describe('TelegramAdapter notifications', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    setChatId(null)
+    delete process.env.TELEGRAM_BOT_TOKEN
+    delete process.env.TELEGRAM_CHAT_ID
+    delete process.env.TELEGRAM_ALLOWED_USER_IDS
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('notifySwap formats message with USD amount when provided', async () => {
@@ -128,17 +149,85 @@ describe('TelegramAdapter notifications', () => {
     ).toBe('swapped 3/3')
   })
 
-  it('createLiveMessage initializes live message, sends status updates, and finalizes cleanly', async () => {
-    const { createLiveMessage } = await import('./TelegramAdapter.js')
+  it('resolves Telegram credentials from environment variables when config.connection is absent', async () => {
+    const origChatId = config.connection?.telegramChatId
+    const origToken = config.connection?.telegramBotToken
+    if (config.connection) {
+      config.connection.telegramChatId = 'env.TELEGRAM_CHAT_ID'
+      config.connection.telegramBotToken = 'env.TELEGRAM_BOT_TOKEN'
+    }
+
+    try {
+      process.env.TELEGRAM_BOT_TOKEN = 'env_bot_token_123'
+      process.env.TELEGRAM_CHAT_ID = '987654'
+
+      expect(isEnabled()).toBe(true)
+      expect(isTelegramConfigured()).toBe(true)
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, result: { message_id: 111 } }),
+      } as any)
+
+      const res = await sendMessage('Test env fallback')
+      expect(res).toBeDefined()
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://api.telegram.org/botenv_bot_token_123/sendMessage',
+        expect.objectContaining({
+          body: JSON.stringify({ chat_id: '987654', text: 'Test env fallback' }),
+        }),
+      )
+    } finally {
+      if (config.connection) {
+        config.connection.telegramChatId = origChatId
+        config.connection.telegramBotToken = origToken
+      }
+    }
+  })
+
+  it('silently ignores 400 "message is not modified" errors without logging telegram_error', async () => {
     process.env.TELEGRAM_BOT_TOKEN = 'test_token'
     process.env.TELEGRAM_CHAT_ID = '123456'
 
-    let sentCount = 0
-    let editCount = 0
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () =>
+        'Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message',
+    } as any)
+
+    const res = await editMessage('Duplicate content', 555)
+    expect(res).toBeNull()
+    expect(log).not.toHaveBeenCalledWith('telegram_error', expect.any(String))
+  })
+
+  it('logs telegram_error for other 400 errors (e.g. chat not found)', async () => {
+    process.env.TELEGRAM_BOT_TOKEN = 'test_token'
+    process.env.TELEGRAM_CHAT_ID = '123456'
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => 'Bad Request: chat not found',
+    } as any)
+
+    const res = await editMessage('Content', 555)
+    expect(res).toBeNull()
+    expect(log).toHaveBeenCalledWith('telegram_error', expect.stringContaining('400: Bad Request: chat not found'))
+  })
+
+  it('createLiveMessage debounces rapid toolStart/toolFinish events and skips identical text', async () => {
+    process.env.TELEGRAM_BOT_TOKEN = 'test_token'
+    process.env.TELEGRAM_CHAT_ID = '123456'
+
+    const editPayloads: string[] = []
+    let sendCalls = 0
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any, init: any) => {
       const urlStr = String(url)
       if (urlStr.includes('sendMessage')) {
-        sentCount++
+        sendCalls++
         return {
           ok: true,
           status: 200,
@@ -146,7 +235,8 @@ describe('TelegramAdapter notifications', () => {
         } as any
       }
       if (urlStr.includes('editMessageText')) {
-        editCount++
+        const body = JSON.parse(init.body)
+        editPayloads.push(body.text)
         return {
           ok: true,
           status: 200,
@@ -156,15 +246,32 @@ describe('TelegramAdapter notifications', () => {
       return { ok: true, json: async () => ({ ok: true }) } as any
     })
 
-    const live = await createLiveMessage('Live Cycle', 'Starting...')
-    expect(sentCount).toBe(1)
+    const live = await createLiveMessage('Live Title', 'Intro')
     expect(live).not.toBeNull()
+    expect(sendCalls).toBe(1)
 
     if (live) {
+      // Dispatch multiple rapid updates synchronously
+      await live.toolStart('get_wallet_balance')
+      await live.toolFinish('get_wallet_balance', { sol: 5 }, true)
       await live.toolStart('swap_token')
-      await live.toolFinish('swap_token', { tx: 'tx_123' }, true)
-      await live.finalize('Completed successfully.')
-      expect(editCount).toBeGreaterThanOrEqual(1)
+      await live.toolFinish('swap_token', { tx: 'tx_abc' }, true)
+
+      // Immediately after rapid events (before 800ms timer), no edits sent yet
+      expect(editPayloads.length).toBe(0)
+
+      // Wait for debounce timer (800ms) to flush
+      await new Promise((resolve) => setTimeout(resolve, 950))
+
+      // Exactly 1 batched edit was sent for the rapid burst
+      expect(editPayloads.length).toBe(1)
+      expect(editPayloads[0]).toContain('get wallet balance')
+      expect(editPayloads[0]).toContain('swap token')
+
+      // Finalize flushes final text
+      await live.finalize('Completed.')
+      expect(editPayloads.length).toBe(2)
+      expect(editPayloads[1]).toContain('Completed.')
     }
   })
 })
