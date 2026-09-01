@@ -19,6 +19,7 @@ data/
   smart-wallets.json         # KOL wallet tracking list
   strategy-library.json      # Saved LP strategy profiles
   token-blacklist.json       # Hard-blocked token mints
+  telegram_queue.json        # Persisted pending Telegram messages queue
   hivemind-cache.json        # Cached shared HiveMind lessons + presets
 data/logs/
   agent-YYYY-MM-DD.log       # Rotating application logs
@@ -128,5 +129,25 @@ Etemaro separates state-read workflows from transaction-write workflows to preve
 - **Jupiter for Valuation**: Token prices and USD conversions use Jupiter Free Price API v2 (`api.jup.ag/price/v2`) and Token list (`tokens.jup.ag`).
 - **RPC Exclusivity**: On-chain RPC calls (`simulateTransaction`, `sendAndConfirmTransaction`, `getLatestBlockhash`) are reserved strictly for pre-flight transaction simulations and execution.
 - See [RPC_AND_API_OPTIMIZATION.md](RPC_AND_API_OPTIMIZATION.md) for the complete decision matrix and caching blueprint.
+
+---
+
+## Daemon Lifecycle, Concurrency & Telegram Command Queue
+
+### 1. Single Unified Telegram Command Queue
+- **Queue Count**: There is **one single FIFO queue** (`telegramQueue`, bounded to `MAX_TELEGRAM_QUEUE = 5`) per running `Daemon` agent process.
+- **Persistence**: Persisted to `data/telegram_queue.json` (or `<agent_data_dir>/telegram_queue.json` in custom data dirs).
+- **Enqueue Trigger**: When the agent is busy executing autonomous cycles (`managementBusy`, `screeningBusy`, `pnlPollBusy`, `opportunityPollBusy`, `busy`), incoming Telegram messages are enqueued and persisted to disk.
+- **Drain Trigger**: Drained sequentially whenever the daemon transitions to idle or via a 5-second periodic autonomous timer (`startTelegramDrainTimer()`).
+- **Restart Safety Filter**: On daemon restart (`loadTelegramQueue()`), only safe, read-only commands (`/status`, `/config`, `/help`, `/positions`, `/briefing`, `/candidates`, `/screen`, `/pool <n>`) are restored. `/stop` and mutating commands (`/close`, `/deploy`, `/set`, `/pause`, `/resume`, free-form chat) are discarded to prevent infinite restart boot-loops and execution against changed on-chain positions.
+
+### 2. Autonomous Cycles Do Not Use Queues (Mutex Guards)
+- Autonomous cron tasks (position management, pool screening, PnL polling) **do not have message queues**.
+- They use non-blocking mutex guards: if a cron cycle fires while another cycle is already in progress, the cycle simply skips that tick (single-flight execution).
+
+### 3. Multi-Agent Topologies
+- In multi-agent setups (e.g. via PM2 or Desktop), each agent process runs an independent `Daemon` instance with its own isolated `DATA_DIR`.
+- Each agent maintains exactly **one isolated queue file** in its respective data folder.
+
 
 

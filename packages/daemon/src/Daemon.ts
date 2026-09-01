@@ -2661,6 +2661,11 @@ IMPORTANT:
     )
   }
 
+  /**
+   * Loads persisted Telegram queue from disk on startup, filtering out unsafe or stale mutating commands.
+   *
+   * @returns {void}
+   */
   private loadTelegramQueue(): void {
     if (!this.adapters.telegram?.isEnabled?.()) {
       this.telegramQueue = []
@@ -2696,6 +2701,11 @@ IMPORTANT:
     }
   }
 
+  /**
+   * Persists the in-memory Telegram queue to disk when the Telegram adapter is enabled.
+   *
+   * @returns {void}
+   */
   private saveTelegramQueue(): void {
     if (!this.adapters.telegram?.isEnabled?.()) return
     try {
@@ -2706,6 +2716,11 @@ IMPORTANT:
     }
   }
 
+  /**
+   * Starts a 5-second recurring interval timer to autonomously drain queued Telegram commands when idle.
+   *
+   * @returns {void}
+   */
   private startTelegramDrainTimer(): void {
     if (!this.adapters.telegram?.isEnabled?.()) return
     if (this.telegramDrainInterval) return
@@ -2716,6 +2731,11 @@ IMPORTANT:
     }, 5000)
   }
 
+  /**
+   * Clears and nullifies the recurring Telegram drain interval timer.
+   *
+   * @returns {void}
+   */
   private stopTelegramDrainTimer(): void {
     if (this.telegramDrainInterval) {
       clearInterval(this.telegramDrainInterval)
@@ -2723,6 +2743,11 @@ IMPORTANT:
     }
   }
 
+  /**
+   * Sequentially drains queued Telegram messages while the daemon is not running busy cycles.
+   *
+   * @returns {Promise<void>}
+   */
   private async drainTelegramQueue(): Promise<void> {
     if (!this.adapters.telegram?.isEnabled?.() || this.draining || this.shuttingDown) return
     this.draining = true
