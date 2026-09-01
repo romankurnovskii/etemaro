@@ -544,6 +544,8 @@ export class Daemon {
 
     log('shutdown', `Received ${signal}. Shutting down...`)
     this.stopTelegramDrainTimer()
+    this.telegramQueue = []
+    this.saveTelegramQueue()
     this.adapters.telegram.stopPolling()
     if (this.adapters.desktop) {
       this.adapters.desktop.stopServer()
@@ -2644,17 +2646,49 @@ IMPORTANT:
     return sharedDataPath(TELEGRAM_QUEUE_FILENAME)
   }
 
+  private isSafeStartupTelegramCommand(text: string): boolean {
+    const trimmed = text.trim().toLowerCase()
+    return (
+      trimmed === '/help' ||
+      trimmed === '/status' ||
+      trimmed === '/wallet' ||
+      trimmed === '/positions' ||
+      trimmed === '/config' ||
+      trimmed === '/briefing' ||
+      trimmed === '/candidates' ||
+      trimmed === '/screen' ||
+      /^\/pool\s+\d+$/i.test(trimmed)
+    )
+  }
+
   private loadTelegramQueue(): void {
+    if (!this.adapters.telegram?.isEnabled?.()) {
+      this.telegramQueue = []
+      return
+    }
     try {
       const queuePath = this.getTelegramQueuePath()
       const loaded = loadJsonFile<unknown[]>(queuePath, [])
       if (Array.isArray(loaded)) {
-        this.telegramQueue = loaded.filter(
-          (item) => item && (typeof item === 'string' || typeof (item as any)?.text === 'string'),
-        )
-        if (this.telegramQueue.length > 0) {
-          log('startup', `Restored ${this.telegramQueue.length} queued Telegram message(s) from ${queuePath}`)
+        const validItems: any[] = []
+        for (const item of loaded) {
+          const rawText = typeof item === 'string' ? item : (item as any)?.text
+          if (typeof rawText !== 'string' || !rawText.trim()) continue
+          const text = rawText.trim()
+          if (this.isSafeStartupTelegramCommand(text)) {
+            validItems.push(typeof item === 'string' ? { text } : item)
+          } else {
+            log(
+              'startup_warn',
+              `Discarded unsafe/stale command "${text.slice(0, 40)}" from persisted telegram queue on restart`,
+            )
+          }
         }
+        this.telegramQueue = validItems.slice(0, this.MAX_TELEGRAM_QUEUE)
+        if (this.telegramQueue.length > 0) {
+          log('startup', `Restored ${this.telegramQueue.length} safe queued Telegram message(s) from ${queuePath}`)
+        }
+        this.saveTelegramQueue()
       }
     } catch (err: any) {
       log('telegram_warn', `Failed to load persisted telegram queue: ${err?.message || err}`)
@@ -2663,6 +2697,7 @@ IMPORTANT:
   }
 
   private saveTelegramQueue(): void {
+    if (!this.adapters.telegram?.isEnabled?.()) return
     try {
       const queuePath = this.getTelegramQueuePath()
       saveJsonFile(queuePath, this.telegramQueue)
@@ -2672,6 +2707,7 @@ IMPORTANT:
   }
 
   private startTelegramDrainTimer(): void {
+    if (!this.adapters.telegram?.isEnabled?.()) return
     if (this.telegramDrainInterval) return
     this.telegramDrainInterval = setInterval(() => {
       this.drainTelegramQueue().catch((err: any) => {
@@ -2688,7 +2724,7 @@ IMPORTANT:
   }
 
   private async drainTelegramQueue(): Promise<void> {
-    if (this.draining || this.shuttingDown) return
+    if (!this.adapters.telegram?.isEnabled?.() || this.draining || this.shuttingDown) return
     this.draining = true
     try {
       while (
