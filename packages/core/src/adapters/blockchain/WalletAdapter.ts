@@ -134,6 +134,33 @@ const SOL_MINT = 'So11111111111111111111111111111111111111112'
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
 
+const _mintDecimalsCache = new Map<string, number>([
+  [SOL_MINT, 9],
+  ['So11111111111111111111111111111111111111111', 9],
+  ['SOL', 9],
+  [USDC_MINT, 6],
+  ['USDC', 6],
+])
+
+export function getCachedMintDecimals(mint: string): number | undefined {
+  return _mintDecimalsCache.get(mint)
+}
+
+export function setCachedMintDecimals(mint: string, decimals: number): void {
+  if (Number.isInteger(decimals) && decimals >= 0 && decimals <= 18) {
+    _mintDecimalsCache.set(mint, decimals)
+  }
+}
+
+export function clearMintDecimalsCache(): void {
+  _mintDecimalsCache.clear()
+  _mintDecimalsCache.set(SOL_MINT, 9)
+  _mintDecimalsCache.set('So11111111111111111111111111111111111111111', 9)
+  _mintDecimalsCache.set('SOL', 9)
+  _mintDecimalsCache.set(USDC_MINT, 6)
+  _mintDecimalsCache.set('USDC', 6)
+}
+
 let _balanceCache: WalletBalancesResult | null = null
 let _balanceCacheAt = 0
 let _balanceInflight: Promise<WalletBalancesResult> | null = null
@@ -197,6 +224,10 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
         const info = item.account?.data?.parsed?.info
         if (!info) continue
         const mint = info.mint
+        const decimals = info.tokenAmount?.decimals
+        if (typeof decimals === 'number') {
+          _mintDecimalsCache.set(mint, decimals)
+        }
         const uiAmount = info.tokenAmount?.uiAmount ?? 0
         if (uiAmount <= 0) continue
         if (!mintsToPrice.includes(mint)) mintsToPrice.push(mint)
@@ -412,15 +443,21 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
 
     // ─── Convert to smallest unit ──────────────────────────────
     let decimals = 9 // SOL default
-    if (input_mint !== config.tokens.SOL) {
-      const mintInfo = await withRpcRetry(() => connection.getParsedAccountInfo(new PublicKey(input_mint)), {
-        label: 'getParsedAccountInfo',
-      })
-      const parsedData = mintInfo.value?.data
-      decimals =
-        parsedData && typeof parsedData === 'object' && 'parsed' in parsedData
-          ? ((parsedData as any).parsed?.info?.decimals ?? 9)
-          : 9
+    if (input_mint !== config.tokens.SOL && input_mint !== 'SOL') {
+      const cached = _mintDecimalsCache.get(input_mint)
+      if (typeof cached === 'number') {
+        decimals = cached
+      } else {
+        const mintInfo = await withRpcRetry(() => connection.getParsedAccountInfo(new PublicKey(input_mint)), {
+          label: 'getParsedAccountInfo',
+        })
+        const parsedData = mintInfo.value?.data
+        decimals =
+          parsedData && typeof parsedData === 'object' && 'parsed' in parsedData
+            ? ((parsedData as any).parsed?.info?.decimals ?? 9)
+            : 9
+        _mintDecimalsCache.set(input_mint, decimals)
+      }
     }
     const amountStr = Math.floor(amount * 10 ** decimals).toString()
 
