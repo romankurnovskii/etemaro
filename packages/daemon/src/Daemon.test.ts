@@ -457,7 +457,9 @@ describe('Telegram /stop & Busy Cycle Queue Draining (#236)', () => {
   })
 
   it('AC-5: prioritizes /stop over other queued commands and prevents remaining queue execution', async () => {
-    const shutdownSpy = vi.spyOn(daemon as any, 'shutdown')
+    const shutdownSpy = vi.spyOn(daemon as any, 'shutdown').mockImplementation(async () => {
+      ;(daemon as any).shuttingDown = true
+    })
     ;(daemon as any).managementBusy = true
 
     // Queue /screen, /stop, /positions
@@ -475,6 +477,72 @@ describe('Telegram /stop & Busy Cycle Queue Draining (#236)', () => {
     // /stop was prioritized and triggered shutdown
     expect(shutdownSpy).toHaveBeenCalledWith('telegram /stop')
     expect((daemon as any).shuttingDown).toBe(true)
+
+    // Remaining queued commands were NOT executed after shutdown
+    expect((daemon as any).telegramQueue.length).toBe(2)
+  })
+
+  it('drainTelegramQueue is single-flighted', async () => {
+    let resolveFirstHandler!: () => void
+    const firstHandlerPromise = new Promise<void>((resolve) => {
+      resolveFirstHandler = resolve
+    })
+
+    const originalHandler = (daemon as any).telegramHandler.bind(daemon)
+    ;(daemon as any).telegramHandler = vi.fn().mockImplementation(async (msg: any) => {
+      if ((daemon as any).telegramHandler.mock.calls.length === 1) {
+        await firstHandlerPromise
+      }
+      return originalHandler(msg)
+    })
+
+    ;(daemon as any).telegramQueue = [{ text: '/help' }, { text: '/help' }]
+
+    const drain1 = (daemon as any).drainTelegramQueue()
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect((daemon as any).draining).toBe(true)
+    expect((daemon as any).telegramHandler).toHaveBeenCalledTimes(1)
+
+    const drain2 = (daemon as any).drainTelegramQueue()
+    await new Promise((r) => setTimeout(r, 10))
+
+    // drain2 returned immediately; no additional handler calls
+    expect((daemon as any).telegramHandler).toHaveBeenCalledTimes(1)
+
+    resolveFirstHandler()
+    await drain1
+    await drain2
+
+    expect((daemon as any).telegramQueue.length).toBe(0)
+  })
+
+  it('concurrent releaseLock calls do not interleave telegram handlers', async () => {
+    let currentConcurrent = 0
+    let maxConcurrent = 0
+    const originalHandler = (daemon as any).telegramHandler.bind(daemon)
+    ;(daemon as any).telegramHandler = vi.fn().mockImplementation(async (msg: any) => {
+      currentConcurrent++
+      maxConcurrent = Math.max(maxConcurrent, currentConcurrent)
+      await originalHandler(msg)
+      currentConcurrent--
+      return undefined
+    })
+
+    ;(daemon as any).telegramQueue = [{ text: '/positions' }, { text: '/status' }]
+
+    ;(daemon as any).managementBusy = true
+    ;(daemon as any).pnlPollBusy = true
+
+    // Release both locks in same tick — each fires drainTelegramQueue
+    ;(daemon as any).releaseLock('management')
+    ;(daemon as any).releaseLock('pnlPoll')
+
+    await new Promise((r) => setTimeout(r, 100))
+
+    // Handlers must have run strictly one at a time
+    expect(maxConcurrent).toBe(1)
+    expect((daemon as any).telegramQueue.length).toBe(0)
   })
 
   it('AC-6: queues /stop during free-form chat and shuts down on chat completion', async () => {
