@@ -270,18 +270,18 @@ function parseConfigValue(raw: string): unknown {
 // ─── Daemon Class ───────────────────────────────────────────────
 
 export class Daemon {
-  private adapters: DaemonAdapters
+  private adapters: DaemonAdapters // Dependency injection container for blockchain, messaging, and system adapters
 
   // Race condition guards
-  private managementBusy = false
-  private screeningBusy = false
-  private screeningLastTriggered = 0
-  private pnlPollBusy = false
-  private opportunityPollBusy = false
-  private busy = false
-  private shuttingDown = false
-  private draining = false
-  private cronStarted = false
+  private managementBusy = false // Guards position management cycle & PnL exit executions from concurrency
+  private screeningBusy = false // Guards token screening & evaluation cycles from overlapping
+  private screeningLastTriggered = 0 // Epoch timestamp (ms) of last screening; enforces post-management cooldown
+  private pnlPollBusy = false // Guards high-frequency PnL poller ticks to prevent parallel on-chain queries
+  private opportunityPollBusy = false // Guards background opportunity/smart-wallet detection polling cycles
+  private busy = false // Guards interactive REPL terminal commands and free-form LLM chat sessions
+  private shuttingDown = false // Set on SIGINT/SIGTERM or /stop; suppresses new cycles & aborts queue processing
+  private draining = false // Single-flight guard ensuring only one loop drains the Telegram queue at a time
+  private cronStarted = false // Tracks whether autonomous cron schedules and poller timers are running
 
   // Cron tasks
   private cronTasks: cron.ScheduledTask[] = []
