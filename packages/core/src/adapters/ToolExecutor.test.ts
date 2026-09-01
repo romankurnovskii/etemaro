@@ -70,6 +70,30 @@ describe('ToolExecutor - swapAllTokensToSol', () => {
     })
   })
 
+  it('should swap unpriced tokens (usd: null) when balance > 0', async () => {
+    const mockBalances = {
+      tokens: [
+        { mint: 'So11111111111111111111111111111111111111112', symbol: 'SOL', balance: 10, usd: 1500 },
+        { mint: 'UNPRICED11111111111111111111111111111111111', symbol: 'UNP', balance: 500, usd: null },
+        { mint: 'ZERO1111111111111111111111111111111111111111', symbol: 'ZERO', balance: 0, usd: null },
+      ],
+    }
+
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue(mockBalances as any)
+    vi.mocked(WalletAdapter.swapToken).mockResolvedValue({ success: true, tx: 'test-tx-unpriced' } as any)
+
+    const result = await swapAllTokensToSol([])
+
+    expect(result.total).toBe(3)
+    expect(result.skipped).toBe(2) // SOL, ZERO balance
+    expect(result.successful).toBe(1) // UNP swapped
+    expect(WalletAdapter.swapToken).toHaveBeenCalledWith({
+      input_mint: 'UNPRICED11111111111111111111111111111111111',
+      output_mint: 'SOL',
+      amount: 500,
+    })
+  })
+
   it('should accept object input { skipMints: [] } without throwing error', async () => {
     const mockBalances = { tokens: [] }
     vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue(mockBalances as any)
@@ -165,5 +189,47 @@ describe('ToolExecutor - deploy_position serialization', () => {
       success: true,
     })
     expect(MeteoraAdapter.deployPosition).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ToolExecutor - close_position auto-swap', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubEnv('DRY_RUN', 'false')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('auto-swaps unpriced base token (usd: null) back to SOL upon close', async () => {
+    const baseMint = 'BASE_TOKEN_1111111111111111111111111111111'
+    vi.mocked(MeteoraAdapter.closePosition).mockResolvedValue({
+      success: true,
+      position: 'pos-123',
+      base_mint: baseMint,
+    } as any)
+
+    const mockBalances = {
+      sol_price: 150,
+      tokens: [{ mint: baseMint, symbol: 'BASE', balance: 2500, usd: null }],
+    }
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue(mockBalances as any)
+    vi.mocked(WalletAdapter.swapToken).mockResolvedValue({
+      success: true,
+      tx: 'swap-tx-hash',
+      amount_out: '0.15',
+    } as any)
+
+    const result = (await executeTool('close_position', { position_address: 'pos-123' })) as any
+
+    expect(result.success).toBe(true)
+    expect(result.auto_swapped).toBe(true)
+    expect(result.sol_received).toBe('0.15')
+    expect(WalletAdapter.swapToken).toHaveBeenCalledWith({
+      input_mint: baseMint,
+      output_mint: 'SOL',
+      amount: 2500,
+    })
   })
 })
