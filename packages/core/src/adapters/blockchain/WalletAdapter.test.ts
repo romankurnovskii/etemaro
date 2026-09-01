@@ -8,9 +8,12 @@ import { config } from '../../config/Config.js'
 import { resetConnectionState } from '../../shared/connection.js'
 import {
   BALANCE_CACHE_TTL,
+  clearMintDecimalsCache,
   generateNewWallet,
+  getCachedMintDecimals,
   getWalletBalances,
   invalidateBalanceCache,
+  setCachedMintDecimals,
   swapToken,
   type WalletsStore,
 } from './WalletAdapter.js'
@@ -34,6 +37,7 @@ describe('WalletAdapter', () => {
     }
     resetConnectionState()
     invalidateBalanceCache()
+    clearMintDecimalsCache()
 
     vi.spyOn(Connection.prototype, 'getBalance').mockResolvedValue(1_000_000_000)
     vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner').mockResolvedValue({
@@ -273,89 +277,275 @@ describe('WalletAdapter', () => {
       expect(jupPriceCount).toBe(2)
     })
 
-    it('populates decimals cache from getWalletBalances and avoids getParsedAccountInfo during swapToken', async () => {
-      process.env.JUPITER_API_KEY = 'test-jup-key'
-      delete process.env.DRY_RUN
-      const { clearMintDecimalsCache, getCachedMintDecimals } = await import('./WalletAdapter.js')
-      clearMintDecimalsCache()
+    describe('mint decimals caching and swapToken resolution', () => {
+      const mockJupiterSwap = (onOrder?: (searchParams: URLSearchParams) => void) => {
+        process.env.JUPITER_API_KEY = 'test-jup-key'
+        delete process.env.DRY_RUN
 
-      const customMint = 'CUSTOM_MINT_111111111111111111111111111111'
-      vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner').mockResolvedValueOnce({
-        value: [
-          {
-            account: {
-              data: {
-                parsed: {
-                  info: {
-                    mint: customMint,
-                    tokenAmount: { uiAmount: 50, decimals: 6 },
-                  },
+        return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+          const urlStr = String(url)
+          if (urlStr.includes('jup.ag/price/v2')) {
+            return {
+              ok: true,
+              status: 200,
+              statusText: 'OK',
+              headers: new Headers(),
+              json: async () => ({ data: {} }),
+            } as any
+          }
+          if (urlStr.includes('jup.ag/swap/v2/order')) {
+            const parsedUrl = new URL(urlStr)
+            if (onOrder) onOrder(parsedUrl.searchParams)
+            const tx = new (await import('@solana/web3.js')).Transaction()
+            tx.recentBlockhash = '11111111111111111111111111111111'
+            tx.feePayer = testKeypair.publicKey
+            return {
+              ok: true,
+              status: 200,
+              statusText: 'OK',
+              headers: new Headers(),
+              json: async () => ({
+                transaction: Buffer.from(tx.serialize({ requireAllSignatures: false })).toString('base64'),
+                requestId: 'req_mock_swap',
+              }),
+            } as any
+          }
+          if (urlStr.includes('jup.ag/swap/v2/execute')) {
+            return {
+              ok: true,
+              status: 200,
+              statusText: 'OK',
+              headers: new Headers(),
+              json: async () => ({
+                status: 'Success',
+                signature: 'mock_tx_swap_ok',
+                inputAmountResult: 10,
+                outputAmountResult: 1,
+              }),
+            } as any
+          }
+          return { ok: false, status: 404, headers: new Headers() } as any
+        })
+      }
+
+      it('validates and boundaries for setCachedMintDecimals', () => {
+        const testMint = 'TEST_MINT_VALIDATION_11111111111111111111'
+
+        // Valid integers in range [0, 18]
+        setCachedMintDecimals(testMint, 0)
+        expect(getCachedMintDecimals(testMint)).toBe(0)
+
+        setCachedMintDecimals(testMint, 6)
+        expect(getCachedMintDecimals(testMint)).toBe(6)
+
+        setCachedMintDecimals(testMint, 9)
+        expect(getCachedMintDecimals(testMint)).toBe(9)
+
+        setCachedMintDecimals(testMint, 18)
+        expect(getCachedMintDecimals(testMint)).toBe(18)
+
+        // Invalid: non-integer float
+        setCachedMintDecimals(testMint, 6.5)
+        expect(getCachedMintDecimals(testMint)).toBe(18) // unchanged
+
+        // Invalid: negative integer
+        setCachedMintDecimals(testMint, -1)
+        expect(getCachedMintDecimals(testMint)).toBe(18) // unchanged
+
+        // Invalid: exceeds max decimals (> 18)
+        setCachedMintDecimals(testMint, 19)
+        expect(getCachedMintDecimals(testMint)).toBe(18) // unchanged
+
+        // Invalid: NaN / Infinity
+        setCachedMintDecimals(testMint, Number.NaN)
+        expect(getCachedMintDecimals(testMint)).toBe(18) // unchanged
+        setCachedMintDecimals(testMint, Number.POSITIVE_INFINITY)
+        expect(getCachedMintDecimals(testMint)).toBe(18) // unchanged
+      })
+
+      it('pre-seeded mints (SOL and USDC) are cached by default and avoid RPC lookups during swapToken', async () => {
+        const solMint = 'So11111111111111111111111111111111111111112'
+        const usdcMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+
+        expect(getCachedMintDecimals(solMint)).toBe(9)
+        expect(getCachedMintDecimals('SOL')).toBe(9)
+        expect(getCachedMintDecimals(usdcMint)).toBe(6)
+        expect(getCachedMintDecimals('USDC')).toBe(6)
+
+        let lastOrderParams: any = null
+        mockJupiterSwap((params) => {
+          lastOrderParams = params
+        })
+
+        const getParsedAccountInfoSpy = vi.spyOn(Connection.prototype, 'getParsedAccountInfo')
+
+        // Swap USDC (6 decimals) -> 5.5 USDC should convert to 5,500,000
+        const usdcSwap = await swapToken({
+          input_mint: usdcMint,
+          output_mint: solMint,
+          amount: 5.5,
+        })
+        expect('success' in usdcSwap && usdcSwap.success).toBe(true)
+        expect(getParsedAccountInfoSpy).not.toHaveBeenCalled()
+        expect(lastOrderParams?.get('amount')).toBe('5500000')
+
+        // Swap SOL (9 decimals) -> 1.25 SOL should convert to 1,250,000,000
+        const solSwap = await swapToken({
+          input_mint: solMint,
+          output_mint: usdcMint,
+          amount: 1.25,
+        })
+        expect('success' in solSwap && solSwap.success).toBe(true)
+        expect(getParsedAccountInfoSpy).not.toHaveBeenCalled()
+        expect(lastOrderParams?.get('amount')).toBe('1250000000')
+      })
+
+      it('falls back to getParsedAccountInfo on cache miss, caches result, and reuses on subsequent swaps', async () => {
+        const uncachedMint = Keypair.generate().publicKey.toString()
+        expect(getCachedMintDecimals(uncachedMint)).toBeUndefined()
+
+        let lastOrderParams: any = null
+        mockJupiterSwap((params) => {
+          lastOrderParams = params
+        })
+
+        const getParsedAccountInfoSpy = vi.spyOn(Connection.prototype, 'getParsedAccountInfo').mockResolvedValue({
+          value: {
+            data: {
+              parsed: {
+                info: {
+                  decimals: 8,
                 },
               },
             },
           },
-        ],
-      } as any)
+        } as any)
 
-      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
-        const urlStr = String(url)
-        if (urlStr.includes('jup.ag/price/v2')) {
-          return {
-            ok: true,
-            status: 200,
-            statusText: 'OK',
-            headers: new Headers(),
-            json: async () => ({ data: {} }),
-          } as any
-        }
-        if (urlStr.includes('jup.ag/swap/v2/order')) {
-          const tx = new (await import('@solana/web3.js')).Transaction()
-          tx.recentBlockhash = '11111111111111111111111111111111'
-          tx.feePayer = testKeypair.publicKey
-          return {
-            ok: true,
-            status: 200,
-            statusText: 'OK',
-            headers: new Headers(),
-            json: async () => ({
-              transaction: Buffer.from(tx.serialize({ requireAllSignatures: false })).toString('base64'),
-              requestId: 'req_custom',
-            }),
-          } as any
-        }
-        if (urlStr.includes('jup.ag/swap/v2/execute')) {
-          return {
-            ok: true,
-            status: 200,
-            statusText: 'OK',
-            headers: new Headers(),
-            json: async () => ({
-              status: 'Success',
-              signature: 'mock_tx_custom',
-              inputAmountResult: 10,
-              outputAmountResult: 1,
-            }),
-          } as any
-        }
-        return { ok: false, status: 404, headers: new Headers() } as any
+        // First swap: cache miss -> queries RPC, gets 8 decimals, converts 2.5 tokens to 250,000,000
+        const firstSwap = await swapToken({
+          input_mint: uncachedMint,
+          output_mint: 'So11111111111111111111111111111111111111112',
+          amount: 2.5,
+        })
+        expect('success' in firstSwap && firstSwap.success).toBe(true)
+        expect(getParsedAccountInfoSpy).toHaveBeenCalledTimes(1)
+        expect(lastOrderParams?.get('amount')).toBe('250000000')
+        expect(getCachedMintDecimals(uncachedMint)).toBe(8)
+
+        // Second swap: cache hit -> 0 new RPC calls, converts 10 tokens to 1,000,000,000
+        const secondSwap = await swapToken({
+          input_mint: uncachedMint,
+          output_mint: 'So11111111111111111111111111111111111111112',
+          amount: 10,
+        })
+        expect('success' in secondSwap && secondSwap.success).toBe(true)
+        expect(getParsedAccountInfoSpy).toHaveBeenCalledTimes(1)
+        expect(lastOrderParams?.get('amount')).toBe('1000000000')
       })
 
-      const getParsedAccountInfoSpy = vi.spyOn(Connection.prototype, 'getParsedAccountInfo')
+      it('clearMintDecimalsCache resets custom entries and forces fresh RPC lookup on next swap', async () => {
+        const customMint = Keypair.generate().publicKey.toString()
+        setCachedMintDecimals(customMint, 4)
+        expect(getCachedMintDecimals(customMint)).toBe(4)
 
-      // 1. Fetch wallet balances -> populates cache
-      await getWalletBalances({ force: true })
-      expect(getCachedMintDecimals(customMint)).toBe(6)
+        // Clear cache
+        clearMintDecimalsCache()
 
-      // 2. Perform swap with cached token
-      const res = await swapToken({
-        input_mint: customMint,
-        output_mint: 'So11111111111111111111111111111111111111112',
-        amount: 10,
+        // Custom mint is cleared, pre-seeded remain
+        expect(getCachedMintDecimals(customMint)).toBeUndefined()
+        expect(getCachedMintDecimals('So11111111111111111111111111111111111111112')).toBe(9)
+        expect(getCachedMintDecimals('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')).toBe(6)
+
+        mockJupiterSwap()
+        const getParsedAccountInfoSpy = vi.spyOn(Connection.prototype, 'getParsedAccountInfo').mockResolvedValue({
+          value: {
+            data: {
+              parsed: {
+                info: {
+                  decimals: 4,
+                },
+              },
+            },
+          },
+        } as any)
+
+        // Next swap must query RPC again
+        const swapRes = await swapToken({
+          input_mint: customMint,
+          output_mint: 'So11111111111111111111111111111111111111112',
+          amount: 1,
+        })
+        expect('success' in swapRes && swapRes.success).toBe(true)
+        expect(getParsedAccountInfoSpy).toHaveBeenCalledTimes(1)
+        expect(getCachedMintDecimals(customMint)).toBe(4)
       })
 
-      expect('success' in res && res.success).toBe(true)
-      // 0 RPC network calls for decimals because it was in cache!
-      expect(getParsedAccountInfoSpy).not.toHaveBeenCalled()
+      it('populates decimals cache for multiple tokens from getWalletBalances and reuses across swaps', async () => {
+        const tokenA = Keypair.generate().publicKey.toString()
+        const tokenB = Keypair.generate().publicKey.toString()
+
+        vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner').mockResolvedValueOnce({
+          value: [
+            {
+              account: {
+                data: {
+                  parsed: {
+                    info: {
+                      mint: tokenA,
+                      tokenAmount: { uiAmount: 100, decimals: 6 },
+                    },
+                  },
+                },
+              },
+            },
+            {
+              account: {
+                data: {
+                  parsed: {
+                    info: {
+                      mint: tokenB,
+                      tokenAmount: { uiAmount: 50, decimals: 9 },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        } as any)
+
+        let lastOrderParams: any = null
+        mockJupiterSwap((params) => {
+          lastOrderParams = params
+        })
+
+        const getParsedAccountInfoSpy = vi.spyOn(Connection.prototype, 'getParsedAccountInfo')
+
+        // 1. Fetch wallet balances -> populates both tokenA and tokenB into cache
+        await getWalletBalances({ force: true })
+        expect(getCachedMintDecimals(tokenA)).toBe(6)
+        expect(getCachedMintDecimals(tokenB)).toBe(9)
+
+        // 2. Perform swap with tokenA -> uses cached 6 decimals (amount 10 -> 10,000,000)
+        const resA = await swapToken({
+          input_mint: tokenA,
+          output_mint: 'So11111111111111111111111111111111111111112',
+          amount: 10,
+        })
+        expect('success' in resA && resA.success).toBe(true)
+        expect(lastOrderParams?.get('amount')).toBe('10000000')
+
+        // 3. Perform swap with tokenB -> uses cached 9 decimals (amount 2 -> 2,000,000,000)
+        const resB = await swapToken({
+          input_mint: tokenB,
+          output_mint: 'So11111111111111111111111111111111111111112',
+          amount: 2,
+        })
+        expect('success' in resB && resB.success).toBe(true)
+        expect(lastOrderParams?.get('amount')).toBe('2000000000')
+
+        // 0 RPC network calls for decimals because both were in cache!
+        expect(getParsedAccountInfoSpy).not.toHaveBeenCalled()
+      })
     })
   })
 })
