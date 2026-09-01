@@ -57,10 +57,9 @@ vi.mock('../../config/Config.js', () => ({
     tokens: { SOL: 'So11111111111111111111111111111111111111112' },
     pnl: { source: 'api' },
     management: {},
-    api: { meridian: {} },
+    api: { meridian: { lpAgentRelayEnabled: true } },
     connection: {},
   },
-  shouldUseLpAgentRelay: vi.fn().mockReturnValue(false),
 }))
 
 import { Keypair, PublicKey, Transaction } from '@solana/web3.js'
@@ -286,9 +285,6 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
 
     try {
       const result = await closePosition({ position_address: positionAddress })
-      if (!result.success) {
-        console.error('CLOSE_RESULT_FAIL:', JSON.stringify(result))
-      }
       expect(result.success).toBe(true)
     } finally {
       fetchSpy.mockRestore()
