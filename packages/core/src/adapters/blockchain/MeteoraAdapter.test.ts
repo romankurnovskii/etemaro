@@ -266,6 +266,16 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
       },
     } as any)
 
+    vi.spyOn(Connection.prototype, 'getSignatureStatuses').mockResolvedValue({
+      context: { slot: 100 },
+      value: [{ confirmationStatus: 'confirmed', slot: 100, err: null, confirmations: 1 }],
+    } as any)
+
+    vi.spyOn(Connection.prototype, 'getLatestBlockhash').mockResolvedValue({
+      blockhash: Keypair.generate().publicKey.toString(),
+      lastValidBlockHeight: 999999,
+    } as any)
+
     try {
       const result = await closePosition({ position_address: positionAddress })
       expect(result.success).toBe(true)
