@@ -8,86 +8,86 @@
  * to data/chat_port.json and conversation history to data/chat_history.json.
  */
 
-import http from 'node:http';
-import fs from 'node:fs';
-import path from 'node:path';
-import { dataPath } from '../../shared/constants.js';
-import { log } from '../../shared/logger.js';
+import fs from 'node:fs'
+import http from 'node:http'
+import path from 'node:path'
+import { dataPath } from '../../shared/constants.js'
+import { log } from '../../shared/logger.js'
 
 export interface ChatMessageRequest {
-  text: string;
-  sender?: string;
+  text: string
+  sender?: string
 }
 
 export interface ChatMessageResponse {
-  status: 'ok' | 'error';
-  text?: string;
-  error?: string;
+  status: 'ok' | 'error'
+  text?: string
+  error?: string
 }
 
 export interface LiveMessageControl {
-  toolStart: (name: string) => Promise<void>;
-  toolFinish: (name: string, result: any, success: boolean) => Promise<void>;
-  finalize: (text: string) => Promise<void>;
-  fail: (reason: string) => Promise<void>;
+  toolStart: (name: string) => Promise<void>
+  toolFinish: (name: string, result: any, success: boolean) => Promise<void>
+  finalize: (text: string) => Promise<void>
+  fail: (reason: string) => Promise<void>
 }
 
-let _server: http.Server | null = null;
-let _port: number | null = null;
-let _handler: ((msg: ChatMessageRequest) => Promise<string | { text: string }>) | null = null;
-const _chatHistory: Array<{ id: string; sender: 'user' | 'agent'; text: string; ts: string }> = [];
+let _server: http.Server | null = null
+let _port: number | null = null
+let _handler: ((msg: ChatMessageRequest) => Promise<string | { text: string }>) | null = null
+const _chatHistory: Array<{ id: string; sender: 'user' | 'agent'; text: string; ts: string }> = []
 
-const MAX_CHAT_HISTORY_FILE_ENTRIES = 100;
+const MAX_CHAT_HISTORY_FILE_ENTRIES = 100
 
 function loadChatHistoryFromDisk(): void {
   try {
-    const file = dataPath('chat_history.json');
+    const file = dataPath('chat_history.json')
     if (fs.existsSync(file)) {
-      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'))
       if (Array.isArray(data)) {
-        _chatHistory.length = 0;
-        _chatHistory.push(...data.slice(-MAX_CHAT_HISTORY_FILE_ENTRIES));
+        _chatHistory.length = 0
+        _chatHistory.push(...data.slice(-MAX_CHAT_HISTORY_FILE_ENTRIES))
       }
     }
   } catch (e: any) {
-    log('desktop_chat_warn', `Failed to load chat_history.json: ${e.message}`);
+    log('desktop_chat_warn', `Failed to load chat_history.json: ${e.message}`)
   }
 }
 
 function persistChatHistoryToDisk(): void {
   try {
-    const file = dataPath('chat_history.json');
-    const dir = path.dirname(file);
+    const file = dataPath('chat_history.json')
+    const dir = path.dirname(file)
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+      fs.mkdirSync(dir, { recursive: true })
     }
     if (_chatHistory.length > MAX_CHAT_HISTORY_FILE_ENTRIES) {
-      _chatHistory.splice(0, _chatHistory.length - MAX_CHAT_HISTORY_FILE_ENTRIES);
+      _chatHistory.splice(0, _chatHistory.length - MAX_CHAT_HISTORY_FILE_ENTRIES)
     }
-    fs.writeFileSync(file, JSON.stringify(_chatHistory, null, 2));
+    fs.writeFileSync(file, JSON.stringify(_chatHistory, null, 2))
   } catch (e: any) {
-    log('desktop_chat_warn', `Failed to save chat_history.json: ${e.message}`);
+    log('desktop_chat_warn', `Failed to save chat_history.json: ${e.message}`)
   }
 }
 
 export function isEnabled(): boolean {
-  return _server !== null;
+  return _server !== null
 }
 
 export function getServerPort(): number | null {
-  return _port;
+  return _port
 }
 
 export function getChatHistory(): Array<{ id: string; sender: 'user' | 'agent'; text: string; ts: string }> {
-  return [..._chatHistory];
+  return [..._chatHistory]
 }
 
 export function clearChatHistory(): void {
-  _chatHistory.length = 0;
+  _chatHistory.length = 0
   try {
-    const file = dataPath('chat_history.json');
+    const file = dataPath('chat_history.json')
     if (fs.existsSync(file)) {
-      fs.unlinkSync(file);
+      fs.unlinkSync(file)
     }
   } catch {
     // Ignore deletion errors
@@ -96,14 +96,14 @@ export function clearChatHistory(): void {
 
 function writePortFile(port: number): void {
   try {
-    const file = dataPath('chat_port.json');
-    const dir = path.dirname(file);
+    const file = dataPath('chat_port.json')
+    const dir = path.dirname(file)
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+      fs.mkdirSync(dir, { recursive: true })
     }
-    fs.writeFileSync(file, JSON.stringify({ port, ts: new Date().toISOString() }));
+    fs.writeFileSync(file, JSON.stringify({ port, ts: new Date().toISOString() }))
   } catch (e: any) {
-    log('desktop_chat_warn', `Failed to save chat_port.json: ${e.message}`);
+    log('desktop_chat_warn', `Failed to save chat_port.json: ${e.message}`)
   }
 }
 
@@ -115,58 +115,58 @@ export function startServer(
   port = Number(process.env.DESKTOP_CHAT_PORT) || 31415,
 ): Promise<void> {
   if (_server) {
-    log('desktop_chat_warn', 'Desktop chat server is already running.');
-    return Promise.resolve();
+    log('desktop_chat_warn', 'Desktop chat server is already running.')
+    return Promise.resolve()
   }
 
-  _handler = handler;
-  loadChatHistoryFromDisk();
+  _handler = handler
+  loadChatHistoryFromDisk()
 
   return new Promise((resolve, reject) => {
-    const currentPort = port;
-    const maxPort = port + 100;
+    const currentPort = port
+    const maxPort = port + 100
 
     const createAndListen = (targetPort: number) => {
       const server = http.createServer(async (req, res) => {
         // CORS & Connection headers for local desktop app
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-        res.setHeader('Connection', 'close');
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+        res.setHeader('Connection', 'close')
 
         if (req.method === 'OPTIONS') {
-          res.writeHead(204);
-          res.end();
-          return;
+          res.writeHead(204)
+          res.end()
+          return
         }
 
-        const url = req.url || '/';
+        const url = req.url || '/'
 
         if (req.method === 'GET' && url === '/api/health') {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ status: 'ok', adapter: 'desktop-chat', port: _port }));
-          return;
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ status: 'ok', adapter: 'desktop-chat', port: _port }))
+          return
         }
 
         if (req.method === 'GET' && url === '/api/history') {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ status: 'ok', history: _chatHistory }));
-          return;
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ status: 'ok', history: _chatHistory }))
+          return
         }
 
         if (req.method === 'POST' && (url === '/api/chat' || url === '/chat')) {
-          let body = '';
+          let body = ''
           req.on('data', (chunk) => {
-            body += chunk;
-          });
+            body += chunk
+          })
 
           req.on('end', async () => {
             try {
-              const parsed = JSON.parse(body || '{}') as ChatMessageRequest;
+              const parsed = JSON.parse(body || '{}') as ChatMessageRequest
               if (!parsed.text || typeof parsed.text !== 'string') {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ status: 'error', error: 'Field "text" is required.' }));
-                return;
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ status: 'error', error: 'Field "text" is required.' }))
+                return
               }
 
               _chatHistory.push({
@@ -174,63 +174,63 @@ export function startServer(
                 sender: 'user',
                 text: parsed.text,
                 ts: new Date().toISOString(),
-              });
-              persistChatHistoryToDisk();
+              })
+              persistChatHistoryToDisk()
 
               if (!_handler) {
-                res.writeHead(503, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ status: 'error', error: 'No message handler registered.' }));
-                return;
+                res.writeHead(503, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ status: 'error', error: 'No message handler registered.' }))
+                return
               }
 
-              const response = await _handler(parsed);
-              const responseText = typeof response === 'string' ? response : response.text;
+              const response = await _handler(parsed)
+              const responseText = typeof response === 'string' ? response : response.text
 
               _chatHistory.push({
                 id: `msg_${Date.now()}_a`,
                 sender: 'agent',
                 text: responseText,
                 ts: new Date().toISOString(),
-              });
-              persistChatHistoryToDisk();
+              })
+              persistChatHistoryToDisk()
 
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ status: 'ok', text: responseText }));
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ status: 'ok', text: responseText }))
             } catch (e: any) {
-              log('desktop_chat_error', `Error processing chat request: ${e.message}`);
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ status: 'error', error: e.message }));
+              log('desktop_chat_error', `Error processing chat request: ${e.message}`)
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ status: 'error', error: e.message }))
             }
-          });
-          return;
+          })
+          return
         }
 
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'error', error: 'Not found' }));
-      });
+        res.writeHead(404, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ status: 'error', error: 'Not found' }))
+      })
 
       server.on('error', (err: any) => {
         if (err.code === 'EADDRINUSE' && targetPort < maxPort) {
-          log('desktop_chat_warn', `Port ${targetPort} is in use; retrying on ${targetPort + 1}`);
-          server.close();
-          createAndListen(targetPort + 1);
+          log('desktop_chat_warn', `Port ${targetPort} is in use; retrying on ${targetPort + 1}`)
+          server.close()
+          createAndListen(targetPort + 1)
         } else {
-          log('desktop_chat_error', `Server error on port ${targetPort}: ${err.message}`);
-          reject(err);
+          log('desktop_chat_error', `Server error on port ${targetPort}: ${err.message}`)
+          reject(err)
         }
-      });
+      })
 
       server.listen(targetPort, '127.0.0.1', () => {
-        _server = server;
-        _port = targetPort;
-        writePortFile(targetPort);
-        log('desktop_chat', `Desktop chat adapter listening on http://127.0.0.1:${targetPort}`);
-        resolve();
-      });
-    };
+        _server = server
+        _port = targetPort
+        writePortFile(targetPort)
+        log('desktop_chat', `Desktop chat adapter listening on http://127.0.0.1:${targetPort}`)
+        resolve()
+      })
+    }
 
-    createAndListen(currentPort);
-  });
+    createAndListen(currentPort)
+  })
 }
 
 /**
@@ -239,13 +239,13 @@ export function startServer(
 export function stopServer(): void {
   if (_server) {
     if (typeof _server.closeAllConnections === 'function') {
-      _server.closeAllConnections();
+      _server.closeAllConnections()
     }
-    _server.close();
-    _server = null;
-    _handler = null;
-    _port = null;
-    log('desktop_chat', 'Desktop chat server stopped.');
+    _server.close()
+    _server = null
+    _handler = null
+    _port = null
+    log('desktop_chat', 'Desktop chat server stopped.')
   }
 }
 
@@ -258,8 +258,8 @@ export async function sendMessage(text: string): Promise<void> {
     sender: 'agent',
     text,
     ts: new Date().toISOString(),
-  });
-  persistChatHistoryToDisk();
+  })
+  persistChatHistoryToDisk()
 }
 
 /**
@@ -272,27 +272,27 @@ export async function createLiveMessage(title: string, body: string): Promise<Li
     title,
     body,
     steps: [] as string[],
-  };
+  }
 
-  log('desktop_chat', `[LiveMessage] ${title}: ${body}`);
+  log('desktop_chat', `[LiveMessage] ${title}: ${body}`)
 
   return {
     async toolStart(name: string) {
-      liveEntry.steps.push(`▶ Tool start: ${name}`);
-      log('desktop_chat', `[LiveMessage ${title}] Tool start: ${name}`);
+      liveEntry.steps.push(`▶ Tool start: ${name}`)
+      log('desktop_chat', `[LiveMessage ${title}] Tool start: ${name}`)
     },
     async toolFinish(name: string, _result: any, success: boolean) {
-      const status = success ? '✅' : '❌';
-      liveEntry.steps.push(`${status} Tool finish: ${name}`);
-      log('desktop_chat', `[LiveMessage ${title}] Tool finish: ${name} (${status})`);
+      const status = success ? '✅' : '❌'
+      liveEntry.steps.push(`${status} Tool finish: ${name}`)
+      log('desktop_chat', `[LiveMessage ${title}] Tool finish: ${name} (${status})`)
     },
     async finalize(text: string) {
-      log('desktop_chat', `[LiveMessage ${title}] Finalized`);
-      await sendMessage(text);
+      log('desktop_chat', `[LiveMessage ${title}] Finalized`)
+      await sendMessage(text)
     },
     async fail(reason: string) {
-      log('desktop_chat_error', `[LiveMessage ${title}] Failed: ${reason}`);
-      await sendMessage(`Error: ${reason}`);
+      log('desktop_chat_error', `[LiveMessage ${title}] Failed: ${reason}`)
+      await sendMessage(`Error: ${reason}`)
     },
-  };
+  }
 }

@@ -11,11 +11,11 @@
  * @sideEffects One-shot tool execution and console JSON output
  */
 
-import fs from 'fs';
-import path from 'path';
-import readline from 'node:readline/promises';
-import { stdin as stdinStream, stdout as stdoutStream } from 'node:process';
-import { parseArgs } from 'util';
+import fs from 'node:fs'
+import path from 'node:path'
+import { stdin as stdinStream, stdout as stdoutStream } from 'node:process'
+import readline from 'node:readline/promises'
+import { parseArgs } from 'node:util'
 import {
   assessSetup,
   formatInitMessage,
@@ -24,139 +24,140 @@ import {
   parseEnvFile,
   upsertEnvVars,
   writeRuntimeSkeleton,
-} from './firstSetup.js';
+} from './firstSetup.js'
+
 // Type-only imports to help tsc
-type CoreExports = typeof import('@etemaro/core');
-type DaemonExports = typeof import('@etemaro/daemon');
+type CoreExports = typeof import('@etemaro/core')
+type DaemonExports = typeof import('@etemaro/daemon')
 
 // Lazily populated core exports (set after flag parsing)
-let config: CoreExports['config'] = null as any;
-let computeDeployAmount: CoreExports['computeDeployAmount'] = null as any;
-let getTrackedPosition: CoreExports['getTrackedPosition'] = null as any;
-let log: CoreExports['log'] = null as any;
-let dataPath: CoreExports['dataPath'] = null as any;
-let getDataDir: CoreExports['getDataDir'] = null as any;
-let getEtemaroDir: CoreExports['getEtemaroDir'] = null as any;
-let USER_CONFIG_PATH: CoreExports['USER_CONFIG_PATH'] = null as any;
-let DEFAULT_ENTRY_SOURCE: CoreExports['DEFAULT_ENTRY_SOURCE'] = null as any;
-let SMART_WALLETS_FILENAME: CoreExports['SMART_WALLETS_FILENAME'] = null as any;
-let DISCORD_SIGNALS_FILENAME: CoreExports['DISCORD_SIGNALS_FILENAME'] = null as any;
-let LESSONS_FILENAME: CoreExports['LESSONS_FILENAME'] = null as any;
-let WALLETS_KEYPAIR_FILENAME: CoreExports['WALLETS_KEYPAIR_FILENAME'] = null as any;
-let DEFAULT_ACTIVE_STRATEGY_ID: CoreExports['DEFAULT_ACTIVE_STRATEGY_ID'] = null as any;
-let DEFAULT_STRATEGY_TYPE: CoreExports['DEFAULT_STRATEGY_TYPE'] = null as any;
-let DEFAULT_DISCORD_MODE_MERGE: CoreExports['DEFAULT_DISCORD_MODE_MERGE'] = null as any;
-let meteora: CoreExports['meteora'] = null as any;
-let wallet: CoreExports['wallet'] = null as any;
-let screening: CoreExports['screening'] = null as any;
-let toolExecutor: CoreExports['toolExecutor'] = null as any;
-let domain: CoreExports['domain'] = null as any;
-let token: CoreExports['token'] = null as any;
-let study: CoreExports['study'] = null as any;
-let telegram: CoreExports['telegram'] = null as any;
-let desktop: CoreExports['desktop'] = null as any;
-let briefing: CoreExports['briefing'] = null as any;
-let hivemind: CoreExports['hivemind'] = null as any;
-let tools: CoreExports['tools'] = null as any;
-let defaultUserConfigStr: CoreExports['defaultUserConfigStr'] = null as any;
-let DEFAULT_STRATEGIES: CoreExports['DEFAULT_STRATEGIES'] = null as any;
+let config: CoreExports['config'] = null as any
+let _computeDeployAmount: CoreExports['computeDeployAmount'] = null as any
+let getTrackedPosition: CoreExports['getTrackedPosition'] = null as any
+let _log: CoreExports['log'] = null as any
+let dataPath: CoreExports['dataPath'] = null as any
+let _getDataDir: CoreExports['getDataDir'] = null as any
+let getEtemaroDir: CoreExports['getEtemaroDir'] = null as any
+let _USER_CONFIG_PATH: CoreExports['USER_CONFIG_PATH'] = null as any
+let _DEFAULT_ENTRY_SOURCE: CoreExports['DEFAULT_ENTRY_SOURCE'] = null as any
+let _SMART_WALLETS_FILENAME: CoreExports['SMART_WALLETS_FILENAME'] = null as any
+let DISCORD_SIGNALS_FILENAME: CoreExports['DISCORD_SIGNALS_FILENAME'] = null as any
+let LESSONS_FILENAME: CoreExports['LESSONS_FILENAME'] = null as any
+let _WALLETS_KEYPAIR_FILENAME: CoreExports['WALLETS_KEYPAIR_FILENAME'] = null as any
+let _DEFAULT_ACTIVE_STRATEGY_ID: CoreExports['DEFAULT_ACTIVE_STRATEGY_ID'] = null as any
+let _DEFAULT_STRATEGY_TYPE: CoreExports['DEFAULT_STRATEGY_TYPE'] = null as any
+let _DEFAULT_DISCORD_MODE_MERGE: CoreExports['DEFAULT_DISCORD_MODE_MERGE'] = null as any
+let meteora: CoreExports['meteora'] = null as any
+let wallet: CoreExports['wallet'] = null as any
+let screening: CoreExports['screening'] = null as any
+let toolExecutor: CoreExports['toolExecutor'] = null as any
+let domain: CoreExports['domain'] = null as any
+let token: CoreExports['token'] = null as any
+let study: CoreExports['study'] = null as any
+let telegram: CoreExports['telegram'] = null as any
+let desktop: CoreExports['desktop'] = null as any
+let briefing: CoreExports['briefing'] = null as any
+let hivemind: CoreExports['hivemind'] = null as any
+let tools: CoreExports['tools'] = null as any
+let defaultUserConfigStr: CoreExports['defaultUserConfigStr'] = null as any
+let DEFAULT_STRATEGIES: CoreExports['DEFAULT_STRATEGIES'] = null as any
 
 // Lazily populated Daemon constructor
-let DaemonCtor: DaemonExports['Daemon'] = null as any;
+let DaemonCtor: DaemonExports['Daemon'] = null as any
 
 /**
  * Load core and daemon modules after environment is prepared.
  * Must be called before using any core functionality.
  */
 export async function loadCore(): Promise<void> {
-  const [coreMod, daemonMod] = await Promise.all([import('@etemaro/core'), import('@etemaro/daemon')]);
+  const [coreMod, daemonMod] = await Promise.all([import('@etemaro/core'), import('@etemaro/daemon')])
   // Assign core exports
-  config = coreMod.config;
-  computeDeployAmount = coreMod.computeDeployAmount;
-  getTrackedPosition = coreMod.getTrackedPosition;
-  log = coreMod.log;
-  dataPath = coreMod.dataPath;
-  getDataDir = coreMod.getDataDir;
-  getEtemaroDir = coreMod.getEtemaroDir;
-  USER_CONFIG_PATH = coreMod.USER_CONFIG_PATH;
-  DEFAULT_ENTRY_SOURCE = coreMod.DEFAULT_ENTRY_SOURCE;
-  SMART_WALLETS_FILENAME = coreMod.SMART_WALLETS_FILENAME;
-  DISCORD_SIGNALS_FILENAME = coreMod.DISCORD_SIGNALS_FILENAME;
-  LESSONS_FILENAME = coreMod.LESSONS_FILENAME;
-  WALLETS_KEYPAIR_FILENAME = coreMod.WALLETS_KEYPAIR_FILENAME;
-  DEFAULT_ACTIVE_STRATEGY_ID = coreMod.DEFAULT_ACTIVE_STRATEGY_ID;
-  DEFAULT_STRATEGY_TYPE = coreMod.DEFAULT_STRATEGY_TYPE;
-  DEFAULT_DISCORD_MODE_MERGE = coreMod.DEFAULT_DISCORD_MODE_MERGE;
-  meteora = coreMod.meteora;
-  wallet = coreMod.wallet;
-  screening = coreMod.screening;
-  toolExecutor = coreMod.toolExecutor;
-  domain = coreMod.domain;
-  token = coreMod.token;
-  study = coreMod.study;
-  telegram = coreMod.telegram;
-  desktop = coreMod.desktop;
-  briefing = coreMod.briefing;
-  hivemind = coreMod.hivemind;
-  tools = coreMod.tools;
-  defaultUserConfigStr = coreMod.defaultUserConfigStr;
-  DEFAULT_STRATEGIES = coreMod.DEFAULT_STRATEGIES;
+  config = coreMod.config
+  _computeDeployAmount = coreMod.computeDeployAmount
+  getTrackedPosition = coreMod.getTrackedPosition
+  _log = coreMod.log
+  dataPath = coreMod.dataPath
+  _getDataDir = coreMod.getDataDir
+  getEtemaroDir = coreMod.getEtemaroDir
+  _USER_CONFIG_PATH = coreMod.USER_CONFIG_PATH
+  _DEFAULT_ENTRY_SOURCE = coreMod.DEFAULT_ENTRY_SOURCE
+  _SMART_WALLETS_FILENAME = coreMod.SMART_WALLETS_FILENAME
+  DISCORD_SIGNALS_FILENAME = coreMod.DISCORD_SIGNALS_FILENAME
+  LESSONS_FILENAME = coreMod.LESSONS_FILENAME
+  _WALLETS_KEYPAIR_FILENAME = coreMod.WALLETS_KEYPAIR_FILENAME
+  _DEFAULT_ACTIVE_STRATEGY_ID = coreMod.DEFAULT_ACTIVE_STRATEGY_ID
+  _DEFAULT_STRATEGY_TYPE = coreMod.DEFAULT_STRATEGY_TYPE
+  _DEFAULT_DISCORD_MODE_MERGE = coreMod.DEFAULT_DISCORD_MODE_MERGE
+  meteora = coreMod.meteora
+  wallet = coreMod.wallet
+  screening = coreMod.screening
+  toolExecutor = coreMod.toolExecutor
+  domain = coreMod.domain
+  token = coreMod.token
+  study = coreMod.study
+  telegram = coreMod.telegram
+  desktop = coreMod.desktop
+  briefing = coreMod.briefing
+  hivemind = coreMod.hivemind
+  tools = coreMod.tools
+  defaultUserConfigStr = coreMod.defaultUserConfigStr
+  DEFAULT_STRATEGIES = coreMod.DEFAULT_STRATEGIES
   // Assign Daemon constructor
-  DaemonCtor = daemonMod.Daemon;
+  DaemonCtor = daemonMod.Daemon
 }
 
 // ─── Adapter Imports ────────────────────────────────────────────
 
 export interface CliAdapters {
   meteora: {
-    getMyPositions: (opts?: { force?: boolean; silent?: boolean }) => Promise<any>;
-    closePosition: (opts: { position_address: string }) => Promise<any>;
-    getActiveBin: (opts: { pool_address: string }) => Promise<any>;
-    getPositionPnl: (opts: { pool_address: string; position_address: string }) => Promise<any>;
-    searchPools: (opts: { query: string; limit: number }) => Promise<any>;
-    getWalletPositions: (opts: { wallet_address: string }) => Promise<any>;
-  };
+    getMyPositions: (opts?: { force?: boolean; silent?: boolean }) => Promise<any>
+    closePosition: (opts: { position_address: string }) => Promise<any>
+    getActiveBin: (opts: { pool_address: string }) => Promise<any>
+    getPositionPnl: (opts: { pool_address: string; position_address: string }) => Promise<any>
+    searchPools: (opts: { query: string; limit: number }) => Promise<any>
+    getWalletPositions: (opts: { wallet_address: string }) => Promise<any>
+  }
   wallet: {
-    getWalletBalances: () => Promise<any>;
-    swapToken: (opts: any) => Promise<any>;
-  };
+    getWalletBalances: () => Promise<any>
+    swapToken: (opts: any) => Promise<any>
+  }
   screening: {
-    getTopCandidates: (opts: { limit: number }) => Promise<any>;
-    getPoolDetail: (opts: any) => Promise<any>;
-  };
+    getTopCandidates: (opts: { limit: number }) => Promise<any>
+    getPoolDetail: (opts: any) => Promise<any>
+  }
   toolExecutor: {
-    executeTool: (name: string, args: Record<string, unknown>) => Promise<any>;
-  };
+    executeTool: (name: string, args: Record<string, unknown>) => Promise<any>
+  }
   domain: {
-    validateActiveStrategy: () => void;
-    getActiveStrategy: () => any;
-    recallForPool: (pool: string) => string | null;
-    addPoolNote: (pool: string, note: string) => void;
-    checkSmartWalletsOnPool: (opts: { pool_address: string }) => Promise<any>;
-    getTokenNarrative: (opts: { mint: string }) => Promise<any>;
-    getTokenInfo: (opts: { query: string }) => Promise<any>;
-    getTokenHolders: (opts: { mint: string; limit: number }) => Promise<any>;
-    studyTopLPers: (opts: { pool_address: string; limit: number }) => Promise<any>;
-    listLessons: (opts: { limit: number }) => any;
-    addLesson: (text: string, tags: string[], opts: any) => void;
-    getPoolMemory: (opts: { pool_address: string }) => any;
-    evolveThresholds: (perf: any[], cfg: any) => any;
-    addToBlacklist: (opts: { mint: string; reason: string }) => any;
-    listBlacklist: () => any;
-    getPerformanceHistory: (opts: { hours: number; limit: number }) => any;
-    getPerformanceSummary: () => any;
-  };
+    validateActiveStrategy: () => void
+    getActiveStrategy: () => any
+    recallForPool: (pool: string) => string | null
+    addPoolNote: (pool: string, note: string) => void
+    checkSmartWalletsOnPool: (opts: { pool_address: string }) => Promise<any>
+    getTokenNarrative: (opts: { mint: string }) => Promise<any>
+    getTokenInfo: (opts: { query: string }) => Promise<any>
+    getTokenHolders: (opts: { mint: string; limit: number }) => Promise<any>
+    studyTopLPers: (opts: { pool_address: string; limit: number }) => Promise<any>
+    listLessons: (opts: { limit: number }) => any
+    addLesson: (text: string, tags: string[], opts: any) => void
+    getPoolMemory: (opts: { pool_address: string }) => any
+    evolveThresholds: (perf: any[], cfg: any) => any
+    addToBlacklist: (opts: { mint: string; reason: string }) => any
+    listBlacklist: () => any
+    getPerformanceHistory: (opts: { hours: number; limit: number }) => any
+    getPerformanceSummary: () => any
+  }
   daemon?: {
-    start?: (options?: { tty?: boolean }) => Promise<void>;
-    runScreeningCycle: (opts?: { silent?: boolean }) => Promise<string | null>;
-    runManagementCycle: (opts?: { silent?: boolean }) => Promise<string | null>;
-    startCronJobs: () => void;
-  };
+    start?: (options?: { tty?: boolean }) => Promise<void>
+    runScreeningCycle: (opts?: { silent?: boolean }) => Promise<string | null>
+    runManagementCycle: (opts?: { silent?: boolean }) => Promise<string | null>
+    startCronJobs: () => void
+  }
   token?: {
-    getTokenInfo: (opts: { query: string }) => Promise<any>;
-    getTokenHolders: (opts: { mint: string; limit: number }) => Promise<any>;
-    getTokenNarrative: (opts: { mint: string }) => Promise<any>;
-  };
+    getTokenInfo: (opts: { query: string }) => Promise<any>
+    getTokenHolders: (opts: { mint: string; limit: number }) => Promise<any>
+    getTokenNarrative: (opts: { mint: string }) => Promise<any>
+  }
 }
 
 // ─── SKILL.md ───────────────────────────────────────────────────
@@ -343,44 +344,44 @@ Starts the autonomous agent with cron jobs (management + screening).
 --silent      Suppress Telegram notifications for this run
 --config <path>  Path to user-config.json (alias: -c). Overrides USER_CONFIG_PATH env var.
 --data-dir <path>  Data directory (alias: -d). Overrides ETEMARO_DATA_DIR/DATA_DIR env vars.
-`;
+`
 
 // ─── Output Helpers ─────────────────────────────────────────────
 
 function out(data: unknown): void {
-  process.stdout.write(JSON.stringify(data, null, 2) + '\n');
-  process.exit(0);
+  process.stdout.write(`${JSON.stringify(data, null, 2)}\n`)
+  process.exit(0)
 }
 
 function die(msg: string, extra: Record<string, unknown> = {}): never {
-  process.stderr.write(JSON.stringify({ error: msg, ...extra }) + '\n');
-  process.exit(1);
+  process.stderr.write(`${JSON.stringify({ error: msg, ...extra })}\n`)
+  process.exit(1)
 }
 
 // ─── CLI Class ──────────────────────────────────────────────────
 
 export class Cli {
-  private adapters: CliAdapters;
-  private etemaroDir: string;
+  private adapters: CliAdapters
+  private etemaroDir: string
 
   constructor(adapters: CliAdapters) {
-    this.adapters = adapters;
-    this.etemaroDir = typeof getEtemaroDir === 'function' ? getEtemaroDir() : defaultEtemaroHome();
+    this.adapters = adapters
+    this.etemaroDir = typeof getEtemaroDir === 'function' ? getEtemaroDir() : defaultEtemaroHome()
   }
 
   // ─── Lifecycle ─────────────────────────────────────────────────
 
   async run(argv: string[] = process.argv.slice(2)): Promise<void> {
     // Write SKILL.md for agent discovery
-    this.writeSkillMd();
+    this.writeSkillMd()
 
     // Parse args
-    const subcommand = argv.find((a) => !a.startsWith('-'));
-    const sub2 = argv.filter((a) => !a.startsWith('-'))[1];
+    const subcommand = argv.find((a) => !a.startsWith('-'))
+    const sub2 = argv.filter((a) => !a.startsWith('-'))[1]
 
     if (!subcommand || subcommand === 'help' || argv.includes('--help')) {
-      process.stdout.write(SKILL_MD);
-      process.exit(0);
+      process.stdout.write(SKILL_MD)
+      process.exit(0)
     }
 
     // Parse flags
@@ -414,132 +415,133 @@ export class Cli {
       },
       allowPositionals: true,
       strict: false,
-    });
+    })
 
-    applyCliRuntimeFlags(flags as Record<string, unknown>, process.env);
+    applyCliRuntimeFlags(flags as Record<string, unknown>, process.env)
 
     switch (subcommand) {
       case 'generate-wallet':
       case 'new-wallet':
-        return this.handleGenerateWallet(flags);
+        return this.handleGenerateWallet(flags)
       case 'balance':
       case 'wallet':
         if (sub2 === 'swap-all') {
-          return this.handleSwapAllTokensToSol(flags);
+          return this.handleSwapAllTokensToSol(flags)
         }
         if (sub2 === 'generate' || sub2 === 'new') {
-          return this.handleGenerateWallet(flags);
+          return this.handleGenerateWallet(flags)
         }
-        return this.handleBalance();
+        return this.handleBalance()
       case 'positions':
-        return this.handlePositions();
+        return this.handlePositions()
       case 'pnl':
-        return this.handlePnl(argv, flags);
+        return this.handlePnl(argv, flags)
       case 'candidates':
-        return this.handleCandidates(flags);
+        return this.handleCandidates(flags)
       case 'token-info':
-        return this.handleTokenInfo(argv, flags);
+        return this.handleTokenInfo(argv, flags)
       case 'token-holders':
-        return this.handleTokenHolders(argv, flags);
+        return this.handleTokenHolders(argv, flags)
       case 'token-narrative':
-        return this.handleTokenNarrative(argv, flags);
+        return this.handleTokenNarrative(argv, flags)
       case 'pool-detail':
-        return this.handlePoolDetail(flags);
+        return this.handlePoolDetail(flags)
       case 'search-pools':
-        return this.handleSearchPools(argv, flags);
+        return this.handleSearchPools(argv, flags)
       case 'active-bin':
-        return this.handleActiveBin(flags);
+        return this.handleActiveBin(flags)
       case 'wallet-positions':
-        return this.handleWalletPositions(argv, flags);
+        return this.handleWalletPositions(argv, flags)
       case 'deploy':
-        return this.handleDeploy(argv, flags);
+        return this.handleDeploy(argv, flags)
       case 'claim':
-        return this.handleClaim(flags);
+        return this.handleClaim(flags)
       case 'close':
-        return this.handleClose(flags);
+        return this.handleClose(flags)
       case 'swap':
-        return this.handleSwap(flags);
+        return this.handleSwap(flags)
       case 'screen':
-        return this.handleScreen(flags);
+        return this.handleScreen(flags)
       case 'manage':
-        return this.handleManage(flags);
+        return this.handleManage(flags)
       case 'config':
-        return this.handleConfig(argv, sub2);
+        return this.handleConfig(argv, sub2)
       case 'study':
-        return this.handleStudy(flags);
+        return this.handleStudy(flags)
       case 'start':
-        return this.handleStart();
+        return this.handleStart()
       case 'lessons':
-        return this.handleLessons(argv, sub2, flags);
+        return this.handleLessons(argv, sub2, flags)
       case 'pool-memory':
-        return this.handlePoolMemory(flags);
+        return this.handlePoolMemory(flags)
       case 'evolve':
-        return this.handleEvolve();
+        return this.handleEvolve()
       case 'blacklist':
-        return this.handleBlacklist(argv, sub2, flags);
+        return this.handleBlacklist(argv, sub2, flags)
       case 'performance':
-        return this.handlePerformance(flags);
+        return this.handlePerformance(flags)
       case 'discord-signals':
-        return this.handleDiscordSignals(sub2);
+        return this.handleDiscordSignals(sub2)
       case 'init':
-        return this.handleInit(flags);
+        return this.handleInit(flags)
       default:
-        die(`Unknown command: ${subcommand}. Run 'etemaro help' for usage.`);
+        die(`Unknown command: ${subcommand}. Run 'etemaro help' for usage.`)
     }
   }
 
   // ─── SKILL.md ──────────────────────────────────────────────────
 
   private writeSkillMd(): void {
-    fs.mkdirSync(this.etemaroDir, { recursive: true });
-    fs.writeFileSync(path.join(this.etemaroDir, 'SKILL.md'), SKILL_MD);
+    fs.mkdirSync(this.etemaroDir, { recursive: true })
+    fs.writeFileSync(path.join(this.etemaroDir, 'SKILL.md'), SKILL_MD)
   }
 
   // ─── Command Handlers ──────────────────────────────────────────
 
   private async handleInit(flags: Record<string, any>): Promise<void> {
-    const targetDir = typeof flags.dir === 'string' && flags.dir.trim().length > 0 ? path.resolve(flags.dir) : this.etemaroDir;
+    const targetDir =
+      typeof flags.dir === 'string' && flags.dir.trim().length > 0 ? path.resolve(flags.dir) : this.etemaroDir
     const skeleton = writeRuntimeSkeleton(targetDir, {
       defaultUserConfigStr,
       defaultStrategies: DEFAULT_STRATEGIES,
-    });
-    this.writeSkillMd();
+    })
+    this.writeSkillMd()
 
-    const envFile = skeleton.env.path;
-    const fileEnv = fs.existsSync(envFile) ? parseEnvFile(fs.readFileSync(envFile, 'utf8')) : {};
-    let status = assessSetup({ ...fileEnv, ...process.env });
+    const envFile = skeleton.env.path
+    const fileEnv = fs.existsSync(envFile) ? parseEnvFile(fs.readFileSync(envFile, 'utf8')) : {}
+    let status = assessSetup({ ...fileEnv, ...process.env })
 
-    const interactive = process.stdin.isTTY === true && flags.yes !== true;
+    const interactive = process.stdin.isTTY === true && flags.yes !== true
     const updates = await maybePromptSecrets({
       interactive,
       status,
       ask: askTty,
-    });
+    })
     if (Object.keys(updates).length > 0) {
-      const next = upsertEnvVars(fs.readFileSync(envFile, 'utf8'), updates);
-      fs.writeFileSync(envFile, next);
-      for (const [key, value] of Object.entries(updates)) process.env[key] = value;
-      status = assessSetup({ ...parseEnvFile(next), ...process.env });
+      const next = upsertEnvVars(fs.readFileSync(envFile, 'utf8'), updates)
+      fs.writeFileSync(envFile, next)
+      for (const [key, value] of Object.entries(updates)) process.env[key] = value
+      status = assessSetup({ ...parseEnvFile(next), ...process.env })
     }
 
     const text = formatInitMessage({
       directory: targetDir,
       firstRun: skeleton.env.created || skeleton.config.created,
       status,
-    });
-    process.stdout.write(text + '\n');
+    })
+    process.stdout.write(`${text}\n`)
     if (typeof flags.dir === 'string' && flags.dir.trim()) {
-      process.stdout.write(`\nCustom dir: export ETEMARO_HOME="${targetDir}" before etemaro start\n`);
+      process.stdout.write(`\nCustom dir: export ETEMARO_HOME="${targetDir}" before etemaro start\n`)
     }
-    process.exit(status.readyForDryRun ? 0 : 1);
+    process.exit(status.readyForDryRun ? 0 : 1)
   }
 
   private handleGenerateWallet(flags: Record<string, any>): void {
-    const configDir = path.join(this.etemaroDir, 'config');
+    const configDir = path.join(this.etemaroDir, 'config')
     const result = wallet.generateNewWallet({
       label: flags.label || 'CLI Generated Keypair',
       configDir,
-    });
+    })
     out({
       success: true,
       publicKey: result.publicKey,
@@ -548,58 +550,58 @@ export class Cli {
       label: result.label,
       savedTo: path.join(configDir, 'wallets.json'),
       message: 'New Solana wallet generated and saved to config/wallets.json',
-    });
+    })
   }
 
   private async handleBalance(): Promise<void> {
-    out(await this.adapters.wallet.getWalletBalances());
+    out(await this.adapters.wallet.getWalletBalances())
   }
 
   private async handlePositions(): Promise<void> {
-    out(await this.adapters.meteora.getMyPositions({ force: true }));
+    out(await this.adapters.meteora.getMyPositions({ force: true }))
   }
 
   private async handlePnl(argv: string[], flags: Record<string, any>): Promise<void> {
-    const posAddr = argv.find((a, i) => !a.startsWith('-') && i > 0 && argv[i - 1] !== '--position' && a !== 'pnl');
-    const positionAddress = flags.position || posAddr;
-    if (!positionAddress) die('Usage: etemaro pnl <position_address>');
+    const posAddr = argv.find((a, i) => !a.startsWith('-') && i > 0 && argv[i - 1] !== '--position' && a !== 'pnl')
+    const positionAddress = flags.position || posAddr
+    if (!positionAddress) die('Usage: etemaro pnl <position_address>')
 
-    let poolAddress: string;
-    const tracked = getTrackedPosition(positionAddress);
+    let poolAddress: string
+    const tracked = getTrackedPosition(positionAddress)
     if (tracked?.pool) {
-      poolAddress = tracked.pool;
+      poolAddress = tracked.pool
     } else {
-      const pos = await this.adapters.meteora.getMyPositions({ force: true });
-      const found = pos.positions?.find((p: any) => p.position === positionAddress);
-      if (!found) die('Position not found', { position: positionAddress });
-      poolAddress = found.pool;
+      const pos = await this.adapters.meteora.getMyPositions({ force: true })
+      const found = pos.positions?.find((p: any) => p.position === positionAddress)
+      if (!found) die('Position not found', { position: positionAddress })
+      poolAddress = found.pool
     }
 
     const pnl = await this.adapters.meteora.getPositionPnl({
       pool_address: poolAddress,
       position_address: positionAddress,
-    });
-    if (tracked?.strategy) pnl.strategy = tracked.strategy;
-    if (tracked?.instruction) pnl.instruction = tracked.instruction;
-    out(pnl);
+    })
+    if (tracked?.strategy) pnl.strategy = tracked.strategy
+    if (tracked?.instruction) pnl.instruction = tracked.instruction
+    out(pnl)
   }
 
   private async handleCandidates(flags: Record<string, any>): Promise<void> {
-    const limit = parseInt(flags.limit || '5');
-    const raw = await this.adapters.screening.getTopCandidates({ limit });
-    const pools = raw.candidates || raw.pools || [];
+    const limit = parseInt(flags.limit || '5', 10)
+    const raw = await this.adapters.screening.getTopCandidates({ limit })
+    const pools = raw.candidates || raw.pools || []
 
-    const enriched = [];
+    const enriched = []
     for (const pool of pools) {
-      const mint = pool.base?.mint;
+      const mint = pool.base?.mint
       const [activeBin, smartWallets, tokenInfo, holders, narrative] = await Promise.allSettled([
         this.adapters.meteora.getActiveBin({ pool_address: pool.pool }),
         this.adapters.domain.checkSmartWalletsOnPool({ pool_address: pool.pool }),
         mint ? this.adapters.domain.getTokenInfo({ query: mint }) : Promise.resolve(null),
         mint ? this.adapters.domain.getTokenHolders({ mint, limit: 20 }) : Promise.resolve(null),
         mint ? this.adapters.domain.getTokenNarrative({ mint }) : Promise.resolve(null),
-      ]);
-      const ti = tokenInfo.status === 'fulfilled' ? tokenInfo.value?.results?.[0] : null;
+      ])
+      const ti = tokenInfo.status === 'fulfilled' ? tokenInfo.value?.results?.[0] : null
       enriched.push({
         pool: pool.pool,
         name: pool.name,
@@ -614,7 +616,8 @@ export class Cli {
         active_pct: pool.active_pct,
         price_change_pct: pool.price_change_pct,
         active_bin: activeBin.status === 'fulfilled' ? activeBin.value?.binId : null,
-        smart_wallets: smartWallets.status === 'fulfilled' ? (smartWallets.value?.in_pool || []).map((w: any) => w.name) : [],
+        smart_wallets:
+          smartWallets.status === 'fulfilled' ? (smartWallets.value?.in_pool || []).map((w: any) => w.name) : [],
         token: {
           mint,
           symbol: pool.base?.symbol,
@@ -632,64 +635,64 @@ export class Cli {
         holders: holders.status === 'fulfilled' ? holders.value : null,
         narrative: narrative.status === 'fulfilled' ? narrative.value?.narrative : null,
         pool_memory: this.adapters.domain.recallForPool(pool.pool) || null,
-      });
-      await new Promise((r) => setTimeout(r, 150));
+      })
+      await new Promise((r) => setTimeout(r, 150))
     }
 
-    out({ candidates: enriched, total_screened: raw.total_screened });
+    out({ candidates: enriched, total_screened: raw.total_screened })
   }
 
   private async handleTokenInfo(argv: string[], flags: Record<string, any>): Promise<void> {
-    const query = flags.query || flags.mint || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'token-info');
-    if (!query) die('Usage: etemaro token-info --query <mint_or_symbol>');
-    out(await this.adapters.domain.getTokenInfo({ query }));
+    const query = flags.query || flags.mint || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'token-info')
+    if (!query) die('Usage: etemaro token-info --query <mint_or_symbol>')
+    out(await this.adapters.domain.getTokenInfo({ query }))
   }
 
   private async handleTokenHolders(argv: string[], flags: Record<string, any>): Promise<void> {
-    const mint = flags.mint || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'token-holders');
-    if (!mint) die('Usage: etemaro token-holders --mint <addr>');
-    const limit = flags.limit ? parseInt(flags.limit) : 20;
-    out(await this.adapters.domain.getTokenHolders({ mint, limit }));
+    const mint = flags.mint || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'token-holders')
+    if (!mint) die('Usage: etemaro token-holders --mint <addr>')
+    const limit = flags.limit ? parseInt(flags.limit, 10) : 20
+    out(await this.adapters.domain.getTokenHolders({ mint, limit }))
   }
 
   private async handleTokenNarrative(argv: string[], flags: Record<string, any>): Promise<void> {
-    const mint = flags.mint || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'token-narrative');
-    if (!mint) die('Usage: etemaro token-narrative --mint <addr>');
-    out(await this.adapters.domain.getTokenNarrative({ mint }));
+    const mint = flags.mint || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'token-narrative')
+    if (!mint) die('Usage: etemaro token-narrative --mint <addr>')
+    out(await this.adapters.domain.getTokenNarrative({ mint }))
   }
 
   private async handlePoolDetail(flags: Record<string, any>): Promise<void> {
-    if (!flags.pool) die('Usage: etemaro pool-detail --pool <addr> [--timeframe 5m]');
+    if (!flags.pool) die('Usage: etemaro pool-detail --pool <addr> [--timeframe 5m]')
     out(
       await this.adapters.screening.getPoolDetail({
         pool_address: flags.pool,
         timeframe: flags.timeframe || '5m',
       }),
-    );
+    )
   }
 
   private async handleSearchPools(argv: string[], flags: Record<string, any>): Promise<void> {
-    const query = flags.query || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'search-pools');
-    if (!query) die('Usage: etemaro search-pools --query <name_or_symbol>');
-    const limit = flags.limit ? parseInt(flags.limit) : 10;
-    out(await this.adapters.meteora.searchPools({ query, limit }));
+    const query = flags.query || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'search-pools')
+    if (!query) die('Usage: etemaro search-pools --query <name_or_symbol>')
+    const limit = flags.limit ? parseInt(flags.limit, 10) : 10
+    out(await this.adapters.meteora.searchPools({ query, limit }))
   }
 
   private async handleActiveBin(flags: Record<string, any>): Promise<void> {
-    if (!flags.pool) die('Usage: etemaro active-bin --pool <addr>');
-    out(await this.adapters.meteora.getActiveBin({ pool_address: flags.pool }));
+    if (!flags.pool) die('Usage: etemaro active-bin --pool <addr>')
+    out(await this.adapters.meteora.getActiveBin({ pool_address: flags.pool }))
   }
 
   private async handleWalletPositions(argv: string[], flags: Record<string, any>): Promise<void> {
-    const wallet = flags.wallet || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'wallet-positions');
-    if (!wallet) die('Usage: etemaro wallet-positions --wallet <addr>');
-    out(await this.adapters.meteora.getWalletPositions({ wallet_address: wallet }));
+    const wallet = flags.wallet || argv.find((a, i) => !a.startsWith('-') && i > 0 && a !== 'wallet-positions')
+    if (!wallet) die('Usage: etemaro wallet-positions --wallet <addr>')
+    out(await this.adapters.meteora.getWalletPositions({ wallet_address: wallet }))
   }
 
   private async handleDeploy(argv: string[], flags: Record<string, any>): Promise<void> {
-    if (!flags.pool) die('Usage: etemaro deploy --pool <addr> --amount <sol>');
-    const amountX = flags['amount-x'] ? parseFloat(flags['amount-x']) : undefined;
-    if (!flags.amount && !amountX) die('--amount or --amount-x is required');
+    if (!flags.pool) die('Usage: etemaro deploy --pool <addr> --amount <sol>')
+    const amountX = flags['amount-x'] ? parseFloat(flags['amount-x']) : undefined
+    if (!flags.amount && !amountX) die('--amount or --amount-x is required')
 
     out(
       await this.adapters.toolExecutor.executeTool('deploy_position', {
@@ -698,16 +701,16 @@ export class Cli {
         amount_x: amountX,
         strategy: flags.strategy,
         single_sided_x: argv.includes('--single-sided-x'),
-        bins_below: flags['bins-below'] ? parseInt(flags['bins-below']) : undefined,
-        bins_above: flags['bins-above'] ? parseInt(flags['bins-above']) : undefined,
+        bins_below: flags['bins-below'] ? parseInt(flags['bins-below'], 10) : undefined,
+        bins_above: flags['bins-above'] ? parseInt(flags['bins-above'], 10) : undefined,
         allow_duplicate_pool: argv.includes('--allow-duplicate-pool'),
       }),
-    );
+    )
   }
 
   private async handleClaim(flags: Record<string, any>): Promise<void> {
-    if (!flags.position) die('Usage: etemaro claim --position <addr>');
-    out(await this.adapters.toolExecutor.executeTool('claim_fees', { position_address: flags.position }));
+    if (!flags.position) die('Usage: etemaro claim --position <addr>')
+    out(await this.adapters.toolExecutor.executeTool('claim_fees', { position_address: flags.position }))
   }
 
   private async handleClose(flags: Record<string, any>): Promise<void> {
@@ -716,62 +719,62 @@ export class Cli {
         await this.adapters.toolExecutor.executeTool('close_all_positions', {
           skipSwap: flags['skip-swap'] ?? false,
         }),
-      );
-      return;
+      )
+      return
     }
-    if (!flags.position) die('Usage: etemaro close --position <addr> or etemaro close --all');
+    if (!flags.position) die('Usage: etemaro close --position <addr> or etemaro close --all')
     out(
       await this.adapters.toolExecutor.executeTool('close_position', {
         position_address: flags.position,
         skip_swap: flags['skip-swap'] ?? false,
       }),
-    );
+    )
   }
 
   private async handleSwapAllTokensToSol(flags: Record<string, any>): Promise<void> {
-    const skipMints = typeof flags.skip === 'string' ? flags.skip.split(',') : [];
+    const skipMints = typeof flags.skip === 'string' ? flags.skip.split(',') : []
     out(
       await this.adapters.toolExecutor.executeTool('swap_all_tokens_to_sol', {
         skipMints,
       }),
-    );
+    )
   }
 
   private async handleSwap(flags: Record<string, any>): Promise<void> {
-    if (!flags.from || !flags.to || !flags.amount) die('Usage: etemaro swap --from <mint> --to <mint> --amount <n>');
+    if (!flags.from || !flags.to || !flags.amount) die('Usage: etemaro swap --from <mint> --to <mint> --amount <n>')
     out(
       await this.adapters.toolExecutor.executeTool('swap_token', {
         input_mint: flags.from,
         output_mint: flags.to,
         amount: parseFloat(flags.amount),
       }),
-    );
+    )
   }
 
   private async handleScreen(flags: Record<string, any>): Promise<void> {
-    if (!this.adapters.daemon) die('Screen command requires daemon adapter');
-    this.adapters.domain.validateActiveStrategy();
-    const report = await this.adapters.daemon.runScreeningCycle({ silent: flags.silent });
-    out({ done: true, report: report || 'No action taken' });
+    if (!this.adapters.daemon) die('Screen command requires daemon adapter')
+    this.adapters.domain.validateActiveStrategy()
+    const report = await this.adapters.daemon.runScreeningCycle({ silent: flags.silent })
+    out({ done: true, report: report || 'No action taken' })
   }
 
   private async handleManage(flags: Record<string, any>): Promise<void> {
-    if (!this.adapters.daemon) die('Manage command requires daemon adapter');
-    this.adapters.domain.validateActiveStrategy();
-    const report = await this.adapters.daemon.runManagementCycle({ silent: flags.silent });
-    out({ done: true, report: report || 'No action taken' });
+    if (!this.adapters.daemon) die('Manage command requires daemon adapter')
+    this.adapters.domain.validateActiveStrategy()
+    const report = await this.adapters.daemon.runManagementCycle({ silent: flags.silent })
+    out({ done: true, report: report || 'No action taken' })
   }
 
   private async handleConfig(argv: string[], sub2: string | undefined): Promise<void> {
     if (sub2 === 'get' || !sub2) {
-      out(config);
+      out(config)
     } else if (sub2 === 'set') {
-      const key = argv.filter((a) => !a.startsWith('-'))[2];
-      const rawVal = argv.filter((a) => !a.startsWith('-'))[3];
-      if (!key || rawVal === undefined) die('Usage: etemaro config set <key> <value>');
-      let value: unknown = rawVal;
+      const key = argv.filter((a) => !a.startsWith('-'))[2]
+      const rawVal = argv.filter((a) => !a.startsWith('-'))[3]
+      if (!key || rawVal === undefined) die('Usage: etemaro config set <key> <value>')
+      let value: unknown = rawVal
       try {
-        value = JSON.parse(rawVal);
+        value = JSON.parse(rawVal)
       } catch {
         /* keep as string */
       }
@@ -780,22 +783,22 @@ export class Cli {
           changes: { [key]: value },
           reason: 'CLI config set',
         }),
-      );
+      )
     } else {
-      die(`Unknown config subcommand: ${sub2}. Use: get, set`);
+      die(`Unknown config subcommand: ${sub2}. Use: get, set`)
     }
   }
 
   private async handleStudy(flags: Record<string, any>): Promise<void> {
-    if (!flags.pool) die('Usage: etemaro study --pool <addr> [--limit 4]');
-    const limit = flags.limit ? parseInt(flags.limit) : 4;
-    out(await this.adapters.domain.studyTopLPers({ pool_address: flags.pool, limit }));
+    if (!flags.pool) die('Usage: etemaro study --pool <addr> [--limit 4]')
+    const limit = flags.limit ? parseInt(flags.limit, 10) : 4
+    out(await this.adapters.domain.studyTopLPers({ pool_address: flags.pool, limit }))
   }
 
   private async handleStart(): Promise<void> {
-    if (!this.adapters.daemon?.start) die('Start command requires daemon adapter');
-    process.stderr.write('[etemaro] Starting autonomous agent...\n');
-    await this.adapters.daemon.start({ tty: process.stdout.isTTY === true });
+    if (!this.adapters.daemon?.start) die('Start command requires daemon adapter')
+    process.stderr.write('[etemaro] Starting autonomous agent...\n')
+    await this.adapters.daemon.start({ tty: process.stdout.isTTY === true })
   }
 
   private async handleLessons(argv: string[], sub2: string | undefined, flags: Record<string, any>): Promise<void> {
@@ -803,80 +806,85 @@ export class Cli {
       const text = argv
         .filter((a) => !a.startsWith('-'))
         .slice(2)
-        .join(' ');
-      if (!text) die('Usage: etemaro lessons add <text>');
-      this.adapters.domain.addLesson(text, [], { pinned: false, role: null });
-      out({ saved: true, rule: text, outcome: 'manual', role: null });
+        .join(' ')
+      if (!text) die('Usage: etemaro lessons add <text>')
+      this.adapters.domain.addLesson(text, [], { pinned: false, role: null })
+      out({ saved: true, rule: text, outcome: 'manual', role: null })
     } else {
-      const limit = flags.limit ? parseInt(flags.limit) : 50;
-      out(this.adapters.domain.listLessons({ limit }));
+      const limit = flags.limit ? parseInt(flags.limit, 10) : 50
+      out(this.adapters.domain.listLessons({ limit }))
     }
   }
 
   private handlePoolMemory(flags: Record<string, any>): void {
-    if (!flags.pool) die('Usage: etemaro pool-memory --pool <addr>');
-    out(this.adapters.domain.getPoolMemory({ pool_address: flags.pool }));
+    if (!flags.pool) die('Usage: etemaro pool-memory --pool <addr>')
+    out(this.adapters.domain.getPoolMemory({ pool_address: flags.pool }))
   }
 
   private handleEvolve(): void {
-    const lessonsFile = dataPath(LESSONS_FILENAME);
-    let perfData: any[] = [];
+    const lessonsFile = dataPath(LESSONS_FILENAME)
+    let perfData: any[] = []
     if (fs.existsSync(lessonsFile)) {
       try {
-        perfData = JSON.parse(fs.readFileSync(lessonsFile, 'utf8')).performance || [];
+        perfData = JSON.parse(fs.readFileSync(lessonsFile, 'utf8')).performance || []
       } catch {
         /* no data */
       }
     }
-    const result = this.adapters.domain.evolveThresholds(perfData, config);
+    const result = this.adapters.domain.evolveThresholds(perfData, config)
     if (!result) {
-      out({ evolved: false, reason: `Need at least 5 closed positions (have ${perfData.length})` });
+      out({ evolved: false, reason: `Need at least 5 closed positions (have ${perfData.length})` })
     } else {
-      out({ evolved: Object.keys(result.changes).length > 0, changes: result.changes, rationale: result.rationale });
+      out({ evolved: Object.keys(result.changes).length > 0, changes: result.changes, rationale: result.rationale })
     }
   }
 
-  private handleBlacklist(argv: string[], sub2: string | undefined, flags: Record<string, any>): void {
+  private handleBlacklist(_argv: string[], sub2: string | undefined, flags: Record<string, any>): void {
     if (sub2 === 'add') {
-      if (!flags.mint) die('Usage: etemaro blacklist add --mint <addr> --reason <text>');
-      if (!flags.reason) die('--reason is required');
-      out(this.adapters.domain.addToBlacklist({ mint: flags.mint, reason: flags.reason }));
+      if (!flags.mint) die('Usage: etemaro blacklist add --mint <addr> --reason <text>')
+      if (!flags.reason) die('--reason is required')
+      out(this.adapters.domain.addToBlacklist({ mint: flags.mint, reason: flags.reason }))
     } else if (sub2 === 'list' || !sub2) {
-      out(this.adapters.domain.listBlacklist());
+      out(this.adapters.domain.listBlacklist())
     } else {
-      die(`Unknown blacklist subcommand: ${sub2}. Use: add, list`);
+      die(`Unknown blacklist subcommand: ${sub2}. Use: add, list`)
     }
   }
 
   private handlePerformance(flags: Record<string, any>): void {
-    const limit = flags.limit ? parseInt(flags.limit) : 200;
-    const history = this.adapters.domain.getPerformanceHistory({ hours: 999999, limit });
-    const summary = this.adapters.domain.getPerformanceSummary();
-    out({ summary, ...history });
+    const limit = flags.limit ? parseInt(flags.limit, 10) : 200
+    const history = this.adapters.domain.getPerformanceHistory({ hours: 999999, limit })
+    const summary = this.adapters.domain.getPerformanceSummary()
+    out({ summary, ...history })
   }
 
   private handleDiscordSignals(sub2: string | undefined): void {
-    const sigFile = dataPath(DISCORD_SIGNALS_FILENAME);
+    const sigFile = dataPath(DISCORD_SIGNALS_FILENAME)
     if (!fs.existsSync(sigFile)) {
-      out({ count: 0, pending: 0, signals: [], message: `No ${DISCORD_SIGNALS_FILENAME} found. Is the listener running?` });
-      return;
+      out({
+        count: 0,
+        pending: 0,
+        signals: [],
+        message: `No ${DISCORD_SIGNALS_FILENAME} found. Is the listener running?`,
+      })
+      return
     }
-    let signals: any[] = [];
+    let signals: any[] = []
     try {
-      signals = JSON.parse(fs.readFileSync(sigFile, 'utf8'));
+      signals = JSON.parse(fs.readFileSync(sigFile, 'utf8'))
     } catch {
-      die(`Failed to parse ${DISCORD_SIGNALS_FILENAME}`);
+      die(`Failed to parse ${DISCORD_SIGNALS_FILENAME}`)
     }
 
     if (sub2 === 'clear') {
-      const pending = signals.filter((s) => s.status === 'pending');
-      fs.writeFileSync(sigFile, JSON.stringify(pending, null, 2));
-      out({ cleared: signals.length - pending.length, remaining: pending.length });
-      return;
+      const pending = signals.filter((s) => s.status === 'pending')
+      fs.writeFileSync(sigFile, JSON.stringify(pending, null, 2))
+      out({ cleared: signals.length - pending.length, remaining: pending.length })
+      return
     }
 
-    const pending = signals.filter((s) => s.status === 'pending');
-    const processed = signals.filter((s) => s.status !== 'pending');
+    const pending = signals.filter((s) => s.status === 'pending')
+    const processed = signals.filter((s) => s.status !== 'pending')
     out({
       count: signals.length,
       pending: pending.length,
@@ -892,14 +900,14 @@ export class Cli {
         status: s.status,
         snippet: s.discord_message_snippet?.slice(0, 60),
       })),
-    });
+    })
   }
 }
 
 function isCliTarget(filePath: string | undefined): boolean {
-  if (!filePath) return false;
-  if (process.env.VITEST || process.env.NODE_ENV === 'test') return false;
-  const lower = filePath.toLowerCase();
+  if (!filePath) return false
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') return false
+  const lower = filePath.toLowerCase()
   return (
     lower.endsWith('cli.ts') ||
     lower.endsWith('cli.js') ||
@@ -907,16 +915,16 @@ function isCliTarget(filePath: string | undefined): boolean {
     lower.endsWith('/etemaro') ||
     lower.endsWith('\\etemaro') ||
     lower === 'etemaro'
-  );
+  )
 }
 
-const isMain = isCliTarget(process.argv[1]) || (typeof require !== 'undefined' && require.main === module);
+const isMain = isCliTarget(process.argv[1]) || (typeof require !== 'undefined' && require.main === module)
 
 if (isMain) {
   main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+    console.error(err)
+    process.exit(1)
+  })
 }
 
 /**
@@ -928,51 +936,51 @@ if (isMain) {
  * Extracted as a pure function for direct unit testing.
  */
 export function resolveGlobalFlagValue(argv: string[], flag: string, alias?: string): string | undefined {
-  const idx = argv.findIndex((a) => a === flag || (alias !== undefined && a === alias));
-  if (idx === -1) return undefined;
-  const value = argv[idx + 1];
-  if (value === undefined || value.startsWith('-')) return undefined;
-  return value;
+  const idx = argv.findIndex((a) => a === flag || (alias !== undefined && a === alias))
+  if (idx === -1) return undefined
+  const value = argv[idx + 1]
+  if (value === undefined || value.startsWith('-')) return undefined
+  return value
 }
 
 /** Apply CLI flags that must be visible to core before any tool runs. */
 export function applyCliRuntimeFlags(flags: Record<string, unknown>, env: NodeJS.Dict<string> = process.env): void {
-  if (flags['dry-run'] === true) env.DRY_RUN = 'true';
+  if (flags['dry-run'] === true) env.DRY_RUN = 'true'
 }
 
 function defaultEtemaroHome(): string {
-  const fromEnv = process.env.ETEMARO_HOME?.trim();
-  if (fromEnv) return path.resolve(fromEnv);
-  const home = process.env.HOME || process.env.USERPROFILE || '';
-  const xdg = process.env.XDG_CONFIG_HOME || (home ? path.join(home, '.config') : '');
-  return path.join(xdg, 'etemaro');
+  const fromEnv = process.env.ETEMARO_HOME?.trim()
+  if (fromEnv) return path.resolve(fromEnv)
+  const home = process.env.HOME || process.env.USERPROFILE || ''
+  const xdg = process.env.XDG_CONFIG_HOME || (home ? path.join(home, '.config') : '')
+  return path.join(xdg, 'etemaro')
 }
 
 async function askTty(question: string): Promise<string> {
-  const rl = readline.createInterface({ input: stdinStream, output: stdoutStream });
+  const rl = readline.createInterface({ input: stdinStream, output: stdoutStream })
   try {
-    return (await rl.question(question)).trim();
+    return (await rl.question(question)).trim()
   } finally {
-    rl.close();
+    rl.close()
   }
 }
 
 async function main() {
-  const argv = process.argv.slice(2);
+  const argv = process.argv.slice(2)
 
-  const configPathArg = resolveGlobalFlagValue(argv, '--config', '-c');
-  const dataDirArg = resolveGlobalFlagValue(argv, '--data-dir', '-d');
-  if (configPathArg) process.env.USER_CONFIG_PATH = path.resolve(configPathArg);
-  if (dataDirArg) process.env.ETEMARO_DATA_DIR = path.resolve(dataDirArg);
+  const configPathArg = resolveGlobalFlagValue(argv, '--config', '-c')
+  const dataDirArg = resolveGlobalFlagValue(argv, '--data-dir', '-d')
+  if (configPathArg) process.env.USER_CONFIG_PATH = path.resolve(configPathArg)
+  if (dataDirArg) process.env.ETEMARO_DATA_DIR = path.resolve(dataDirArg)
 
-  loadRuntimeDotenv(defaultEtemaroHome());
-  await loadCore();
+  loadRuntimeDotenv(defaultEtemaroHome())
+  await loadCore()
 
   const agentLoopDeps = {
     executeTool: toolExecutor.executeTool,
     getTools: () => tools,
     getWalletBalances: async () => {
-      const bal = await wallet.getWalletBalances();
+      const bal = await wallet.getWalletBalances()
       return {
         sol: bal.sol,
         usd: bal.sol_usd,
@@ -982,18 +990,18 @@ async function main() {
           amount: t.amount,
           usd: t.usd,
         })),
-      };
+      }
     },
     getMyPositions: meteora.getMyPositions,
     getStateSummary: domain.getStateSummary,
     getLessonsForPrompt: (opts: any) => domain.getLessonsForPrompt(opts),
     getPerformanceSummary: () => {
-      const summary = domain.getPerformanceSummary();
-      return summary ? JSON.stringify(summary) : null;
+      const summary = domain.getPerformanceSummary()
+      return summary ? JSON.stringify(summary) : null
     },
     getDecisionSummary: domain.getDecisionSummary,
     getWeightsSummary: domain.getWeightsSummary,
-  };
+  }
 
   const daemon = new DaemonCtor({
     meteora,
@@ -1011,7 +1019,7 @@ async function main() {
       getTokenInfo: token.getTokenInfo,
     },
     agentLoopDeps,
-  });
+  })
 
   const cli = new Cli({
     meteora,
@@ -1028,6 +1036,6 @@ async function main() {
     },
     token,
     daemon,
-  });
-  await cli.run(argv);
+  })
+  await cli.run(argv)
 }

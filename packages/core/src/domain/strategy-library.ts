@@ -9,31 +9,31 @@
  *
  */
 
-import fs from 'node:fs';
-import { log } from '../shared/logger.js';
-import { strategyLibraryPath, repoPath, getDataDir, configPath } from '../shared/constants.js';
-import { loadJsonFile, saveJsonFile } from '../shared/utils.js';
-import { config } from '../config/Config.js';
-import type { Strategy, StrategyLibraryData } from '../shared/types.js';
-import { DEFAULT_STRATEGIES } from './defaultStrategies.js';
+import fs from 'node:fs'
+import { config } from '../config/Config.js'
+import { configPath, getDataDir, repoPath, strategyLibraryPath } from '../shared/constants.js'
+import { log } from '../shared/logger.js'
+import type { Strategy, StrategyLibraryData } from '../shared/types.js'
+import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
+import { DEFAULT_STRATEGIES } from './defaultStrategies.js'
 
-export { DEFAULT_STRATEGIES } from './defaultStrategies.js';
+export { DEFAULT_STRATEGIES } from './defaultStrategies.js'
 
 // ─── Strategy Library Manager ─────────────────────────────────
-const STRATEGY_FILE = strategyLibraryPath('strategy-library.json');
-const SHARED_STRATEGY_FILE = repoPath('data', 'strategy-library.shared.json');
+const STRATEGY_FILE = strategyLibraryPath('strategy-library.json')
+const SHARED_STRATEGY_FILE = repoPath('data', 'strategy-library.shared.json')
 
-export type StrategySource = 'shared' | 'private' | 'default';
+export type StrategySource = 'shared' | 'private' | 'default'
 
 export interface ResolvedStrategyLibrary {
-  data: StrategyLibraryData;
-  collisions: string[];
-  sources: Record<string, StrategySource>;
+  data: StrategyLibraryData
+  collisions: string[]
+  sources: Record<string, StrategySource>
 }
 
 interface SharedLibraryInfo {
-  data: StrategyLibraryData;
-  fromDefaults: boolean;
+  data: StrategyLibraryData
+  fromDefaults: boolean
 }
 
 /**
@@ -49,49 +49,52 @@ export class StrategyLibraryManager {
     dataDir: getDataDir(),
     privatePath: STRATEGY_FILE,
     sharedPath: SHARED_STRATEGY_FILE,
-  };
+  }
 
   loadPrivate(): StrategyLibraryData {
-    return loadJsonFile<StrategyLibraryData>(this.paths.privatePath, { strategies: {} });
+    return loadJsonFile<StrategyLibraryData>(this.paths.privatePath, { strategies: {} })
   }
 
   savePrivate(data: StrategyLibraryData): void {
-    saveJsonFile(this.paths.privatePath, data);
+    saveJsonFile(this.paths.privatePath, data)
   }
 
   private loadSharedWithInfo(): SharedLibraryInfo {
-    let sharedDb = loadJsonFile<StrategyLibraryData>(this.paths.sharedPath, { strategies: {} });
+    let sharedDb = loadJsonFile<StrategyLibraryData>(this.paths.sharedPath, { strategies: {} })
 
     if (Object.keys(sharedDb.strategies).length === 0) {
-      const localSharedFile = strategyLibraryPath('strategy-library.shared.json');
+      const localSharedFile = strategyLibraryPath('strategy-library.shared.json')
       if (fs.existsSync(localSharedFile)) {
-        sharedDb = loadJsonFile<StrategyLibraryData>(localSharedFile, { strategies: {} });
+        sharedDb = loadJsonFile<StrategyLibraryData>(localSharedFile, { strategies: {} })
       }
     }
 
     if (Object.keys(sharedDb.strategies).length === 0) {
-      return { data: { strategies: { ...DEFAULT_STRATEGIES } }, fromDefaults: true };
+      return { data: { strategies: { ...DEFAULT_STRATEGIES } }, fromDefaults: true }
     }
-    return { data: sharedDb, fromDefaults: false };
+    return { data: sharedDb, fromDefaults: false }
   }
 
   loadMerged(): ResolvedStrategyLibrary {
-    const shared = this.loadSharedWithInfo();
-    const privateDb = this.loadPrivate();
+    const shared = this.loadSharedWithInfo()
+    const privateDb = this.loadPrivate()
 
-    const sources: Record<string, StrategySource> = {};
+    const sources: Record<string, StrategySource> = {}
     for (const id of Object.keys(shared.data.strategies)) {
-      sources[id] = shared.fromDefaults ? 'default' : 'shared';
+      sources[id] = shared.fromDefaults ? 'default' : 'shared'
     }
 
-    const collisions: string[] = [];
+    const collisions: string[] = []
     for (const id of Object.keys(privateDb.strategies)) {
       if (sources[id] === 'shared' || sources[id] === 'default') {
-        collisions.push(id);
-        log('strategy', `Warning: private strategy '${id}' collides with a shared strategy id and overrides it.`);
-        log('strategy', `Duplicate strategy ids between shared and private libraries should be resolved (see issue #148).`);
+        collisions.push(id)
+        log('strategy', `Warning: private strategy '${id}' collides with a shared strategy id and overrides it.`)
+        log(
+          'strategy',
+          'Duplicate strategy ids between shared and private libraries should be resolved (see issue #148).',
+        )
       }
-      sources[id] = 'private';
+      sources[id] = 'private'
     }
 
     return {
@@ -103,7 +106,7 @@ export class StrategyLibraryManager {
       },
       collisions,
       sources,
-    };
+    }
   }
 
   /**
@@ -111,45 +114,47 @@ export class StrategyLibraryManager {
    * Throws an error with a clear message if the validation fails. Called at agent boot.
    */
   validate(): void {
-    const activeId = config.strategy.activeStrategyId;
+    const activeId = config.strategy.activeStrategyId
     if (!activeId || activeId.trim() === '') {
-      throw new Error(`Startup failed: 'activeStrategyId' is missing or empty in config.`);
+      throw new Error(`Startup failed: 'activeStrategyId' is missing or empty in config.`)
     }
-    const merged = this.loadMerged();
+    const merged = this.loadMerged()
     if (!merged.data.strategies[activeId]) {
-      throw new Error(`Startup failed: Strategy '${activeId}' specified in config is not found in the strategy library.`);
+      throw new Error(
+        `Startup failed: Strategy '${activeId}' specified in config is not found in the strategy library.`,
+      )
     }
   }
 }
 
-export const strategyLibraryManager = new StrategyLibraryManager();
+export const strategyLibraryManager = new StrategyLibraryManager()
 
 // ─── Thin delegates over the manager ─────────────────────────
 function loadPrivate(): StrategyLibraryData {
-  return strategyLibraryManager.loadPrivate();
+  return strategyLibraryManager.loadPrivate()
 }
 
 function savePrivate(data: StrategyLibraryData): void {
-  strategyLibraryManager.savePrivate(data);
+  strategyLibraryManager.savePrivate(data)
 }
 
 function load(): StrategyLibraryData {
-  return strategyLibraryManager.loadMerged().data;
+  return strategyLibraryManager.loadMerged().data
 }
 
 // ─── Tool Handlers ─────────────────────────────────────────────
 
 interface AddStrategyOpts {
-  id: string;
-  name: string;
-  author?: string;
-  lpStrategy?: string;
-  tokenCriteria?: Record<string, unknown>;
-  entry?: Record<string, unknown>;
-  range?: Record<string, unknown>;
-  exit?: Record<string, unknown>;
-  bestFor?: string;
-  raw?: string;
+  id: string
+  name: string
+  author?: string
+  lpStrategy?: string
+  tokenCriteria?: Record<string, unknown>
+  entry?: Record<string, unknown>
+  range?: Record<string, unknown>
+  exit?: Record<string, unknown>
+  bestFor?: string
+  raw?: string
 }
 
 /**
@@ -168,15 +173,15 @@ export function addStrategy({
   bestFor = '', // short description of ideal conditions
   raw = '', // original tweet/text
 }: AddStrategyOpts): Record<string, unknown> {
-  if (!id || !name) return { error: 'id and name are required' };
+  if (!id || !name) return { error: 'id and name are required' }
 
-  const privateDb = loadPrivate();
+  const privateDb = loadPrivate()
 
   // Slugify id
   const slug = id
     .toLowerCase()
     .replace(/\s+/g, '_')
-    .replace(/[^a-z0-9_]/g, '');
+    .replace(/[^a-z0-9_]/g, '')
 
   privateDb.strategies[slug] = {
     id: slug,
@@ -191,26 +196,26 @@ export function addStrategy({
     raw,
     addedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  };
-
-  // Auto-set as active if it's the first strategy
-  savePrivate(privateDb);
-  let isActive = false;
-  if (Object.keys(privateDb.strategies).length === 1) {
-    setActiveStrategy({ id: slug });
-    isActive = true;
   }
 
-  log('strategy', `Strategy saved: ${name} (${slug})`);
-  return { saved: true, id: slug, name, active: isActive };
+  // Auto-set as active if it's the first strategy
+  savePrivate(privateDb)
+  let isActive = false
+  if (Object.keys(privateDb.strategies).length === 1) {
+    setActiveStrategy({ id: slug })
+    isActive = true
+  }
+
+  log('strategy', `Strategy saved: ${name} (${slug})`)
+  return { saved: true, id: slug, name, active: isActive }
 }
 
 /**
  * List all strategies with a summary.
  */
 export function listStrategies(): Record<string, unknown> {
-  const db = load();
-  const activeId = config.strategy.activeStrategyId;
+  const db = load()
+  const activeId = config.strategy.activeStrategyId
   const strategies = Object.values(db.strategies).map((s) => ({
     id: s.id,
     name: s.name,
@@ -219,107 +224,112 @@ export function listStrategies(): Record<string, unknown> {
     bestFor: s.bestFor,
     active: activeId === s.id,
     addedAt: s.addedAt?.slice(0, 10),
-  }));
-  return { active: activeId, count: strategies.length, strategies };
+  }))
+  return { active: activeId, count: strategies.length, strategies }
 }
 
 /**
  * Get full details of a strategy including raw text and all criteria.
  */
 export function getStrategy({ id }: { id: string }): Record<string, unknown> {
-  if (!id) return { error: 'id required' };
-  const db = load();
-  const strategy = db.strategies[id];
-  if (!strategy) return { error: `Strategy "${id}" not found`, available: Object.keys(db.strategies) };
-  return { ...strategy, is_active: config.strategy.activeStrategyId === id };
+  if (!id) return { error: 'id required' }
+  const db = load()
+  const strategy = db.strategies[id]
+  if (!strategy) return { error: `Strategy "${id}" not found`, available: Object.keys(db.strategies) }
+  return { ...strategy, is_active: config.strategy.activeStrategyId === id }
 }
 
 /**
  * Set the active strategy used during screening cycles.
  */
 export function setActiveStrategy({ id }: { id: string }): Record<string, unknown> {
-  if (!id) return { error: 'id required' };
-  const mergedDb = load();
-  if (!mergedDb.strategies[id]) return { error: `Strategy "${id}" not found`, available: Object.keys(mergedDb.strategies) };
+  if (!id) return { error: 'id required' }
+  const mergedDb = load()
+  if (!mergedDb.strategies[id])
+    return { error: `Strategy "${id}" not found`, available: Object.keys(mergedDb.strategies) }
 
-  const userConfigPath = configPath('user-config.json');
+  const userConfigPath = configPath('user-config.json')
   try {
     if (fs.existsSync(userConfigPath)) {
-      const raw = JSON.parse(fs.readFileSync(userConfigPath, 'utf8'));
-      if (!raw.strategy) raw.strategy = {};
-      raw.strategy.activeStrategyId = id;
-      fs.writeFileSync(userConfigPath, JSON.stringify(raw, null, 2) + '\n');
+      const raw = JSON.parse(fs.readFileSync(userConfigPath, 'utf8'))
+      if (!raw.strategy) raw.strategy = {}
+      raw.strategy.activeStrategyId = id
+      fs.writeFileSync(userConfigPath, `${JSON.stringify(raw, null, 2)}\n`)
     } else {
-      throw new Error(`user-config.json not found at ${userConfigPath}`);
+      throw new Error(`user-config.json not found at ${userConfigPath}`)
     }
   } catch (err) {
-    const errorMsg = `Failed to update user config: ${err}`;
-    log('strategy', errorMsg);
-    return { error: errorMsg };
+    const errorMsg = `Failed to update user config: ${err}`
+    log('strategy', errorMsg)
+    return { error: errorMsg }
   }
 
-  config.strategy.activeStrategyId = id;
-  log('strategy', `Active strategy set to: ${mergedDb.strategies[id].name}`);
-  return { active: id, name: mergedDb.strategies[id].name };
+  config.strategy.activeStrategyId = id
+  log('strategy', `Active strategy set to: ${mergedDb.strategies[id].name}`)
+  return { active: id, name: mergedDb.strategies[id].name }
 }
 
 /**
  * Remove a strategy.
  */
 export function removeStrategy({ id }: { id: string }): Record<string, unknown> {
-  if (!id) return { error: 'id required' };
-  const privateDb = loadPrivate();
+  if (!id) return { error: 'id required' }
+  const privateDb = loadPrivate()
 
   if (!privateDb.strategies[id]) {
-    const sharedDb = loadJsonFile<StrategyLibraryData>(strategyLibraryManager.paths.sharedPath, { strategies: {} });
+    const sharedDb = loadJsonFile<StrategyLibraryData>(strategyLibraryManager.paths.sharedPath, { strategies: {} })
     if (sharedDb.strategies[id] || DEFAULT_STRATEGIES[id]) {
-      return { error: `Strategy "${id}" is a shared open-source strategy and cannot be removed locally.` };
+      return { error: `Strategy "${id}" is a shared open-source strategy and cannot be removed locally.` }
     }
-    return { error: `Strategy "${id}" not found` };
+    return { error: `Strategy "${id}" not found` }
   }
 
-  const name = privateDb.strategies[id].name;
-  delete privateDb.strategies[id];
+  const name = privateDb.strategies[id].name
+  delete privateDb.strategies[id]
 
-  const sharedDb = loadJsonFile<StrategyLibraryData>(strategyLibraryManager.paths.sharedPath, { strategies: {} });
-  const hasSharedFallback = !!(sharedDb.strategies[id] || DEFAULT_STRATEGIES[id]);
+  const sharedDb = loadJsonFile<StrategyLibraryData>(strategyLibraryManager.paths.sharedPath, { strategies: {} })
+  const hasSharedFallback = !!(sharedDb.strategies[id] || DEFAULT_STRATEGIES[id])
 
   if (config.strategy.activeStrategyId === id && !hasSharedFallback) {
-    const available = new Set([...Object.keys(privateDb.strategies), ...Object.keys(sharedDb.strategies), ...Object.keys(DEFAULT_STRATEGIES)]);
-    available.delete(id);
-    const newActive = Array.from(available)[0] || null;
+    const available = new Set([
+      ...Object.keys(privateDb.strategies),
+      ...Object.keys(sharedDb.strategies),
+      ...Object.keys(DEFAULT_STRATEGIES),
+    ])
+    available.delete(id)
+    const newActive = Array.from(available)[0] || null
     if (newActive) {
-      setActiveStrategy({ id: newActive });
+      setActiveStrategy({ id: newActive })
     } else {
       // Clear the active strategy pointer if no strategies exist at all
-      const userConfigPath = configPath('user-config.json');
+      const userConfigPath = configPath('user-config.json')
       try {
         if (fs.existsSync(userConfigPath)) {
-          const raw = JSON.parse(fs.readFileSync(userConfigPath, 'utf8'));
-          if (!raw.strategy) raw.strategy = {};
-          raw.strategy.activeStrategyId = null;
-          fs.writeFileSync(userConfigPath, JSON.stringify(raw, null, 2) + '\n');
+          const raw = JSON.parse(fs.readFileSync(userConfigPath, 'utf8'))
+          if (!raw.strategy) raw.strategy = {}
+          raw.strategy.activeStrategyId = null
+          fs.writeFileSync(userConfigPath, `${JSON.stringify(raw, null, 2)}\n`)
         }
       } catch (err) {
-        log('strategy', `Failed to update user config during removal: ${err}`);
+        log('strategy', `Failed to update user config during removal: ${err}`)
       }
-      config.strategy.activeStrategyId = ''; // empty string represents null
+      config.strategy.activeStrategyId = '' // empty string represents null
     }
   }
 
-  savePrivate(privateDb);
-  log('strategy', `Strategy removed: ${name}`);
-  return { removed: true, id, name, new_active: config.strategy.activeStrategyId };
+  savePrivate(privateDb)
+  log('strategy', `Strategy removed: ${name}`)
+  return { removed: true, id, name, new_active: config.strategy.activeStrategyId }
 }
 
 /**
  * Get the currently active strategy — used by screening cycle.
  */
 export function getActiveStrategy(): Strategy | null {
-  const db = load();
-  const activeId = config.strategy.activeStrategyId;
-  if (!activeId || !db.strategies[activeId]) return null;
-  return db.strategies[activeId] ?? null;
+  const db = load()
+  const activeId = config.strategy.activeStrategyId
+  if (!activeId || !db.strategies[activeId]) return null
+  return db.strategies[activeId] ?? null
 }
 
 /**
@@ -327,7 +337,7 @@ export function getActiveStrategy(): Strategy | null {
  * Throws an error with a clear message if the validation fails. Runs at agent boot.
  */
 export function validateActiveStrategy(): void {
-  strategyLibraryManager.validate();
+  strategyLibraryManager.validate()
 }
 
 /**
@@ -335,20 +345,20 @@ export function validateActiveStrategy(): void {
  * This preserves local modifications and does not touch the active pointer.
  */
 export function mergePresets(presets: unknown[]): void {
-  if (!presets || !Array.isArray(presets)) return;
-  const privateDb = loadPrivate();
-  let changed = false;
+  if (!presets || !Array.isArray(presets)) return
+  const privateDb = loadPrivate()
+  let changed = false
 
   for (const preset of presets) {
-    const rawStrategy = preset as Record<string, unknown>;
-    const id = rawStrategy.id as string;
-    const name = rawStrategy.name as string;
-    if (!id || !name) continue;
+    const rawStrategy = preset as Record<string, unknown>
+    const id = rawStrategy.id as string
+    const name = rawStrategy.name as string
+    if (!id || !name) continue
 
     const slug = id
       .toLowerCase()
       .replace(/\s+/g, '_')
-      .replace(/[^a-z0-9_]/g, '');
+      .replace(/[^a-z0-9_]/g, '')
 
     // Never overwrite an existing local strategy
     if (!privateDb.strategies[slug]) {
@@ -365,13 +375,13 @@ export function mergePresets(presets: unknown[]): void {
         raw: (rawStrategy.raw as string) || '',
         addedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      };
-      changed = true;
-      log('strategy', `Merged HiveMind preset: ${name} (${slug})`);
+      }
+      changed = true
+      log('strategy', `Merged HiveMind preset: ${name} (${slug})`)
     }
   }
 
   if (changed) {
-    savePrivate(privateDb);
+    savePrivate(privateDb)
   }
 }

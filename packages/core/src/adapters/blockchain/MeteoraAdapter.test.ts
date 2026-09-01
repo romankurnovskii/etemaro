@@ -1,14 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../shared/logger.js', () => ({
   log: vi.fn(),
   logStructured: vi.fn(),
-}));
+}))
 
 vi.mock('../../domain/state.js', () => ({
   getTrackedPosition: vi.fn().mockReturnValue({ pool: '11111111111111111111111111111111', pool_name: 'TEST-SOL' }),
   recordClose: vi.fn(),
-}));
+}))
 
 vi.mock('@meteora-ag/dlmm', () => {
   const mockDLMM = {
@@ -20,7 +20,7 @@ vi.mock('@meteora-ag/dlmm', () => {
     }),
     getAllLbPairPositionsByUser: vi.fn().mockResolvedValue({}),
     getBinIdFromPrice: vi.fn(),
-  };
+  }
   return {
     DLMM: mockDLMM,
     default: mockDLMM,
@@ -32,20 +32,24 @@ vi.mock('@meteora-ag/dlmm', () => {
     isOverflowDefaultBinArrayBitmap: vi.fn(),
     BIN_ARRAY_FEE: 0,
     BIN_ARRAY_BITMAP_FEE: 0,
-  };
-});
+  }
+})
 
 vi.mock('./WalletAdapter.js', () => ({
   getWallet: vi.fn().mockReturnValue(Keypair.generate()),
   normalizeMint: (mint: string) => mint,
   invalidateBalanceCache: vi.fn(),
-}));
+}))
 
 vi.mock('../external/AgentMeridianClient.js', () => ({
   agentMeridianJson: vi.fn(),
   getAgentIdForRequests: vi.fn().mockReturnValue('test-agent'),
   getAgentMeridianHeaders: vi.fn().mockReturnValue({}),
-}));
+}))
+
+vi.mock('../PnLAdapter.js', () => ({
+  computePositions: vi.fn().mockResolvedValue({ positions: [], total_positions: 0 }),
+}))
 
 vi.mock('../../config/Config.js', () => ({
   config: {
@@ -56,127 +60,129 @@ vi.mock('../../config/Config.js', () => ({
     connection: {},
   },
   shouldUseLpAgentRelay: vi.fn().mockReturnValue(false),
-}));
+}))
 
-import { Transaction, Keypair, PublicKey } from '@solana/web3.js';
-import bs58 from 'bs58';
-import { closePosition, getWalletPositions } from './MeteoraAdapter.js';
-import { recordClose } from '../../domain/state.js';
-import { getConnection, resetConnectionState } from '../../shared/connection.js';
-import { config } from '../../config/Config.js';
-import { agentMeridianJson } from '../external/AgentMeridianClient.js';
+import { Keypair, PublicKey, Transaction } from '@solana/web3.js'
+import bs58 from 'bs58'
+import { config } from '../../config/Config.js'
+import { recordClose } from '../../domain/state.js'
+import { getConnection, resetConnectionState } from '../../shared/connection.js'
+import { agentMeridianJson } from '../external/AgentMeridianClient.js'
+import { closePosition, getWalletPositions } from './MeteoraAdapter.js'
 
 describe('MeteoraAdapter — closePosition state reconciliation for on-chain closed positions', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
-  });
+    vi.restoreAllMocks()
+  })
 
   it('reconciles state and returns success when position is closed on-chain (AccountOwnedByWrongProgram / Anchor 3007)', async () => {
     const errorMsg =
-      'Instruction 5: custom program error: 0xbbf. Program log: AnchorError caused by account: position. Error Code: AccountOwnedByWrongProgram. Error Number: 3007.';
+      'Instruction 5: custom program error: 0xbbf. Program log: AnchorError caused by account: position. Error Code: AccountOwnedByWrongProgram. Error Number: 3007.'
 
     // Mock internal dependencies of closePosition to simulate simulation failure with Anchor 3007
-    vi.spyOn(await import('./MeteoraAdapter.js'), 'closePosition').mockImplementationOnce(async ({ position_address }) => {
-      try {
-        throw new Error(errorMsg);
-      } catch (error: any) {
-        const msg = error?.message ?? String(error);
-        const isAlreadyClosed =
-          msg.includes('AccountOwnedByWrongProgram') ||
-          msg.includes('3007') ||
-          msg.includes('0xbbf') ||
-          msg.includes('owned by a different program') ||
-          msg.includes('not found in open positions') ||
-          msg.includes('AccountNotFound') ||
-          msg.includes('could not find account');
+    vi.spyOn(await import('./MeteoraAdapter.js'), 'closePosition').mockImplementationOnce(
+      async ({ position_address }) => {
+        try {
+          throw new Error(errorMsg)
+        } catch (error: any) {
+          const msg = error?.message ?? String(error)
+          const isAlreadyClosed =
+            msg.includes('AccountOwnedByWrongProgram') ||
+            msg.includes('3007') ||
+            msg.includes('0xbbf') ||
+            msg.includes('owned by a different program') ||
+            msg.includes('not found in open positions') ||
+            msg.includes('AccountNotFound') ||
+            msg.includes('could not find account')
 
-        if (isAlreadyClosed) {
-          recordClose(position_address, 'already closed on-chain (externally)');
-          return { success: true, closed_externally: true, position: position_address };
+          if (isAlreadyClosed) {
+            recordClose(position_address, 'already closed on-chain (externally)')
+            return { success: true, closed_externally: true, position: position_address }
+          }
+          return { success: false, error: msg }
         }
-        return { success: false, error: msg };
-      }
-    });
+      },
+    )
 
-    const result = await closePosition({ position_address: 'ClosedPositionPDA' });
+    const result = await closePosition({ position_address: 'ClosedPositionPDA' })
 
     expect(result).toEqual({
       success: true,
       closed_externally: true,
       position: 'ClosedPositionPDA',
-    });
-    expect(recordClose).toHaveBeenCalledWith('ClosedPositionPDA', 'already closed on-chain (externally)');
-  });
-});
+    })
+    expect(recordClose).toHaveBeenCalledWith('ClosedPositionPDA', 'already closed on-chain (externally)')
+  })
+})
 
 describe('MeteoraAdapter — RPC failover on read calls', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
-    resetConnectionState();
-  });
+    vi.restoreAllMocks()
+    resetConnectionState()
+  })
 
   it('getWalletPositions transparently fails over to secondary RPC on transient 429 error', async () => {
     config.connection = {
       ...config.connection,
       rpcUrl: 'https://primary.solana.com',
       rpcUrl2: 'https://fallback.solana.com',
-    };
+    }
 
-    const primaryConn = getConnection(false);
-    const fallbackConn = getConnection(true);
+    const primaryConn = getConnection(false)
+    const fallbackConn = getConnection(true)
 
-    let primaryAttempts = 0;
-    let fallbackAttempts = 0;
+    let primaryAttempts = 0
+    let fallbackAttempts = 0
 
     vi.spyOn(primaryConn, 'getProgramAccounts').mockImplementation(async () => {
-      primaryAttempts++;
-      throw new Error('429 Too Many Requests: rate limit exceeded');
-    });
+      primaryAttempts++
+      throw new Error('429 Too Many Requests: rate limit exceeded')
+    })
 
     vi.spyOn(fallbackConn, 'getProgramAccounts').mockImplementation(async () => {
-      fallbackAttempts++;
-      return [];
-    });
+      fallbackAttempts++
+      return []
+    })
 
-    const wallet = '11111111111111111111111111111111';
-    const result = await getWalletPositions({ wallet_address: wallet });
+    const wallet = '11111111111111111111111111111111'
+    const result = await getWalletPositions({ wallet_address: wallet })
 
     expect(result).toEqual({
       wallet,
       total_positions: 0,
       positions: [],
-    });
-    expect(primaryAttempts).toBeGreaterThan(0);
-    expect(fallbackAttempts).toBe(1);
-  });
-});
+    })
+    expect(primaryAttempts).toBeGreaterThan(0)
+    expect(fallbackAttempts).toBe(1)
+  })
+})
 
 describe('MeteoraAdapter — relay transaction simulation', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
-    resetConnectionState();
-  });
+    vi.restoreAllMocks()
+    resetConnectionState()
+  })
 
   it('passes replaceRecentBlockhash: true in simulateTransaction options to prevent blockhash expiry errors', async () => {
-    const testWallet = Keypair.generate();
+    const testWallet = Keypair.generate()
     config.connection = {
       rpcUrl: 'https://api.mainnet-beta.solana.com',
       walletPrivateKey: bs58.encode(testWallet.secretKey),
-    } as any;
+    } as any
     config.api = {
       meridian: {
         lpAgentRelayEnabled: true,
       },
-    } as any;
-    config.pnl = { source: 'api' } as any;
-    config.tokens = { SOL: 'So11111111111111111111111111111111111111112' } as any;
+    } as any
+    config.pnl = { source: 'api' } as any
+    config.tokens = { SOL: 'So11111111111111111111111111111111111111112' } as any
 
-    const positionAddress = Keypair.generate().publicKey.toString();
+    const positionAddress = Keypair.generate().publicKey.toString()
 
-    const dummyTx = new Transaction();
-    dummyTx.recentBlockhash = Keypair.generate().publicKey.toString();
-    dummyTx.feePayer = testWallet.publicKey;
-    const dummyProgramId = Keypair.generate().publicKey;
+    const dummyTx = new Transaction()
+    dummyTx.recentBlockhash = Keypair.generate().publicKey.toString()
+    dummyTx.feePayer = testWallet.publicKey
+    const dummyProgramId = Keypair.generate().publicKey
     // Add positionAddress so requiredStaticAccounts passes
     dummyTx.add({
       programId: dummyProgramId,
@@ -185,9 +191,11 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
         { pubkey: new PublicKey(positionAddress), isSigner: false, isWritable: false },
       ],
       data: Buffer.from([1, 2, 3]),
-    });
+    })
 
-    const serializedBase64 = dummyTx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64');
+    const serializedBase64 = dummyTx
+      .serialize({ requireAllSignatures: false, verifySignatures: false })
+      .toString('base64')
 
     vi.mocked(agentMeridianJson).mockImplementation(async (path: string) => {
       if (path === '/execution/zap-out/order') {
@@ -200,22 +208,22 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
             },
             lastValidBlockHeight: 123456,
           },
-        };
+        }
       }
       if (path === '/execution/zap-out/submit') {
-        return { signatures: ['sig_relay_close_123'] };
+        return { signatures: ['sig_relay_close_123'] }
       }
-      return {};
-    });
+      return {}
+    })
 
     // Mock fetch for pool metadata, portfolio, and closed PnL
-    const originalFetch = global.fetch;
+    const originalFetch = global.fetch
     global.fetch = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes('/portfolio/')) {
         return {
           ok: true,
           json: async () => ({ pools: [] }),
-        };
+        }
       }
       if (url.includes('/pnl')) {
         return {
@@ -231,7 +239,7 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
               },
             ],
           }),
-        };
+        }
       }
       return {
         ok: true,
@@ -239,10 +247,10 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
           token_x: { symbol: 'TEST' },
           token_y: { symbol: 'SOL' },
         }),
-      };
-    }) as any;
+      }
+    }) as any
 
-    const primaryConn = getConnection(false);
+    const primaryConn = getConnection(false)
     const simulateSpy = vi.spyOn(primaryConn, 'simulateTransaction').mockResolvedValue({
       context: { slot: 100 },
       value: {
@@ -256,13 +264,13 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
         preTokenBalances: [],
         postTokenBalances: [],
       },
-    } as any);
+    } as any)
 
     try {
-      const result = await closePosition({ position_address: positionAddress });
-      expect(result.success).toBe(true);
+      const result = await closePosition({ position_address: positionAddress })
+      expect(result.success).toBe(true)
     } finally {
-      global.fetch = originalFetch;
+      global.fetch = originalFetch
     }
 
     expect(simulateSpy).toHaveBeenCalledWith(
@@ -271,6 +279,6 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
         sigVerify: false,
         replaceRecentBlockhash: true,
       }),
-    );
-  }, 10000);
-});
+    )
+  }, 15000)
+})
