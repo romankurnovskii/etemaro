@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Daemon, type DaemonAdapters, getDeterministicCloseRule } from './Daemon.js'
 
 function createMockAdapters(): DaemonAdapters {
@@ -61,6 +64,25 @@ function createMockAdapters(): DaemonAdapters {
     agentLoopDeps: {} as any,
   }
 }
+let testDataDir: string
+let originalEtemaroDataDir: string | undefined
+
+beforeEach(() => {
+  testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'etemaro-daemon-global-test-'))
+  originalEtemaroDataDir = process.env.ETEMARO_DATA_DIR
+  process.env.ETEMARO_DATA_DIR = testDataDir
+})
+
+afterEach(() => {
+  if (originalEtemaroDataDir !== undefined) {
+    process.env.ETEMARO_DATA_DIR = originalEtemaroDataDir
+  } else {
+    delete process.env.ETEMARO_DATA_DIR
+  }
+  if (fs.existsSync(testDataDir)) {
+    fs.rmSync(testDataDir, { recursive: true, force: true })
+  }
+})
 
 describe('Daemon — Concurrency & Mutex Guards', () => {
   let adapters: DaemonAdapters
@@ -624,18 +646,40 @@ describe('Telegram /stop & Busy Cycle Queue Draining (#236)', () => {
   })
 })
 
-describe('Telegram Queue Persistence & Periodic Autonomous Draining (#237)', () => {
+describe('Telegram Queue Persistence & Safety Guards (#237 / #244)', () => {
   let daemon: Daemon
   let adapters: DaemonAdapters
+  let tempDir: string
+  let origDataDir: string | undefined
 
   beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'etemaro-daemon-test-'))
+    origDataDir = process.env.ETEMARO_DATA_DIR
+    process.env.ETEMARO_DATA_DIR = tempDir
+
     adapters = createMockAdapters()
+    adapters.telegram.isEnabled = vi.fn().mockReturnValue(true)
     daemon = new Daemon(adapters)
     vi.clearAllMocks()
   })
 
+  afterEach(() => {
+    if (origDataDir !== undefined) {
+      process.env.ETEMARO_DATA_DIR = origDataDir
+    } else {
+      delete process.env.ETEMARO_DATA_DIR
+    }
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+    vi.useRealTimers()
+  })
+
   it('AC-1: enqueuing messages persists them to disk, and draining updates disk state', async () => {
     const queuePath = (daemon as any).getTelegramQueuePath()
+    // Verify that queuePath uses the isolated temp directory
+    expect(queuePath.startsWith(tempDir)).toBe(true)
+
     // Start with empty queue on disk
     ;(daemon as any).telegramQueue = []
     ;(daemon as any).saveTelegramQueue()
@@ -659,16 +703,15 @@ describe('Telegram Queue Persistence & Periodic Autonomous Draining (#237)', () 
     expect(onDisk2.length).toBe(0)
   })
 
-  it('AC-2: startup restores queued messages from disk and drains them when idle', async () => {
-    adapters.telegram.isEnabled = vi.fn().mockReturnValue(true)
+  it('AC-2: startup restores safe read-only queries and drains them when idle', async () => {
     const queuePath = (daemon as any).getTelegramQueuePath()
     const { saveJsonFile } = await import('@etemaro/core')
-    saveJsonFile(queuePath, [{ text: '/help' }, { text: '/config' }])
+    saveJsonFile(queuePath, [{ text: '/help' }, { text: '/config' }, { text: '/positions' }])
 
     const freshDaemon = new Daemon(adapters)
     ;(freshDaemon as any).loadTelegramQueue()
 
-    expect((freshDaemon as any).telegramQueue.length).toBe(2)
+    expect((freshDaemon as any).telegramQueue.length).toBe(3)
 
     await (freshDaemon as any).drainTelegramQueue()
 
@@ -676,8 +719,64 @@ describe('Telegram Queue Persistence & Periodic Autonomous Draining (#237)', () 
     expect(adapters.telegram.sendMessage).toHaveBeenCalled()
   })
 
-  it('AC-3: autonomous periodic drain timer invokes drainTelegramQueue periodically', async () => {
-    const _drainSpy = vi.spyOn(daemon as any, 'drainTelegramQueue').mockResolvedValue(undefined)
+  it('AC-3: startup discards stale /stop and prevents shutdown boot-loop', async () => {
+    const queuePath = (daemon as any).getTelegramQueuePath()
+    const { saveJsonFile } = await import('@etemaro/core')
+    saveJsonFile(queuePath, [{ text: '/stop' }])
+
+    const freshDaemon = new Daemon(adapters)
+    const shutdownSpy = vi.spyOn(freshDaemon as any, 'shutdown')
+    ;(freshDaemon as any).loadTelegramQueue()
+
+    // /stop must be discarded upon load
+    expect((freshDaemon as any).telegramQueue.length).toBe(0)
+
+    await (freshDaemon as any).drainTelegramQueue()
+    expect(shutdownSpy).not.toHaveBeenCalled()
+  })
+
+  it('AC-4: startup discards stale mutating trading commands and free-form prompts', async () => {
+    const queuePath = (daemon as any).getTelegramQueuePath()
+    const { saveJsonFile } = await import('@etemaro/core')
+    saveJsonFile(queuePath, [
+      { text: '/close 1' },
+      { text: '/closeall' },
+      { text: '/deploy 1' },
+      { text: '/set 1 hold' },
+      { text: '/setcfg stopLossPct 10' },
+      { text: 'deploy 5 sol to pool xyz' },
+      { text: '/status' },
+    ])
+
+    const freshDaemon = new Daemon(adapters)
+    ;(freshDaemon as any).loadTelegramQueue()
+
+    // Only read-only /status should be restored; all mutating commands discarded
+    expect((freshDaemon as any).telegramQueue.length).toBe(1)
+    expect((freshDaemon as any).telegramQueue[0].text).toBe('/status')
+  })
+
+  it('AC-5: disables queue loading and timer scheduling when telegram is disabled', async () => {
+    adapters.telegram.isEnabled = vi.fn().mockReturnValue(false)
+    const queuePath = (daemon as any).getTelegramQueuePath()
+    const { saveJsonFile } = await import('@etemaro/core')
+    saveJsonFile(queuePath, [{ text: '/status' }])
+
+    const disabledDaemon = new Daemon(adapters)
+    ;(disabledDaemon as any).loadTelegramQueue()
+    expect((disabledDaemon as any).telegramQueue.length).toBe(0)
+
+    ;(disabledDaemon as any).startTelegramDrainTimer()
+    expect((disabledDaemon as any).telegramDrainInterval).toBeNull()
+
+    const drainSpy = vi.spyOn(disabledDaemon as any, 'drainTelegramQueue')
+    await (disabledDaemon as any).drainTelegramQueue()
+    expect(drainSpy).toHaveBeenCalled()
+  })
+
+  it('AC-6: autonomous periodic drain timer executes drain on 5s interval', async () => {
+    vi.useFakeTimers()
+    const drainSpy = vi.spyOn(daemon as any, 'drainTelegramQueue').mockResolvedValue(undefined)
 
     ;(daemon as any).startTelegramDrainTimer()
     expect((daemon as any).telegramDrainInterval).not.toBeNull()
@@ -687,25 +786,38 @@ describe('Telegram Queue Persistence & Periodic Autonomous Draining (#237)', () 
     ;(daemon as any).startTelegramDrainTimer()
     expect((daemon as any).telegramDrainInterval).toBe(initialInterval)
 
-    // Fast-forward or wait for tick
-    await new Promise((r) => setTimeout(r, 10))
+    // Advance fake timers by 5000ms
+    vi.advanceTimersByTime(5000)
+    expect(drainSpy).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(5000)
+    expect(drainSpy).toHaveBeenCalledTimes(2)
+
     ;(daemon as any).stopTelegramDrainTimer()
     expect((daemon as any).telegramDrainInterval).toBeNull()
+    vi.useRealTimers()
   })
 
-  it('AC-4: shutdown and stopCronJobs clear the periodic drain timer', async () => {
+  it('AC-7: shutdown and stopCronJobs clear timer and clear persisted queue', async () => {
+    const queuePath = (daemon as any).getTelegramQueuePath()
+    const { loadJsonFile } = await import('@etemaro/core')
+
     ;(daemon as any).startTelegramDrainTimer()
     expect((daemon as any).telegramDrainInterval).not.toBeNull()
 
     daemon.stopCronJobs()
     expect((daemon as any).telegramDrainInterval).toBeNull()
 
+    ;(daemon as any).telegramQueue = [{ text: '/status' }]
+    ;(daemon as any).saveTelegramQueue()
     ;(daemon as any).startTelegramDrainTimer()
     expect((daemon as any).telegramDrainInterval).not.toBeNull()
 
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any)
     await (daemon as any).shutdown('test')
     expect((daemon as any).telegramDrainInterval).toBeNull()
+    expect((daemon as any).telegramQueue.length).toBe(0)
+    expect(loadJsonFile<any[]>(queuePath, ['not_empty'])).toEqual([])
     exitSpy.mockRestore()
   })
 })

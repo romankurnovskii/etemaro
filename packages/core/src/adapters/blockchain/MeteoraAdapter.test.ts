@@ -73,7 +73,7 @@ import { closePosition, getWalletPositions } from './MeteoraAdapter.js'
 
 describe('MeteoraAdapter — closePosition state reconciliation for on-chain closed positions', () => {
   beforeEach(() => {
-    vi.restoreAllMocks()
+    vi.clearAllMocks()
   })
 
   it('reconciles state and returns success when position is closed on-chain (AccountOwnedByWrongProgram / Anchor 3007)', async () => {
