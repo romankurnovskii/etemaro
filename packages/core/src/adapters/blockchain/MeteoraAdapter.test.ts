@@ -282,6 +282,8 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
       lastValidBlockHeight: 999999,
     } as any)
 
+    vi.spyOn(Connection.prototype, 'getAccountInfo').mockResolvedValue(null)
+
     try {
       const result = await closePosition({ position_address: positionAddress })
       expect(result.success).toBe(true)
