@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../config/Config.js'
 import * as MeteoraAdapter from './blockchain/MeteoraAdapter.js'
 import * as WalletAdapter from './blockchain/WalletAdapter.js'
+import { tools } from './ToolDefinitions.js'
 import {
   closeAllPositions,
   executeTool,
@@ -580,6 +581,57 @@ describe('ToolExecutor - deploy_position serialization', () => {
 
     expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(2)
     expect(maxInFlightBatchSwaps).toBe(1)
+  })
+
+  it('dispatches swap_all_tokens_to_sol via executeTool and respects skipMints / skip_mints', async () => {
+    const skipMint = 'SKIP_THIS_MINT_111111111111111111111111'
+    const swapMint = 'SWAP_THIS_MINT_111111111111111111111111'
+
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      tokens: [
+        { mint: skipMint, symbol: 'SKP', balance: 500, usd: 10 },
+        { mint: swapMint, symbol: 'SWP', balance: 1000, usd: 20 },
+      ],
+    } as any)
+
+    vi.mocked(WalletAdapter.swapToken).mockResolvedValue({
+      success: true,
+      tx: 'tx-batch-dispatched',
+    } as any)
+
+    // Test with camelCase skipMints
+    const res1 = (await executeTool('swap_all_tokens_to_sol', {
+      skipMints: [skipMint],
+    })) as any
+
+    expect(res1.successful).toBe(1)
+    expect(res1.skipped).toBe(1)
+    expect(WalletAdapter.swapToken).toHaveBeenCalledWith({
+      input_mint: swapMint,
+      output_mint: 'SOL',
+      amount: 1000,
+    })
+
+    // Test with snake_case skip_mints
+    vi.mocked(WalletAdapter.swapToken).mockClear()
+    const res2 = (await executeTool('swap_all_tokens_to_sol', {
+      skip_mints: [skipMint],
+    })) as any
+
+    expect(res2.successful).toBe(1)
+    expect(res2.skipped).toBe(1)
+    expect(WalletAdapter.swapToken).toHaveBeenCalledWith({
+      input_mint: swapMint,
+      output_mint: 'SOL',
+      amount: 1000,
+    })
+  })
+
+  it('registers swap_all_tokens_to_sol in ToolDefinitions.ts with correct schema', () => {
+    const swapAllDef = tools.find((t) => t.function.name === 'swap_all_tokens_to_sol')
+    expect(swapAllDef).toBeDefined()
+    expect(swapAllDef?.function.description).toContain('Sweep and swap all non-SOL SPL tokens')
+    expect(swapAllDef?.function.parameters?.properties).toHaveProperty('skip_mints')
   })
 
   it('serializes heterogeneous write tools (swap_token vs deploy_position vs claim_fees)', async () => {
