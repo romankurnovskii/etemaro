@@ -127,4 +127,44 @@ describe('TelegramAdapter notifications', () => {
       }),
     ).toBe('swapped 3/3')
   })
+
+  it('createLiveMessage initializes live message, sends status updates, and finalizes cleanly', async () => {
+    const { createLiveMessage } = await import('./TelegramAdapter.js')
+    process.env.TELEGRAM_BOT_TOKEN = 'test_token'
+    process.env.TELEGRAM_CHAT_ID = '123456'
+
+    let sentCount = 0
+    let editCount = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+      const urlStr = String(url)
+      if (urlStr.includes('sendMessage')) {
+        sentCount++
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, result: { message_id: 999 } }),
+        } as any
+      }
+      if (urlStr.includes('editMessageText')) {
+        editCount++
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, result: { message_id: 999 } }),
+        } as any
+      }
+      return { ok: true, json: async () => ({ ok: true }) } as any
+    })
+
+    const live = await createLiveMessage('Live Cycle', 'Starting...')
+    expect(sentCount).toBe(1)
+    expect(live).not.toBeNull()
+
+    if (live) {
+      await live.toolStart('swap_token')
+      await live.toolFinish('swap_token', { tx: 'tx_123' }, true)
+      await live.finalize('Completed successfully.')
+      expect(editCount).toBeGreaterThanOrEqual(1)
+    }
+  })
 })

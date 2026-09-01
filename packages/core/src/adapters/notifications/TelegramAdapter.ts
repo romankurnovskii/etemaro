@@ -18,18 +18,24 @@ import { log } from '../../shared/logger.js'
 import { sleep } from '../../utils/time.js'
 import { notify } from './NotificationSink.js'
 
-function getToken(): string | null {
-  const token = config.connection?.telegramBotToken
+function getEffectiveToken(): string | null {
+  const token = config.connection?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN
   return token && !token.startsWith('env.') ? token : null
 }
 
+function getEffectiveChatId(): string | null {
+  if (chatId) return chatId
+  const cfgChatId = config.connection?.telegramChatId || process.env.TELEGRAM_CHAT_ID
+  return cfgChatId && !cfgChatId.startsWith('env.') ? cfgChatId : null
+}
+
 function getBase(): string | null {
-  const token = getToken()
+  const token = getEffectiveToken()
   return token ? `https://api.telegram.org/bot${token}` : null
 }
 
 function getAllowedUserIds(): Set<string> {
-  const raw = config.connection?.telegramAllowedUserIds || ''
+  const raw = config.connection?.telegramAllowedUserIds || process.env.TELEGRAM_ALLOWED_USER_IDS || ''
   return new Set(
     raw
       .split(',')
@@ -37,9 +43,6 @@ function getAllowedUserIds(): Set<string> {
       .filter((id) => Boolean(id) && !id.startsWith('env.')),
   )
 }
-
-const TOKEN: string | null = getToken()
-const BASE: string | null = getBase()
 
 let chatId: string | null = null
 let _offset = 0
@@ -50,8 +53,7 @@ let _warnedMissingAllowedUsers = false
 
 // ─── chatId persistence ──────────────────────────────────────────
 function resolveChatId(): string | null {
-  const cfgChatId = config.connection?.telegramChatId
-  return cfgChatId && !cfgChatId.startsWith('env.') ? cfgChatId : null
+  return getEffectiveChatId()
 }
 
 function loadChatId(): void {
@@ -130,7 +132,11 @@ function isAuthorizedIncomingMessage(msg: IncomingTelegramMessage): boolean {
 
 // ─── Core send ───────────────────────────────────────────────────
 export function isEnabled(): boolean {
-  return !!TOKEN
+  return !!getEffectiveToken()
+}
+
+export function isTelegramConfigured(): boolean {
+  return isEnabled()
 }
 
 interface TelegramApiResponse {
@@ -140,12 +146,15 @@ interface TelegramApiResponse {
 }
 
 async function postTelegram(method: string, body: Record<string, unknown>): Promise<TelegramApiResponse | null> {
-  if (!TOKEN || !chatId) return null
+  const token = getEffectiveToken()
+  const currentChatId = getEffectiveChatId()
+  const base = getBase()
+  if (!token || !currentChatId || !base) return null
   try {
-    const res = await fetch(`${BASE}/${method}`, {
+    const res = await fetch(`${base}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, ...body }),
+      body: JSON.stringify({ chat_id: currentChatId, ...body }),
     })
     if (!res.ok) {
       const err = await res.text()
@@ -169,9 +178,11 @@ async function postTelegram(method: string, body: Record<string, unknown>): Prom
 }
 
 async function postTelegramRaw(method: string, body: Record<string, unknown>): Promise<TelegramApiResponse | null> {
-  if (!TOKEN) return null
+  const token = getEffectiveToken()
+  const base = getBase()
+  if (!token || !base) return null
   try {
-    const res = await fetch(`${BASE}/${method}`, {
+    const res = await fetch(`${base}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -197,7 +208,7 @@ async function postTelegramRaw(method: string, body: Record<string, unknown>): P
 
 export async function sendMessage(text: string): Promise<TelegramApiResponse | null> {
   notify('message', '💬', text.slice(0, 80), text)
-  if (!TOKEN || !chatId) return null
+  if (!getEffectiveToken() || !getEffectiveChatId()) return null
   return postTelegram('sendMessage', { text: String(text).slice(0, 4096) })
 }
 
@@ -209,7 +220,7 @@ export async function sendMessage(text: string): Promise<TelegramApiResponse | n
  * 'message' sink entry that sendMessage() produces.
  */
 async function sendPlain(text: string): Promise<TelegramApiResponse | null> {
-  if (!TOKEN || !chatId) return null
+  if (!getEffectiveToken() || !getEffectiveChatId()) return null
   return postTelegram('sendMessage', { text: String(text).slice(0, 4096) })
 }
 
@@ -223,7 +234,7 @@ export async function sendMessageWithButtons(
   text: string,
   inlineKeyboard: InlineKeyboardButton[][],
 ): Promise<TelegramApiResponse | null> {
-  if (!TOKEN || !chatId) return null
+  if (!getEffectiveToken() || !getEffectiveChatId()) return null
   return postTelegram('sendMessage', {
     text: String(text).slice(0, 4096),
     reply_markup: { inline_keyboard: inlineKeyboard },
@@ -231,7 +242,7 @@ export async function sendMessageWithButtons(
 }
 
 export async function editMessage(text: string, messageId: number): Promise<TelegramApiResponse | null> {
-  if (!TOKEN || !chatId || !messageId) return null
+  if (!getEffectiveToken() || !getEffectiveChatId() || !messageId) return null
   return postTelegram('editMessageText', {
     message_id: messageId,
     text: String(text).slice(0, 4096),
@@ -243,7 +254,7 @@ export async function editMessageWithButtons(
   messageId: number,
   inlineKeyboard: InlineKeyboardButton[][],
 ): Promise<TelegramApiResponse | null> {
-  if (!TOKEN || !chatId || !messageId) return null
+  if (!getEffectiveToken() || !getEffectiveChatId() || !messageId) return null
   return postTelegram('editMessageText', {
     message_id: messageId,
     text: String(text).slice(0, 4096),
@@ -255,7 +266,7 @@ export async function answerCallbackQuery(
   callbackQueryId: string,
   text: string = '',
 ): Promise<TelegramApiResponse | null> {
-  if (!TOKEN || !callbackQueryId) return null
+  if (!getEffectiveToken() || !callbackQueryId) return null
   return postTelegramRaw('answerCallbackQuery', {
     callback_query_id: callbackQueryId,
     ...(text ? { text: String(text).slice(0, 200) } : {}),
@@ -267,7 +278,7 @@ export function hasActiveLiveMessage(): boolean {
 }
 
 function createTypingIndicator(): { stop: () => void } {
-  if (!TOKEN || !chatId) {
+  if (!getEffectiveToken() || !getEffectiveChatId()) {
     return { stop() {} }
   }
 
@@ -380,7 +391,7 @@ export interface LiveMessage {
 }
 
 export async function createLiveMessage(title: string, intro: string = 'Starting...'): Promise<LiveMessage | null> {
-  if (!TOKEN || !chatId) return null
+  if (!getEffectiveToken() || !getEffectiveChatId()) return null
   const typing = createTypingIndicator()
 
   const state = {
@@ -483,8 +494,13 @@ export async function createLiveMessage(title: string, intro: string = 'Starting
 // ─── Long polling ────────────────────────────────────────────────
 async function poll(onMessage: (msg: IncomingTelegramMessage) => Promise<void>): Promise<void> {
   while (_polling) {
+    const base = getBase()
+    if (!base) {
+      await sleep(5000)
+      continue
+    }
     try {
-      const res = await fetch(`${BASE}/getUpdates?offset=${_offset}&timeout=30`, {
+      const res = await fetch(`${base}/getUpdates?offset=${_offset}&timeout=30`, {
         signal: AbortSignal.timeout(35_000),
       })
       if (!res.ok) {
@@ -553,9 +569,10 @@ const BOT_COMMANDS: BotCommand[] = [
 ]
 
 async function registerCommands(): Promise<void> {
-  if (!BASE) return
+  const base = getBase()
+  if (!base) return
   try {
-    await fetch(`${BASE}/setMyCommands`, {
+    await fetch(`${base}/setMyCommands`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ commands: BOT_COMMANDS }),
@@ -567,7 +584,7 @@ async function registerCommands(): Promise<void> {
 }
 
 export function startPolling(onMessage: (msg: IncomingTelegramMessage) => Promise<void>): void {
-  if (!TOKEN) return
+  if (!getEffectiveToken()) return
   loadChatId()
   if (!chatId) {
     log(
