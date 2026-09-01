@@ -1,3 +1,4 @@
+import { Connection } from '@solana/web3.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../shared/logger.js', () => ({
@@ -250,8 +251,7 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
       }
     }) as any
 
-    const primaryConn = getConnection(false)
-    const simulateSpy = vi.spyOn(primaryConn, 'simulateTransaction').mockResolvedValue({
+    const simulateSpy = vi.spyOn(Connection.prototype, 'simulateTransaction').mockResolvedValue({
       context: { slot: 100 },
       value: {
         err: null,

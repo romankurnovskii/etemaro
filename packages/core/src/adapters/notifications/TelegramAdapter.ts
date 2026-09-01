@@ -154,6 +154,8 @@ async function postTelegram(method: string, body: Record<string, unknown>): Prom
           'telegram_error',
           `${method} 401 Unauthorized — check TELEGRAM_BOT_TOKEN in .env (invalid, revoked, or encrypted without .envrypt key)`,
         )
+      } else if (res.status === 400 && err.toLowerCase().includes('message is not modified')) {
+        // Safe to ignore — message content was identical
       } else {
         log('telegram_error', `${method} ${res.status}: ${err.slice(0, 200)}`)
       }
@@ -322,6 +324,7 @@ function toolLabel(name: string): string {
     close_position: 'close position',
     claim_fees: 'claim fees',
     swap_token: 'swap token',
+    swap_all_tokens_to_sol: 'swap all tokens to SOL',
     update_config: 'update config',
     get_my_positions: 'get positions',
     get_wallet_balance: 'get wallet balance',
@@ -345,6 +348,12 @@ export function summarizeToolResult(name: string, result: any): string {
       return result.success ? 'closed' : result.reason || 'failed'
     case 'claim_fees':
       return result.claimed_amount != null ? `claimed ${result.claimed_amount}` : 'done'
+    case 'swap_token':
+      return result.tx
+        ? `tx ${String(result.tx).slice(0, 8)}...`
+        : result.message || (result.success ? 'done' : 'failed')
+    case 'swap_all_tokens_to_sol':
+      return result.swapped != null ? `swapped ${result.swapped}/${result.total ?? result.swapped}` : 'done'
     case 'update_config':
       return Object.keys(result.applied || {}).join(', ') || 'updated'
     case 'get_top_candidates':
@@ -380,6 +389,7 @@ export async function createLiveMessage(title: string, intro: string = 'Starting
     toolLines: [] as string[],
     footer: '',
     messageId: null as number | null,
+    lastRenderedText: '' as string,
     flushTimer: null as any,
     flushPromise: null as Promise<any> | null,
     flushRequested: false,
@@ -397,15 +407,20 @@ export async function createLiveMessage(title: string, intro: string = 'Starting
     state.flushTimer = null
     state.flushRequested = false
     const text = render()
+    if (state.lastRenderedText === text && state.messageId) {
+      return
+    }
     if (!state.messageId) {
       const sent = await sendMessage(text)
       state.messageId = sent?.result?.message_id ?? null
+      state.lastRenderedText = text
       return
     }
+    state.lastRenderedText = text
     await editMessage(text, state.messageId)
   }
 
-  function scheduleFlush(delay: number = 300): void {
+  function scheduleFlush(delay: number = 800): void {
     if (state.flushTimer) {
       state.flushRequested = true
       return

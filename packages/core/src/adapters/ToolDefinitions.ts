@@ -401,6 +401,28 @@ WARNING: This executes a real on-chain transaction.`,
     },
   },
 
+  {
+    type: 'function',
+    function: {
+      name: 'swap_all_tokens_to_sol',
+      description: `Sweep and swap all non-SOL SPL tokens in the wallet back to SOL in a single safe, sequentially paced batch.
+Use when multiple leftover tokens or claimed fee tokens have accumulated in the wallet.
+Automatically skips SOL and USDC, and sequentially sells each token via Jupiter with built-in retry and pacing to prevent rate limits.
+
+WARNING: This executes real on-chain transactions.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          skip_mints: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Optional list of token mint addresses to exclude from swapping',
+          },
+        },
+      },
+    },
+  },
+
   // ═══════════════════════════════════════════
   //  LEARNING TOOLS
   // ═══════════════════════════════════════════

@@ -109,4 +109,22 @@ describe('TelegramAdapter notifications', () => {
       expect.stringContaining('Custom program error 0x1'),
     )
   })
+
+  it('summarizeToolResult formats swap_token and swap_all_tokens_to_sol', () => {
+    expect(
+      summarizeToolResult('swap_token', {
+        tx: '5K8x7q1234567890abcdef',
+        amount_in: 10,
+        amount_out: 0.1,
+      }),
+    ).toBe('tx 5K8x7q12...')
+
+    expect(
+      summarizeToolResult('swap_all_tokens_to_sol', {
+        swapped: 3,
+        total: 3,
+        failed: 0,
+      }),
+    ).toBe('swapped 3/3')
+  })
 })
