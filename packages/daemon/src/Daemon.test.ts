@@ -375,3 +375,183 @@ describe('getDeterministicCloseRule suspect PnL handling', () => {
     })
   })
 })
+
+describe('Telegram /stop & Busy Cycle Queue Draining (#236)', () => {
+  let adapters: DaemonAdapters
+  let daemon: Daemon
+  let exitSpy: any
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any)
+    adapters = createMockAdapters()
+    adapters.telegram.isEnabled = () => true
+    daemon = new Daemon(adapters)
+  })
+
+  it('AC-1: queues /stop during active management cycle and shuts down on lock release', async () => {
+    const shutdownSpy = vi.spyOn(daemon as any, 'shutdown')
+    ;(daemon as any).managementBusy = true
+
+    // Receive /stop while management is busy
+    await (daemon as any).telegramHandler({ text: '/stop' })
+
+    expect(adapters.telegram.sendMessage).toHaveBeenCalledWith(
+      expect.stringContaining('⏳ Queued (1 in queue): "/stop"'),
+    )
+    expect(shutdownSpy).not.toHaveBeenCalled()
+    expect((daemon as any).telegramQueue.length).toBe(1)
+
+    // Release management lock
+    ;(daemon as any).releaseLock('management')
+    // Wait microtasks
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(adapters.telegram.sendMessage).toHaveBeenCalledWith('🛑 Shutting down agent...')
+    expect(shutdownSpy).toHaveBeenCalledWith('telegram /stop')
+  })
+
+  it('AC-2: queues /stop during active screening cycle and shuts down on lock release', async () => {
+    const shutdownSpy = vi.spyOn(daemon as any, 'shutdown')
+    ;(daemon as any).screeningBusy = true
+
+    await (daemon as any).telegramHandler({ text: '/stop' })
+    expect(shutdownSpy).not.toHaveBeenCalled()
+
+    // Release screening lock
+    ;(daemon as any).releaseLock('screening')
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(adapters.telegram.sendMessage).toHaveBeenCalledWith('🛑 Shutting down agent...')
+    expect(shutdownSpy).toHaveBeenCalledWith('telegram /stop')
+  })
+
+  it('AC-3: queues /stop during active pnlPoll and shuts down on lock release', async () => {
+    const shutdownSpy = vi.spyOn(daemon as any, 'shutdown')
+    ;(daemon as any).pnlPollBusy = true
+
+    await (daemon as any).telegramHandler({ text: '/stop' })
+    expect(shutdownSpy).not.toHaveBeenCalled()
+
+    // Release pnlPoll lock
+    ;(daemon as any).releaseLock('pnlPoll')
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(adapters.telegram.sendMessage).toHaveBeenCalledWith('🛑 Shutting down agent...')
+    expect(shutdownSpy).toHaveBeenCalledWith('telegram /stop')
+  })
+
+  it('AC-4: queues /stop during active opportunityPoll and shuts down on lock release', async () => {
+    const shutdownSpy = vi.spyOn(daemon as any, 'shutdown')
+    ;(daemon as any).opportunityPollBusy = true
+
+    await (daemon as any).telegramHandler({ text: '/stop' })
+    expect(shutdownSpy).not.toHaveBeenCalled()
+
+    // Release opportunityPoll lock
+    ;(daemon as any).releaseLock('opportunityPoll')
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(adapters.telegram.sendMessage).toHaveBeenCalledWith('🛑 Shutting down agent...')
+    expect(shutdownSpy).toHaveBeenCalledWith('telegram /stop')
+  })
+
+  it('AC-5: prioritizes /stop over other queued commands and prevents remaining queue execution', async () => {
+    const shutdownSpy = vi.spyOn(daemon as any, 'shutdown')
+    ;(daemon as any).managementBusy = true
+
+    // Queue /screen, /stop, /positions
+    await (daemon as any).telegramHandler({ text: '/screen' })
+    await (daemon as any).telegramHandler({ text: '/stop' })
+    await (daemon as any).telegramHandler({ text: '/positions' })
+
+    expect((daemon as any).telegramQueue.length).toBe(3)
+    expect(shutdownSpy).not.toHaveBeenCalled()
+
+    // Release lock to trigger drain
+    ;(daemon as any).releaseLock('management')
+    await new Promise((r) => setTimeout(r, 10))
+
+    // /stop was prioritized and triggered shutdown
+    expect(shutdownSpy).toHaveBeenCalledWith('telegram /stop')
+    expect((daemon as any).shuttingDown).toBe(true)
+  })
+
+  it('AC-6: queues /stop during free-form chat and shuts down on chat completion', async () => {
+    const shutdownSpy = vi.spyOn(daemon as any, 'shutdown')
+    ;(daemon as any).busy = true
+
+    await (daemon as any).telegramHandler({ text: '/stop' })
+    expect(shutdownSpy).not.toHaveBeenCalled()
+
+    // Simulate chat finally block
+    ;(daemon as any).busy = false
+    await (daemon as any).drainTelegramQueue()
+
+    expect(adapters.telegram.sendMessage).toHaveBeenCalledWith('🛑 Shutting down agent...')
+    expect(shutdownSpy).toHaveBeenCalledWith('telegram /stop')
+  })
+
+  it('AC-7: executes immediate shutdown when idle', async () => {
+    const shutdownSpy = vi.spyOn(daemon as any, 'shutdown')
+
+    await (daemon as any).telegramHandler({ text: '/stop' })
+
+    expect(adapters.telegram.sendMessage).toHaveBeenCalledWith('🛑 Shutting down agent...')
+    expect(shutdownSpy).toHaveBeenCalledWith('telegram /stop')
+    expect((daemon as any).telegramQueue.length).toBe(0)
+  })
+
+  it('AC-8: shuttingDown flag prevents cycle execution and lock acquisition', async () => {
+    ;(daemon as any).shuttingDown = true
+
+    expect((daemon as any).acquireLock('management')).toBe(false)
+    expect((daemon as any).acquireLock('screening')).toBe(false)
+    expect((daemon as any).acquireLock('pnlPoll')).toBe(false)
+    expect((daemon as any).acquireLock('opportunityPoll')).toBe(false)
+
+    const mgmtRes = await daemon.runManagementCycle()
+    expect(mgmtRes).toBeNull()
+
+    const screenRes = await daemon.runScreeningCycle()
+    expect(screenRes).toBeNull()
+  })
+
+  it('AC-9: drains full queue without starving /stop at the tail', async () => {
+    const shutdownSpy = vi.spyOn(daemon as any, 'shutdown')
+    ;(daemon as any).managementBusy = true
+
+    await (daemon as any).telegramHandler({ text: '/status' })
+    await (daemon as any).telegramHandler({ text: '/config' })
+    await (daemon as any).telegramHandler({ text: '/positions' })
+    await (daemon as any).telegramHandler({ text: '/help' })
+    await (daemon as any).telegramHandler({ text: '/stop' })
+
+    expect((daemon as any).telegramQueue.length).toBe(5)
+
+    ;(daemon as any).releaseLock('management')
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(shutdownSpy).toHaveBeenCalledWith('telegram /stop')
+  })
+
+  it('Edge Case 1: handles concurrent /stop without duplicate shutdown', async () => {
+    const shutdownSpy = vi.spyOn(daemon as any, 'shutdown')
+
+    await (daemon as any).telegramHandler({ text: '/stop' })
+    await (daemon as any).telegramHandler({ text: '/stop' })
+
+    expect(shutdownSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('Edge Case 4: shutdown proceeds cleanly even if sendMessage fails or throws', async () => {
+    adapters.telegram.sendMessage = vi.fn().mockRejectedValue(new Error('Network offline'))
+    const stopPollingSpy = vi.spyOn(adapters.telegram, 'stopPolling')
+
+    await (daemon as any).shutdown('telegram /stop')
+
+    expect((daemon as any).shuttingDown).toBe(true)
+    expect(stopPollingSpy).toHaveBeenCalled()
+    expect(exitSpy).toHaveBeenCalledWith(0)
+  })
+})

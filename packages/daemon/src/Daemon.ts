@@ -307,6 +307,7 @@ export class Daemon {
    * Prevents overlapping timer ticks or event-loop delays from entering guarded sections concurrently.
    */
   private acquireLock(lockName: 'management' | 'screening' | 'pnlPoll' | 'opportunityPoll'): boolean {
+    if (this.shuttingDown) return false
     switch (lockName) {
       case 'management':
         if (this.managementBusy || this.pnlPollBusy) return false
@@ -345,6 +346,9 @@ export class Daemon {
         this.opportunityPollBusy = false
         break
     }
+    this.drainTelegramQueue().catch((err: any) => {
+      log('telegram_warn', `Failed to drain telegram queue after releasing ${lockName} lock: ${err?.message || err}`)
+    })
   }
 
   // Countdown timer
@@ -935,7 +939,7 @@ After evaluating, write a brief one-line result per position.
   }
 
   async runManagementCycle({ silent = false } = {}): Promise<string | null> {
-    if (!this.acquireLock('management')) return null
+    if (this.shuttingDown || !this.acquireLock('management')) return null
     this.managementLastRun = Date.now()
     log('cron', 'Starting management cycle')
     let mgmtReport: string | null = null
@@ -1139,7 +1143,7 @@ After evaluating, write a brief one-line result per position.
   }
 
   async runScreeningCycle({ silent = false } = {}): Promise<string | null> {
-    if (!this.acquireLock('screening')) {
+    if (this.shuttingDown || !this.acquireLock('screening')) {
       log('cron', 'Screening skipped — previous cycle still running')
       return null
     }
@@ -2074,6 +2078,7 @@ IMPORTANT:
   }
 
   private async telegramHandler(msg: any): Promise<void> {
+    if (this.shuttingDown) return
     const text = msg?.text?.trim()
     if (!text) return
     if (msg?.isCallback && text.startsWith('cfg:')) {
@@ -2093,7 +2098,7 @@ IMPORTANT:
       })
       return
     }
-    if (this.managementBusy || this.screeningBusy || this.pnlPollBusy || this.busy) {
+    if (this.managementBusy || this.screeningBusy || this.pnlPollBusy || this.opportunityPollBusy || this.busy) {
       if (this.telegramQueue.length < this.MAX_TELEGRAM_QUEUE) {
         this.telegramQueue.push(msg)
         await this.sendTelegramSafe(`⏳ Queued (${this.telegramQueue.length} in queue): "${text.slice(0, 60)}"`)
@@ -2520,6 +2525,9 @@ IMPORTANT:
     } finally {
       this.busy = false
       this.refreshPrompt()
+      this.drainTelegramQueue().catch((err: any) => {
+        log('telegram_warn', `Failed to drain telegram queue: ${err?.message || err}`)
+      })
     }
   }
 
@@ -2618,14 +2626,21 @@ IMPORTANT:
   }
 
   private async drainTelegramQueue(): Promise<void> {
+    if (this.shuttingDown) return
     while (
       this.telegramQueue.length > 0 &&
       !this.managementBusy &&
       !this.screeningBusy &&
       !this.pnlPollBusy &&
-      !this.busy
+      !this.opportunityPollBusy &&
+      !this.busy &&
+      !this.shuttingDown
     ) {
-      const queued = this.telegramQueue.shift()
+      const stopIdx = this.telegramQueue.findIndex((m: any) => {
+        const t = (typeof m === 'string' ? m : m?.text)?.trim()
+        return t === '/stop'
+      })
+      const queued = stopIdx !== -1 ? this.telegramQueue.splice(stopIdx, 1)[0] : this.telegramQueue.shift()
       await this.telegramHandler(queued)
     }
   }
@@ -2676,7 +2691,7 @@ IMPORTANT:
     }
 
     const runBusy = async (fn: () => Promise<void>) => {
-      if (this.busy || this.managementBusy || this.screeningBusy || this.pnlPollBusy) {
+      if (this.busy || this.managementBusy || this.screeningBusy || this.pnlPollBusy || this.opportunityPollBusy) {
         console.log('Agent is busy, please wait...')
         rl.prompt()
         return
@@ -2692,6 +2707,9 @@ IMPORTANT:
         rl.setPrompt(this.buildPrompt())
         rl.resume()
         rl.prompt()
+        this.drainTelegramQueue().catch((err: any) => {
+          log('telegram_warn', `Failed to drain telegram queue: ${err?.message || err}`)
+        })
       }
     }
 
