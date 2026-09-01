@@ -1,3 +1,4 @@
+import { Connection } from '@solana/web3.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../shared/logger.js', () => ({
@@ -217,15 +218,15 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
     })
 
     // Mock fetch for pool metadata, portfolio, and closed PnL
-    const originalFetch = global.fetch
-    global.fetch = vi.fn().mockImplementation(async (url: string) => {
-      if (url.includes('/portfolio/')) {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+      const urlStr = String(url)
+      if (urlStr.includes('/portfolio/')) {
         return {
           ok: true,
           json: async () => ({ pools: [] }),
-        }
+        } as any
       }
-      if (url.includes('/pnl')) {
+      if (urlStr.includes('/pnl')) {
         return {
           ok: true,
           json: async () => ({
@@ -239,7 +240,7 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
               },
             ],
           }),
-        }
+        } as any
       }
       return {
         ok: true,
@@ -247,11 +248,10 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
           token_x: { symbol: 'TEST' },
           token_y: { symbol: 'SOL' },
         }),
-      }
-    }) as any
+      } as any
+    })
 
-    const primaryConn = getConnection(false)
-    const simulateSpy = vi.spyOn(primaryConn, 'simulateTransaction').mockResolvedValue({
+    const simulateSpy = vi.spyOn(Connection.prototype, 'simulateTransaction').mockResolvedValue({
       context: { slot: 100 },
       value: {
         err: null,
@@ -270,7 +270,7 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
       const result = await closePosition({ position_address: positionAddress })
       expect(result.success).toBe(true)
     } finally {
-      global.fetch = originalFetch
+      fetchSpy.mockRestore()
     }
 
     expect(simulateSpy).toHaveBeenCalledWith(
