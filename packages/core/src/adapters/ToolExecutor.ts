@@ -452,12 +452,12 @@ const toolMap: Record<string, ToolFn> = {
   close_position: closePosition as unknown as ToolFn,
   close_all_positions: ((args: Record<string, unknown> = {}) => {
     const skipSwap = Boolean(args.skipSwap || args.skip_swap)
-    return closeAllPositions(skipSwap)
+    return closeAllPositionsUnlocked(skipSwap)
   }) as ToolFn,
   get_wallet_balance: getWalletBalances as unknown as ToolFn,
   swap_all_tokens_to_sol: ((args: Record<string, unknown> = {}) => {
     const skipMints = (args.skipMints as string[]) || (args.skip_mints as string[]) || []
-    return swapAllTokensToSol(Array.isArray(skipMints) ? skipMints : [])
+    return swapAllTokensToSolUnlocked(Array.isArray(skipMints) ? skipMints : [])
   }) as ToolFn,
   swap_token: swapToken as unknown as ToolFn,
   get_top_lpers: studyTopLPers as unknown as ToolFn,
@@ -823,13 +823,20 @@ const toolMap: Record<string, ToolFn> = {
 
 // ─── Protected tools ───────────────────────────────────────────
 
-const WRITE_TOOLS = new Set(['deploy_position', 'claim_fees', 'close_position', 'swap_token'])
-const PROTECTED_TOOLS = new Set([...WRITE_TOOLS, 'self_update'])
+export const WRITE_TOOLS = new Set([
+  'deploy_position',
+  'claim_fees',
+  'close_position',
+  'close_all_positions',
+  'swap_token',
+  'swap_all_tokens_to_sol',
+])
+export const PROTECTED_TOOLS = new Set([...WRITE_TOOLS, 'self_update'])
 
-const deployPositionMutex = new Mutex()
+export const writeToolsMutex = new Mutex()
 
-async function withDeployPositionLock<T>(operation: () => Promise<T>): Promise<T> {
-  return deployPositionMutex.runExclusive(operation)
+export async function withWriteToolsLock<T>(operation: () => Promise<T>): Promise<T> {
+  return writeToolsMutex.runExclusive(operation)
 }
 
 /**
@@ -929,6 +936,16 @@ export async function swapAllTokensToSol(skipMintsInput: string[] | { skipMints?
   failed: number
   results: any[]
 }> {
+  return withWriteToolsLock(() => swapAllTokensToSolUnlocked(skipMintsInput))
+}
+
+export async function swapAllTokensToSolUnlocked(skipMintsInput: string[] | { skipMints?: string[] } = []): Promise<{
+  total: number
+  skipped: number
+  successful: number
+  failed: number
+  results: any[]
+}> {
   let skipMints: string[] = []
   if (Array.isArray(skipMintsInput)) {
     skipMints = skipMintsInput
@@ -1013,6 +1030,17 @@ export async function closeAllPositions(
   failed: number
   results: any[]
 }> {
+  return withWriteToolsLock(() => closeAllPositionsUnlocked(skipSwapInput))
+}
+
+export async function closeAllPositionsUnlocked(
+  skipSwapInput: boolean | { skipSwap?: boolean; skip_swap?: boolean } = false,
+): Promise<{
+  total: number
+  successful: number
+  failed: number
+  results: any[]
+}> {
   let skipSwap = false
   if (typeof skipSwapInput === 'boolean') {
     skipSwap = skipSwapInput
@@ -1031,7 +1059,7 @@ export async function closeAllPositions(
 
   for (const pos of positions) {
     try {
-      const res = (await executeTool('close_position', {
+      const res = (await executeToolUnlocked('close_position', {
         position_address: pos.position,
         skip_swap: skipSwap,
         reason: 'close all',
@@ -1065,8 +1093,8 @@ export async function closeAllPositions(
  */
 export async function executeTool(name: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
   const normalizedName = name.replace(/<.*$/, '').trim()
-  if (normalizedName === 'deploy_position') {
-    return withDeployPositionLock(() => executeToolUnlocked(normalizedName, args))
+  if (WRITE_TOOLS.has(normalizedName)) {
+    return withWriteToolsLock(() => executeToolUnlocked(normalizedName, args))
   }
   return executeToolUnlocked(normalizedName, args)
 }

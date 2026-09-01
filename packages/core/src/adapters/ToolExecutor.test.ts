@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../config/Config.js'
 import * as MeteoraAdapter from './blockchain/MeteoraAdapter.js'
 import * as WalletAdapter from './blockchain/WalletAdapter.js'
-import { executeTool, swapAllTokensToSol, swapBaseToSolWithRetry } from './ToolExecutor.js'
+import {
+  closeAllPositions,
+  executeTool,
+  swapAllTokensToSol,
+  swapBaseToSolWithRetry,
+  WRITE_TOOLS,
+  writeToolsMutex,
+} from './ToolExecutor.js'
 
 // Mock the WalletAdapter functions
 vi.mock('./blockchain/WalletAdapter.js', () => ({
@@ -378,6 +385,306 @@ describe('ToolExecutor - deploy_position serialization', () => {
       success: true,
     })
     expect(MeteoraAdapter.deployPosition).toHaveBeenCalledTimes(1)
+  })
+
+  it('defines WRITE_TOOLS containing all mutating tools and locks writeToolsMutex during execution', async () => {
+    expect(WRITE_TOOLS).toEqual(
+      new Set([
+        'deploy_position',
+        'claim_fees',
+        'close_position',
+        'close_all_positions',
+        'swap_token',
+        'swap_all_tokens_to_sol',
+      ]),
+    )
+
+    let lockObserved = false
+    let releaseSwap!: () => void
+    const swapFinished = new Promise<void>((resolve) => {
+      releaseSwap = resolve
+    })
+
+    vi.mocked(WalletAdapter.swapToken).mockImplementation(async () => {
+      lockObserved = writeToolsMutex.isLocked()
+      await swapFinished
+      return { success: true, tx: 'swap-tx' } as any
+    })
+
+    expect(writeToolsMutex.isLocked()).toBe(false)
+    const pendingSwap = executeTool('swap_token', {
+      input_mint: 'TOKEN_A',
+      output_mint: 'SOL',
+      amount: 100,
+    })
+
+    await vi.waitFor(() => expect(writeToolsMutex.isLocked()).toBe(true))
+    releaseSwap()
+    await pendingSwap
+
+    expect(lockObserved).toBe(true)
+    expect(writeToolsMutex.isLocked()).toBe(false)
+  })
+
+  it('serializes concurrent swap_token calls to prevent parallel execution', async () => {
+    let inFlightSwaps = 0
+    let maxInFlightSwaps = 0
+    let releaseFirstSwap!: () => void
+    const firstSwapFinished = new Promise<void>((resolve) => {
+      releaseFirstSwap = resolve
+    })
+
+    vi.mocked(WalletAdapter.swapToken).mockImplementation(async () => {
+      inFlightSwaps++
+      maxInFlightSwaps = Math.max(maxInFlightSwaps, inFlightSwaps)
+      if (inFlightSwaps === 1) await firstSwapFinished
+      inFlightSwaps--
+      return { success: true, tx: `tx-${Date.now()}` } as any
+    })
+
+    const swap1 = executeTool('swap_token', {
+      input_mint: 'TOKEN_A',
+      output_mint: 'SOL',
+      amount: 100,
+    })
+    const swap2 = executeTool('swap_token', {
+      input_mint: 'TOKEN_B',
+      output_mint: 'SOL',
+      amount: 200,
+    })
+
+    await vi.waitFor(() => expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(1))
+    expect(maxInFlightSwaps).toBe(1)
+
+    releaseFirstSwap()
+    await Promise.all([swap1, swap2])
+
+    expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(2)
+    expect(maxInFlightSwaps).toBe(1)
+  })
+
+  it('serializes concurrent claim_fees calls', async () => {
+    let inFlightClaims = 0
+    let maxInFlightClaims = 0
+    let releaseFirstClaim!: () => void
+    const firstClaimFinished = new Promise<void>((resolve) => {
+      releaseFirstClaim = resolve
+    })
+
+    vi.mocked(MeteoraAdapter.claimFees).mockImplementation(async () => {
+      inFlightClaims++
+      maxInFlightClaims = Math.max(maxInFlightClaims, inFlightClaims)
+      if (inFlightClaims === 1) await firstClaimFinished
+      inFlightClaims--
+      return { success: true, tx: `tx-claim-${Date.now()}` } as any
+    })
+
+    const claim1 = executeTool('claim_fees', { position_address: 'pos-1' })
+    const claim2 = executeTool('claim_fees', { position_address: 'pos-2' })
+
+    await vi.waitFor(() => expect(MeteoraAdapter.claimFees).toHaveBeenCalledTimes(1))
+    expect(maxInFlightClaims).toBe(1)
+
+    releaseFirstClaim()
+    await Promise.all([claim1, claim2])
+
+    expect(MeteoraAdapter.claimFees).toHaveBeenCalledTimes(2)
+    expect(maxInFlightClaims).toBe(1)
+  })
+
+  it('serializes concurrent close_position calls', async () => {
+    let inFlightCloses = 0
+    let maxInFlightCloses = 0
+    let releaseFirstClose!: () => void
+    const firstCloseFinished = new Promise<void>((resolve) => {
+      releaseFirstClose = resolve
+    })
+
+    vi.mocked(MeteoraAdapter.closePosition).mockImplementation(async () => {
+      inFlightCloses++
+      maxInFlightCloses = Math.max(maxInFlightCloses, inFlightCloses)
+      if (inFlightCloses === 1) await firstCloseFinished
+      inFlightCloses--
+      return { success: true, position: 'pos-closed' } as any
+    })
+
+    const close1 = executeTool('close_position', { position_address: 'pos-1', skip_swap: true })
+    const close2 = executeTool('close_position', { position_address: 'pos-2', skip_swap: true })
+
+    await vi.waitFor(() => expect(MeteoraAdapter.closePosition).toHaveBeenCalledTimes(1))
+    expect(maxInFlightCloses).toBe(1)
+
+    releaseFirstClose()
+    await Promise.all([close1, close2])
+
+    expect(MeteoraAdapter.closePosition).toHaveBeenCalledTimes(2)
+    expect(maxInFlightCloses).toBe(1)
+  })
+
+  it('serializes close_all_positions without deadlocking on internal close_position calls', async () => {
+    vi.mocked(MeteoraAdapter.getMyPositions).mockResolvedValue({
+      positions: [
+        { position: 'pos-1', base_mint: 'mint1', pool: 'pool1' },
+        { position: 'pos-2', base_mint: 'mint2', pool: 'pool2' },
+      ],
+      total_positions: 2,
+    } as any)
+
+    vi.mocked(MeteoraAdapter.closePosition).mockResolvedValue({
+      success: true,
+      position: 'pos-closed',
+      base_mint: 'mint1',
+      pool_name: 'pool1',
+    } as any)
+
+    const result = (await executeTool('close_all_positions', { skip_swap: true })) as any
+
+    expect(result).toBeDefined()
+    expect(result.successful).toBe(2)
+    expect(MeteoraAdapter.closePosition).toHaveBeenCalledTimes(2)
+
+    // Also verify direct function invocation works
+    const directResult = await closeAllPositions(true)
+    expect(directResult.successful).toBe(2)
+    expect(MeteoraAdapter.closePosition).toHaveBeenCalledTimes(4)
+  })
+
+  it('serializes swap_all_tokens_to_sol calls', async () => {
+    let inFlightBatchSwaps = 0
+    let maxInFlightBatchSwaps = 0
+    let releaseFirstBatch!: () => void
+    const firstBatchFinished = new Promise<void>((resolve) => {
+      releaseFirstBatch = resolve
+    })
+
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      tokens: [{ mint: 'TOKEN_XYZ', symbol: 'XYZ', balance: 100, usd: 5 }],
+    } as any)
+
+    vi.mocked(WalletAdapter.swapToken).mockImplementation(async () => {
+      inFlightBatchSwaps++
+      maxInFlightBatchSwaps = Math.max(maxInFlightBatchSwaps, inFlightBatchSwaps)
+      if (inFlightBatchSwaps === 1) await firstBatchFinished
+      inFlightBatchSwaps--
+      return { success: true, tx: 'batch-tx' } as any
+    })
+
+    const batch1 = executeTool('swap_all_tokens_to_sol', {})
+    const batch2 = executeTool('swap_all_tokens_to_sol', {})
+
+    await vi.waitFor(() => expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(1))
+    expect(maxInFlightBatchSwaps).toBe(1)
+
+    releaseFirstBatch()
+    await Promise.all([batch1, batch2])
+
+    expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(2)
+    expect(maxInFlightBatchSwaps).toBe(1)
+  })
+
+  it('serializes heterogeneous write tools (swap_token vs deploy_position vs claim_fees)', async () => {
+    let inFlightWrites = 0
+    let maxInFlightWrites = 0
+    let releaseFirstWrite!: () => void
+    const firstWriteFinished = new Promise<void>((resolve) => {
+      releaseFirstWrite = resolve
+    })
+
+    vi.mocked(WalletAdapter.swapToken).mockImplementation(async () => {
+      inFlightWrites++
+      maxInFlightWrites = Math.max(maxInFlightWrites, inFlightWrites)
+      if (inFlightWrites === 1) await firstWriteFinished
+      inFlightWrites--
+      return { success: true, tx: 'swap-tx' } as any
+    })
+
+    vi.mocked(MeteoraAdapter.claimFees).mockImplementation(async () => {
+      inFlightWrites++
+      maxInFlightWrites = Math.max(maxInFlightWrites, inFlightWrites)
+      inFlightWrites--
+      return { success: true, tx: 'claim-tx' } as any
+    })
+
+    const write1 = executeTool('swap_token', {
+      input_mint: 'TOKEN_A',
+      output_mint: 'SOL',
+      amount: 10,
+    })
+    const write2 = executeTool('claim_fees', {
+      position_address: 'pos-1',
+    })
+
+    await vi.waitFor(() => expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(1))
+    expect(maxInFlightWrites).toBe(1)
+
+    releaseFirstWrite()
+    await Promise.all([write1, write2])
+
+    expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(1)
+    expect(MeteoraAdapter.claimFees).toHaveBeenCalledTimes(1)
+    expect(maxInFlightWrites).toBe(1)
+  })
+
+  it('allows concurrent read-only tools without lock contention', async () => {
+    let inFlightReads = 0
+    let maxInFlightReads = 0
+    let releaseReads!: () => void
+    const readsHoldPromise = new Promise<void>((resolve) => {
+      releaseReads = resolve
+    })
+
+    vi.mocked(WalletAdapter.getWalletBalances).mockImplementation(async () => {
+      inFlightReads++
+      maxInFlightReads = Math.max(maxInFlightReads, inFlightReads)
+      await readsHoldPromise
+      inFlightReads--
+      return { sol: 5, tokens: [] } as any
+    })
+
+    const read1 = executeTool('get_wallet_balance', {})
+    const read2 = executeTool('get_wallet_balance', {})
+    const read3 = executeTool('get_wallet_balance', {})
+
+    await vi.waitFor(() => expect(inFlightReads).toBe(3))
+    expect(maxInFlightReads).toBe(3)
+    expect(writeToolsMutex.isLocked()).toBe(false)
+
+    releaseReads()
+    await Promise.all([read1, read2, read3])
+  })
+
+  it('allows read tools to execute concurrently while a write tool holds the mutex (mixed contention)', async () => {
+    let releaseWrite!: () => void
+    const writeHoldPromise = new Promise<void>((resolve) => {
+      releaseWrite = resolve
+    })
+
+    vi.mocked(WalletAdapter.swapToken).mockImplementation(async () => {
+      await writeHoldPromise
+      return { success: true, tx: 'swap-tx' } as any
+    })
+
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      sol: 10,
+      tokens: [],
+    } as any)
+
+    const pendingWrite = executeTool('swap_token', {
+      input_mint: 'TOKEN_A',
+      output_mint: 'SOL',
+      amount: 50,
+    })
+
+    await vi.waitFor(() => expect(writeToolsMutex.isLocked()).toBe(true))
+
+    // Read tool executes and finishes while the write tool is STILL in-flight
+    const readResult = await executeTool('get_wallet_balance', {})
+    expect(readResult).toBeDefined()
+    expect(writeToolsMutex.isLocked()).toBe(true)
+
+    releaseWrite()
+    await pendingWrite
+    expect(writeToolsMutex.isLocked()).toBe(false)
   })
 })
 
