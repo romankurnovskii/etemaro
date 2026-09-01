@@ -217,6 +217,7 @@ export const LESSONS_FILENAME = 'lessons.json'
 export const POOL_MEMORY_FILENAME = 'pool-memory.json'
 export const SIGNAL_WEIGHTS_FILENAME = 'signal-weights.json'
 export const DISCORD_SIGNALS_FILENAME = 'discord-signals.json'
+export const TELEGRAM_QUEUE_FILENAME = 'telegram_queue.json'
 
 // Source identifiers and constants
 export const DEFAULT_ENTRY_SOURCE = 'market'
