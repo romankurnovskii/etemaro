@@ -5,27 +5,24 @@
 
 export class Mutex {
   private queue: Promise<void> = Promise.resolve()
+  private _locked = false
+
+  /**
+   * Return true if the mutex is currently locked.
+   */
+  isLocked(): boolean {
+    return this._locked
+  }
 
   /**
    * Execute an asynchronous or synchronous callback exclusively under the mutex lock.
    */
   async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
-    let release!: () => void
-    const waiter = new Promise<void>((resolve) => {
-      release = resolve
-    })
-
-    const previous = this.queue
-    this.queue = previous.then(
-      () => waiter,
-      () => waiter,
-    )
-
-    await previous
+    const release = await this.acquire()
     try {
       return await fn()
     } finally {
-      release?.()
+      release()
     }
   }
 
@@ -45,6 +42,10 @@ export class Mutex {
     )
 
     await previous
-    return release!
+    this._locked = true
+    return () => {
+      this._locked = false
+      release?.()
+    }
   }
 }
