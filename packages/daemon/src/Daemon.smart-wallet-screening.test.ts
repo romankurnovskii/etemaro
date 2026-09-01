@@ -7,6 +7,7 @@
 
 import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { loadJsonFile as actualLoadJsonFile, saveJsonFile as actualSaveJsonFile } from '../../core/src/shared/utils.js'
 
 // ─── Module-level mocks ─────────────────────────────────────────────────────
 // runSmartWalletScreening uses core imports directly (not through adapters):
@@ -207,6 +208,10 @@ vi.mock('@etemaro/core', () => ({
     updateSnapshotPositions: mockUpdateSnapshotPositions,
   },
   token: { getPrice: vi.fn(), getDecimals: vi.fn(), getSymbol: vi.fn() },
+  saveJsonFile: actualSaveJsonFile,
+  loadJsonFile: actualLoadJsonFile,
+  loadJsonFileWithInfo: vi.fn(),
+  TELEGRAM_QUEUE_FILENAME: 'telegram_queue.json',
 }))
 
 // Must import Daemon AFTER vi.mock so it gets the mocked module

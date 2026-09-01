@@ -38,6 +38,7 @@ import {
   getTrackedPositions,
   hivemind,
   isPnlSuspect,
+  loadJsonFile,
   loadJsonFileWithInfo,
   log,
   meteora,
@@ -47,11 +48,13 @@ import {
   SMART_WALLETS_FILENAME,
   STATE_FILENAME,
   STRATEGY_LIB_FILENAME,
+  saveJsonFile,
   screening,
   setLastBriefingDate,
   setPositionInstruction,
   sharedDataPath,
   strategyLibraryPath,
+  TELEGRAM_QUEUE_FILENAME,
   TOKEN_BLACKLIST_FILENAME,
   telegram,
   token,
@@ -62,7 +65,6 @@ import {
   wallet,
 } from '@etemaro/core'
 import cron from 'node-cron'
-import { saveJsonFile } from '../../core/src/shared/utils.js'
 // These will be injected or resolved at runtime by the adapter layer.
 
 export interface DaemonAdapters {
@@ -292,6 +294,7 @@ export class Daemon {
 
   // Telegram queue
   private telegramQueue: any[] = []
+  private telegramDrainInterval: ReturnType<typeof setInterval> | null = null
   private readonly MAX_TELEGRAM_QUEUE = 5
 
   // REPL
@@ -495,6 +498,10 @@ export class Daemon {
       .catch((error: any) => log('hivemind_warn', `Bootstrap failed: ${error.message}`))
     this.adapters.hivemind.startHiveMindBackgroundSync()
 
+    // Load any persisted Telegram messages from previous session
+    this.loadTelegramQueue()
+    this.startTelegramDrainTimer()
+
     // Register cron restarter
     this.adapters.toolExecutor.registerCronRestarter(() => {
       if (this.cronStarted) this.startCronJobs()
@@ -513,6 +520,9 @@ export class Daemon {
         log('cron_error', `Failed to check missed briefing on startup: ${err?.message || err}`)
       })
       this.adapters.telegram.startPolling((msg: any) => this.telegramHandler(msg))
+      this.drainTelegramQueue().catch((err: any) => {
+        log('telegram_warn', `Initial telegram queue drain failed: ${err?.message || err}`)
+      })
       try {
         await this.runScreeningCycle({ silent: false })
       } catch (e: any) {
@@ -533,6 +543,7 @@ export class Daemon {
     this.shuttingDown = true
 
     log('shutdown', `Received ${signal}. Shutting down...`)
+    this.stopTelegramDrainTimer()
     this.adapters.telegram.stopPolling()
     if (this.adapters.desktop) {
       this.adapters.desktop.stopServer()
@@ -581,6 +592,7 @@ export class Daemon {
     for (const task of this.cronTasks) task.stop()
     if (this.pnlPollInterval) clearInterval(this.pnlPollInterval)
     if (this.opportunityPollInterval) clearInterval(this.opportunityPollInterval)
+    this.stopTelegramDrainTimer()
     this.cronTasks = []
     this.pnlPollInterval = null
     this.opportunityPollInterval = null
@@ -590,6 +602,7 @@ export class Daemon {
 
   startCronJobs(): void {
     this.stopCronJobs() // stop any running tasks before (re)starting
+    this.startTelegramDrainTimer()
     this.adapters.domain.validateActiveStrategy()
 
     const mgmtTask = cron.schedule(`*/${Math.max(1, config.schedule.managementIntervalMin)} * * * *`, () =>
@@ -2102,6 +2115,7 @@ IMPORTANT:
     if (this.managementBusy || this.screeningBusy || this.pnlPollBusy || this.opportunityPollBusy || this.busy) {
       if (this.telegramQueue.length < this.MAX_TELEGRAM_QUEUE) {
         this.telegramQueue.push(msg)
+        this.saveTelegramQueue()
         await this.sendTelegramSafe(`⏳ Queued (${this.telegramQueue.length} in queue): "${text.slice(0, 60)}"`)
       } else {
         await this.sendTelegramSafe('Queue is full (5 messages). Wait for the agent to finish.')
@@ -2626,6 +2640,53 @@ IMPORTANT:
     this.ttyInterface.prompt(true)
   }
 
+  private getTelegramQueuePath(): string {
+    return sharedDataPath(TELEGRAM_QUEUE_FILENAME)
+  }
+
+  private loadTelegramQueue(): void {
+    try {
+      const queuePath = this.getTelegramQueuePath()
+      const loaded = loadJsonFile<unknown[]>(queuePath, [])
+      if (Array.isArray(loaded)) {
+        this.telegramQueue = loaded.filter(
+          (item) => item && (typeof item === 'string' || typeof (item as any)?.text === 'string'),
+        )
+        if (this.telegramQueue.length > 0) {
+          log('startup', `Restored ${this.telegramQueue.length} queued Telegram message(s) from ${queuePath}`)
+        }
+      }
+    } catch (err: any) {
+      log('telegram_warn', `Failed to load persisted telegram queue: ${err?.message || err}`)
+      this.telegramQueue = []
+    }
+  }
+
+  private saveTelegramQueue(): void {
+    try {
+      const queuePath = this.getTelegramQueuePath()
+      saveJsonFile(queuePath, this.telegramQueue)
+    } catch (err: any) {
+      log('telegram_warn', `Failed to persist telegram queue: ${err?.message || err}`)
+    }
+  }
+
+  private startTelegramDrainTimer(): void {
+    if (this.telegramDrainInterval) return
+    this.telegramDrainInterval = setInterval(() => {
+      this.drainTelegramQueue().catch((err: any) => {
+        log('telegram_warn', `Periodic telegram queue drain error: ${err?.message || err}`)
+      })
+    }, 5000)
+  }
+
+  private stopTelegramDrainTimer(): void {
+    if (this.telegramDrainInterval) {
+      clearInterval(this.telegramDrainInterval)
+      this.telegramDrainInterval = null
+    }
+  }
+
   private async drainTelegramQueue(): Promise<void> {
     if (this.draining || this.shuttingDown) return
     this.draining = true
@@ -2644,6 +2705,7 @@ IMPORTANT:
           return t === '/stop'
         })
         const queued = stopIdx !== -1 ? this.telegramQueue.splice(stopIdx, 1)[0] : this.telegramQueue.shift()
+        this.saveTelegramQueue()
         await this.telegramHandler(queued)
       }
     } finally {
