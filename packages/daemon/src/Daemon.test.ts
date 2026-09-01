@@ -623,3 +623,89 @@ describe('Telegram /stop & Busy Cycle Queue Draining (#236)', () => {
     expect(exitSpy).toHaveBeenCalledWith(0)
   })
 })
+
+describe('Telegram Queue Persistence & Periodic Autonomous Draining (#237)', () => {
+  let daemon: Daemon
+  let adapters: DaemonAdapters
+
+  beforeEach(() => {
+    adapters = createMockAdapters()
+    daemon = new Daemon(adapters)
+    vi.clearAllMocks()
+  })
+
+  it('AC-1: enqueuing messages persists them to disk, and draining updates disk state', async () => {
+    const queuePath = (daemon as any).getTelegramQueuePath()
+    // Start with empty queue on disk
+    ;(daemon as any).telegramQueue = []
+    ;(daemon as any).saveTelegramQueue()
+
+    // Enqueue message while management is busy
+    ;(daemon as any).managementBusy = true
+    await (daemon as any).telegramHandler({ text: '/help' })
+
+    expect((daemon as any).telegramQueue.length).toBe(1)
+    const { loadJsonFile } = await import('@etemaro/core')
+    const onDisk1 = loadJsonFile<any[]>(queuePath, [])
+    expect(onDisk1.length).toBe(1)
+    expect(onDisk1[0].text).toBe('/help')
+
+    // Release lock and drain queue
+    ;(daemon as any).managementBusy = false
+    await (daemon as any).drainTelegramQueue()
+
+    expect((daemon as any).telegramQueue.length).toBe(0)
+    const onDisk2 = loadJsonFile<any[]>(queuePath, [])
+    expect(onDisk2.length).toBe(0)
+  })
+
+  it('AC-2: startup restores queued messages from disk and drains them when idle', async () => {
+    adapters.telegram.isEnabled = vi.fn().mockReturnValue(true)
+    const queuePath = (daemon as any).getTelegramQueuePath()
+    const { saveJsonFile } = await import('@etemaro/core')
+    saveJsonFile(queuePath, [{ text: '/help' }, { text: '/config' }])
+
+    const freshDaemon = new Daemon(adapters)
+    ;(freshDaemon as any).loadTelegramQueue()
+
+    expect((freshDaemon as any).telegramQueue.length).toBe(2)
+
+    await (freshDaemon as any).drainTelegramQueue()
+
+    expect((freshDaemon as any).telegramQueue.length).toBe(0)
+    expect(adapters.telegram.sendMessage).toHaveBeenCalled()
+  })
+
+  it('AC-3: autonomous periodic drain timer invokes drainTelegramQueue periodically', async () => {
+    const _drainSpy = vi.spyOn(daemon as any, 'drainTelegramQueue').mockResolvedValue(undefined)
+
+    ;(daemon as any).startTelegramDrainTimer()
+    expect((daemon as any).telegramDrainInterval).not.toBeNull()
+
+    // Calling start again is idempotent
+    const initialInterval = (daemon as any).telegramDrainInterval
+    ;(daemon as any).startTelegramDrainTimer()
+    expect((daemon as any).telegramDrainInterval).toBe(initialInterval)
+
+    // Fast-forward or wait for tick
+    await new Promise((r) => setTimeout(r, 10))
+    ;(daemon as any).stopTelegramDrainTimer()
+    expect((daemon as any).telegramDrainInterval).toBeNull()
+  })
+
+  it('AC-4: shutdown and stopCronJobs clear the periodic drain timer', async () => {
+    ;(daemon as any).startTelegramDrainTimer()
+    expect((daemon as any).telegramDrainInterval).not.toBeNull()
+
+    daemon.stopCronJobs()
+    expect((daemon as any).telegramDrainInterval).toBeNull()
+
+    ;(daemon as any).startTelegramDrainTimer()
+    expect((daemon as any).telegramDrainInterval).not.toBeNull()
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any)
+    await (daemon as any).shutdown('test')
+    expect((daemon as any).telegramDrainInterval).toBeNull()
+    exitSpy.mockRestore()
+  })
+})

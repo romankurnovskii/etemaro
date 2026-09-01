@@ -271,6 +271,12 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
       value: [{ confirmationStatus: 'confirmed', slot: 100, err: null, confirmations: 1 }],
     } as any)
 
+    vi.spyOn(Connection.prototype, 'sendRawTransaction').mockResolvedValue('mock_sig_close_pos')
+    vi.spyOn(Connection.prototype, 'confirmTransaction').mockResolvedValue({
+      context: { slot: 100 },
+      value: { err: null },
+    } as any)
+
     vi.spyOn(Connection.prototype, 'getLatestBlockhash').mockResolvedValue({
       blockhash: Keypair.generate().publicKey.toString(),
       lastValidBlockHeight: 999999,
