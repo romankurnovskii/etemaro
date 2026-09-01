@@ -869,7 +869,7 @@ export async function swapBaseToSolWithRetry(
         return { swapped: attempt > 1, result: null, token: null }
       }
       // If USD value is known and strictly below dust threshold (< minUsd), skip swap
-      if (typeof token.usd === 'number' && token.usd > 0 && token.usd < minUsd) {
+      if (typeof token.usd === 'number' && token.usd >= 0 && token.usd < minUsd) {
         return { swapped: attempt > 1, result: null, token: null }
       }
       lastToken = token
@@ -978,7 +978,7 @@ export async function swapAllTokensToSolUnlocked(skipMintsInput: string[] | { sk
     total++
     const symbolUpper = (token.symbol || '').toUpperCase()
     const isSolOrUsdc = symbolUpper === 'SOL' || symbolUpper === 'WSOL' || symbolUpper === 'USDC'
-    const isDust = typeof token.usd === 'number' && token.usd > 0 && token.usd < 0.02
+    const isDust = typeof token.usd === 'number' && token.usd >= 0 && token.usd < 0.02
     const hasBalance = (token.balance ?? 0) > 0
 
     if (skips.has(token.mint) || isSolOrUsdc || !hasBalance || isDust) {
