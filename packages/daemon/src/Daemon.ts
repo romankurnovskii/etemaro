@@ -278,6 +278,7 @@ export class Daemon {
   private opportunityPollBusy = false
   private busy = false
   private shuttingDown = false
+  private draining = false
   private cronStarted = false
 
   // Cron tasks
@@ -2626,22 +2627,27 @@ IMPORTANT:
   }
 
   private async drainTelegramQueue(): Promise<void> {
-    if (this.shuttingDown) return
-    while (
-      this.telegramQueue.length > 0 &&
-      !this.managementBusy &&
-      !this.screeningBusy &&
-      !this.pnlPollBusy &&
-      !this.opportunityPollBusy &&
-      !this.busy &&
-      !this.shuttingDown
-    ) {
-      const stopIdx = this.telegramQueue.findIndex((m: any) => {
-        const t = (typeof m === 'string' ? m : m?.text)?.trim()
-        return t === '/stop'
-      })
-      const queued = stopIdx !== -1 ? this.telegramQueue.splice(stopIdx, 1)[0] : this.telegramQueue.shift()
-      await this.telegramHandler(queued)
+    if (this.draining || this.shuttingDown) return
+    this.draining = true
+    try {
+      while (
+        this.telegramQueue.length > 0 &&
+        !this.managementBusy &&
+        !this.screeningBusy &&
+        !this.pnlPollBusy &&
+        !this.opportunityPollBusy &&
+        !this.busy &&
+        !this.shuttingDown
+      ) {
+        const stopIdx = this.telegramQueue.findIndex((m: any) => {
+          const t = (typeof m === 'string' ? m : m?.text)?.trim()
+          return t === '/stop'
+        })
+        const queued = stopIdx !== -1 ? this.telegramQueue.splice(stopIdx, 1)[0] : this.telegramQueue.shift()
+        await this.telegramHandler(queued)
+      }
+    } finally {
+      this.draining = false
     }
   }
 
