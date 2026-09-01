@@ -272,5 +272,90 @@ describe('WalletAdapter', () => {
       await getWalletBalances()
       expect(jupPriceCount).toBe(2)
     })
+
+    it('populates decimals cache from getWalletBalances and avoids getParsedAccountInfo during swapToken', async () => {
+      process.env.JUPITER_API_KEY = 'test-jup-key'
+      delete process.env.DRY_RUN
+      const { clearMintDecimalsCache, getCachedMintDecimals } = await import('./WalletAdapter.js')
+      clearMintDecimalsCache()
+
+      const customMint = 'CUSTOM_MINT_111111111111111111111111111111'
+      vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner').mockResolvedValueOnce({
+        value: [
+          {
+            account: {
+              data: {
+                parsed: {
+                  info: {
+                    mint: customMint,
+                    tokenAmount: { uiAmount: 50, decimals: 6 },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      } as any)
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        const urlStr = String(url)
+        if (urlStr.includes('jup.ag/price/v2')) {
+          return {
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            headers: new Headers(),
+            json: async () => ({ data: {} }),
+          } as any
+        }
+        if (urlStr.includes('jup.ag/swap/v2/order')) {
+          const tx = new (await import('@solana/web3.js')).Transaction()
+          tx.recentBlockhash = '11111111111111111111111111111111'
+          tx.feePayer = testKeypair.publicKey
+          return {
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            headers: new Headers(),
+            json: async () => ({
+              transaction: Buffer.from(tx.serialize({ requireAllSignatures: false })).toString('base64'),
+              requestId: 'req_custom',
+            }),
+          } as any
+        }
+        if (urlStr.includes('jup.ag/swap/v2/execute')) {
+          return {
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            headers: new Headers(),
+            json: async () => ({
+              status: 'Success',
+              signature: 'mock_tx_custom',
+              inputAmountResult: 10,
+              outputAmountResult: 1,
+            }),
+          } as any
+        }
+        return { ok: false, status: 404, headers: new Headers() } as any
+      })
+
+      const getParsedAccountInfoSpy = vi.spyOn(Connection.prototype, 'getParsedAccountInfo')
+
+      // 1. Fetch wallet balances -> populates cache
+      await getWalletBalances({ force: true })
+      expect(getCachedMintDecimals(customMint)).toBe(6)
+
+      // 2. Perform swap with cached token
+      const res = await swapToken({
+        input_mint: customMint,
+        output_mint: 'So11111111111111111111111111111111111111112',
+        amount: 10,
+      })
+
+      expect('success' in res && res.success).toBe(true)
+      // 0 RPC network calls for decimals because it was in cache!
+      expect(getParsedAccountInfoSpy).not.toHaveBeenCalled()
+    })
   })
 })
