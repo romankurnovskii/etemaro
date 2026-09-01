@@ -12,64 +12,80 @@
  * @dependencies node-cron
  * @sideEffects On-chain transactions via deploy/claim/close/swap; writes user-config.json; sends Telegram notifications; starts child processes on self-update
  */
-import fs from 'node:fs';
-import { execSync, spawn } from 'node:child_process';
+
+import { execSync, spawn } from 'node:child_process'
+import fs from 'node:fs'
 
 // ─── Shared imports ────────────────────────────────────────────
-import { config, } from '../config/Config.js';
-import { sleep } from '../utils/time.js';
-import { REPO_ROOT, USER_CONFIG_PATH, getMinSafeBinsBelow } from '../shared/constants.js';
-import { log, logAction, logStructured } from '../shared/logger.js';
-import type { AgentRole } from '../shared/types.js';
-
-// ─── Adapter imports ───────────────────────────────────────────
-import { discoverPools, getPoolDetail, getTopCandidates } from './blockchain/ScreeningAdapter.js';
-import {
-  getActiveBin,
-  deployPosition,
-  getMyPositions,
-  getWalletPositions,
-  getPositionPnl,
-  claimFees,
-  closePosition,
-  searchPools,
-} from './blockchain/MeteoraAdapter.js';
-import { getWalletBalances, swapToken } from './blockchain/WalletAdapter.js';
-import { studyTopLPers } from './blockchain/StudyAdapter.js';
-import { getTokenInfo, getTokenHolders, getTokenNarrative } from './blockchain/TokenDataAdapter.js';
-
+import { config } from '../config/Config.js'
+import { getRecentDecisions } from '../domain/decision-log.js'
+import { blockDev, listBlockedDevs, unblockDev } from '../domain/dev-blocklist.js'
 // ─── JS module imports (no type declarations) ─────────────────
 import {
   addLesson,
   clearAllLessons,
   clearPerformance,
-  removeLessonsByKeyword,
   getPerformanceHistory,
-  pinLesson,
-  unpinLesson,
   listLessons,
-} from '../domain/lessons.js';
+  pinLesson,
+  removeLessonsByKeyword,
+  unpinLesson,
+} from '../domain/lessons.js'
+import { addPoolNote, getPoolMemory } from '../domain/pool-memory.js'
 import {
-  setPositionInstruction,
+  addSmartWallet,
+  checkSmartWalletsOnPool,
+  listSmartWallets,
+  removeSmartWallet,
+} from '../domain/smart-wallets.js'
+import {
   getConsecutiveSwapFailures,
+  isHalted,
   recordSwapFailure,
   recordSwapSuccess,
-  isHalted,
-} from '../domain/state.js';
-import { getPoolMemory, addPoolNote } from '../domain/pool-memory.js';
-import { addStrategy, listStrategies, getStrategy, setActiveStrategy, removeStrategy } from '../domain/strategy-library.js';
-import { addToBlacklist, removeFromBlacklist, listBlacklist } from '../domain/token-blacklist.js';
-import { blockDev, unblockDev, listBlockedDevs } from '../domain/dev-blocklist.js';
-import { addSmartWallet, removeSmartWallet, listSmartWallets, checkSmartWalletsOnPool } from '../domain/smart-wallets.js';
-import { getRecentDecisions } from '../domain/decision-log.js';
-import { normalizeTimeframe, scaleScreeningToTimeframe } from '../shared/utils.js';
-import { Mutex } from '../shared/mutex.js';
-import { notifyDeploy, notifyClose, notifySwap, notifySwapError, notifyTransactionError } from './notifications/TelegramAdapter.js';
+  setPositionInstruction,
+} from '../domain/state.js'
+import {
+  addStrategy,
+  getStrategy,
+  listStrategies,
+  removeStrategy,
+  setActiveStrategy,
+} from '../domain/strategy-library.js'
+import { addToBlacklist, listBlacklist, removeFromBlacklist } from '../domain/token-blacklist.js'
+import { getMinSafeBinsBelow, REPO_ROOT, USER_CONFIG_PATH } from '../shared/constants.js'
+import { log, logAction, logStructured } from '../shared/logger.js'
+import { Mutex } from '../shared/mutex.js'
+import type { AgentRole } from '../shared/types.js'
+import { normalizeTimeframe, scaleScreeningToTimeframe } from '../shared/utils.js'
+import { sleep } from '../utils/time.js'
+import {
+  claimFees,
+  closePosition,
+  deployPosition,
+  getActiveBin,
+  getMyPositions,
+  getPositionPnl,
+  getWalletPositions,
+  searchPools,
+} from './blockchain/MeteoraAdapter.js'
+// ─── Adapter imports ───────────────────────────────────────────
+import { discoverPools, getPoolDetail, getTopCandidates } from './blockchain/ScreeningAdapter.js'
+import { studyTopLPers } from './blockchain/StudyAdapter.js'
+import { getTokenHolders, getTokenInfo, getTokenNarrative } from './blockchain/TokenDataAdapter.js'
+import { getWalletBalances, swapToken } from './blockchain/WalletAdapter.js'
+import {
+  notifyClose,
+  notifyDeploy,
+  notifySwap,
+  notifySwapError,
+  notifyTransactionError,
+} from './notifications/TelegramAdapter.js'
 
 // ─── Constants ─────────────────────────────────────────────────
 
-const POOL_DISCOVERY_BASE = 'https://pool-discovery-api.datapi.meteora.ag';
-const MIN_VOLATILITY_TIMEFRAME = '30m';
+const POOL_DISCOVERY_BASE = 'https://pool-discovery-api.datapi.meteora.ag'
+const MIN_VOLATILITY_TIMEFRAME = '30m'
 const TIMEFRAME_MINUTES: Record<string, number> = {
   '5m': 5,
   '30m': 30,
@@ -78,224 +94,236 @@ const TIMEFRAME_MINUTES: Record<string, number> = {
   '4h': 240,
   '12h': 720,
   '24h': 1440,
-};
+}
 
 // ─── Helper functions ──────────────────────────────────────────
 
 function numberOrNull(value: unknown): number | null {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
 }
 
 function getVolatilityTimeframe(sourceTimeframe: string | undefined): string {
-  const source = String(sourceTimeframe || '').trim();
-  const sourceMinutes = TIMEFRAME_MINUTES[source];
-  const minMinutes = TIMEFRAME_MINUTES[MIN_VOLATILITY_TIMEFRAME]!;
-  return sourceMinutes != null && sourceMinutes >= minMinutes ? source : MIN_VOLATILITY_TIMEFRAME;
+  const source = String(sourceTimeframe || '').trim()
+  const sourceMinutes = TIMEFRAME_MINUTES[source]
+  const minMinutes = TIMEFRAME_MINUTES[MIN_VOLATILITY_TIMEFRAME]!
+  return sourceMinutes != null && sourceMinutes >= minMinutes ? source : MIN_VOLATILITY_TIMEFRAME
 }
 
 function poolDetailTvl(pool: Record<string, unknown>): number | null {
-  return numberOrNull((pool as any)?.tvl ?? (pool as any)?.active_tvl ?? (pool as any)?.liquidity);
+  return numberOrNull((pool as any)?.tvl ?? (pool as any)?.active_tvl ?? (pool as any)?.liquidity)
 }
 
 function poolDetailBinStep(pool: Record<string, unknown>): number | null {
-  return numberOrNull((pool as any)?.dlmm_params?.bin_step ?? (pool as any)?.pool_config?.bin_step);
+  return numberOrNull((pool as any)?.dlmm_params?.bin_step ?? (pool as any)?.pool_config?.bin_step)
 }
 
-const DLMM_BASE = 'https://dlmm.datapi.meteora.ag';
-const DLMM_TIMEFRAME_BUCKETS = ['30m', '1h', '2h', '4h', '12h', '24h'] as const;
+const DLMM_BASE = 'https://dlmm.datapi.meteora.ag'
+const DLMM_TIMEFRAME_BUCKETS = ['30m', '1h', '2h', '4h', '12h', '24h'] as const
 
-type PoolDetailSource = 'discovery' | 'dlmm' | 'missing';
+type PoolDetailSource = 'discovery' | 'dlmm' | 'missing'
 
 interface PoolDetailFetchResult {
-  pool: Record<string, unknown> | null;
-  source: PoolDetailSource;
-  discoveryError?: string;
-  dlmmError?: string;
+  pool: Record<string, unknown> | null
+  source: PoolDetailSource
+  discoveryError?: string
+  dlmmError?: string
 }
 
 function dlmmTimeframeBucket(timeframe: string): string {
-  const sourceMinutes = TIMEFRAME_MINUTES[timeframe];
-  if (sourceMinutes == null) return '24h';
+  const sourceMinutes = TIMEFRAME_MINUTES[timeframe]
+  if (sourceMinutes == null) return '24h'
   for (const bucket of DLMM_TIMEFRAME_BUCKETS) {
-    if ((TIMEFRAME_MINUTES[bucket] ?? Infinity) >= sourceMinutes) return bucket;
+    if ((TIMEFRAME_MINUTES[bucket] ?? Infinity) >= sourceMinutes) return bucket
   }
-  return '24h';
+  return '24h'
 }
 
-function poolDetailTimeframeMetric(pool: Record<string, unknown> | null | undefined, key: string, timeframe: string): number | null {
-  const raw = (pool as any)?.[key];
-  if (raw == null) return null;
-  if (typeof raw === 'number') return numberOrNull(raw);
+function poolDetailTimeframeMetric(
+  pool: Record<string, unknown> | null | undefined,
+  key: string,
+  timeframe: string,
+): number | null {
+  const raw = (pool as any)?.[key]
+  if (raw == null) return null
+  if (typeof raw === 'number') return numberOrNull(raw)
   if (typeof raw === 'object') {
-    const bucket = dlmmTimeframeBucket(timeframe);
+    const bucket = dlmmTimeframeBucket(timeframe)
     const value =
-      (raw as Record<string, unknown>)[bucket] ?? (raw as Record<string, unknown>)['24h'] ?? Object.values(raw as Record<string, unknown>)[0];
-    return numberOrNull(value);
+      (raw as Record<string, unknown>)[bucket] ??
+      (raw as Record<string, unknown>)['24h'] ??
+      Object.values(raw as Record<string, unknown>)[0]
+    return numberOrNull(value)
   }
-  return numberOrNull(raw);
+  return numberOrNull(raw)
 }
 
 function poolDetailFeeActiveTvlRatio(pool: Record<string, unknown>): number | null {
-  const timeframe = String(config.screening.timeframe || '5m');
-  const direct = poolDetailTimeframeMetric(pool, 'fee_active_tvl_ratio', timeframe);
-  if (direct != null) return direct;
-  return poolDetailTimeframeMetric(pool, 'fee_tvl_ratio', timeframe);
+  const timeframe = String(config.screening.timeframe || '5m')
+  const direct = poolDetailTimeframeMetric(pool, 'fee_active_tvl_ratio', timeframe)
+  if (direct != null) return direct
+  return poolDetailTimeframeMetric(pool, 'fee_tvl_ratio', timeframe)
 }
 
 function poolDetailVolume(pool: Record<string, unknown>): number | null {
-  const timeframe = String(config.screening.timeframe || '5m');
-  return poolDetailTimeframeMetric(pool, 'volume', timeframe);
+  const timeframe = String(config.screening.timeframe || '5m')
+  return poolDetailTimeframeMetric(pool, 'volume', timeframe)
 }
 
 function poolDetailVolatility(pool: Record<string, unknown> | null | undefined): number | null {
-  return numberOrNull((pool as any)?.volatility);
+  return numberOrNull((pool as any)?.volatility)
 }
 
-async function fetchDiscoveryPoolDetail(poolAddress: string, timeframe: string): Promise<Record<string, unknown> | null> {
-  const encodedTimeframe = encodeURIComponent(timeframe);
-  const filter = encodeURIComponent(`pool_address=${poolAddress}`);
-  const url = `${POOL_DISCOVERY_BASE}/pools?page_size=1&filter_by=${filter}&timeframe=${encodedTimeframe}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Pool Discovery API error: ${res.status} ${res.statusText}`);
-  const data = (await res.json()) as { data?: Record<string, unknown>[] };
-  return (data?.data || [])[0] ?? null;
+async function fetchDiscoveryPoolDetail(
+  poolAddress: string,
+  timeframe: string,
+): Promise<Record<string, unknown> | null> {
+  const encodedTimeframe = encodeURIComponent(timeframe)
+  const filter = encodeURIComponent(`pool_address=${poolAddress}`)
+  const url = `${POOL_DISCOVERY_BASE}/pools?page_size=1&filter_by=${filter}&timeframe=${encodedTimeframe}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Pool Discovery API error: ${res.status} ${res.statusText}`)
+  const data = (await res.json()) as { data?: Record<string, unknown>[] }
+  return (data?.data || [])[0] ?? null
 }
 
 async function fetchDlmmPoolDetail(poolAddress: string): Promise<Record<string, unknown> | null> {
-  const url = `${DLMM_BASE}/pools/${encodeURIComponent(poolAddress)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`DLMM Pool API error: ${res.status} ${res.statusText}`);
-  const data = (await res.json()) as Record<string, unknown>;
-  return data && typeof data === 'object' && (data as any)?.address ? data : null;
+  const url = `${DLMM_BASE}/pools/${encodeURIComponent(poolAddress)}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`DLMM Pool API error: ${res.status} ${res.statusText}`)
+  const data = (await res.json()) as Record<string, unknown>
+  return data && typeof data === 'object' && (data as any)?.address ? data : null
 }
 
-async function fetchFreshPoolDetail(poolAddress: string, timeframe: string = config.screening.timeframe || '5m'): Promise<PoolDetailFetchResult> {
-  let discoveryError: string | undefined;
+async function fetchFreshPoolDetail(
+  poolAddress: string,
+  timeframe: string = config.screening.timeframe || '5m',
+): Promise<PoolDetailFetchResult> {
+  let discoveryError: string | undefined
   try {
-    const discoveryPool = await fetchDiscoveryPoolDetail(poolAddress, timeframe);
-    if (discoveryPool) return { pool: discoveryPool, source: 'discovery' };
+    const discoveryPool = await fetchDiscoveryPoolDetail(poolAddress, timeframe)
+    if (discoveryPool) return { pool: discoveryPool, source: 'discovery' }
   } catch (error: any) {
-    discoveryError = error.message;
+    discoveryError = error.message
   }
 
   try {
-    const dlmmPool = await fetchDlmmPoolDetail(poolAddress);
+    const dlmmPool = await fetchDlmmPoolDetail(poolAddress)
     if (dlmmPool) {
       logStructured({
         category: 'screening_warn',
         message: 'Pool found only via DLMM API (not indexed in Pool Discovery API); using DLMM fallback pair data',
         metadata: { pool: poolAddress, source: 'dlmm' },
-      });
-      return { pool: dlmmPool, source: 'dlmm' };
+      })
+      return { pool: dlmmPool, source: 'dlmm' }
     }
   } catch (error: any) {
-    const dlmmError = error.message || 'unknown error';
-    return { pool: null, source: 'missing', discoveryError, dlmmError };
+    const dlmmError = error.message || 'unknown error'
+    return { pool: null, source: 'missing', discoveryError, dlmmError }
   }
 
-  return { pool: null, source: 'missing', discoveryError };
+  return { pool: null, source: 'missing', discoveryError }
 }
 
 async function validateDeployPoolThresholds(args: Record<string, unknown>): Promise<{
-  pass: boolean;
-  reason?: string;
-  warnings?: string[];
-  source?: PoolDetailSource;
-  entryMarketData?: Record<string, unknown>;
+  pass: boolean
+  reason?: string
+  warnings?: string[]
+  source?: PoolDetailSource
+  entryMarketData?: Record<string, unknown>
 }> {
-  const warnings: string[] = [];
-  const poolAddress = args.pool_address as string;
+  const warnings: string[] = []
+  const poolAddress = args.pool_address as string
 
-  const { pool: detail, source } = await fetchFreshPoolDetail(poolAddress);
+  const { pool: detail, source } = await fetchFreshPoolDetail(poolAddress)
   if (!detail) {
     return {
       pass: false,
       reason:
         `Could not verify pool screening thresholds before deploy: Pool ${poolAddress} invalid or does not exist on Solana ` +
         '(not found in Pool Discovery API or DLMM API). Verify the pool address before deploying.',
-    };
+    }
   }
 
-  const usingDlmmFallback = source === 'dlmm';
+  const usingDlmmFallback = source === 'dlmm'
 
-  const tvl = poolDetailTvl(detail);
-  const minTvl = numberOrNull(config.screening.minTvl);
-  const maxTvl = numberOrNull(config.screening.maxTvl);
+  const tvl = poolDetailTvl(detail)
+  const minTvl = numberOrNull(config.screening.minTvl)
+  const maxTvl = numberOrNull(config.screening.maxTvl)
   if (tvl == null) {
     return {
       pass: false,
       reason: 'Could not verify pool TVL before deploy.',
-    };
+    }
   }
   if (minTvl != null && minTvl > 0 && tvl < minTvl) {
     return {
       pass: false,
       reason: `Pool TVL $${tvl} is below configured minTvl $${minTvl}.`,
-    };
+    }
   }
   if (maxTvl != null && maxTvl > 0 && tvl > maxTvl) {
     return {
       pass: false,
       reason: `Pool TVL $${tvl} is above configured maxTvl $${maxTvl}.`,
-    };
+    }
   }
 
-  const feeActiveTvlRatio = poolDetailFeeActiveTvlRatio(detail);
-  const minFeeActiveTvlRatio = numberOrNull(config.screening.minFeeActiveTvlRatio);
+  const feeActiveTvlRatio = poolDetailFeeActiveTvlRatio(detail)
+  const minFeeActiveTvlRatio = numberOrNull(config.screening.minFeeActiveTvlRatio)
   if (minFeeActiveTvlRatio != null && minFeeActiveTvlRatio > 0) {
     if (feeActiveTvlRatio == null) {
       if (!usingDlmmFallback) {
         return {
           pass: false,
           reason: 'Could not verify pool real-time active-bin fee/TVL before deploy.',
-        };
+        }
       }
       warnings.push(
         'Pool real-time active-bin fee/TVL ratio unavailable (Pool Discovery API indexing lag); using DLMM fallback pair data — skipped strict ratio filter.',
-      );
+      )
     } else if (feeActiveTvlRatio < minFeeActiveTvlRatio) {
       return {
         pass: false,
         reason: `Real-time active-bin fee/TVL ${feeActiveTvlRatio}% is below configured minFeeActiveTvlRatio ${minFeeActiveTvlRatio}%.`,
-      };
+      }
     }
   }
 
-  const screeningTimeframe = String(config.screening.timeframe || '5m');
-  const volatilityTimeframe = getVolatilityTimeframe(screeningTimeframe);
-  let volatilityResult: PoolDetailFetchResult = { pool: detail, source };
+  const screeningTimeframe = String(config.screening.timeframe || '5m')
+  const volatilityTimeframe = getVolatilityTimeframe(screeningTimeframe)
+  let volatilityResult: PoolDetailFetchResult = { pool: detail, source }
   if (screeningTimeframe !== volatilityTimeframe) {
-    volatilityResult = await fetchFreshPoolDetail(poolAddress, volatilityTimeframe);
+    volatilityResult = await fetchFreshPoolDetail(poolAddress, volatilityTimeframe)
   }
 
-  const volatility = poolDetailVolatility(volatilityResult.pool);
+  const volatility = poolDetailVolatility(volatilityResult.pool)
   if (volatility == null || volatility <= 0) {
     if (volatilityResult.source === 'discovery') {
       return {
         pass: false,
         reason: `Pool ${volatilityTimeframe} volatility ${volatility ?? 'unknown'} is unusable. Refusing deploy.`,
-      };
+      }
     }
     warnings.push(
       `Pool ${volatilityTimeframe} volatility unavailable (Pool Discovery API indexing lag); using DLMM fallback pair data without a volatility reference.`,
-    );
+    )
   }
 
-  const actualBinStep = poolDetailBinStep(detail);
-  const minStep = numberOrNull(config.screening.minBinStep);
-  const maxStep = numberOrNull(config.screening.maxBinStep);
+  const actualBinStep = poolDetailBinStep(detail)
+  const minStep = numberOrNull(config.screening.minBinStep)
+  const maxStep = numberOrNull(config.screening.maxBinStep)
   if (actualBinStep != null && minStep != null && actualBinStep < minStep) {
     return {
       pass: false,
       reason: `Pool bin_step ${actualBinStep} is below configured minBinStep ${minStep}.`,
-    };
+    }
   }
   if (actualBinStep != null && maxStep != null && actualBinStep > maxStep) {
     return {
       pass: false,
       reason: `Pool bin_step ${actualBinStep} is above configured maxBinStep ${maxStep}.`,
-    };
+    }
   }
 
   const entryMarketData: Record<string, unknown> = {
@@ -303,57 +331,60 @@ async function validateDeployPoolThresholds(args: Record<string, unknown>): Prom
     entry_tvl: tvl,
     entry_volume: poolDetailVolume(detail),
     entry_holders: numberOrNull((detail as any)?.base_token_holders ?? (detail as any)?.token_x?.holders),
-  };
+  }
 
   const result: {
-    pass: boolean;
-    entryMarketData: Record<string, unknown>;
-    source?: PoolDetailSource;
-    warnings?: string[];
-  } = { pass: true, entryMarketData, source };
-  if (warnings.length > 0) result.warnings = warnings;
-  return result;
+    pass: boolean
+    entryMarketData: Record<string, unknown>
+    source?: PoolDetailSource
+    warnings?: string[]
+  } = { pass: true, entryMarketData, source }
+  if (warnings.length > 0) result.warnings = warnings
+  return result
 }
 
 // ─── Cron restarter (registered by index.js) ───────────────────
 
-let _cronRestarter: (() => void) | null = null;
+let _cronRestarter: (() => void) | null = null
 
-export { getConsecutiveSwapFailures, recordSwapFailure, resetConsecutiveSwapFailures, __setStateFilePath } from '../domain/state.js';
-
-export { _runSafetyChecks as runSafetyChecks };
-export { validateDeployPoolThresholds as _validateDeployPoolThresholds };
+export {
+  __setStateFilePath,
+  getConsecutiveSwapFailures,
+  recordSwapFailure,
+  resetConsecutiveSwapFailures,
+} from '../domain/state.js'
+export { _runSafetyChecks as runSafetyChecks, validateDeployPoolThresholds as _validateDeployPoolThresholds }
 
 export function registerCronRestarter(fn: () => void): void {
-  _cronRestarter = fn;
+  _cronRestarter = fn
 }
 
 // ─── Config coercion helpers ───────────────────────────────────
 
 function coerceBoolean(value: unknown, key: string): boolean {
-  if (typeof value === 'boolean') return value;
+  if (typeof value === 'boolean') return value
   if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === 'true') return true;
-    if (normalized === 'false') return false;
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'true') return true
+    if (normalized === 'false') return false
   }
-  throw new Error(`${key} must be true or false`);
+  throw new Error(`${key} must be true or false`)
 }
 
 function coerceFiniteNumber(value: unknown, key: string): number {
-  const n = Number(value);
-  if (!Number.isFinite(n)) throw new Error(`${key} must be a finite number`);
-  return n;
+  const n = Number(value)
+  if (!Number.isFinite(n)) throw new Error(`${key} must be a finite number`)
+  return n
 }
 
 function coerceString(value: unknown, key: string): string {
-  if (typeof value !== 'string') throw new Error(`${key} must be a string`);
-  return value.trim();
+  if (typeof value !== 'string') throw new Error(`${key} must be a string`)
+  return value.trim()
 }
 
 function coerceStringArray(value: unknown, key: string): string[] {
-  if (!Array.isArray(value)) throw new Error(`${key} must be an array of strings`);
-  return value.map((entry: unknown) => coerceString(entry, key)).filter(Boolean);
+  if (!Array.isArray(value)) throw new Error(`${key} must be an array of strings`)
+  return value.map((entry: unknown) => coerceString(entry, key)).filter(Boolean)
 }
 
 function normalizeConfigValue(key: string, value: unknown): unknown {
@@ -368,8 +399,8 @@ function normalizeConfigValue(key: string, value: unknown): unknown {
     'darwinEnabled',
     'lpAgentRelayEnabled',
     'haltOnSwapFailure',
-  ]);
-  const arrayKeys = new Set(['allowedLaunchpads', 'blockedLaunchpads']);
+  ])
+  const arrayKeys = new Set(['allowedLaunchpads', 'blockedLaunchpads'])
   const stringKeys = new Set([
     'timeframe',
     'category',
@@ -388,17 +419,17 @@ function normalizeConfigValue(key: string, value: unknown): unknown {
     'pnlRpcUrl',
     'gmgnFeeSource',
     'gmgnApiKey',
-  ]);
-  if (value === null) return null;
-  if (booleanKeys.has(key)) return coerceBoolean(value, key);
-  if (arrayKeys.has(key)) return coerceStringArray(value, key);
-  if (stringKeys.has(key)) return coerceString(value, key);
-  return coerceFiniteNumber(value, key);
+  ])
+  if (value === null) return null
+  if (booleanKeys.has(key)) return coerceBoolean(value, key)
+  if (arrayKeys.has(key)) return coerceStringArray(value, key)
+  if (stringKeys.has(key)) return coerceString(value, key)
+  return coerceFiniteNumber(value, key)
 }
 
 // ─── Tool map ──────────────────────────────────────────────────
 
-type ToolFn = (args: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>;
+type ToolFn = (args: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>
 
 const toolMap: Record<string, ToolFn> = {
   discover_pools: discoverPools as unknown as ToolFn,
@@ -420,27 +451,27 @@ const toolMap: Record<string, ToolFn> = {
   claim_fees: claimFees as unknown as ToolFn,
   close_position: closePosition as unknown as ToolFn,
   close_all_positions: ((args: Record<string, unknown> = {}) => {
-    const skipSwap = Boolean(args.skipSwap || args.skip_swap);
-    return closeAllPositions(skipSwap);
+    const skipSwap = Boolean(args.skipSwap || args.skip_swap)
+    return closeAllPositions(skipSwap)
   }) as ToolFn,
   get_wallet_balance: getWalletBalances as unknown as ToolFn,
   swap_all_tokens_to_sol: ((args: Record<string, unknown> = {}) => {
-    const skipMints = (args.skipMints as string[]) || (args.skip_mints as string[]) || [];
-    return swapAllTokensToSol(Array.isArray(skipMints) ? skipMints : []);
+    const skipMints = (args.skipMints as string[]) || (args.skip_mints as string[]) || []
+    return swapAllTokensToSol(Array.isArray(skipMints) ? skipMints : [])
   }) as ToolFn,
   swap_token: swapToken as unknown as ToolFn,
   get_top_lpers: studyTopLPers as unknown as ToolFn,
   study_top_lpers: studyTopLPers as unknown as ToolFn,
   set_position_note: ({ position_address, instruction }: Record<string, unknown>) => {
-    const ok = setPositionInstruction(position_address as string, (instruction as string) || null);
-    if (!ok) return { error: `Position ${position_address} not found in state` };
-    return { saved: true, position: position_address, instruction: (instruction as string) || null };
+    const ok = setPositionInstruction(position_address as string, (instruction as string) || null)
+    if (!ok) return { error: `Position ${position_address} not found in state` }
+    return { saved: true, position: position_address, instruction: (instruction as string) || null }
   },
   self_update: async () => {
     try {
-      const result = execSync('git pull', { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
+      const result = execSync('git pull', { cwd: REPO_ROOT, encoding: 'utf8' }).trim()
       if (result.includes('Already up to date')) {
-        return { success: true, updated: false, message: 'Already up to date — no restart needed.' };
+        return { success: true, updated: false, message: 'Already up to date — no restart needed.' }
       }
       setTimeout(() => {
         if (!process.env.pm_id) {
@@ -448,15 +479,17 @@ const toolMap: Record<string, ToolFn> = {
             detached: true,
             stdio: 'inherit',
             cwd: REPO_ROOT,
-          });
-          child.unref();
+          })
+          child.unref()
         }
-        process.exit(0);
-      }, 3000);
-      const restartMode = process.env.pm_id ? 'PM2 detected — exiting in 3s so PM2 can restart the managed process.' : 'Restarting in 3s...';
-      return { success: true, updated: true, message: `Updated! ${restartMode}\n${result}` };
+        process.exit(0)
+      }, 3000)
+      const restartMode = process.env.pm_id
+        ? 'PM2 detected — exiting in 3s so PM2 can restart the managed process.'
+        : 'Restarting in 3s...'
+      return { success: true, updated: true, message: `Updated! ${restartMode}\n${result}` }
     } catch (e: any) {
-      return { success: false, error: e.message };
+      return { success: false, error: e.message }
     }
   },
   get_performance_history: getPerformanceHistory as ToolFn,
@@ -486,31 +519,36 @@ const toolMap: Record<string, ToolFn> = {
     llm: { temperature: config.llm.temperature, maxTokens: config.llm.maxTokens, maxSteps: config.llm.maxSteps },
   }),
   add_lesson: ({ rule, tags, pinned, role }: Record<string, unknown>) => {
-    addLesson(rule as string, (tags as string[]) || [], { pinned: !!pinned, role: (role as AgentRole) || null });
-    return { saved: true, rule, pinned: !!pinned, role: (role as string) || 'all' };
+    addLesson(rule as string, (tags as string[]) || [], { pinned: !!pinned, role: (role as AgentRole) || null })
+    return { saved: true, rule, pinned: !!pinned, role: (role as string) || 'all' }
   },
   pin_lesson: ({ id }: Record<string, unknown>) => pinLesson(Number(id)),
   unpin_lesson: ({ id }: Record<string, unknown>) => unpinLesson(Number(id)),
   list_lessons: ({ role, pinned, tag, limit }: Record<string, unknown> = {}) =>
-    listLessons({ role: role as string | null, pinned: pinned as boolean | null, tag: tag as string | null, limit: limit as number }),
+    listLessons({
+      role: role as string | null,
+      pinned: pinned as boolean | null,
+      tag: tag as string | null,
+      limit: limit as number,
+    }),
   clear_lessons: ({ mode, keyword }: Record<string, unknown>) => {
     if (mode === 'all') {
-      const n = clearAllLessons();
-      log('lessons', `Cleared all ${n} lessons`);
-      return { cleared: n, mode: 'all' };
+      const n = clearAllLessons()
+      log('lessons', `Cleared all ${n} lessons`)
+      return { cleared: n, mode: 'all' }
     }
     if (mode === 'performance') {
-      const n = clearPerformance();
-      log('lessons', `Cleared ${n} performance records`);
-      return { cleared: n, mode: 'performance' };
+      const n = clearPerformance()
+      log('lessons', `Cleared ${n} performance records`)
+      return { cleared: n, mode: 'performance' }
     }
     if (mode === 'keyword') {
-      if (!keyword) return { error: 'keyword required for mode=keyword' };
-      const n = removeLessonsByKeyword(keyword as string);
-      log('lessons', `Cleared ${n} lessons matching "${keyword}"`);
-      return { cleared: n, mode: 'keyword', keyword };
+      if (!keyword) return { error: 'keyword required for mode=keyword' }
+      const n = removeLessonsByKeyword(keyword as string)
+      log('lessons', `Cleared ${n} lessons matching "${keyword}"`)
+      return { cleared: n, mode: 'keyword', keyword }
     }
-    return { error: 'invalid mode' };
+    return { error: 'invalid mode' }
   },
   update_config: ({ changes, reason = '' }: Record<string, unknown>) => {
     // Flat key → config section mapping (covers everything in config.js)
@@ -632,146 +670,166 @@ const toolMap: Record<string, ToolFn> = {
       rsiOversold: ['indicators', 'rsiOversold', ['chartIndicators', 'rsiOversold']],
       rsiOverbought: ['indicators', 'rsiOverbought', ['chartIndicators', 'rsiOverbought']],
       requireAllIntervals: ['indicators', 'requireAllIntervals', ['chartIndicators', 'requireAllIntervals']],
-    };
-
-    const applied: Record<string, unknown> = {};
-    const unknown: string[] = [];
-
-    // Build case-insensitive lookup
-    const CONFIG_MAP_LOWER = Object.fromEntries(Object.entries(CONFIG_MAP).map(([k, v]) => [k.toLowerCase(), [k, v]]));
-
-    if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
-      return { success: false, error: 'changes must be an object', reason };
     }
 
-    const STRATEGY_BIN_KEYS = new Set(['binsBelow', 'minBinsBelow', 'maxBinsBelow', 'defaultBinsBelow']);
+    const applied: Record<string, unknown> = {}
+    const unknown: string[] = []
+
+    // Build case-insensitive lookup
+    const CONFIG_MAP_LOWER = Object.fromEntries(Object.entries(CONFIG_MAP).map(([k, v]) => [k.toLowerCase(), [k, v]]))
+
+    if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
+      return { success: false, error: 'changes must be an object', reason }
+    }
+
+    const STRATEGY_BIN_KEYS = new Set(['binsBelow', 'minBinsBelow', 'maxBinsBelow', 'defaultBinsBelow'])
     for (const [key, val] of Object.entries(changes as Record<string, unknown>)) {
-      const raw = CONFIG_MAP[key] ? [key, CONFIG_MAP[key]] : CONFIG_MAP_LOWER[key.toLowerCase()];
+      const raw = CONFIG_MAP[key] ? [key, CONFIG_MAP[key]] : CONFIG_MAP_LOWER[key.toLowerCase()]
       if (!raw) {
-        unknown.push(key);
-        continue;
+        unknown.push(key)
+        continue
       }
-      const match = raw as [string, any];
+      const match = raw as [string, any]
       try {
-        let normalizedVal = val;
+        let normalizedVal = val
         if (STRATEGY_BIN_KEYS.has(match[0])) {
-          const numericVal = Number(val);
+          const numericVal = Number(val)
           if (!Number.isFinite(numericVal)) {
-            throw new Error(`${match[0]} must be a finite number`);
+            throw new Error(`${match[0]} must be a finite number`)
           }
-          normalizedVal = Math.max(getMinSafeBinsBelow(), Math.round(numericVal));
+          normalizedVal = Math.max(getMinSafeBinsBelow(), Math.round(numericVal))
         } else {
-          normalizedVal = normalizeConfigValue(match[0], val);
+          normalizedVal = normalizeConfigValue(match[0], val)
         }
-        applied[match[0]] = normalizedVal;
+        applied[match[0]] = normalizedVal
       } catch (error: any) {
-        return { success: false, error: error.message, key: match[0], reason };
+        return { success: false, error: error.message, key: match[0], reason }
       }
     }
 
     if (Object.keys(applied).length === 0) {
-      log('config', `update_config failed — unknown keys: ${JSON.stringify(unknown)}, raw changes: ${JSON.stringify(changes)}`);
-      return { success: false, unknown, reason };
+      log(
+        'config',
+        `update_config failed — unknown keys: ${JSON.stringify(unknown)}, raw changes: ${JSON.stringify(changes)}`,
+      )
+      return { success: false, unknown, reason }
     }
 
-    let userConfig: Record<string, unknown> = {};
+    let userConfig: Record<string, unknown> = {}
     if (fs.existsSync(USER_CONFIG_PATH)) {
       try {
-        userConfig = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'));
+        userConfig = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'))
       } catch (error: any) {
-        return { success: false, error: `Invalid user-config.json: ${error.message}`, reason };
+        return { success: false, error: `Invalid user-config.json: ${error.message}`, reason }
       }
     }
 
     // Auto-scale fee/volume when timeframe changes (unless user set them explicitly in same call).
     if (applied.timeframe != null && applied.minFeeActiveTvlRatio == null && applied.minVolume == null) {
-      const tf = normalizeTimeframe(applied.timeframe as string);
-      applied.timeframe = tf;
-      const scaled = scaleScreeningToTimeframe(tf);
-      applied.minFeeActiveTvlRatio = scaled.minFeeActiveTvlRatio;
-      applied.minVolume = scaled.minVolume;
-      applied._timeframeScaled = true;
-      log('config', `timeframe ${tf} → auto-scaled minFeeActiveTvlRatio=${scaled.minFeeActiveTvlRatio}, minVolume=${scaled.minVolume}`);
+      const tf = normalizeTimeframe(applied.timeframe as string)
+      applied.timeframe = tf
+      const scaled = scaleScreeningToTimeframe(tf)
+      applied.minFeeActiveTvlRatio = scaled.minFeeActiveTvlRatio
+      applied.minVolume = scaled.minVolume
+      applied._timeframeScaled = true
+      log(
+        'config',
+        `timeframe ${tf} → auto-scaled minFeeActiveTvlRatio=${scaled.minFeeActiveTvlRatio}, minVolume=${scaled.minVolume}`,
+      )
     }
 
     // Apply to live config immediately after the persisted config is known-good.
     for (const [key, val] of Object.entries(applied)) {
-      if (key.startsWith('_')) continue;
-      const mapping = CONFIG_MAP[key];
-      if (!mapping) continue;
-      const livePath = mapping.slice(1).filter((part: unknown) => typeof part === 'string');
-      let target = config as any;
-      for (const part of livePath.slice(0, -1)) target = target[part];
-      const field = livePath.at(-1)!;
-      const before = target[field];
-      target[field] = val;
-      log('config', `update_config: config.${livePath.join('.')} ${before} → ${val} (verify: ${target[field]})`);
+      if (key.startsWith('_')) continue
+      const mapping = CONFIG_MAP[key]
+      if (!mapping) continue
+      const livePath = mapping.slice(1).filter((part: unknown) => typeof part === 'string')
+      let target = config as any
+      for (const part of livePath.slice(0, -1)) target = target[part]
+      const field = livePath.at(-1)!
+      const before = target[field]
+      target[field] = val
+      log('config', `update_config: config.${livePath.join('.')} ${before} → ${val} (verify: ${target[field]})`)
     }
-    if (applied.binsBelow != null || applied.minBinsBelow != null || applied.maxBinsBelow != null || applied.defaultBinsBelow != null) {
-      config.strategy.minBinsBelow = Math.max(getMinSafeBinsBelow(), Math.round(Number(config.strategy.minBinsBelow ?? getMinSafeBinsBelow())));
+    if (
+      applied.binsBelow != null ||
+      applied.minBinsBelow != null ||
+      applied.maxBinsBelow != null ||
+      applied.defaultBinsBelow != null
+    ) {
+      config.strategy.minBinsBelow = Math.max(
+        getMinSafeBinsBelow(),
+        Math.round(Number(config.strategy.minBinsBelow ?? getMinSafeBinsBelow())),
+      )
       config.strategy.maxBinsBelow = Math.max(
         config.strategy.minBinsBelow,
         Math.round(Number(config.strategy.maxBinsBelow ?? config.strategy.minBinsBelow)),
-      );
+      )
       config.strategy.defaultBinsBelow = Math.max(
         config.strategy.minBinsBelow,
-        Math.min(config.strategy.maxBinsBelow, Math.round(Number(config.strategy.defaultBinsBelow ?? config.strategy.maxBinsBelow))),
-      );
+        Math.min(
+          config.strategy.maxBinsBelow,
+          Math.round(Number(config.strategy.defaultBinsBelow ?? config.strategy.maxBinsBelow)),
+        ),
+      )
     }
 
     for (const [key, val] of Object.entries(applied)) {
-      if (key.startsWith('_')) continue;
-      const mapping = CONFIG_MAP[key];
-      const persistPath = mapping?.find((part: unknown) => Array.isArray(part));
+      if (key.startsWith('_')) continue
+      const mapping = CONFIG_MAP[key]
+      const persistPath = mapping?.find((part: unknown) => Array.isArray(part))
       if (Array.isArray(persistPath) && persistPath.length > 0) {
-        let target = userConfig;
+        let target = userConfig
         for (const part of persistPath.slice(0, -1)) {
           if (!target[part] || typeof target[part] !== 'object' || Array.isArray(target[part])) {
-            target[part] = {};
+            target[part] = {}
           }
-          target = target[part] as Record<string, unknown>;
+          target = target[part] as Record<string, unknown>
         }
-        target[persistPath.at(-1)!] = val;
+        target[persistPath.at(-1)!] = val
       } else {
-        userConfig[key] = val;
+        userConfig[key] = val
       }
     }
-    userConfig._lastAgentTune = new Date().toISOString();
-    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(userConfig, null, 2));
+    userConfig._lastAgentTune = new Date().toISOString()
+    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(userConfig, null, 2))
 
     // Restart cron jobs if intervals changed
-    const intervalChanged = applied.managementIntervalMin != null || applied.screeningIntervalMin != null || applied.pnlPollIntervalSec != null;
+    const intervalChanged =
+      applied.managementIntervalMin != null ||
+      applied.screeningIntervalMin != null ||
+      applied.pnlPollIntervalSec != null
     if (intervalChanged && _cronRestarter) {
-      _cronRestarter();
+      _cronRestarter()
       log(
         'config',
         `Cron restarted — management: ${config.schedule.managementIntervalMin}m, screening: ${config.schedule.screeningIntervalMin}m, pnlPoll: ${config.pnl.pollIntervalSec}s`,
-      );
+      )
     }
 
     // Skip repeated volatility-driven interval changes; they are operational tuning, not reusable lessons.
-    const lessonsKeys = Object.keys(applied).filter((k) => !k.startsWith('_') && k !== 'managementIntervalMin' && k !== 'screeningIntervalMin');
+    const lessonsKeys = Object.keys(applied).filter(
+      (k) => !k.startsWith('_') && k !== 'managementIntervalMin' && k !== 'screeningIntervalMin',
+    )
     if (lessonsKeys.length > 0) {
-      const summary = lessonsKeys.map((k) => `${k}=${applied[k]}`).join(', ');
-      addLesson(`[SELF-TUNED] Changed ${summary} — ${reason}`, ['self_tune', 'config_change']);
+      const summary = lessonsKeys.map((k) => `${k}=${applied[k]}`).join(', ')
+      addLesson(`[SELF-TUNED] Changed ${summary} — ${reason}`, ['self_tune', 'config_change'])
     }
 
-    log('config', `Agent self-tuned: ${JSON.stringify(applied)} — ${reason}`);
-    return { success: true, applied, unknown, reason };
+    log('config', `Agent self-tuned: ${JSON.stringify(applied)} — ${reason}`)
+    return { success: true, applied, unknown, reason }
   },
-};
+}
 
 // ─── Protected tools ───────────────────────────────────────────
 
-const WRITE_TOOLS = new Set(['deploy_position', 'claim_fees', 'close_position', 'swap_token']);
-const PROTECTED_TOOLS = new Set([...WRITE_TOOLS, 'self_update']);
+const WRITE_TOOLS = new Set(['deploy_position', 'claim_fees', 'close_position', 'swap_token'])
+const PROTECTED_TOOLS = new Set([...WRITE_TOOLS, 'self_update'])
 
-
-
-const deployPositionMutex = new Mutex();
+const deployPositionMutex = new Mutex()
 
 async function withDeployPositionLock<T>(operation: () => Promise<T>): Promise<T> {
-  return deployPositionMutex.runExclusive(operation);
+  return deployPositionMutex.runExclusive(operation)
 }
 
 /**
@@ -785,35 +843,37 @@ async function swapBaseToSolWithRetry(
   baseMint: string,
   label: string,
 ): Promise<{
-  swapped: boolean;
-  result: Record<string, unknown> | null;
-  token: Record<string, unknown> | null;
+  swapped: boolean
+  result: Record<string, unknown> | null
+  token: Record<string, unknown> | null
 }> {
-  const attempts = Math.max(1, Number(config.management.autoSwapRetryAttempts ?? 3));
-  const delayMs = Math.max(0, Number(config.management.autoSwapRetryDelayMs ?? 3000));
-  const haltOnSwapFailure = config.management.haltOnSwapFailure ?? true;
-  const maxFailedSwapsBeforeHalt = config.management.maxFailedSwapsBeforeHalt ?? 5;
-  let lastErr: string | null = null;
-  let lastToken: any = null;
+  const attempts = Math.max(1, Number(config.management.autoSwapRetryAttempts ?? 3))
+  const delayMs = Math.max(0, Number(config.management.autoSwapRetryDelayMs ?? 3000))
+  const haltOnSwapFailure = config.management.haltOnSwapFailure ?? true
+  const maxFailedSwapsBeforeHalt = config.management.maxFailedSwapsBeforeHalt ?? 5
+  let lastErr: string | null = null
+  let lastToken: any = null
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const balances = await getWalletBalances();
-      const token = balances.tokens?.find((t: any) => t.mint === baseMint);
+      const balances = await getWalletBalances()
+      const token = balances.tokens?.find((t: any) => t.mint === baseMint)
       if (!token || (token.usd ?? 0) < 0.1) {
-        return { swapped: attempt > 1, result: null, token: null };
+        return { swapped: attempt > 1, result: null, token: null }
       }
-      lastToken = token;
+      lastToken = token
       log(
         'executor',
         `Auto-swapping ${label} ${token.symbol || baseMint.slice(0, 8)} ($${(token.usd ?? 0).toFixed(2)}) back to SOL (attempt ${attempt}/${attempts})`,
-      );
-      const swapResult = await swapToken({ input_mint: baseMint, output_mint: 'SOL', amount: token.balance });
-      const sr = swapResult as any;
-      const ok = swapResult && sr.success !== false && !sr.error && (sr.tx || sr.amount_out);
+      )
+      const swapResult = await swapToken({ input_mint: baseMint, output_mint: 'SOL', amount: token.balance })
+      const sr = swapResult as any
+      const ok = swapResult && sr.success !== false && !sr.error && (sr.tx || sr.amount_out)
       if (ok) {
-        recordSwapSuccess();
-        const solReceived = sr.amount_out != null ? (typeof sr.amount_out === 'number' ? sr.amount_out : parseFloat(sr.amount_out)) : null;
-        const usdValue = token.usd ?? (solReceived != null && balances.sol_price ? solReceived * balances.sol_price : null);
+        recordSwapSuccess()
+        const solReceived =
+          sr.amount_out != null ? (typeof sr.amount_out === 'number' ? sr.amount_out : parseFloat(sr.amount_out)) : null
+        const usdValue =
+          token.usd ?? (solReceived != null && balances.sol_price ? solReceived * balances.sol_price : null)
         notifySwap({
           inputSymbol: token.symbol || baseMint.slice(0, 8),
           outputSymbol: 'SOL',
@@ -822,98 +882,105 @@ async function swapBaseToSolWithRetry(
           tx: sr.tx,
           amountUsd: usdValue,
         }).catch((err: any) => {
-          log('telegram_warn', `Failed to send swap notification: ${err?.message || err}`);
-        });
-        return { swapped: true, result: swapResult as unknown as Record<string, unknown>, token: token as unknown as Record<string, unknown> };
+          log('telegram_warn', `Failed to send swap notification: ${err?.message || err}`)
+        })
+        return {
+          swapped: true,
+          result: swapResult as unknown as Record<string, unknown>,
+          token: token as unknown as Record<string, unknown>,
+        }
       }
-      lastErr = sr?.error || sr?.reason || 'swap returned no tx';
+      lastErr = sr?.error || sr?.reason || 'swap returned no tx'
     } catch (e: any) {
-      lastErr = e.message;
+      lastErr = e.message
     }
-    log('executor_warn', `Auto-swap ${label} attempt ${attempt}/${attempts} failed: ${lastErr}`);
-    if (attempt < attempts) await sleep(delayMs);
+    log('executor_warn', `Auto-swap ${label} attempt ${attempt}/${attempts} failed: ${lastErr}`)
+    if (attempt < attempts) await sleep(delayMs)
   }
-  log('executor_warn', `Auto-swap ${label} failed after ${attempts} attempts — base token left unsold (${baseMint.slice(0, 8)})`);
-  recordSwapFailure({ maxFailedSwapsBeforeHalt, haltOnSwapFailure });
-  const symbol = lastToken?.symbol || baseMint.slice(0, 8);
+  log(
+    'executor_warn',
+    `Auto-swap ${label} failed after ${attempts} attempts — base token left unsold (${baseMint.slice(0, 8)})`,
+  )
+  recordSwapFailure({ maxFailedSwapsBeforeHalt, haltOnSwapFailure })
+  const symbol = lastToken?.symbol || baseMint.slice(0, 8)
   notifySwapError({
     inputSymbol: symbol,
     outputSymbol: 'SOL',
     reason: lastErr || `Failed after ${attempts} attempts`,
   }).catch((err: any) => {
-    log('telegram_warn', `Failed to send swap error notification: ${err?.message || err}`);
-  });
-  return { swapped: false, result: null, token: null };
+    log('telegram_warn', `Failed to send swap error notification: ${err?.message || err}`)
+  })
+  return { swapped: false, result: null, token: null }
 }
 
 /**
  * Orchestrate swapping all non-SOL/USDC tokens to SOL.
  */
 export async function swapAllTokensToSol(skipMintsInput: string[] | { skipMints?: string[] } = []): Promise<{
-  total: number;
-  skipped: number;
-  successful: number;
-  failed: number;
-  results: any[];
+  total: number
+  skipped: number
+  successful: number
+  failed: number
+  results: any[]
 }> {
-  let skipMints: string[] = [];
+  let skipMints: string[] = []
   if (Array.isArray(skipMintsInput)) {
-    skipMints = skipMintsInput;
+    skipMints = skipMintsInput
   } else if (skipMintsInput && typeof skipMintsInput === 'object') {
-    const raw = (skipMintsInput as any).skipMints || (skipMintsInput as any).skip_mints;
+    const raw = (skipMintsInput as any).skipMints || (skipMintsInput as any).skip_mints
     if (Array.isArray(raw)) {
-      skipMints = raw;
+      skipMints = raw
     }
   }
 
-  const balances = await getWalletBalances();
-  if (!balances || !balances.tokens) {
-    return { total: 0, skipped: 0, successful: 0, failed: 0, results: [] };
+  const balances = await getWalletBalances()
+  if (!balances?.tokens) {
+    return { total: 0, skipped: 0, successful: 0, failed: 0, results: [] }
   }
 
-  const SOL_MINT_1 = 'So11111111111111111111111111111111111111111';
-  const SOL_MINT_2 = 'So11111111111111111111111111111111111111112';
-  const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-  const skips = new Set([SOL_MINT_1, SOL_MINT_2, USDC_MINT, ...skipMints]);
+  const SOL_MINT_1 = 'So11111111111111111111111111111111111111111'
+  const SOL_MINT_2 = 'So11111111111111111111111111111111111111112'
+  const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+  const skips = new Set([SOL_MINT_1, SOL_MINT_2, USDC_MINT, ...skipMints])
 
-  let total = 0;
-  let skipped = 0;
-  let successful = 0;
-  let failed = 0;
-  const results = [];
-  const interSwapDelayMs = Math.max(0, Number(config.management.autoSwapInterSwapDelayMs ?? 1500));
-  let swapAttempted = false;
+  let total = 0
+  let skipped = 0
+  let successful = 0
+  let failed = 0
+  const results = []
+  const interSwapDelayMs = Math.max(0, Number(config.management.autoSwapInterSwapDelayMs ?? 1500))
+  let swapAttempted = false
 
   for (const token of balances.tokens as any[]) {
-    total++;
-    const symbolUpper = (token.symbol || '').toUpperCase();
-    const isSolOrUsdc = symbolUpper === 'SOL' || symbolUpper === 'WSOL' || symbolUpper === 'USDC';
-    const isDust = (token.usd ?? 0) < 0.02; // 2 usd cents is still more than SOL network fee
+    total++
+    const symbolUpper = (token.symbol || '').toUpperCase()
+    const isSolOrUsdc = symbolUpper === 'SOL' || symbolUpper === 'WSOL' || symbolUpper === 'USDC'
+    const isDust = (token.usd ?? 0) < 0.02 // 2 usd cents is still more than SOL network fee
 
     if (skips.has(token.mint) || isSolOrUsdc || isDust) {
-      skipped++;
-      continue;
+      skipped++
+      continue
     }
 
     // Pace swaps to respect Jupiter rate limits (Free tier: 60 RPM main bucket).
     // /order counts against the main bucket; /execute has its own bucket.
     if (swapAttempted && interSwapDelayMs > 0) {
-      await sleep(interSwapDelayMs);
+      await sleep(interSwapDelayMs)
     }
-    swapAttempted = true;
+    swapAttempted = true
 
     try {
-      const res = await swapBaseToSolWithRetry(token.mint, 'batch cleanup');
+      const res = await swapBaseToSolWithRetry(token.mint, 'batch cleanup')
       if (res.swapped) {
-        successful++;
-        results.push({ mint: token.mint, success: true, result: res.result });
+        successful++
+        results.push({ mint: token.mint, success: true, result: res.result })
       } else {
-        failed++;
-        results.push({ mint: token.mint, success: false, reason: 'auto-swap failed' });
+        failed++
+        results.push({ mint: token.mint, success: false, reason: 'auto-swap failed' })
       }
     } catch (e: any) {
-      failed++;
-      results.push({ mint: token.mint, success: false, reason: e.message });
+      failed++
+      results.push({ mint: token.mint, success: false, reason: e.message })
     }
   }
 
@@ -923,35 +990,37 @@ export async function swapAllTokensToSol(skipMintsInput: string[] | { skipMints?
     result: { total, skipped, successful, failed },
     duration_ms: 0,
     success: failed === 0,
-  });
+  })
 
-  return { total, skipped, successful, failed, results };
+  return { total, skipped, successful, failed, results }
 }
 
 /**
  * Orchestrate closing all open positions.
  */
-export async function closeAllPositions(skipSwapInput: boolean | { skipSwap?: boolean; skip_swap?: boolean } = false): Promise<{
-  total: number;
-  successful: number;
-  failed: number;
-  results: any[];
+export async function closeAllPositions(
+  skipSwapInput: boolean | { skipSwap?: boolean; skip_swap?: boolean } = false,
+): Promise<{
+  total: number
+  successful: number
+  failed: number
+  results: any[]
 }> {
-  let skipSwap = false;
+  let skipSwap = false
   if (typeof skipSwapInput === 'boolean') {
-    skipSwap = skipSwapInput;
+    skipSwap = skipSwapInput
   } else if (skipSwapInput && typeof skipSwapInput === 'object') {
-    skipSwap = Boolean((skipSwapInput as any).skipSwap || (skipSwapInput as any).skip_swap);
+    skipSwap = Boolean((skipSwapInput as any).skipSwap || (skipSwapInput as any).skip_swap)
   }
-  const positionsRes = await getMyPositions({ force: true });
-  if (!positionsRes || !positionsRes.positions) {
-    return { total: 0, successful: 0, failed: 0, results: [] };
+  const positionsRes = await getMyPositions({ force: true })
+  if (!positionsRes?.positions) {
+    return { total: 0, successful: 0, failed: 0, results: [] }
   }
 
-  const positions = positionsRes.positions as any[];
-  let successful = 0;
-  let failed = 0;
-  const results = [];
+  const positions = positionsRes.positions as any[]
+  let successful = 0
+  let failed = 0
+  const results = []
 
   for (const pos of positions) {
     try {
@@ -959,17 +1028,17 @@ export async function closeAllPositions(skipSwapInput: boolean | { skipSwap?: bo
         position_address: pos.position,
         skip_swap: skipSwap,
         reason: 'close all',
-      })) as any;
+      })) as any
       if (res && res.success !== false && !res.error) {
-        successful++;
-        results.push({ position: pos.position, success: true, result: res });
+        successful++
+        results.push({ position: pos.position, success: true, result: res })
       } else {
-        failed++;
-        results.push({ position: pos.position, success: false, reason: res?.error || 'failed to close' });
+        failed++
+        results.push({ position: pos.position, success: false, reason: res?.error || 'failed to close' })
       }
     } catch (e: any) {
-      failed++;
-      results.push({ position: pos.position, success: false, reason: e.message });
+      failed++
+      results.push({ position: pos.position, success: false, reason: e.message })
     }
   }
 
@@ -979,58 +1048,58 @@ export async function closeAllPositions(skipSwapInput: boolean | { skipSwap?: bo
     result: { total: positions.length, successful, failed },
     duration_ms: 0,
     success: failed === 0,
-  });
+  })
 
-  return { total: positions.length, successful, failed, results };
+  return { total: positions.length, successful, failed, results }
 }
 
 /**
  * Execute a tool call with safety checks and logging.
  */
 export async function executeTool(name: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
-  const normalizedName = name.replace(/<.*$/, '').trim();
+  const normalizedName = name.replace(/<.*$/, '').trim()
   if (normalizedName === 'deploy_position') {
-    return withDeployPositionLock(() => executeToolUnlocked(normalizedName, args));
+    return withDeployPositionLock(() => executeToolUnlocked(normalizedName, args))
   }
-  return executeToolUnlocked(normalizedName, args);
+  return executeToolUnlocked(normalizedName, args)
 }
 
 async function executeToolUnlocked(name: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
-  const startTime = Date.now();
+  const startTime = Date.now()
 
   // Strip model artifacts like "<|channel|>commentary" appended to tool names
-  name = name.replace(/<.*$/, '').trim();
+  name = name.replace(/<.*$/, '').trim()
 
   // ─── Validate tool exists ─────────────────
-  const fn = toolMap[name];
+  const fn = toolMap[name]
   if (!fn) {
-    const error = `Unknown tool: ${name}`;
-    log('error', error);
-    return { error };
+    const error = `Unknown tool: ${name}`
+    log('error', error)
+    return { error }
   }
 
   // ─── Pre-execution safety checks ──────────
   if (PROTECTED_TOOLS.has(name)) {
-    const safetyCheck = await _runSafetyChecks(name, args);
+    const safetyCheck = await _runSafetyChecks(name, args)
     if (!safetyCheck.pass) {
-      log('safety_block', `${name} blocked: ${safetyCheck.reason}`);
+      log('safety_block', `${name} blocked: ${safetyCheck.reason}`)
       logStructured({
         category: 'safety_block',
         message: `${name} blocked: ${safetyCheck.reason}`,
         metadata: { tool: name, reason: safetyCheck.reason, args: summarizeArgsForLog(args) },
-      });
+      })
       return {
         blocked: true,
         reason: safetyCheck.reason,
-      };
+      }
     }
   }
 
   // ─── Execute ──────────────────────────────
   try {
-    const result = await fn(args);
-    const duration = Date.now() - startTime;
-    const success = (result as any)?.success !== false && !(result as any)?.error;
+    const result = await fn(args)
+    const duration = Date.now() - startTime
+    const success = (result as any)?.success !== false && !(result as any)?.error
 
     logAction({
       tool: name,
@@ -1038,14 +1107,15 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
       result: summarizeResult(result),
       duration_ms: duration,
       success,
-    });
+    })
 
     if (success) {
       if (name === 'swap_token' && (result as any).tx) {
         notifySwap({
           inputSymbol: (args.input_mint as string)?.slice(0, 8),
           outputSymbol:
-            (args.output_mint as string) === 'So11111111111111111111111111111111111111112' || (args.output_mint as string) === 'SOL'
+            (args.output_mint as string) === 'So11111111111111111111111111111111111111112' ||
+            (args.output_mint as string) === 'SOL'
               ? 'SOL'
               : (args.output_mint as string)?.slice(0, 8),
           amountIn: (result as any).amount_in ?? String(args.amount ?? '?'),
@@ -1053,18 +1123,18 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
           tx: (result as any).tx,
           amountUsd: (result as any).usd_value ?? (result as any).amount_usd ?? null,
         }).catch((err: any) => {
-          log('telegram_warn', `Failed to send swap notification: ${err?.message || err}`);
-        });
+          log('telegram_warn', `Failed to send swap notification: ${err?.message || err}`)
+        })
       } else if (name === 'deploy_position') {
-        const isSuccess = (result as any)?.success !== false && !(result as any)?.error && !(result as any)?.blocked;
+        const isSuccess = (result as any)?.success !== false && !(result as any)?.error && !(result as any)?.blocked
         if (!isSuccess) {
           notifyTransactionError({
             type: 'deploy',
             pair: (result as any)?.pool_name || (args as any)?.pool_name || (args.pool_address as string)?.slice(0, 8),
             reason: (result as any)?.error || (result as any)?.reason || 'Deployment execution failed',
           }).catch((err: any) => {
-            log('telegram_warn', `Failed to send deploy error notification: ${err?.message || err}`);
-          });
+            log('telegram_warn', `Failed to send deploy error notification: ${err?.message || err}`)
+          })
         } else {
           notifyDeploy({
             pair: (result as any).pool_name || (args as any).pool_name || (args.pool_address as string)?.slice(0, 8),
@@ -1076,11 +1146,11 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
             binStep: (result as any).bin_step,
             baseFee: (result as any).base_fee,
           }).catch((err: any) => {
-            log('telegram_warn', `Failed to send deploy notification: ${err?.message || err}`);
-          });
+            log('telegram_warn', `Failed to send deploy notification: ${err?.message || err}`)
+          })
         }
       } else if (name === 'close_position') {
-        const isSuccess = (result as any)?.success !== false && !(result as any)?.error && !(result as any)?.blocked;
+        const isSuccess = (result as any)?.success !== false && !(result as any)?.error && !(result as any)?.blocked
         if (!isSuccess) {
           notifyTransactionError({
             type: 'close',
@@ -1088,52 +1158,58 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
             position: args.position_address as string,
             reason: (result as any)?.error || (result as any)?.reason || 'Position close failed',
           }).catch((err: any) => {
-            log('telegram_warn', `Failed to send close error notification: ${err?.message || err}`);
-          });
+            log('telegram_warn', `Failed to send close error notification: ${err?.message || err}`)
+          })
         } else {
           notifyClose({
             pair: (result as any).pool_name || (args.position_address as string)?.slice(0, 8),
             pnlUsd: (result as any).pnl_usd ?? 0,
             pnlPct: (result as any).pnl_pct ?? 0,
           }).catch((err: any) => {
-            log('telegram_warn', `Failed to send close notification: ${err?.message || err}`);
-          });
+            log('telegram_warn', `Failed to send close notification: ${err?.message || err}`)
+          })
           // Note low-yield closes in pool memory so screener avoids redeploying
           if ((args.reason as string) && (args.reason as string).toLowerCase().includes('yield')) {
-            const poolAddr = (result as any).pool || args.pool_address;
+            const poolAddr = (result as any).pool || args.pool_address
             if (poolAddr)
-              addPoolNote({ pool_address: poolAddr, note: `Closed: low yield (fee/TVL below threshold) at ${new Date().toISOString().slice(0, 10)}` });
+              addPoolNote({
+                pool_address: poolAddr,
+                note: `Closed: low yield (fee/TVL below threshold) at ${new Date().toISOString().slice(0, 10)}`,
+              })
           }
           // Auto-swap base token back to SOL unless user said to hold (retried).
           if (!args.skip_swap && (result as any).base_mint) {
-            const { swapped, result: swapResult } = await swapBaseToSolWithRetry((result as any).base_mint, 'after close');
+            const { swapped, result: swapResult } = await swapBaseToSolWithRetry(
+              (result as any).base_mint,
+              'after close',
+            )
             if (swapped) {
-              (result as any).auto_swapped = true;
-              (result as any).auto_swap_note =
-                `Base token already auto-swapped back to SOL (${(result as any).base_mint.slice(0, 8)} → SOL). Do NOT call swap_token again.`;
-              if ((swapResult as any)?.amount_out) (result as any).sol_received = (swapResult as any).amount_out;
+              ;(result as any).auto_swapped = true
+              ;(result as any).auto_swap_note =
+                `Base token already auto-swapped back to SOL (${(result as any).base_mint.slice(0, 8)} → SOL). Do NOT call swap_token again.`
+              if ((swapResult as any)?.amount_out) (result as any).sol_received = (swapResult as any).amount_out
             }
           }
         }
       } else if (name === 'claim_fees') {
-        const isSuccess = (result as any)?.success !== false && !(result as any)?.error && !(result as any)?.blocked;
+        const isSuccess = (result as any)?.success !== false && !(result as any)?.error && !(result as any)?.blocked
         if (!isSuccess) {
           notifyTransactionError({
             type: 'claim',
             position: args.position_address as string,
             reason: (result as any)?.error || (result as any)?.reason || 'Fee claim failed',
           }).catch((err: any) => {
-            log('telegram_warn', `Failed to send claim error notification: ${err?.message || err}`);
-          });
+            log('telegram_warn', `Failed to send claim error notification: ${err?.message || err}`)
+          })
         } else if (config.management.autoSwapAfterClaim && (result as any).base_mint) {
-          await swapBaseToSolWithRetry((result as any).base_mint, 'after claim');
+          await swapBaseToSolWithRetry((result as any).base_mint, 'after claim')
         }
       }
     }
 
-    return result;
+    return result
   } catch (error: any) {
-    const duration = Date.now() - startTime;
+    const duration = Date.now() - startTime
 
     logAction({
       tool: name,
@@ -1141,7 +1217,7 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
       error: error.message,
       duration_ms: duration,
       success: false,
-    });
+    })
 
     if (['deploy_position', 'close_position', 'claim_fees', 'swap_token'].includes(name)) {
       const typeMap: Record<string, 'deploy' | 'close' | 'claim' | 'swap'> = {
@@ -1149,21 +1225,21 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
         close_position: 'close',
         claim_fees: 'claim',
         swap_token: 'swap',
-      };
+      }
       notifyTransactionError({
         type: typeMap[name] || 'confirm',
         pair: (args.pool_name || args.pool_address) as string,
         position: args.position_address as string,
         reason: error.message,
       }).catch((err: any) => {
-        log('telegram_warn', `Failed to send tool exception notification: ${err?.message || err}`);
-      });
+        log('telegram_warn', `Failed to send tool exception notification: ${err?.message || err}`)
+      })
     }
 
     return {
       error: error.message,
       tool: name,
-    };
+    }
   }
 }
 
@@ -1174,11 +1250,11 @@ async function _runSafetyChecks(
   name: string,
   args: Record<string, unknown>,
 ): Promise<{
-  pass: boolean;
-  reason?: string;
-  warnings?: string[];
-  source?: 'discovery' | 'dlmm' | 'missing';
-  entryMarketData?: Record<string, unknown>;
+  pass: boolean
+  reason?: string
+  warnings?: string[]
+  source?: 'discovery' | 'dlmm' | 'missing'
+  entryMarketData?: Record<string, unknown>
 }> {
   switch (name) {
     case 'deploy_position': {
@@ -1187,57 +1263,67 @@ async function _runSafetyChecks(
       const haltOpts = {
         maxFailedSwapsBeforeHalt: config.management.maxFailedSwapsBeforeHalt ?? 5,
         haltOnSwapFailure: config.management.haltOnSwapFailure ?? true,
-      };
+      }
       if (isHalted(haltOpts)) {
-        const count = getConsecutiveSwapFailures();
+        const count = getConsecutiveSwapFailures()
         return {
           pass: false,
           reason:
             `Circuit-breaker: ${count} consecutive swap failures (threshold ${haltOpts.maxFailedSwapsBeforeHalt}). ` +
-            `New deploys are blocked. Manual review required. Reset the counter to resume.`,
-        };
+            'New deploys are blocked. Manual review required. Reset the counter to resume.',
+        }
       }
 
-      const poolThresholds = await validateDeployPoolThresholds(args);
-      if (!poolThresholds.pass) return poolThresholds;
-      if (poolThresholds.entryMarketData) Object.assign(args, poolThresholds.entryMarketData);
+      const poolThresholds = await validateDeployPoolThresholds(args)
+      if (!poolThresholds.pass) return poolThresholds
+      if (poolThresholds.entryMarketData) Object.assign(args, poolThresholds.entryMarketData)
       if (poolThresholds.warnings?.length) {
         logStructured({
           category: 'screening',
           message: 'Pool screening passed using DLMM fallback (Pool Discovery API indexing lag)',
-          metadata: { tool: 'deploy_position', pool: args.pool_address, source: poolThresholds.source, warnings: poolThresholds.warnings },
-        });
+          metadata: {
+            tool: 'deploy_position',
+            pool: args.pool_address,
+            source: poolThresholds.source,
+            warnings: poolThresholds.warnings,
+          },
+        })
       }
 
       // Reject pools with bin_step out of configured range
-      const minStep = config.screening.minBinStep;
-      const maxStep = config.screening.maxBinStep;
+      const minStep = config.screening.minBinStep
+      const maxStep = config.screening.maxBinStep
       if (args.bin_step != null && ((args.bin_step as number) < minStep || (args.bin_step as number) > maxStep)) {
         return {
           pass: false,
           reason: `bin_step ${args.bin_step} is outside the allowed range of [${minStep}-${maxStep}].`,
-        };
+        }
       }
 
-      const deployAmountY = Number(args.amount_y ?? args.amount_sol ?? 0);
-      const deployAmountX = Number(args.amount_x ?? 0);
+      const deployAmountY = Number(args.amount_y ?? args.amount_sol ?? 0)
+      const deployAmountX = Number(args.amount_x ?? 0)
       if (Number.isFinite(deployAmountX) && deployAmountX > 0) {
         return {
           pass: false,
           reason: 'This agent only supports single-side SOL deploys. Use amount_y/amount_sol and keep amount_x=0.',
-        };
+        }
       }
-      const requestedBinsBelow = Number(args.bins_below ?? config.strategy.defaultBinsBelow ?? config.strategy.minBinsBelow);
-      const requestedBinsAbove = Number(args.bins_above ?? 0);
-      const minBinsBelow = Math.max(getMinSafeBinsBelow(), Number(config.strategy.minBinsBelow ?? getMinSafeBinsBelow()));
-      const isSingleSidedSol = deployAmountY > 0 && deployAmountX <= 0;
-      const requestedTotalBins = requestedBinsBelow + requestedBinsAbove;
-      const requestedVolatility = args.volatility == null ? null : Number(args.volatility);
+      const requestedBinsBelow = Number(
+        args.bins_below ?? config.strategy.defaultBinsBelow ?? config.strategy.minBinsBelow,
+      )
+      const requestedBinsAbove = Number(args.bins_above ?? 0)
+      const minBinsBelow = Math.max(
+        getMinSafeBinsBelow(),
+        Number(config.strategy.minBinsBelow ?? getMinSafeBinsBelow()),
+      )
+      const isSingleSidedSol = deployAmountY > 0 && deployAmountX <= 0
+      const requestedTotalBins = requestedBinsBelow + requestedBinsAbove
+      const requestedVolatility = args.volatility == null ? null : Number(args.volatility)
       if (args.volatility != null && (!Number.isFinite(requestedVolatility!) || requestedVolatility! <= 0)) {
         return {
           pass: false,
           reason: `volatility ${args.volatility} is invalid. Refusing deploy because the volatility feed is unusable.`,
-        };
+        }
       }
       if (
         args.downside_pct == null &&
@@ -1253,17 +1339,19 @@ async function _runSafetyChecks(
         return {
           pass: false,
           reason: `deploy range ${requestedTotalBins} total bins is below minimum ${minBinsBelow}. Refusing 1-bin/tiny-range deploy.`,
-        };
+        }
       }
       if (
         isSingleSidedSol &&
         args.downside_pct == null &&
-        (!Number.isFinite(requestedBinsBelow) || !Number.isInteger(requestedBinsBelow) || requestedBinsBelow < minBinsBelow)
+        (!Number.isFinite(requestedBinsBelow) ||
+          !Number.isInteger(requestedBinsBelow) ||
+          requestedBinsBelow < minBinsBelow)
       ) {
         return {
           pass: false,
           reason: `bins_below ${args.bins_below ?? 'missing'} is below minimum ${minBinsBelow}. Refusing 1-bin/tiny-range deploy.`,
-        };
+        }
       }
       if (
         isSingleSidedSol &&
@@ -1273,132 +1361,134 @@ async function _runSafetyChecks(
         return {
           pass: false,
           reason: 'Single-side SOL deploy must use bins_above=0.',
-        };
+        }
       }
 
       // Check position count limit + duplicate pool guard — force fresh scan to avoid stale cache
-      const positions = await getMyPositions({ force: true });
+      const positions = await getMyPositions({ force: true })
       if ((positions as any).total_positions >= config.risk.maxPositions) {
         return {
           pass: false,
           reason: `Max positions (${config.risk.maxPositions}) reached. Close a position first.`,
-        };
+        }
       }
-      const alreadyInPool = (positions as any).positions.some((p: any) => p.pool === args.pool_address);
+      const alreadyInPool = (positions as any).positions.some((p: any) => p.pool === args.pool_address)
       if (alreadyInPool) {
         return {
           pass: false,
           reason: `Already have an open position in pool ${args.pool_address}. Cannot open duplicate.`,
-        };
+        }
       }
 
       // Block same base token across different pools
       if (args.base_mint) {
-        const alreadyHasMint = (positions as any).positions.some((p: any) => p.base_mint === args.base_mint);
+        const alreadyHasMint = (positions as any).positions.some((p: any) => p.base_mint === args.base_mint)
         if (alreadyHasMint) {
           return {
             pass: false,
             reason: `Already holding base token ${args.base_mint} in another pool. One position per token only.`,
-          };
+          }
         }
       }
 
       // Check smart wallets and inject trigger_source for logging
       try {
-        const smartRes = await checkSmartWalletsOnPool({ pool_address: args.pool_address as string });
-        if (smartRes && smartRes.in_pool && smartRes.in_pool.length > 0) {
-          const names = smartRes.in_pool.map((w: any) => w.name || w.address.slice(0, 4)).join(', ');
-          args.trigger_source = names;
+        const smartRes = await checkSmartWalletsOnPool({ pool_address: args.pool_address as string })
+        if (smartRes?.in_pool && smartRes.in_pool.length > 0) {
+          const names = smartRes.in_pool.map((w: any) => w.name || w.address.slice(0, 4)).join(', ')
+          args.trigger_source = names
         }
-      } catch (e) {
+      } catch (_e) {
         // Silently ignore if it fails, it's just for logging
       }
 
       // Check amount limits
-      const amountY = deployAmountY;
+      const amountY = deployAmountY
       if (!Number.isFinite(amountY) || amountY <= 0) {
         return {
           pass: false,
-          reason: `Must provide a positive SOL amount (amount_y).`,
-        };
+          reason: 'Must provide a positive SOL amount (amount_y).',
+        }
       }
 
-      const minDeploy = Math.max(0.1, config.management.deployAmountSol);
+      const minDeploy = Math.max(0.1, config.management.deployAmountSol)
       if (amountY < minDeploy) {
         return {
           pass: false,
           reason: `Amount ${amountY} SOL is below the minimum deploy amount (${minDeploy} SOL). Use at least ${minDeploy} SOL.`,
-        };
+        }
       }
       if (amountY > config.risk.maxDeployAmount) {
         return {
           pass: false,
           reason: `SOL amount ${amountY} exceeds maximum allowed per position (${config.risk.maxDeployAmount}).`,
-        };
+        }
       }
 
       // Check SOL balance
       if (process.env.DRY_RUN !== 'true') {
-        const balance = await getWalletBalances();
-        const gasReserve = config.management.gasReserve;
-        const minRequired = amountY + gasReserve;
+        const balance = await getWalletBalances()
+        const gasReserve = config.management.gasReserve
+        const minRequired = amountY + gasReserve
         if (balance.sol < minRequired) {
           return {
             pass: false,
             reason: `Insufficient SOL: have ${balance.sol} SOL, need ${minRequired} SOL (${amountY} deploy + ${gasReserve} gas reserve).`,
-          };
+          }
         }
       }
 
-      return { pass: true };
+      return { pass: true }
     }
 
     case 'swap_token': {
       // Basic validation: check that input_mint and output_mint are non-empty strings and amount is positive
       if (!args.input_mint || typeof args.input_mint !== 'string' || args.input_mint.trim() === '') {
-        return { pass: false, reason: 'input_mint is required' };
+        return { pass: false, reason: 'input_mint is required' }
       }
       if (!args.output_mint || typeof args.output_mint !== 'string' || args.output_mint.trim() === '') {
-        return { pass: false, reason: 'output_mint is required' };
+        return { pass: false, reason: 'output_mint is required' }
       }
       if (typeof args.amount !== 'number' || args.amount <= 0) {
-        return { pass: false, reason: 'amount must be a positive number' };
+        return { pass: false, reason: 'amount must be a positive number' }
       }
-      return { pass: true };
+      return { pass: true }
     }
 
     case 'self_update': {
       if (process.env.ALLOW_SELF_UPDATE !== 'true') {
         return {
           pass: false,
-          reason: 'self_update is disabled by default. Set ALLOW_SELF_UPDATE=true locally if you really want to enable it.',
-        };
+          reason:
+            'self_update is disabled by default. Set ALLOW_SELF_UPDATE=true locally if you really want to enable it.',
+        }
       }
       if (!process.stdin.isTTY) {
         return {
           pass: false,
-          reason: 'self_update is only allowed from a local interactive TTY session, not from Telegram or background automation.',
-        };
+          reason:
+            'self_update is only allowed from a local interactive TTY session, not from Telegram or background automation.',
+        }
       }
-      return { pass: true };
+      return { pass: true }
     }
 
     case 'claim_fees': {
       if (!args.position_address || typeof args.position_address !== 'string' || args.position_address.trim() === '') {
-        return { pass: false, reason: 'position_address is required' };
+        return { pass: false, reason: 'position_address is required' }
       }
-      return { pass: true };
+      return { pass: true }
     }
 
     case 'close_position': {
       if (!args.position_address || typeof args.position_address !== 'string' || args.position_address.trim() === '') {
-        return { pass: false, reason: 'position_address is required' };
+        return { pass: false, reason: 'position_address is required' }
       }
-      return { pass: true };
+      return { pass: true }
     }
 
     default:
-      return { pass: true };
+      return { pass: true }
   }
 }
 
@@ -1406,11 +1496,11 @@ async function _runSafetyChecks(
  * Summarize a result for logging (truncate large responses).
  */
 function summarizeResult(result: Record<string, unknown>): Record<string, unknown> | string {
-  const str = JSON.stringify(result);
+  const str = JSON.stringify(result)
   if (str.length > 1000) {
-    return str.slice(0, 1000) + '...(truncated)';
+    return `${str.slice(0, 1000)}...(truncated)`
   }
-  return result;
+  return result
 }
 
 /**
@@ -1418,16 +1508,16 @@ function summarizeResult(result: Record<string, unknown>): Record<string, unknow
  * strips sensitive fields, and keeps only first-level keys.
  */
 function summarizeArgsForLog(args: Record<string, unknown>): Record<string, unknown> {
-  const summary: Record<string, unknown> = {};
-  const SENSITIVE_KEYS = new Set(['private_key', 'secret', 'api_key', 'apiKey', 'token']);
+  const summary: Record<string, unknown> = {}
+  const SENSITIVE_KEYS = new Set(['private_key', 'secret', 'api_key', 'apiKey', 'token'])
   for (const [key, value] of Object.entries(args)) {
     if (SENSITIVE_KEYS.has(key)) {
-      summary[key] = '[REDACTED]';
+      summary[key] = '[REDACTED]'
     } else if (typeof value === 'string') {
-      summary[key] = value.length > 100 ? value.slice(0, 100) + '...' : value;
+      summary[key] = value.length > 100 ? `${value.slice(0, 100)}...` : value
     } else {
-      summary[key] = value;
+      summary[key] = value
     }
   }
-  return summary;
+  return summary
 }

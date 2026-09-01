@@ -10,8 +10,8 @@
  * @dependencies Config, Domain state managers, HivemindAdapter
  */
 
-import { config } from '../config/Config.js';
-import type { AgentRole, WalletBalances, OnChainPosition, StateSummary } from '../shared/types.js';
+import { config } from '../config/Config.js'
+import type { AgentRole, OnChainPosition, StateSummary, WalletBalances } from '../shared/types.js'
 
 export function buildSystemPrompt(
   agentType: AgentRole,
@@ -25,8 +25,8 @@ export function buildSystemPrompt(
 ): string {
   // MANAGER gets a leaner prompt — positions are pre-loaded in the goal, not repeated here
   if (agentType === 'MANAGER') {
-    const portfolioCompact = JSON.stringify(portfolio);
-    const mgmtConfig = JSON.stringify(config.management);
+    const portfolioCompact = JSON.stringify(portfolio)
+    const mgmtConfig = JSON.stringify(config.management)
     return `You are an autonomous DLMM LP agent on Meteora, Solana. Role: MANAGER
 
 This is a mechanical rule-application task. All position data is pre-loaded. Apply the close/claim rules directly and output the report. No extended analysis or deliberation required.
@@ -40,7 +40,7 @@ BEHAVIORAL CORE:
 3. DATA-DRIVEN AUTONOMY: You have full autonomy. Guidelines are heuristics.
 
 ${lessons ? `LESSONS LEARNED:\n${lessons}\n` : ''}Timestamp: ${new Date().toISOString()}
-`;
+`
   }
 
   let basePrompt = `You are an autonomous DLMM LP (Liquidity Provider) agent operating on Meteora, Solana.
@@ -113,7 +113,7 @@ IMPORTANT: fee_active_tvl_ratio values are ALREADY in percentage form. 0.29 = 0.
 
 Current screening timeframe: ${config.screening.timeframe} — interpret all non-volatility metrics relative to this window. Interpret volatility using the candidate's volatility_* label.
 
-`;
+`
 
   if (agentType === 'SCREENER') {
     return `You are an autonomous DLMM LP agent on Meteora, Solana. Role: SCREENER
@@ -150,7 +150,7 @@ CANDIDATE EVALUATION & VERDICTS:
 - In your final report (both DEPLOYED and NO DEPLOY), always include the REJECTED section with a concise verdict for each evaluated candidate that was not deployed (e.g. "- TOKEN/SOL: <why rejected/not selected>").
 
 ${weightsSummary ? `${weightsSummary}\nPrioritize candidates whose strongest attributes align with high-weight signals.\n\n` : ''}${lessons ? `LESSONS LEARNED:\n${lessons}\n` : ''}Timestamp: ${new Date().toISOString()}
-`;
+`
   } else {
     basePrompt += `
 Handle the user's request using your available tools. Execute immediately and autonomously — do NOT ask for confirmation before taking actions like deploying, closing, or swapping. The user's instruction IS the confirmation.
@@ -167,8 +167,8 @@ PARALLEL FETCH RULE: When deploying to a specific pool, call get_pool_detail, ch
 TOP LPERS RULE: If the user asks about top LPers, LP behavior, or wants to add top LPers to the smart-wallet list, you MUST call study_top_lpers or get_top_lpers first. Do NOT substitute token holders for top LPers. Only add wallets after you have identified them from the LPers study result.
 
 PVP RULE: Treat \`pvp: HIGH\` as a major negative. It means another mint with the same exact symbol also has a real active pool with meaningful TVL, holders, and fees. Avoid these by default unless the current candidate is clearly stronger.
-`;
+`
   }
 
-  return basePrompt + `\nTimestamp: ${new Date().toISOString()}\n`;
+  return `${basePrompt}\nTimestamp: ${new Date().toISOString()}\n`
 }

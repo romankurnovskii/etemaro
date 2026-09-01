@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsup';
+import { defineConfig } from 'tsup'
 
 export default defineConfig({
   entry: ['src/Cli.ts'],
@@ -13,4 +13,4 @@ export default defineConfig({
   },
   // Bundle internal workspace packages into the standalone distribution
   noExternal: ['@etemaro/core', '@etemaro/daemon'],
-});
+})

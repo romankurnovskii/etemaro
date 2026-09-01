@@ -9,75 +9,75 @@
  * - Safe JSON file loading and atomic writing
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { log } from './logger.js';
+import fs from 'node:fs'
+import path from 'node:path'
+import { log } from './logger.js'
 
 // ─── Path Utilities ────────────────────────────────────────
 
-export { configPath, dataPath, REPO_ROOT, repoPath, sharedDataPath, strategyLibraryPath } from './constants.js';
+export { configPath, dataPath, REPO_ROOT, repoPath, sharedDataPath, strategyLibraryPath } from './constants.js'
 
 // ─── Math Utilities ────────────────────────────────────────
 
 export function safeNumber(value: unknown, fallback = 0): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
+  const n = Number(value)
+  return Number.isFinite(n) ? n : fallback
 }
 
 export function clamp(val: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, val));
+  return Math.max(min, Math.min(max, val))
 }
 
 export function avg(arr: number[]): number {
-  if (arr.length === 0) return 0;
-  return arr.reduce((s, x) => s + x, 0) / arr.length;
+  if (arr.length === 0) return 0
+  return arr.reduce((s, x) => s + x, 0) / arr.length
 }
 
 export function percentile(arr: number[], p: number): number {
-  const sorted = [...arr].sort((a, b) => a - b);
-  const idx = (p / 100) * (sorted.length - 1);
-  const lo = Math.floor(idx);
-  const hi = Math.ceil(idx);
-  return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (idx - lo);
+  const sorted = [...arr].sort((a, b) => a - b)
+  const idx = (p / 100) * (sorted.length - 1)
+  const lo = Math.floor(idx)
+  const hi = Math.ceil(idx)
+  return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (idx - lo)
 }
 
 /** Move current toward target by at most maxChange fraction. */
 export function nudge(current: number, target: number, maxChange: number): number {
-  const delta = target - current;
-  const maxDelta = current * maxChange;
-  if (Math.abs(delta) <= maxDelta) return target;
-  return current + Math.sign(delta) * maxDelta;
+  const delta = target - current
+  const maxDelta = current * maxChange
+  if (Math.abs(delta) <= maxDelta) return target
+  return current + Math.sign(delta) * maxDelta
 }
 
 export function isFiniteNum(n: unknown): n is number {
-  return typeof n === 'number' && isFinite(n);
+  return typeof n === 'number' && Number.isFinite(n)
 }
 
 // ─── String Utilities ────────────────────────────────────────
 
 export function sanitizeStoredText(text: unknown, maxLen = 280): string | null {
-  if (text == null) return null;
+  if (text == null) return null
   const cleaned = String(text)
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/[<>`]/g, '')
     .trim()
-    .slice(0, maxLen);
-  return cleaned || null;
+    .slice(0, maxLen)
+  return cleaned || null
 }
 
 export function formatNumber(n: number | null | undefined): string {
-  if (n == null) return '?';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
-  return String(Math.round(n));
+  if (n == null) return '?'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
+  return String(Math.round(n))
 }
 
 export function resolveEnvString(val: string): string | null {
-  if (!val.startsWith('env.')) return val;
-  const envVar = val.slice(4);
-  const resolved = typeof process !== 'undefined' ? process.env?.[envVar] : undefined;
-  return resolved !== undefined && resolved.trim() !== '' ? resolved.trim() : null;
+  if (!val.startsWith('env.')) return val
+  const envVar = val.slice(4)
+  const resolved = typeof process !== 'undefined' ? process.env?.[envVar] : undefined
+  return resolved !== undefined && resolved.trim() !== '' ? resolved.trim() : null
 }
 
 /**
@@ -86,63 +86,70 @@ export function resolveEnvString(val: string): string | null {
  * If the environment variable is not defined or empty, evaluates to null.
  */
 export function resolveEnvVars<T>(val: T): T {
-  if (val == null) return val;
+  if (val == null) return val
   if (typeof val === 'string') {
-    return resolveEnvString(val) as unknown as T;
+    return resolveEnvString(val) as unknown as T
   }
   if (Array.isArray(val)) {
-    return val.map((item) => resolveEnvVars(item)) as unknown as T;
+    return val.map((item) => resolveEnvVars(item)) as unknown as T
   }
   if (typeof val === 'object') {
-    const result: Record<string, unknown> = {};
+    const result: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(val)) {
-      result[k] = resolveEnvVars(v);
+      result[k] = resolveEnvVars(v)
     }
-    return result as unknown as T;
+    return result as unknown as T
   }
-  return val;
+  return val
 }
 
 export function numericConfig(value: unknown): number | null {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
 }
 
 export function nonEmptyString(...values: unknown[]): string | null {
   for (const value of values) {
-    if (typeof value !== 'string') continue;
-    const trimmed = value.trim();
-    if (trimmed) return trimmed;
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (trimmed) return trimmed
   }
-  return null;
+  return null
 }
 
 // ─── JSON File Utilities ───────────────────────────────────────
 
-export function loadJsonFile<T>(filePath: string, fallback: T, options?: { label?: string; warnOnCorrupt?: boolean; critical?: boolean }): T {
-  if (!fs.existsSync(filePath)) return fallback;
+export function loadJsonFile<T>(
+  filePath: string,
+  fallback: T,
+  options?: { label?: string; warnOnCorrupt?: boolean; critical?: boolean },
+): T {
+  if (!fs.existsSync(filePath)) return fallback
   try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T
   } catch (err: unknown) {
-    const prefix = options?.label ? `[${options.label}] ` : '';
-    const parseError = err instanceof Error ? err.message : String(err);
+    const prefix = options?.label ? `[${options.label}] ` : ''
+    const parseError = err instanceof Error ? err.message : String(err)
     if (options?.critical) {
-      const msg = `${prefix}Failed to parse JSON file at "${filePath}" (corrupt or unreadable): ${parseError}. Critical file corrupted — failing fast to prevent state loss.`;
-      log('file_error', msg);
-      throw new Error(msg, { cause: err });
+      const msg = `${prefix}Failed to parse JSON file at "${filePath}" (corrupt or unreadable): ${parseError}. Critical file corrupted — failing fast to prevent state loss.`
+      log('file_error', msg)
+      throw new Error(msg, { cause: err })
     }
     if (options?.warnOnCorrupt !== false) {
-      log('file_error', `${prefix}Failed to parse JSON file at "${filePath}" (corrupt or unreadable): ${parseError}. Using default fallback.`);
+      log(
+        'file_error',
+        `${prefix}Failed to parse JSON file at "${filePath}" (corrupt or unreadable): ${parseError}. Using default fallback.`,
+      )
     }
-    return fallback;
+    return fallback
   }
 }
 
 export interface LoadedJsonFile<T> {
-  data: T;
-  loadedFrom: 'file' | 'fallback';
-  filePath: string;
-  error?: string;
+  data: T
+  loadedFrom: 'file' | 'fallback'
+  filePath: string
+  error?: string
 }
 
 export function loadJsonFileWithInfo<T>(filePath: string, fallback: T): LoadedJsonFile<T> {
@@ -151,43 +158,43 @@ export function loadJsonFileWithInfo<T>(filePath: string, fallback: T): LoadedJs
       data: fallback,
       loadedFrom: 'fallback',
       filePath,
-    };
+    }
   }
   try {
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf8')) as T;
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8')) as T
     return {
       data,
       loadedFrom: 'file',
       filePath,
-    };
+    }
   } catch (error) {
     return {
       data: fallback,
       loadedFrom: 'fallback',
       filePath,
       error: error instanceof Error ? error.message : String(error),
-    };
+    }
   }
 }
 
 export function saveJsonFile(filePath: string, data: unknown): void {
-  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
   try {
-    const dir = path.dirname(filePath);
+    const dir = path.dirname(filePath)
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+      fs.mkdirSync(dir, { recursive: true })
     }
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2));
-    fs.renameSync(tmpPath, filePath);
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2))
+    fs.renameSync(tmpPath, filePath)
   } catch (err) {
     if (fs.existsSync(tmpPath)) {
       try {
-        fs.unlinkSync(tmpPath);
+        fs.unlinkSync(tmpPath)
       } catch {
         // Best-effort cleanup of the temp file; ignore failures
       }
     }
-    throw err;
+    throw err
   }
 }
 
@@ -196,15 +203,15 @@ export function saveJsonFile(filePath: string, data: unknown): void {
 export function isOorCloseReason(reason: string | null | undefined): boolean {
   const text = String(reason || '')
     .trim()
-    .toLowerCase();
-  return text === 'oor' || text.includes('out of range');
+    .toLowerCase()
+  return text === 'oor' || text.includes('out of range')
 }
 
 export function isAdjustedWinRateExcludedReason(reason: string | null | undefined): boolean {
   const text = String(reason || '')
     .trim()
-    .toLowerCase();
-  return text.includes('out of range') || text.includes('pumped far above range') || text === 'oor';
+    .toLowerCase()
+  return text.includes('out of range') || text.includes('pumped far above range') || text === 'oor'
 }
 
 // ─── Timeframe Screening Scales ──────────────────────────────────
@@ -217,58 +224,61 @@ export const TIMEFRAME_SCREENING_SCALES: Record<string, { minFeeActiveTvlRatio: 
   '4h': { minFeeActiveTvlRatio: 0.4, minVolume: 2_000 },
   '12h': { minFeeActiveTvlRatio: 1.5, minVolume: 60_000 },
   '24h': { minFeeActiveTvlRatio: 2.0, minVolume: 10_000 },
-};
+}
 
-const DEFAULT_TIMEFRAME = '4h';
+const DEFAULT_TIMEFRAME = '4h'
 
 export function normalizeTimeframe(timeframe: string | null | undefined): string {
   const tf = String(timeframe || DEFAULT_TIMEFRAME)
     .trim()
-    .toLowerCase();
-  return TIMEFRAME_SCREENING_SCALES[tf] ? tf : DEFAULT_TIMEFRAME;
+    .toLowerCase()
+  return TIMEFRAME_SCREENING_SCALES[tf] ? tf : DEFAULT_TIMEFRAME
 }
 
 export function getScreeningDefaultsForTimeframe(timeframe: string | null | undefined) {
-  const tf = normalizeTimeframe(timeframe);
-  return { timeframe: tf, ...TIMEFRAME_SCREENING_SCALES[tf]! };
+  const tf = normalizeTimeframe(timeframe)
+  return { timeframe: tf, ...TIMEFRAME_SCREENING_SCALES[tf]! }
 }
 
-export function scaleScreeningToTimeframe(timeframe: string | null | undefined): { minFeeActiveTvlRatio: number; minVolume: number } {
-  const { minFeeActiveTvlRatio, minVolume } = getScreeningDefaultsForTimeframe(timeframe);
-  return { minFeeActiveTvlRatio, minVolume };
+export function scaleScreeningToTimeframe(timeframe: string | null | undefined): {
+  minFeeActiveTvlRatio: number
+  minVolume: number
+} {
+  const { minFeeActiveTvlRatio, minVolume } = getScreeningDefaultsForTimeframe(timeframe)
+  return { minFeeActiveTvlRatio, minVolume }
 }
 
 // ─── RPC Resilience & Exponential Backoff ────────────────────────
 
 export interface RpcRetryOptions {
   /** Maximum number of retry attempts (default: 3). */
-  maxRetries?: number;
+  maxRetries?: number
   /** Initial backoff delay in milliseconds (default: 500ms). */
-  initialDelayMs?: number;
+  initialDelayMs?: number
   /** Maximum backoff delay in milliseconds (default: 5000ms). */
-  maxDelayMs?: number;
+  maxDelayMs?: number
   /** Exponential backoff multiplier factor (default: 2). */
-  factor?: number;
+  factor?: number
   /** Whether to add random jitter (0.5x .. 1.0x delay) to backoff (default: true). */
-  jitter?: boolean;
+  jitter?: boolean
   /** Custom check for whether an error is transient / retryable. */
-  isRetryable?: (error: unknown) => boolean;
+  isRetryable?: (error: unknown) => boolean
   /** Callback fired before sleeping between retries. */
-  onRetry?: (error: unknown, attempt: number, delayMs: number) => void;
+  onRetry?: (error: unknown, attempt: number, delayMs: number) => void
   /** Human-readable operation label for logging. */
-  label?: string;
+  label?: string
 }
 
 /**
  * Checks if an error is a transient RPC / network failure that should be retried.
  */
 export function isTransientRpcError(error: unknown): boolean {
-  if (!error) return false;
-  const msg = error instanceof Error ? error.message : String(error);
-  const lower = msg.toLowerCase();
+  if (!error) return false
+  const msg = error instanceof Error ? error.message : String(error)
+  const lower = msg.toLowerCase()
 
   // Rate limits
-  if (lower.includes('429') || lower.includes('too many requests') || lower.includes('rate limit')) return true;
+  if (lower.includes('429') || lower.includes('too many requests') || lower.includes('rate limit')) return true
 
   // Server error codes & status
   if (
@@ -282,7 +292,7 @@ export function isTransientRpcError(error: unknown): boolean {
     lower.includes('-32429') || // Solana RPC rate limit
     lower.includes('behind by')
   ) {
-    return true;
+    return true
   }
 
   // Network / socket level errors
@@ -298,7 +308,7 @@ export function isTransientRpcError(error: unknown): boolean {
     lower.includes('fetch failed') ||
     lower.includes('timeout')
   ) {
-    return true;
+    return true
   }
 
   // Blockhash / transient slot issues
@@ -307,55 +317,58 @@ export function isTransientRpcError(error: unknown): boolean {
     lower.includes('slot skipped') ||
     lower.includes('transaction simulation failed: blockhash not found')
   ) {
-    return true;
+    return true
   }
 
   // Check HTTP status code if present on custom error objects
-  const status = (error as any)?.status ?? (error as any)?.statusCode;
+  const status = (error as any)?.status ?? (error as any)?.statusCode
   if (typeof status === 'number' && [408, 421, 429, 500, 502, 503, 504].includes(status)) {
-    return true;
+    return true
   }
 
-  return false;
+  return false
 }
 
 /**
  * Executes an asynchronous operation with exponential backoff and jitter on transient RPC/network failures.
  */
 export async function withRpcRetry<T>(fn: () => Promise<T>, options: RpcRetryOptions = {}): Promise<T> {
-  const maxRetries = Math.max(0, options.maxRetries ?? 3);
-  const initialDelayMs = Math.max(1, options.initialDelayMs ?? 500);
-  const maxDelayMs = Math.max(initialDelayMs, options.maxDelayMs ?? 5000);
-  const factor = Math.max(1, options.factor ?? 2);
-  const jitter = options.jitter ?? true;
-  const isRetryable = options.isRetryable ?? isTransientRpcError;
+  const maxRetries = Math.max(0, options.maxRetries ?? 3)
+  const initialDelayMs = Math.max(1, options.initialDelayMs ?? 500)
+  const maxDelayMs = Math.max(initialDelayMs, options.maxDelayMs ?? 5000)
+  const factor = Math.max(1, options.factor ?? 2)
+  const jitter = options.jitter ?? true
+  const isRetryable = options.isRetryable ?? isTransientRpcError
 
-  let lastError: unknown;
+  let lastError: unknown
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await fn();
+      return await fn()
     } catch (error) {
-      lastError = error;
+      lastError = error
       if (attempt >= maxRetries || !isRetryable(error)) {
-        throw error;
+        throw error
       }
 
       // Calculate exponential backoff
-      const rawDelay = Math.min(maxDelayMs, initialDelayMs * Math.pow(factor, attempt));
-      const delayMs = jitter ? Math.round(rawDelay * (0.5 + Math.random() * 0.5)) : Math.round(rawDelay);
+      const rawDelay = Math.min(maxDelayMs, initialDelayMs * factor ** attempt)
+      const delayMs = jitter ? Math.round(rawDelay * (0.5 + Math.random() * 0.5)) : Math.round(rawDelay)
 
       if (options.onRetry) {
-        options.onRetry(error, attempt + 1, delayMs);
+        options.onRetry(error, attempt + 1, delayMs)
       } else {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        const label = options.label ? ` [${options.label}]` : '';
-        log('rpc_warn', `RPC call failed${label}: ${errorMsg.slice(0, 100)} — retrying attempt ${attempt + 1}/${maxRetries} in ${delayMs}ms`);
+        const errorMsg = error instanceof Error ? error.message : String(error)
+        const label = options.label ? ` [${options.label}]` : ''
+        log(
+          'rpc_warn',
+          `RPC call failed${label}: ${errorMsg.slice(0, 100)} — retrying attempt ${attempt + 1}/${maxRetries} in ${delayMs}ms`,
+        )
       }
 
-      await new Promise((r) => setTimeout(r, delayMs));
+      await new Promise((r) => setTimeout(r, delayMs))
     }
   }
 
-  throw lastError;
+  throw lastError
 }

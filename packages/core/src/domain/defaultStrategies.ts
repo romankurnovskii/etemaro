@@ -6,7 +6,7 @@
  * file (repo-tracked or local) is present.
  */
 
-import type { Strategy } from '../shared/types.js';
+import type { Strategy } from '../shared/types.js'
 
 // ─── Default Strategies ─────────────────────────────────────────
 export const DEFAULT_STRATEGIES: Record<string, Strategy> = {
@@ -22,8 +22,14 @@ export const DEFAULT_STRATEGIES: Record<string, Strategy> = {
       notes:
         '75% token = bullish (sell on pump out of range). 75% SOL = bearish/DCA-in (buy on dip). Set bins_below:bins_above proportional to ratio.',
     },
-    range: { type: 'custom', notes: 'bins_below:bins_above ratio matches token:SOL ratio. E.g., 75% token → ~52 bins below, ~17 bins above.' },
-    exit: { takeProfitPct: 10, notes: 'Close when OOR or TP hit. Re-deploy with updated ratio based on new momentum signals.' },
+    range: {
+      type: 'custom',
+      notes: 'bins_below:bins_above ratio matches token:SOL ratio. E.g., 75% token → ~52 bins below, ~17 bins above.',
+    },
+    exit: {
+      takeProfitPct: 10,
+      notes: 'Close when OOR or TP hit. Re-deploy with updated ratio based on new momentum signals.',
+    },
     bestFor: 'Expressing directional bias while earning fees both ways',
   },
   single_sided_reseed: {
@@ -52,7 +58,10 @@ export const DEFAULT_STRATEGIES: Record<string, Strategy> = {
     tokenCriteria: { notes: 'Stable volume pools with consistent fee generation.' },
     entry: { condition: 'Deploy normally with any shape', notes: 'Strategy is about management, not entry shape.' },
     range: { type: 'default', notes: 'Standard range for the pair.' },
-    exit: { notes: 'When unclaimed fees > $5 AND in range: claim_fees → add_liquidity back into same position. Normal close rules otherwise.' },
+    exit: {
+      notes:
+        'When unclaimed fees > $5 AND in range: claim_fees → add_liquidity back into same position. Normal close rules otherwise.',
+    },
     bestFor: 'Maximizing yield on stable, range-bound pools via compounding',
   },
   multi_layer: {
@@ -61,7 +70,8 @@ export const DEFAULT_STRATEGIES: Record<string, Strategy> = {
     author: 'meridian',
     lpStrategy: 'mixed',
     tokenCriteria: {
-      notes: 'High volume pools. Layer multiple shapes into ONE position via addLiquidityByStrategy to sculpt a composite distribution.',
+      notes:
+        'High volume pools. Layer multiple shapes into ONE position via addLiquidityByStrategy to sculpt a composite distribution.',
     },
     entry: {
       condition:
@@ -70,15 +80,20 @@ export const DEFAULT_STRATEGIES: Record<string, Strategy> = {
         'Step 1: deploy (creates position with first shape). Step 2+: add-liquidity to same position with different shapes. All layers share the same bin range but different distribution curves stack on top of each other.',
       example_patterns: {
         smooth_edge: 'Deploy Bid-Ask (edges) → add-liquidity Spot (fills the middle gap). 2 layers, 1 position.',
-        full_composite: 'Deploy Bid-Ask (edges) → add-liquidity Spot (middle) → add-liquidity Curve (center boost). 3 layers, 1 position.',
+        full_composite:
+          'Deploy Bid-Ask (edges) → add-liquidity Spot (middle) → add-liquidity Curve (center boost). 3 layers, 1 position.',
         edge_heavy: 'Deploy Bid-Ask → add-liquidity Bid-Ask again (double edge weight). 2 layers, 1 position.',
       },
     },
     range: {
       type: 'custom',
-      notes: "All layers share the position's bin range (set at deploy). Choose range wide enough for the widest layer needed.",
+      notes:
+        "All layers share the position's bin range (set at deploy). Choose range wide enough for the widest layer needed.",
     },
-    exit: { notes: 'Single position — one close, one claim. The composite shape means fees earned reflect ALL layers combined.' },
+    exit: {
+      notes:
+        'Single position — one close, one claim. The composite shape means fees earned reflect ALL layers combined.',
+    },
     bestFor: 'Creating custom liquidity distributions by stacking shapes in one position. Single position to manage.',
   },
   partial_harvest: {
@@ -96,4 +111,4 @@ export const DEFAULT_STRATEGIES: Record<string, Strategy> = {
     },
     bestFor: 'Locking in profits without fully exiting winning positions',
   },
-};
+}

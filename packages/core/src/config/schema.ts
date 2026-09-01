@@ -1,22 +1,22 @@
-import { z } from 'zod';
-import { resolveEnvString } from '../shared/utils.js';
+import { z } from 'zod'
+import { resolveEnvString } from '../shared/utils.js'
 
 // Helper to handle process.env references for strings
 const envString = z.string().transform((val, ctx) => {
   if (val.startsWith('env.')) {
-    const envVar = val.slice(4);
-    const resolved = process.env[envVar];
+    const envVar = val.slice(4)
+    const resolved = process.env[envVar]
     if (resolved === undefined || resolved.trim() === '') {
       ctx.addIssue({
         code: 'custom',
         message: `Environment variable ${envVar} is not set but is referenced by configuration.\nSet ${envVar} in your .env file or environment.`,
-      });
-      return z.NEVER;
+      })
+      return z.NEVER
     }
-    return resolved.trim();
+    return resolved.trim()
   }
-  return val;
-});
+  return val
+})
 
 // Helper for strings that can be null or empty string, resolving env references if applicable
 const envStringNullable = z
@@ -25,65 +25,65 @@ const envStringNullable = z
   .optional()
   .transform((val) => {
     if (val && typeof val === 'string' && val.startsWith('env.')) {
-      return resolveEnvString(val);
+      return resolveEnvString(val)
     }
-    return val ?? null;
-  });
+    return val ?? null
+  })
 
 // Helper for numbers that might be passed as strings from env or config
 const envNumber = z.union([z.number(), z.string()]).transform((val, ctx) => {
   if (typeof val === 'string') {
     if (val.startsWith('env.')) {
-      const envVar = val.slice(4);
-      const resolved = process.env[envVar];
+      const envVar = val.slice(4)
+      const resolved = process.env[envVar]
       if (resolved === undefined) {
         ctx.addIssue({
           code: 'custom',
           message: `Environment variable ${envVar} is not set but is referenced.`,
-        });
-        return z.NEVER;
+        })
+        return z.NEVER
       }
-      const num = Number(resolved);
-      if (isNaN(num)) {
+      const num = Number(resolved)
+      if (Number.isNaN(num)) {
         ctx.addIssue({
           code: 'custom',
           message: `Environment variable ${envVar} did not resolve to a valid number.`,
-        });
-        return z.NEVER;
+        })
+        return z.NEVER
       }
-      return num;
+      return num
     }
-    const num = Number(val);
-    if (isNaN(num)) {
+    const num = Number(val)
+    if (Number.isNaN(num)) {
       ctx.addIssue({
         code: 'custom',
         message: 'Expected a number',
-      });
-      return z.NEVER;
+      })
+      return z.NEVER
     }
-    return num;
+    return num
   }
-  return val;
-});
+  return val
+})
 
 const envBoolean = z.union([z.boolean(), z.string()]).transform((val, ctx) => {
   if (typeof val === 'string') {
     if (val.startsWith('env.')) {
-      const envVar = val.slice(4);
-      const resolved = process.env[envVar];
+      const envVar = val.slice(4)
+      const resolved = process.env[envVar]
       if (resolved === undefined) {
         ctx.addIssue({
           code: 'custom',
           message: `Environment variable ${envVar} is not set but is referenced.`,
-        });
-        return z.NEVER;
+        })
+        return z.NEVER
       }
-      return resolved.toLowerCase() === 'true' || resolved === '1';
+      return resolved.toLowerCase() === 'true' || resolved === '1'
     }
-    return val.toLowerCase() === 'true' || val === '1';
+    return val.toLowerCase() === 'true' || val === '1'
   }
-  return val;
-});
+  return val
+})
 
 export const UserConfigSchema = z.object({
   _version: z.number().optional().default(3),
@@ -193,6 +193,7 @@ export const UserConfigSchema = z.object({
     maxTokens: envNumber,
     maxSteps: envNumber,
     defaultModel: envString,
+    fallbackModel: envStringNullable.optional(),
     managementModel: envString,
     screeningModel: envString,
     generalModel: envString,
@@ -283,7 +284,7 @@ export const UserConfigSchema = z.object({
     rsiOverbought: envNumber,
     requireAllIntervals: envBoolean,
   }),
-});
+})
 
-export type ValidatedUserConfig = z.infer<typeof UserConfigSchema>;
-export type UserConfigRaw = z.input<typeof UserConfigSchema>;
+export type ValidatedUserConfig = z.infer<typeof UserConfigSchema>
+export type UserConfigRaw = z.input<typeof UserConfigSchema>
