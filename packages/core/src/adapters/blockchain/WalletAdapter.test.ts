@@ -368,9 +368,7 @@ describe('WalletAdapter', () => {
         const usdcMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 
         expect(getCachedMintDecimals(solMint)).toBe(9)
-        expect(getCachedMintDecimals('SOL')).toBe(9)
         expect(getCachedMintDecimals(usdcMint)).toBe(6)
-        expect(getCachedMintDecimals('USDC')).toBe(6)
 
         let lastOrderParams: any = null
         mockJupiterSwap((params) => {

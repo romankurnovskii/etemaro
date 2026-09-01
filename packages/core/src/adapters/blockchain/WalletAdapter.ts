@@ -136,10 +136,7 @@ const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ
 
 const _mintDecimalsCache = new Map<string, number>([
   [SOL_MINT, 9],
-  ['So11111111111111111111111111111111111111111', 9],
-  ['SOL', 9],
   [USDC_MINT, 6],
-  ['USDC', 6],
 ])
 
 export function getCachedMintDecimals(mint: string): number | undefined {
@@ -155,10 +152,7 @@ export function setCachedMintDecimals(mint: string, decimals: number): void {
 export function clearMintDecimalsCache(): void {
   _mintDecimalsCache.clear()
   _mintDecimalsCache.set(SOL_MINT, 9)
-  _mintDecimalsCache.set('So11111111111111111111111111111111111111111', 9)
-  _mintDecimalsCache.set('SOL', 9)
   _mintDecimalsCache.set(USDC_MINT, 6)
-  _mintDecimalsCache.set('USDC', 6)
 }
 
 let _balanceCache: WalletBalancesResult | null = null
