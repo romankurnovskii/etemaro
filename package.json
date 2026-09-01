@@ -1,6 +1,6 @@
 {
   "name": "etemaro",
-  "version": "3.4.4",
+  "version": "3.4.5",
   "type": "module",
   "packageManager": "pnpm@9.15.4",
   "description": "Autonomous DLMM LP agent for Meteora on Solana",
