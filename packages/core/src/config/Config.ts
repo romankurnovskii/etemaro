@@ -110,6 +110,7 @@ function buildConfig(): AppConfig {
     agentId: u.agentId ?? null,
     connection: {
       rpcUrl: u.connection?.rpcUrl,
+      wallet: u.connection?.wallet,
       walletPrivateKey: u.connection?.walletPrivateKey,
       heliusApiKey: u.connection?.heliusApiKey ?? null,
       telegramBotToken: u.connection?.telegramBotToken ?? null,
