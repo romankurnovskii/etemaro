@@ -20,15 +20,13 @@ import { notify } from './NotificationSink.js'
 
 function getEffectiveToken(): string | null {
   const cfgToken = config.connection?.telegramBotToken
-  const token = cfgToken && !cfgToken.startsWith('env.') ? cfgToken : process.env.TELEGRAM_BOT_TOKEN
-  return token && !token.startsWith('env.') ? token : null
+  return cfgToken && !cfgToken.startsWith('env.') ? cfgToken : null
 }
 
 function getEffectiveChatId(): string | null {
   if (chatId) return chatId
   const cfgChatId = config.connection?.telegramChatId
-  const currentChatId = cfgChatId && !cfgChatId.startsWith('env.') ? cfgChatId : process.env.TELEGRAM_CHAT_ID
-  return currentChatId && !currentChatId.startsWith('env.') ? currentChatId : null
+  return cfgChatId && !cfgChatId.startsWith('env.') ? cfgChatId : null
 }
 
 function getBase(): string | null {
@@ -37,7 +35,7 @@ function getBase(): string | null {
 }
 
 function getAllowedUserIds(): Set<string> {
-  const raw = config.connection?.telegramAllowedUserIds || process.env.TELEGRAM_ALLOWED_USER_IDS || ''
+  const raw = config.connection?.telegramAllowedUserIds || ''
   return new Set(
     raw
       .split(',')

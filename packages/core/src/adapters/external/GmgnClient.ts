@@ -49,16 +49,13 @@ async function paceGmgnRequest(): Promise<void> {
 }
 
 function getApiKey(): string {
-  const key = config.gmgn?.apiKey || (typeof process !== 'undefined' ? process.env?.GMGN_API_KEY : undefined)
+  const key = config.gmgn?.apiKey
   if (!key) throw new Error('GMGN_API_KEY is required for the GMGN fee source.')
   return key
 }
 
 export function hasGmgnApiKey(): boolean {
-  return !!(
-    config.gmgn?.enabled &&
-    (config.gmgn?.apiKey || (typeof process !== 'undefined' ? process.env?.GMGN_API_KEY : undefined))
-  )
+  return !!(config.gmgn?.enabled && config.gmgn?.apiKey)
 }
 
 function appendParams(url: URL, params: Record<string, unknown> = {}): void {

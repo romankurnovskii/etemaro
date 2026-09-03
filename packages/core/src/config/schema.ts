@@ -87,210 +87,239 @@ const envBoolean = z.union([z.boolean(), z.string()]).transform((val, ctx) => {
 
 export const UserConfigSchema = z
   .object({
-  _version: z.number().optional().default(3),
-  preset: z.string().optional(),
-  agentId: envStringNullable.optional(),
-  connection: z
-    .object({
-      description: z.string().optional(),
-      rpcUrl: envString.optional(),
-      rpcUrl2: envStringNullable.optional(),
-      walletPrivateKey: envString.optional(),
-      wallet: z.string().optional(),
-      heliusApiKey: envStringNullable.optional(),
-      telegramBotToken: envStringNullable.optional(),
-      telegramChatId: envStringNullable.optional(),
-      telegramAllowedUserIds: envStringNullable.optional(),
-      dryRun: envBoolean,
-    })
-    .strict()
-    .optional(),
-  risk: z.object({
-    description: z.string().optional(),
-    maxPositions: envNumber,
-    maxDeployAmount: envNumber,
-  }).strict(),
-  screening: z.object({
-    description: z.string().optional(),
-    entrySource: z.enum(['market', 'smart_wallets']).optional().default('market'),
-    excludeHighSupplyConcentration: envBoolean,
-    minFeeActiveTvlRatio: envNumber,
-    minTvl: envNumber,
-    maxTvl: envNumber,
-    minVolume: envNumber,
-    minOrganic: envNumber,
-    minQuoteOrganic: envNumber,
-    minHolders: envNumber,
-    minMcap: envNumber,
-    maxMcap: envNumber,
-    minBinStep: envNumber,
-    maxBinStep: envNumber,
-    timeframe: envString,
-    category: envString,
-    minTokenFeesSol: envNumber,
-    useDiscordSignals: envBoolean,
-    discordSignalMode: envString,
-    avoidPvpSymbols: envBoolean,
-    blockPvpSymbols: envBoolean,
-    maxBotHoldersPct: envNumber,
-    maxTop10Pct: envNumber,
-    loneCandidateMinDegen: envNumber,
-    allowedLaunchpads: z.array(envString),
-    blockedLaunchpads: z.array(envString),
-    minTokenAgeHours: envNumber.nullable(),
-    maxTokenAgeHours: envNumber.nullable(),
-  }).strict(),
-  management: z.object({
-    description: z.string().optional(),
-    minClaimAmount: envNumber,
-    autoSwapAfterClaim: envBoolean,
-    autoSwapRetryAttempts: envNumber,
-    autoSwapRetryDelayMs: envNumber,
-    autoSwapInterSwapDelayMs: envNumber,
-    haltOnSwapFailure: envBoolean,
-    maxFailedSwapsBeforeHalt: envNumber,
-    outOfRangeBinsToClose: envNumber,
-    outOfRangeWaitMinutes: envNumber,
-    oorCooldownTriggerCount: envNumber,
-    oorCooldownHours: envNumber,
-    repeatDeployCooldownEnabled: envBoolean,
-    repeatDeployCooldownTriggerCount: envNumber,
-    repeatDeployCooldownHours: envNumber,
-    repeatDeployCooldownScope: envString,
-    repeatDeployCooldownMinFeeEarnedPct: envNumber,
-    minVolumeToRebalance: envNumber,
-    stopLossPct: envNumber,
-    takeProfitPct: envNumber,
-    minFeePerTvl24h: envNumber,
-    minAgeBeforeYieldCheck: envNumber,
-    minSolToOpen: envNumber,
-    deployAmountSol: envNumber,
-    gasReserve: envNumber,
-    positionSizePct: envNumber,
-    trailingTakeProfit: envBoolean,
-    trailingTriggerPct: envNumber,
-    trailingDropPct: envNumber,
-    pnlSanityMaxDiffPct: envNumber,
-    solMode: envBoolean,
-  }).strict(),
-  strategy: z.object({
-    description: z.string().optional(),
-    activeStrategyId: envString,
-    strategyMeteora: z.enum(['spot', 'curve', 'bid_ask']),
-    minBinsBelow: envNumber,
-    maxBinsBelow: envNumber,
-    defaultBinsBelow: envNumber,
-    minSafeBinsBelow: envNumber,
-  }).strict(),
-  schedule: z.object({
-    description: z.string().optional(),
-    managementIntervalMin: envNumber,
-    screeningIntervalMin: envNumber,
-    healthCheckIntervalMin: envNumber,
-  }).strict(),
-  llm: z.object({
-    description: z.string().optional(),
-    baseUrl: envStringNullable.optional(),
-    apiKey: envStringNullable.optional(),
-    temperature: envNumber,
-    maxTokens: envNumber,
-    maxSteps: envNumber,
-    defaultModel: envString,
-    fallbackModel: envStringNullable.optional(),
-    managementModel: envString,
-    screeningModel: envString,
-    generalModel: envString,
-  }).strict(),
-  darwin: z.object({
-    description: z.string().optional(),
-    enabled: envBoolean,
-    windowDays: envNumber,
-    recalcEvery: envNumber,
-    boostFactor: envNumber,
-    decayFactor: envNumber,
-    weightFloor: envNumber,
-    weightCeiling: envNumber,
-    minSamples: envNumber,
-  }).strict(),
-  hiveMind: z.object({
-    description: z.string().optional(),
-    enabled: envBoolean.default(true),
-    url: envStringNullable.optional(),
-    apiKey: envStringNullable.optional(),
+    _version: z.number().optional().default(3),
+    preset: z.string().optional(),
     agentId: envStringNullable.optional(),
-    pullMode: envString,
-  }).strict(),
-  api: z.object({
-    description: z.string().optional(),
-    meridian: z
+    connection: z
+      .object({
+        description: z.string().optional(),
+        rpcUrl: envString.optional(),
+        rpcUrl2: envStringNullable.optional(),
+        walletPrivateKey: envString.optional(),
+        wallet: z.string().optional(),
+        heliusApiKey: envStringNullable.optional(),
+        telegramBotToken: envStringNullable.optional(),
+        telegramChatId: envStringNullable.optional(),
+        telegramAllowedUserIds: envStringNullable.optional(),
+        dryRun: envBoolean,
+        allowSelfUpdate: envBoolean.optional().default(false),
+      })
+      .strict()
+      .optional(),
+    risk: z
+      .object({
+        description: z.string().optional(),
+        maxPositions: envNumber,
+        maxDeployAmount: envNumber,
+      })
+      .strict(),
+    screening: z
+      .object({
+        description: z.string().optional(),
+        entrySource: z.enum(['market', 'smart_wallets']).optional().default('market'),
+        excludeHighSupplyConcentration: envBoolean,
+        minFeeActiveTvlRatio: envNumber,
+        minTvl: envNumber,
+        maxTvl: envNumber,
+        minVolume: envNumber,
+        minOrganic: envNumber,
+        minQuoteOrganic: envNumber,
+        minHolders: envNumber,
+        minMcap: envNumber,
+        maxMcap: envNumber,
+        minBinStep: envNumber,
+        maxBinStep: envNumber,
+        timeframe: envString,
+        category: envString,
+        minTokenFeesSol: envNumber,
+        useDiscordSignals: envBoolean,
+        discordSignalMode: envString,
+        avoidPvpSymbols: envBoolean,
+        blockPvpSymbols: envBoolean,
+        maxBotHoldersPct: envNumber,
+        maxTop10Pct: envNumber,
+        loneCandidateMinDegen: envNumber,
+        allowedLaunchpads: z.array(envString),
+        blockedLaunchpads: z.array(envString),
+        minTokenAgeHours: envNumber.nullable(),
+        maxTokenAgeHours: envNumber.nullable(),
+      })
+      .strict(),
+    management: z
+      .object({
+        description: z.string().optional(),
+        minClaimAmount: envNumber,
+        autoSwapAfterClaim: envBoolean,
+        autoSwapRetryAttempts: envNumber,
+        autoSwapRetryDelayMs: envNumber,
+        autoSwapInterSwapDelayMs: envNumber,
+        haltOnSwapFailure: envBoolean,
+        maxFailedSwapsBeforeHalt: envNumber,
+        outOfRangeBinsToClose: envNumber,
+        outOfRangeWaitMinutes: envNumber,
+        oorCooldownTriggerCount: envNumber,
+        oorCooldownHours: envNumber,
+        repeatDeployCooldownEnabled: envBoolean,
+        repeatDeployCooldownTriggerCount: envNumber,
+        repeatDeployCooldownHours: envNumber,
+        repeatDeployCooldownScope: envString,
+        repeatDeployCooldownMinFeeEarnedPct: envNumber,
+        minVolumeToRebalance: envNumber,
+        stopLossPct: envNumber,
+        takeProfitPct: envNumber,
+        minFeePerTvl24h: envNumber,
+        minAgeBeforeYieldCheck: envNumber,
+        minSolToOpen: envNumber,
+        deployAmountSol: envNumber,
+        gasReserve: envNumber,
+        positionSizePct: envNumber,
+        trailingTakeProfit: envBoolean,
+        trailingTriggerPct: envNumber,
+        trailingDropPct: envNumber,
+        pnlSanityMaxDiffPct: envNumber,
+        solMode: envBoolean,
+      })
+      .strict(),
+    strategy: z
+      .object({
+        description: z.string().optional(),
+        activeStrategyId: envString,
+        strategyMeteora: z.enum(['spot', 'curve', 'bid_ask']),
+        minBinsBelow: envNumber,
+        maxBinsBelow: envNumber,
+        defaultBinsBelow: envNumber,
+        minSafeBinsBelow: envNumber,
+      })
+      .strict(),
+    schedule: z
+      .object({
+        description: z.string().optional(),
+        managementIntervalMin: envNumber,
+        screeningIntervalMin: envNumber,
+        healthCheckIntervalMin: envNumber,
+      })
+      .strict(),
+    llm: z
+      .object({
+        description: z.string().optional(),
+        baseUrl: envStringNullable.optional(),
+        apiKey: envStringNullable.optional(),
+        temperature: envNumber,
+        maxTokens: envNumber,
+        maxSteps: envNumber,
+        defaultModel: envString,
+        fallbackModel: envStringNullable.optional(),
+        managementModel: envString,
+        screeningModel: envString,
+        generalModel: envString,
+      })
+      .strict(),
+    darwin: z
+      .object({
+        description: z.string().optional(),
+        enabled: envBoolean,
+        windowDays: envNumber,
+        recalcEvery: envNumber,
+        boostFactor: envNumber,
+        decayFactor: envNumber,
+        weightFloor: envNumber,
+        weightCeiling: envNumber,
+        minSamples: envNumber,
+      })
+      .strict(),
+    hiveMind: z
       .object({
         description: z.string().optional(),
         enabled: envBoolean.default(true),
         url: envStringNullable.optional(),
-        publicApiKey: envStringNullable.optional(),
-        lpAgentRelayEnabled: envBoolean.default(false),
+        apiKey: envStringNullable.optional(),
+        agentId: envStringNullable.optional(),
+        pullMode: envString,
       })
-      .strict()
-      .optional(),
-    lpAgent: z
+      .strict(),
+    api: z
+      .object({
+        description: z.string().optional(),
+        meridian: z
+          .object({
+            description: z.string().optional(),
+            enabled: envBoolean.default(true),
+            url: envStringNullable.optional(),
+            publicApiKey: envStringNullable.optional(),
+            lpAgentRelayEnabled: envBoolean.default(false),
+          })
+          .strict()
+          .optional(),
+        lpAgent: z
+          .object({
+            description: z.string().optional(),
+            enabled: envBoolean.default(false),
+            url: envStringNullable.optional(),
+            apiKey: envStringNullable.optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict(),
+    pnl: z
+      .object({
+        description: z.string().optional(),
+        rpcUrl: envString,
+        source: envString,
+        pollIntervalSec: envNumber,
+        depositCacheTtlSec: envNumber,
+        confirmTicks: envNumber,
+      })
+      .strict(),
+    opportunity: z
+      .object({
+        description: z.string().optional(),
+        enabled: envBoolean,
+        pollIntervalSec: envNumber,
+        limit: envNumber,
+        minScore: envNumber,
+        smartWalletScoreBonus: envNumber,
+        targetVolRatio: envNumber,
+        targetLpCount: envNumber,
+        targetFeeRatio: envNumber,
+        targetLiquidity: envNumber,
+      })
+      .strict(),
+    gmgn: z
       .object({
         description: z.string().optional(),
         enabled: envBoolean.default(false),
-        url: envStringNullable.optional(),
         apiKey: envStringNullable.optional(),
+        baseUrl: envString,
+        requestDelayMs: envNumber,
+        maxRetries: envNumber,
+        feeSource: envString,
       })
-      .strict()
-      .optional(),
-  }).strict(),
-  pnl: z.object({
-    description: z.string().optional(),
-    rpcUrl: envString,
-    source: envString,
-    pollIntervalSec: envNumber,
-    depositCacheTtlSec: envNumber,
-    confirmTicks: envNumber,
-  }).strict(),
-  opportunity: z.object({
-    description: z.string().optional(),
-    enabled: envBoolean,
-    pollIntervalSec: envNumber,
-    limit: envNumber,
-    minScore: envNumber,
-    smartWalletScoreBonus: envNumber,
-    targetVolRatio: envNumber,
-    targetLpCount: envNumber,
-    targetFeeRatio: envNumber,
-    targetLiquidity: envNumber,
-  }).strict(),
-  gmgn: z.object({
-    description: z.string().optional(),
-    enabled: envBoolean.default(false),
-    apiKey: envStringNullable.optional(),
-    baseUrl: envString,
-    requestDelayMs: envNumber,
-    maxRetries: envNumber,
-    feeSource: envString,
-  }).strict(),
-  jupiter: z.object({
-    description: z.string().optional(),
-    apiKey: envString,
-    referralAccount: envString,
-    referralFeeBps: envNumber,
-  }).strict(),
-  chartIndicators: z.object({
-    description: z.string().optional(),
-    enabled: envBoolean,
-    entryPreset: envString,
-    exitPreset: envString,
-    rsiLength: envNumber,
-    intervals: z.array(envString),
-    candles: envNumber,
-    rsiOversold: envNumber,
-    rsiOverbought: envNumber,
-    requireAllIntervals: envBoolean,
-  }).strict(),
-})
-.strict()
+      .strict(),
+    jupiter: z
+      .object({
+        description: z.string().optional(),
+        apiKey: envString,
+        referralAccount: envString,
+        referralFeeBps: envNumber,
+      })
+      .strict(),
+    chartIndicators: z
+      .object({
+        description: z.string().optional(),
+        enabled: envBoolean,
+        entryPreset: envString,
+        exitPreset: envString,
+        rsiLength: envNumber,
+        intervals: z.array(envString),
+        candles: envNumber,
+        rsiOversold: envNumber,
+        rsiOverbought: envNumber,
+        requireAllIntervals: envBoolean,
+      })
+      .strict(),
+  })
+  .strict()
 
 export type ValidatedUserConfig = z.infer<typeof UserConfigSchema>
 export type UserConfigRaw = z.input<typeof UserConfigSchema>
