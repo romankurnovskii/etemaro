@@ -149,18 +149,15 @@ describe('TelegramAdapter notifications', () => {
     ).toBe('swapped 3/3')
   })
 
-  it('resolves Telegram credentials from environment variables when config.connection is absent', async () => {
+  it('resolves Telegram credentials from config when config.connection has resolved values', async () => {
     const origChatId = config.connection?.telegramChatId
     const origToken = config.connection?.telegramBotToken
     if (config.connection) {
-      config.connection.telegramChatId = 'env.TELEGRAM_CHAT_ID'
-      config.connection.telegramBotToken = 'env.TELEGRAM_BOT_TOKEN'
+      config.connection.telegramChatId = '987654'
+      config.connection.telegramBotToken = 'env_bot_token_123'
     }
 
     try {
-      process.env.TELEGRAM_BOT_TOKEN = 'env_bot_token_123'
-      process.env.TELEGRAM_CHAT_ID = '987654'
-
       expect(isEnabled()).toBe(true)
       expect(isTelegramConfigured()).toBe(true)
 
@@ -170,12 +167,12 @@ describe('TelegramAdapter notifications', () => {
         json: async () => ({ ok: true, result: { message_id: 111 } }),
       } as any)
 
-      const res = await sendMessage('Test env fallback')
+      const res = await sendMessage('Test config values')
       expect(res).toBeDefined()
       expect(fetchSpy).toHaveBeenCalledWith(
         'https://api.telegram.org/botenv_bot_token_123/sendMessage',
         expect.objectContaining({
-          body: JSON.stringify({ chat_id: '987654', text: 'Test env fallback' }),
+          body: JSON.stringify({ chat_id: '987654', text: 'Test config values' }),
         }),
       )
     } finally {
@@ -187,8 +184,8 @@ describe('TelegramAdapter notifications', () => {
   })
 
   it('silently ignores 400 "message is not modified" errors without logging telegram_error', async () => {
-    process.env.TELEGRAM_BOT_TOKEN = 'test_token'
-    process.env.TELEGRAM_CHAT_ID = '123456'
+    config.connection.telegramBotToken = 'test_token'
+    config.connection.telegramChatId = '123456'
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
@@ -203,8 +200,8 @@ describe('TelegramAdapter notifications', () => {
   })
 
   it('logs telegram_error for other 400 errors (e.g. chat not found)', async () => {
-    process.env.TELEGRAM_BOT_TOKEN = 'test_token'
-    process.env.TELEGRAM_CHAT_ID = '123456'
+    config.connection.telegramBotToken = 'test_token'
+    config.connection.telegramChatId = '123456'
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
@@ -218,8 +215,8 @@ describe('TelegramAdapter notifications', () => {
   })
 
   it('createLiveMessage debounces rapid toolStart/toolFinish events and skips identical text', async () => {
-    process.env.TELEGRAM_BOT_TOKEN = 'test_token'
-    process.env.TELEGRAM_CHAT_ID = '123456'
+    config.connection.telegramBotToken = 'test_token'
+    config.connection.telegramChatId = '123456'
 
     const editPayloads: string[] = []
     let sendCalls = 0

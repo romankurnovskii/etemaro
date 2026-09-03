@@ -16,12 +16,12 @@ import path from 'node:path'
 import { Keypair, PublicKey, VersionedTransaction } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { config } from '../../config/Config.js'
+import { getConnection, getWalletKeypair, withRpcFailover } from '../../shared/connection.js'
 import { configPath } from '../../shared/constants.js'
 import { createTimer, log, logStructured } from '../../shared/logger.js'
+import type { WalletBalancesResult } from '../../shared/types.js'
 import { loadJsonFile, saveJsonFile, withRpcRetry } from '../../shared/utils.js'
 import { sleep } from '../../utils/time.js'
-import { getConnection, getWalletAddress, getWalletKeypair, withRpcFailover } from '../../shared/connection.js'
-import type { WalletBalancesResult } from '../../shared/types.js'
 
 export interface GeneratedWallet {
   publicKey: string
@@ -42,11 +42,7 @@ export interface WalletsStore {
  * Import a wallet from a Base58 private key and store it with a label.
  * If a file path is provided, reads a Solana CLI keypair JSON array.
  */
-export function importWallet(opts: {
-  label: string
-  privateKey?: string
-  filePath?: string
-}): GeneratedWallet {
+export function importWallet(opts: { label: string; privateKey?: string; filePath?: string }): GeneratedWallet {
   let key: string | undefined = opts.privateKey
   if (!key && opts.filePath) {
     const raw = JSON.parse(fs.readFileSync(opts.filePath, 'utf8'))
@@ -75,7 +71,7 @@ export function importWallet(opts: {
   existing.wallets = existing.wallets || []
   existing.wallets.push(wallet)
   saveJsonFile(targetFile, existing)
-log('wallet', `Imported wallet ${wallet.publicKey} as ${opts.label}`)
+  log('wallet', `Imported wallet ${wallet.publicKey} as ${opts.label}`)
   return wallet
 }
 
@@ -295,10 +291,10 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
             }
           }
         }
-} catch (pErr: unknown) {
-    const e = pErr as { message?: string }
-    log('wallet_warn', `Jupiter Price API fetch failed: ${e.message || pErr}`)
-  }
+      } catch (pErr: unknown) {
+        const e = pErr as { message?: string }
+        log('wallet_warn', `Jupiter Price API fetch failed: ${e.message || pErr}`)
+      }
 
       const solPrice = prices[SOL_MINT] || 0
       const solUsd = solBalance * solPrice
@@ -332,16 +328,16 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
       _balanceCache = result
       _balanceCacheAt = Date.now()
       return result
-} catch (rpcErr: unknown) {
-    const e = rpcErr as { message?: string }
-    log(
-      'wallet_warn',
-      `Standard RPC balance fetch failed (${e.message || rpcErr}); attempting Helius fallback if configured...`,
-    )
-  }
+    } catch (rpcErr: unknown) {
+      const e = rpcErr as { message?: string }
+      log(
+        'wallet_warn',
+        `Standard RPC balance fetch failed (${e.message || rpcErr}); attempting Helius fallback if configured...`,
+      )
+    }
 
     // ─── 2. Optional Fallback: Helius Enhanced API ──────────────
-    let HELIUS_API_KEY = config.connection?.heliusApiKey || process.env.HELIUS_API_KEY
+    let HELIUS_API_KEY = config.connection?.heliusApiKey
     if (HELIUS_API_KEY) {
       HELIUS_API_KEY = HELIUS_API_KEY.trim().replace(/^api-key=/i, '')
     }
@@ -355,7 +351,16 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
             if (!res.ok) {
               throw new Error(`Helius API error: ${res.status} ${res.statusText}`)
             }
-            return (await res.json()) as { balances?: Array<{ mint: string; symbol?: string; balance: number; pricePerToken?: number; usdValue?: number }>; totalUsdValue?: number }
+            return (await res.json()) as {
+              balances?: Array<{
+                mint: string
+                symbol?: string
+                balance: number
+                pricePerToken?: number
+                usdValue?: number
+              }>
+              totalUsdValue?: number
+            }
           },
           { label: 'Helius getWalletBalances' },
         )
@@ -390,8 +395,8 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
         _balanceCacheAt = Date.now()
         return result
       } catch (heliusErr: unknown) {
-    const e = heliusErr as { message?: string }
-    log('wallet_error', `Helius balance fallback also failed: ${e.message || heliusErr}`)
+        const e = heliusErr as { message?: string }
+        log('wallet_error', `Helius balance fallback also failed: ${e.message || heliusErr}`)
       }
     }
 
@@ -545,7 +550,14 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
       throw new Error(`Swap V2 order failed: ${orderRes.status} ${body}`)
     }
 
-    const order = (await orderRes.json()) as { errorCode?: string; errorMessage?: string; transaction?: string; requestId?: string; feeBps?: number; feeMint?: string }
+    const order = (await orderRes.json()) as {
+      errorCode?: string
+      errorMessage?: string
+      transaction?: string
+      requestId?: string
+      feeBps?: number
+      feeMint?: string
+    }
     if (order.errorCode || order.errorMessage) {
       throw new Error(`Swap V2 order error: ${order.errorMessage || order.errorCode}`)
     }
@@ -573,7 +585,13 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
       throw new Error(`Swap V2 execute failed: ${execRes.status} ${await execRes.text()}`)
     }
 
-    const result = (await execRes.json()) as { status?: string; code?: string; signature?: string; inputAmountResult?: number; outputAmountResult?: number }
+    const result = (await execRes.json()) as {
+      status?: string
+      code?: string
+      signature?: string
+      inputAmountResult?: number
+      outputAmountResult?: number
+    }
     if (result.status === 'Failed') {
       throw new Error(`Swap failed on-chain: code=${result.code}`)
     }
@@ -599,18 +617,18 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
       )
     }
 
-return {
-        success: true,
-        tx: result.signature!,
-        input_mint,
-        output_mint,
-        amount_in: result.inputAmountResult!,
-        amount_out: result.outputAmountResult!,
-        referral_account: referralParams?.referralAccount || null,
-        referral_fee_bps_requested: referralParams?.referralFee || 0,
-        fee_bps_applied: order.feeBps ?? null,
-        fee_mint: order.feeMint ?? null,
-      }
+    return {
+      success: true,
+      tx: result.signature!,
+      input_mint,
+      output_mint,
+      amount_in: result.inputAmountResult!,
+      amount_out: result.outputAmountResult!,
+      referral_account: referralParams?.referralAccount || null,
+      referral_fee_bps_requested: referralParams?.referralFee || 0,
+      fee_bps_applied: order.feeBps ?? null,
+      fee_mint: order.feeMint ?? null,
+    }
   } catch (error: unknown) {
     const e = error as { message?: string }
     log('swap_error', e.message || String(error))

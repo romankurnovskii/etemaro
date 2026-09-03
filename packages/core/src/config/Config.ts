@@ -31,40 +31,6 @@ export class ConfigLoadError extends Error {
   }
 }
 
-/**
- * Applies user config connection and API keys to process.env as fallback values (using ||=).
- *
- * NOTE ON ENVIRONMENT MUTATIONS:
- * In a running daemon process, this propagates user configuration into environment variables
- * expected by underlying SDKs (e.g. Helius, Telegram, OpenAI).
- * In automated unit tests, test suites that modify process.env or invoke config reloads
- * should snapshot process.env in beforeEach and restore it in afterEach to prevent test pollution.
- */
-function applyUserConfigToEnv(u: ValidatedUserConfig): void {
-  const connection = u.connection
-  if (connection?.rpcUrl) process.env.RPC_URL ||= connection?.rpcUrl
-  if (connection?.rpcUrl2) process.env.RPC_URL_2 ||= connection.rpcUrl2
-  if (connection?.heliusApiKey) process.env.HELIUS_API_KEY ||= connection.heliusApiKey
-  if (connection?.telegramBotToken) process.env.TELEGRAM_BOT_TOKEN ||= connection.telegramBotToken
-  if (connection?.telegramAllowedUserIds) process.env.TELEGRAM_ALLOWED_USER_IDS ||= connection.telegramAllowedUserIds
-  if (u.llm?.defaultModel || u.llm?.managementModel) {
-    process.env.LLM_MODEL ||= u.llm?.defaultModel || u.llm?.managementModel
-  }
-  if (u.llm?.baseUrl) process.env.LLM_BASE_URL ||= u.llm?.baseUrl
-  if (u.llm?.apiKey) process.env.LLM_API_KEY ||= u.llm?.apiKey
-  if (connection?.telegramChatId) process.env.TELEGRAM_CHAT_ID ||= connection.telegramChatId
-  const meridian = u.api?.meridian
-  const lpAgent = u.api?.lpAgent
-  if (meridian?.enabled !== false && meridian?.publicApiKey) {
-    process.env.AGENT_MERIDIAN_PUBLIC_API_KEY ||= meridian?.publicApiKey
-  }
-  if (meridian?.enabled !== false && meridian?.url) {
-    process.env.AGENT_MERIDIAN_API_URL ||= meridian?.url
-  }
-  if (lpAgent?.apiKey) process.env.LPAGENT_API_KEY ||= lpAgent.apiKey
-  if (lpAgent?.url) process.env.LPAGENT_API_URL ||= lpAgent.url
-}
-
 function buildConfig(): AppConfig {
   let loaded: Partial<ValidatedUserConfig> = {}
   try {
@@ -102,8 +68,6 @@ function buildConfig(): AppConfig {
     chartIndicators: { ...defaultFallback.chartIndicators, ...loaded.chartIndicators },
   } as unknown as ValidatedUserConfig
 
-  applyUserConfigToEnv(u)
-
   // The shape of u now closely matches AppConfig since Zod validates the nested structure.
   return {
     _version: u._version ?? 3,
@@ -117,6 +81,7 @@ function buildConfig(): AppConfig {
       telegramChatId: u.connection?.telegramChatId ?? null,
       telegramAllowedUserIds: u.connection?.telegramAllowedUserIds ?? null,
       dryRun: u.connection?.dryRun ?? false,
+      allowSelfUpdate: u.connection?.allowSelfUpdate ?? false,
     },
     risk: {
       maxPositions: u.risk.maxPositions,
@@ -201,7 +166,10 @@ function buildConfig(): AppConfig {
       maxTokens: u.llm.maxTokens,
       maxSteps: u.llm.maxSteps,
       defaultModel: u.llm.defaultModel,
-      fallbackModel: (u.llm && typeof u.llm === 'object' ? (u.llm as { fallbackModel?: string | null }).fallbackModel ?? null : null),
+      fallbackModel:
+        u.llm && typeof u.llm === 'object'
+          ? ((u.llm as { fallbackModel?: string | null }).fallbackModel ?? null)
+          : null,
       managementModel: u.llm.managementModel,
       screeningModel: u.llm.screeningModel,
       generalModel: u.llm.generalModel,

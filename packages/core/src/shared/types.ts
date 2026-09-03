@@ -565,6 +565,7 @@ export interface ConnectionConfig {
   telegramChatId?: string | null
   telegramAllowedUserIds?: string | null
   dryRun: boolean
+  allowSelfUpdate: boolean
 }
 
 export interface AppConfig {
