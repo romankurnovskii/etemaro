@@ -9,7 +9,7 @@ import fs from 'node:fs'
 import { Connection, Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { config } from '../config/Config.js'
-import { etemaroHome } from './constants.js'
+import { getEtemaroDir } from './constants.js'
 import { log } from './logger.js'
 import { isTransientRpcError, type RpcRetryOptions, withRpcRetry } from './utils.js'
 
@@ -69,7 +69,7 @@ export function getWalletKeypair(): Keypair {
   // New: keystore alias support
   if (!key && config.connection?.wallet) {
     const alias = config.connection.wallet
-    const walletPath = path.join(etemaroHome, '.credentials', 'wallets', `${alias}.json`)
+    const walletPath = path.join(getEtemaroDir(), '.credentials', 'wallets', `${alias}.json`)
     
     if (fs.existsSync(walletPath)) {
       try {

@@ -11,6 +11,7 @@
  * @sideEffects Solana RPC queries and DEX swap transactions
  */
 
+import fs from 'node:fs'
 import path from 'node:path'
 import { Keypair, PublicKey, VersionedTransaction } from '@solana/web3.js'
 import bs58 from 'bs58'
@@ -19,6 +20,8 @@ import { configPath } from '../../shared/constants.js'
 import { createTimer, log, logStructured } from '../../shared/logger.js'
 import { loadJsonFile, saveJsonFile, withRpcRetry } from '../../shared/utils.js'
 import { sleep } from '../../utils/time.js'
+import { getConnection, getWalletAddress, getWalletKeypair, withRpcFailover } from '../../shared/connection.js'
+import type { WalletBalancesResult } from '../../shared/types.js'
 
 export interface GeneratedWallet {
   publicKey: string
@@ -105,11 +108,6 @@ export function generateNewWallet(opts?: { label?: string; configDir?: string })
 
   return wallet
 }
-
-import { getConnection, getWalletAddress, getWalletKeypair, withRpcFailover } from '../../shared/connection.js'
-import type { WalletBalancesResult } from '../../shared/types.js'
-
-export { getWalletAddress, getWalletKeypair }
 
 const JUPITER_SWAP_V2_API = 'https://api.jup.ag/swap/v2'
 
@@ -553,6 +551,9 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
     }
 
     const { transaction: unsignedTx, requestId } = order
+    if (!unsignedTx) {
+      throw new Error('Swap V2 order missing transaction')
+    }
 
     // ─── Deserialize and sign ─────────────────────────────────
     const tx = VersionedTransaction.deserialize(Buffer.from(unsignedTx, 'base64'))
@@ -564,7 +565,7 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {}),
+        'x-api-key': jupiterApiKey!,
       },
       body: JSON.stringify({ signedTransaction: signedTx, requestId }),
     })
@@ -598,32 +599,32 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
       )
     }
 
-    return {
-      success: true,
-      tx: result.signature,
-      input_mint,
-      output_mint,
-      amount_in: result.inputAmountResult,
-      amount_out: result.outputAmountResult,
-      referral_account: referralParams?.referralAccount || null,
-      referral_fee_bps_requested: referralParams?.referralFee || 0,
-      fee_bps_applied: order.feeBps ?? null,
-      fee_mint: order.feeMint ?? null,
-    }
+return {
+        success: true,
+        tx: result.signature!,
+        input_mint,
+        output_mint,
+        amount_in: result.inputAmountResult!,
+        amount_out: result.outputAmountResult!,
+        referral_account: referralParams?.referralAccount || null,
+        referral_fee_bps_requested: referralParams?.referralFee || 0,
+        fee_bps_applied: order.feeBps ?? null,
+        fee_mint: order.feeMint ?? null,
+      }
   } catch (error: unknown) {
     const e = error as { message?: string }
-    log('swap_error', e.message || error)
+    log('swap_error', e.message || String(error))
     logStructured({
       category: 'swap_error',
-      message: `Swap failed: ${error.message}`,
+      message: `Swap failed: ${e.message || String(error)}`,
       metadata: {
         input_mint,
         output_mint,
         amount,
-        error: error.message,
+        error: e.message || String(error),
         duration_ms: swapTimer?.stop?.() ?? 0,
       },
     })
-    return { success: false, error: error.message }
+    return { success: false, error: e.message || String(error) }
   }
 }

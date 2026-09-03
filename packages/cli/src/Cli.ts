@@ -29,7 +29,9 @@ import {
   writeRuntimeSkeleton,
 } from './firstSetup.js'
 
-const __filename = fileURLToPath(import.meta.url)
+const __filename = (typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:'))
+  ? fileURLToPath(import.meta.url)
+  : (typeof __filename !== 'undefined' ? __filename : path.join(process.cwd(), 'dist', 'Cli.cjs'))
 const __dirname = path.dirname(__filename)
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'))
 

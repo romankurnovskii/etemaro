@@ -36,11 +36,15 @@ vi.mock('@meteora-ag/dlmm', () => {
   }
 })
 
-vi.mock('./WalletAdapter.js', () => ({
-  getWallet: vi.fn().mockReturnValue(Keypair.generate()),
-  normalizeMint: (mint: string) => mint,
-  invalidateBalanceCache: vi.fn(),
-}))
+vi.mock('./WalletAdapter.js', async () => {
+  const actual = await vi.importActual<typeof import('./WalletAdapter.js')>('./WalletAdapter.js')
+  return {
+    ...actual,
+    getWallet: vi.fn().mockReturnValue(Keypair.generate()),
+    normalizeMint: (mint: string) => mint,
+    invalidateBalanceCache: vi.fn(),
+  }
+})
 
 vi.mock('../external/AgentMeridianClient.js', () => ({
   agentMeridianJson: vi.fn(),
@@ -168,6 +172,7 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
     config.connection = {
       rpcUrl: 'https://api.mainnet-beta.solana.com',
       walletPrivateKey: bs58.encode(testWallet.secretKey),
+      dryRun: false,
     } as any
     config.api = {
       meridian: {
