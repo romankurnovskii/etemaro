@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { stdin as stdinStream, stdout as stdoutStream } from 'node:process'
 import readline from 'node:readline/promises'
+import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
   assessSetup,
@@ -26,9 +27,13 @@ import {
   writeRuntimeSkeleton,
 } from './firstSetup.js'
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'))
+
 // Type-only imports to help tsc
-type CoreExports = typeof import('@etemaro/core')
-type DaemonExports = typeof import('@etemaro/daemon')
+type CoreExports = any
+type DaemonExports = any
 
 // Lazily populated core exports (set after flag parsing)
 let config: CoreExports['config'] = null as any
@@ -412,6 +417,7 @@ export class Cli {
         dir: { type: 'string' },
         label: { type: 'string' },
         yes: { type: 'boolean' },
+        version: { type: 'boolean' },
       },
       allowPositionals: true,
       strict: false,
@@ -967,6 +973,11 @@ async function askTty(question: string): Promise<string> {
 
 async function main() {
   const argv = process.argv.slice(2)
+
+  if (argv.includes('--version')) {
+    process.stdout.write(`${pkg.version}\n`)
+    return
+  }
 
   const configPathArg = resolveGlobalFlagValue(argv, '--config', '-c')
   const dataDirArg = resolveGlobalFlagValue(argv, '--data-dir', '-d')
