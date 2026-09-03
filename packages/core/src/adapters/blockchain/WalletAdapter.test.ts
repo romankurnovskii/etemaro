@@ -202,9 +202,11 @@ describe('WalletAdapter', () => {
       expect(res.total_usd).toBe(200.0)
     })
 
-    it('invalidates balance cache when swapToken completes successfully', async () => {
-      process.env.JUPITER_API_KEY = 'test-jup-key'
-      delete process.env.DRY_RUN
+it('invalidates balance cache when swapToken completes successfully', async () => {
+    process.env.JUPITER_API_KEY = 'test-jup-key'
+    config.jupiter.apiKey = 'test-jup-key'
+    delete process.env.DRY_RUN
+    config.connection.dryRun = false
 
       let jupPriceCount = 0
 
@@ -280,7 +282,9 @@ describe('WalletAdapter', () => {
     describe('mint decimals caching and swapToken resolution', () => {
       const mockJupiterSwap = (onOrder?: (searchParams: URLSearchParams) => void) => {
         process.env.JUPITER_API_KEY = 'test-jup-key'
+        config.jupiter.apiKey = 'test-jup-key'
         delete process.env.DRY_RUN
+        config.connection.dryRun = false
 
         return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
           const urlStr = String(url)

@@ -13,6 +13,8 @@ if (!fs.existsSync(userPath)) {
 }
 
 // Set required env vars for env.* references in config (before config imports)
+process.env.RPC_URL = 'https://test-rpc.solana.com';
+process.env.PNL_RPC_URL = 'https://rpc.test.com';
 process.env.WALLET_PRIVATE_KEY = 'test_wallet_key_for_testing';
 process.env.LLM_BASE_URL = 'https://api.test.com';
 process.env.LLM_API_KEY = 'test_llm_key';

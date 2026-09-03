@@ -1461,7 +1461,7 @@ async function _runSafetyChecks(
       }
 
       // Check SOL balance
-      if (process.env.DRY_RUN !== 'true') {
+      if (!config.connection.dryRun) {
         const balance = await getWalletBalances()
         const gasReserve = config.management.gasReserve
         const minRequired = amountY + gasReserve

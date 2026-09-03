@@ -17,6 +17,7 @@ import {
   TOKEN_MINTS,
   USER_CONFIG_PATH,
 } from '../shared/constants.js'
+import { setDryRun } from '../shared/flags.js'
 import type { AppConfig } from '../shared/types.js'
 import { numericConfig, resolveEnvString } from '../shared/utils.js'
 import { isHelpOrInfoCommand, loadAndValidateConfig } from './ConfigValidator.js'
@@ -43,7 +44,6 @@ function applyUserConfigToEnv(u: ValidatedUserConfig): void {
   const connection = u.connection
   if (connection?.rpcUrl) process.env.RPC_URL ||= connection?.rpcUrl
   if (connection?.rpcUrl2) process.env.RPC_URL_2 ||= connection.rpcUrl2
-  if (connection?.walletPrivateKey) process.env.WALLET_PRIVATE_KEY ||= connection?.walletPrivateKey
   if (connection?.heliusApiKey) process.env.HELIUS_API_KEY ||= connection.heliusApiKey
   if (connection?.telegramBotToken) process.env.TELEGRAM_BOT_TOKEN ||= connection.telegramBotToken
   if (connection?.telegramAllowedUserIds) process.env.TELEGRAM_ALLOWED_USER_IDS ||= connection.telegramAllowedUserIds
@@ -52,7 +52,6 @@ function applyUserConfigToEnv(u: ValidatedUserConfig): void {
   }
   if (u.llm?.baseUrl) process.env.LLM_BASE_URL ||= u.llm?.baseUrl
   if (u.llm?.apiKey) process.env.LLM_API_KEY ||= u.llm?.apiKey
-  if (connection?.dryRun !== undefined) process.env.DRY_RUN ||= String(connection.dryRun)
   if (connection?.telegramChatId) process.env.TELEGRAM_CHAT_ID ||= connection.telegramChatId
   const meridian = u.api?.meridian
   const lpAgent = u.api?.lpAgent
@@ -201,12 +200,12 @@ function buildConfig(): AppConfig {
       maxTokens: u.llm.maxTokens,
       maxSteps: u.llm.maxSteps,
       defaultModel: u.llm.defaultModel,
-      fallbackModel: (u.llm as any)?.fallbackModel ?? null,
+      fallbackModel: (u.llm && typeof u.llm === 'object' ? (u.llm as { fallbackModel?: string | null }).fallbackModel ?? null : null),
       managementModel: u.llm.managementModel,
       screeningModel: u.llm.screeningModel,
       generalModel: u.llm.generalModel,
-      baseUrl: process.env.LLM_BASE_URL || u.llm.baseUrl || DEFAULT_LLM_BASE_URL,
-      apiKey: process.env.LLM_API_KEY || u.llm.apiKey || '',
+      baseUrl: u.llm.baseUrl || DEFAULT_LLM_BASE_URL,
+      apiKey: u.llm.apiKey || '',
     },
     darwin: {
       enabled: u.darwin.enabled,
@@ -222,25 +221,25 @@ function buildConfig(): AppConfig {
     hiveMind: {
       enabled: u.hiveMind.enabled,
       url: u.hiveMind.url ?? null,
-      apiKey: process.env.HIVEMIND_API_KEY || (u.hiveMind.apiKey ?? null),
+      apiKey: u.hiveMind.apiKey ?? null,
       agentId: u.hiveMind.agentId ?? null,
       pullMode: u.hiveMind.pullMode,
     },
     api: {
       meridian: {
         enabled: u.api.meridian?.enabled ?? true,
-        url: (process.env.AGENT_MERIDIAN_API_URL || u.api.meridian?.url) ?? null,
-        publicApiKey: (process.env.AGENT_MERIDIAN_PUBLIC_API_KEY || u.api.meridian?.publicApiKey) ?? null,
+        url: u.api.meridian?.url ?? null,
+        publicApiKey: u.api.meridian?.publicApiKey ?? null,
         lpAgentRelayEnabled: u.api.meridian?.lpAgentRelayEnabled ?? false,
       },
       lpAgent: {
         enabled: u.api.lpAgent?.enabled ?? false,
-        url: (process.env.LPAGENT_API_URL || u.api.lpAgent?.url) ?? null,
-        apiKey: (process.env.LPAGENT_API_KEY || u.api.lpAgent?.apiKey) ?? null,
+        url: u.api.lpAgent?.url ?? null,
+        apiKey: u.api.lpAgent?.apiKey ?? null,
       },
     },
     pnl: {
-      rpcUrl: process.env.PNL_RPC_URL || u.pnl.rpcUrl,
+      rpcUrl: u.pnl.rpcUrl,
       source: u.pnl.source,
       pollIntervalSec: u.pnl.pollIntervalSec,
       depositCacheTtlSec: u.pnl.depositCacheTtlSec,
@@ -266,9 +265,9 @@ function buildConfig(): AppConfig {
       feeSource: u.gmgn.feeSource,
     },
     jupiter: {
-      apiKey: process.env.JUPITER_API_KEY || u.jupiter.apiKey,
-      referralAccount: process.env.JUPITER_REFERRAL_ACCOUNT || u.jupiter.referralAccount,
-      referralFeeBps: Number(process.env.JUPITER_REFERRAL_FEE_BPS ?? u.jupiter.referralFeeBps),
+      apiKey: u.jupiter.apiKey,
+      referralAccount: u.jupiter.referralAccount,
+      referralFeeBps: u.jupiter.referralFeeBps,
     },
     indicators: {
       enabled: u.chartIndicators.enabled,
@@ -285,6 +284,9 @@ function buildConfig(): AppConfig {
 }
 
 export const config: AppConfig = buildConfig()
+
+// Propagate dry-run flag to logger (logger.ts cannot import config due to circular deps)
+setDryRun(config.connection.dryRun ?? false)
 
 // Initialize the minSafeBinsBelow override from config
 setMinSafeBinsBelowOverride(config.strategy.minSafeBinsBelow)
@@ -394,6 +396,7 @@ export function resetConfig(): AppConfig {
   const fresh = buildConfig()
   Object.assign(config, fresh)
   setMinSafeBinsBelowOverride(config.strategy.minSafeBinsBelow)
+  setDryRun(config.connection.dryRun ?? false)
   return config
 }
 
