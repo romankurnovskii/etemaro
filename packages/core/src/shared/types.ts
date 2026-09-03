@@ -559,6 +559,7 @@ export interface ConnectionConfig {
   rpcUrl?: string
   rpcUrl2?: string | null
   walletPrivateKey?: string
+  wallet?: string
   heliusApiKey?: string | null
   telegramBotToken?: string | null
   telegramChatId?: string | null
