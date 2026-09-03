@@ -402,7 +402,7 @@ export class Daemon {
     log('startup', `Opportunity poller: ${opportunityEnabled ? 'enabled' : 'disabled'}`)
 
     log('startup', `Data: ${dataDir} (${dataDirSource})`)
-    log('startup', `Mode: ${process.env.DRY_RUN === 'true' ? 'DRY RUN' : 'LIVE'}`)
+    log('startup', `Mode: ${config.connection.dryRun ? 'DRY RUN' : 'LIVE'}`)
     log('startup', `Model: ${config.llm.defaultModel}`)
 
     // === Resolved Data Paths & Counts ===
@@ -752,7 +752,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
             return null
           })
           const minRequired = config.management.deployAmountSol + config.management.gasReserve
-          if (process.env.DRY_RUN !== 'true' && (!balance || balance.sol < minRequired)) return
+          if (!config.connection.dryRun && (!balance || balance.sol < minRequired)) return
 
           const minScore = config.opportunity.minScore
           const bonus = Number(config.opportunity.smartWalletScoreBonus ?? 0)
@@ -1188,7 +1188,7 @@ After evaluating, write a brief one-line result per position.
         return screenReport
       }
       const minRequired = config.management.deployAmountSol + config.management.gasReserve
-      const isDryRun = process.env.DRY_RUN === 'true'
+      const isDryRun = config.connection.dryRun
       if (!isDryRun && preBalance.sol < minRequired) {
         log(
           'cron',
@@ -2585,7 +2585,7 @@ IMPORTANT:
       `SOL price: $${wallet.sol_price}`,
       `Open positions: ${positions.total_positions}/${config.risk.maxPositions}`,
       `Next deploy amount: ${deployAmount} SOL`,
-      `Dry run: ${process.env.DRY_RUN === 'true' ? 'yes' : 'no'}`,
+      `Dry run: ${config.connection.dryRun ? 'yes' : 'no'}`,
       `HiveMind: ${hive}`,
     ].join('\n')
   }

@@ -15,10 +15,10 @@ const {
   setCorrelationId,
   getCorrelationId,
   createTimer,
+  setDryRun,
 } = await import('./logger.js')
 
 describe('logger', () => {
-  const originalDryRun = process.env.DRY_RUN
   let stdoutSpy: any
 
   beforeEach(() => {
@@ -27,17 +27,13 @@ describe('logger', () => {
 
   afterEach(() => {
     stdoutSpy.mockRestore()
-    if (originalDryRun === undefined) {
-      delete process.env.DRY_RUN
-    } else {
-      process.env.DRY_RUN = originalDryRun
-    }
+    setDryRun(false)
     setCorrelationId(null)
     appendSpy.mockClear()
   })
 
-  it('formats log lines without [DRY RUN] when DRY_RUN is false', () => {
-    process.env.DRY_RUN = 'false'
+  it('formats log lines without [DRY RUN] when dryRun is false', () => {
+    setDryRun(false)
     log('info', 'Test message live')
     expect(stdoutSpy).toHaveBeenCalled()
     const output = stdoutSpy.mock.calls[0][0] as string
@@ -46,8 +42,8 @@ describe('logger', () => {
     expect(output).not.toContain('[DRY RUN]')
   })
 
-  it('injects [DRY RUN] tag into log lines when DRY_RUN is true', () => {
-    process.env.DRY_RUN = 'true'
+  it('injects [DRY RUN] tag into log lines when dryRun is true', () => {
+    setDryRun(true)
     log('info', 'Test message dry run')
     expect(stdoutSpy).toHaveBeenCalled()
     const output = stdoutSpy.mock.calls[0][0] as string

@@ -8,6 +8,8 @@ An LLM-powered agent that autonomously manages liquidity positions on Meteora DL
 
 ![Desktop](assets/desktop-1.png)
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22284026.svg)](https://doi.org/10.5281/zenodo.22284026)
+
 Etemaro runs continuous screening and management cycles, deploying capital into high-quality Meteora DLMM pools and closing positions based on live PnL, yield, and range data — all driven by an LLM reasoning over real on-chain state instead of following a fixed rule set.
 
 ## Features

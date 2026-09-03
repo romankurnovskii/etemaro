@@ -17,6 +17,8 @@ import { stdin as stdinStream, stdout as stdoutStream } from 'node:process'
 import readline from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
+import { Keypair } from '@solana/web3.js'
+import bs58 from 'bs58'
 import {
   assessSetup,
   formatInitMessage,
@@ -429,14 +431,23 @@ export class Cli {
       case 'generate-wallet':
       case 'new-wallet':
         return this.handleGenerateWallet(flags)
-      case 'balance':
       case 'wallet':
-        if (sub2 === 'swap-all') {
-          return this.handleSwapAllTokensToSol(flags)
+        switch (sub2) {
+          case 'generate':
+          case 'new':
+            return this.handleGenerateWallet(flags)
+          case 'import':
+            return this.handleWalletImport(flags)
+          case 'list':
+            return this.handleWalletList()
+          case 'export':
+            return this.handleWalletExport(flags)
+          case 'swap-all':
+            return this.handleSwapAllTokensToSol(flags)
+          default:
+            return this.handleBalance()
         }
-        if (sub2 === 'generate' || sub2 === 'new') {
-          return this.handleGenerateWallet(flags)
-        }
+      case 'balance':
         return this.handleBalance()
       case 'positions':
         return this.handlePositions()
@@ -556,6 +567,64 @@ export class Cli {
       label: result.label,
       savedTo: path.join(configDir, 'wallets.json'),
       message: 'New Solana wallet generated and saved to config/wallets.json',
+    })
+  }
+
+  private async handleWalletImport(flags: Record<string, any>): Promise<void> {
+    const alias = flags.label
+    if (!alias) die('Usage: etemaro wallet import --name <alias> [--file <path> | --prompt]')
+    
+    let privateKey: string | undefined = flags['private-key']
+    if (!privateKey && flags.file) {
+      // File import handled by wallet.importWallet
+    } else if (!privateKey && flags.prompt) {
+      const readline = await import('node:readline/promises')
+      const rl = readline.createInterface({ input: stdinStream, output: stdoutStream })
+      privateKey = await rl.question('Enter Base58 private key: ')
+      rl.close()
+    }
+    
+    const result = wallet.importWallet({
+      label: alias,
+      privateKey,
+      filePath: flags.file,
+    })
+    
+    out({
+      success: true,
+      publicKey: result.publicKey,
+      createdAt: result.createdAt,
+      label: result.label,
+      message: `Wallet imported as "${alias}"`,
+    })
+  }
+
+private async handleWalletList(): Promise<void> {
+    const walletPath = path.join(this.etemaroDir, 'config', 'wallets.json')
+    const existing = loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
+    const wallets = existing.wallets || []
+    out(wallets.map(w => ({
+      alias: w.label,
+      publicKey: w.publicKey,
+      createdAt: w.createdAt,
+    })))
+  }
+
+
+  private async handleWalletExport(flags: Record<string, any>): Promise<void> {
+    const alias = flags.label
+    if (!alias) die('Usage: etemaro wallet export --name <alias>')
+    
+    const walletPath = path.join(this.etemaroDir, 'config', 'wallets.json')
+    const existing = loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
+    const found = existing.wallets?.find(w => w.label === alias)
+    if (!found) die(`Wallet alias not found: ${alias}`)
+    
+    out({
+      alias: found.label,
+      publicKey: found.publicKey,
+      privateKey: found.privateKey,
+      warning: 'Private key exposed - handle with care!',
     })
   }
 
@@ -803,6 +872,121 @@ export class Cli {
 
   private async handleStart(): Promise<void> {
     if (!this.adapters.daemon?.start) die('Start command requires daemon adapter')
+    
+    // Check for one-time migration: WALLET_PRIVATE_KEY in env but no keystore
+    if (process.env.WALLET_PRIVATE_KEY && !config.connection?.wallet) {
+      const readline = await import('node:readline/promises')
+      const rl = readline.createInterface({ input: stdinStream, output: stdoutStream })
+      try {
+        const answer = await rl.question(
+          'Found WALLET_PRIVATE_KEY in environment. Migrate to secure keystore (default.json)? (Y/n): '
+        )
+        if (answer.toLowerCase() !== 'n') {
+          const walletPath = path.join(this.etemaroDir, '.credentials', 'wallets')
+          fs.mkdirSync(walletPath, { recursive: true })
+          const keyfilePath = path.join(walletPath, 'default.json')
+          fs.writeFileSync(keyfilePath, JSON.stringify(process.env.WALLET_PRIVATE_KEY), { mode: 0o600 })
+          // Verify migration
+          const testKey = JSON.parse(fs.readFileSync(keyfilePath, 'utf8'))
+          const kp = Keypair.fromSecretKey(bs58.decode(testKey))
+          console.log(`Migrated wallet ${kp.publicKey.toBase58()} to ${keyfilePath}`)
+          // Update config to use wallet alias
+          const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
+          if (!configObj.connection) configObj.connection = {}
+          configObj.connection.wallet = 'default'
+          delete configObj.connection.walletPrivateKey
+          fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
+          // Remove from process.env
+          delete process.env.WALLET_PRIVATE_KEY
+          console.log('Migration complete. Please restart to use the new keystore.')
+        }
+      } catch (err) {
+        console.error('Migration failed:', err)
+      } finally {
+        rl.close()
+      }
+    }
+    
+    // Interactive first-run onboarding if no wallet configured
+    if (!config.connection?.wallet && !config.connection?.walletPrivateKey) {
+      const readline = await import('node:readline/promises')
+      const rl = readline.createInterface({ input: stdinStream, output: stdoutStream })
+      try {
+        console.log('No Solana wallet configured for this instance.')
+        const answer = await rl.question(
+          'What would you like to do?\n  1. Generate a new wallet\n  2. Import existing private key (Base58)\n  3. Import from file\n  4. Select existing wallet alias\nChoice (1-4): '
+        )
+        switch (answer) {
+          case '1': {
+            const label = await rl.question('Enter wallet alias: ') || 'default'
+            const result = this.adapters.wallet.generateNewWallet({ label })
+            console.log(`Generated wallet ${result.publicKey} as "${label}"`)
+            // Update config
+            const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
+            if (!configObj.connection) configObj.connection = {}
+            configObj.connection.wallet = label
+            delete configObj.connection.walletPrivateKey
+            fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
+            break
+          }
+          case '2': {
+            const label = await rl.question('Enter wallet alias: ') || 'default'
+            const key = await rl.question('Enter Base58 private key: ')
+            const result = this.adapters.wallet.importWallet({ label, privateKey: key })
+            console.log(`Imported wallet ${result.publicKey} as "${label}"`)
+            const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
+            if (!configObj.connection) configObj.connection = {}
+            configObj.connection.wallet = label
+            delete configObj.connection.walletPrivateKey
+            fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
+            break
+          }
+          case '3': {
+            const label = await rl.question('Enter wallet alias: ') || 'default'
+            const filePath = await rl.question('Enter path to keypair file: ')
+            const result = this.adapters.wallet.importWallet({ label, filePath })
+            console.log(`Imported wallet ${result.publicKey} as "${label}"`)
+            const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
+            if (!configObj.connection) configObj.connection = {}
+            configObj.connection.wallet = label
+            delete configObj.connection.walletPrivateKey
+            fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
+            break
+          }
+          case '4': {
+            const walletPath = path.join(this.etemaroDir, 'config', 'wallets.json')
+            const existing = wallet.loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
+            if (existing.wallets?.length) {
+              console.log('Available wallets:')
+              existing.wallets.forEach((w, i) => console.log(`  ${i+1}. ${w.label} (${w.publicKey})`))
+              const choice = await rl.question('Enter number: ')
+              const idx = parseInt(choice, 10) - 1
+              if (idx >= 0 && idx < existing.wallets.length) {
+                const selected = existing.wallets[idx]
+                const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
+                if (!configObj.connection) configObj.connection = {}
+                configObj.connection.wallet = selected.label
+                delete configObj.connection.walletPrivateKey
+                fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
+                console.log(`Selected wallet "${selected.label}"`)
+              } else {
+                console.log('Invalid selection')
+              }
+            } else {
+              console.log('No wallets found. Generate one first.')
+            }
+            break
+          }
+          default:
+            console.log('Invalid choice')
+        }
+      } catch (err) {
+        console.error('Onboarding failed:', err)
+      } finally {
+        rl.close()
+      }
+    }
+    
     process.stderr.write('[etemaro] Starting autonomous agent...\n')
     await this.adapters.daemon.start({ tty: process.stdout.isTTY === true })
   }
