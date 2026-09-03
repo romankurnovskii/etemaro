@@ -63,6 +63,19 @@ export function loadAndValidateConfig(): ValidatedUserConfig {
     })
   }
 
+  // Migrate legacy hardcoded RPC defaults to .env values when an override is present
+  const legacyPrimaryRpc = 'https://pump.helius-rpc.com'
+  const rawConnection = raw.connection as { rpcUrl?: string } | undefined
+  if (
+    typeof raw?.connection === 'object' &&
+    rawConnection?.rpcUrl === legacyPrimaryRpc &&
+    process.env.RPC_URL &&
+    process.env.RPC_URL !== legacyPrimaryRpc
+  ) {
+    rawConnection.rpcUrl = process.env.RPC_URL
+  }
+
+
   // If running info commands, we can bypass strict parsing
   if (isHelpOrInfoCommand()) {
     return raw as unknown as ValidatedUserConfig // Bypass validation

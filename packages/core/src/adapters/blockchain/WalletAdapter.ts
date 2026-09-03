@@ -35,7 +35,47 @@ export interface WalletsStore {
  * Generates a fresh Solana keypair, stores it in wallets.json under the config directory,
  * and returns the public key and base58 private key.
  */
-export function generateNewWallet(opts?: { label?: string; configDir?: string }): GeneratedWallet {
+/**
+ * Import a wallet from a Base58 private key and store it with a label.
+ * If a file path is provided, reads a Solana CLI keypair JSON array.
+ */
+export function importWallet(opts: {
+  label: string
+  privateKey?: string
+  filePath?: string
+}): GeneratedWallet {
+  let key: string | undefined = opts.privateKey
+  if (!key && opts.filePath) {
+    const raw = JSON.parse(fs.readFileSync(opts.filePath, 'utf8'))
+    // Solana CLI keypair file is an array of numbers
+    if (Array.isArray(raw)) {
+      key = bs58.encode(Uint8Array.from(raw))
+    } else if (typeof raw === 'string') {
+      key = raw
+    } else if (raw.privateKey) {
+      key = raw.privateKey
+    }
+  }
+  if (!key) {
+    throw new Error('No private key provided for import')
+  }
+  const kp = Keypair.fromSecretKey(bs58.decode(key))
+  const wallet: GeneratedWallet = {
+    publicKey: kp.publicKey.toBase58(),
+    privateKey: key,
+    createdAt: new Date().toISOString(),
+    label: opts.label,
+  }
+  // Persist
+  const targetFile = configPath('wallets.json')
+  const existing = loadJsonFile<WalletsStore>(targetFile, { wallets: [] })
+  existing.wallets = existing.wallets || []
+  existing.wallets.push(wallet)
+  saveJsonFile(targetFile, existing)
+  log('wallet', `Imported wallet ${wallet.publicKey} as ${opts.label}`)
+  return wallet
+}
+
   const kp = Keypair.generate()
   const publicKey = kp.publicKey.toBase58()
   const privateKey = bs58.encode(kp.secretKey)
@@ -53,8 +93,9 @@ export function generateNewWallet(opts?: { label?: string; configDir?: string })
     existing.wallets.push(wallet)
     saveJsonFile(targetFile, existing)
     log('wallet', `Generated and stored new wallet ${publicKey} to ${targetFile}`)
-  } catch (err: any) {
-    log('wallet', `Warning: Failed to persist generated wallet to wallets.json: ${err.message}`)
+  } catch (err: unknown) {
+    const e = err as { message?: string }
+    log('wallet', `Warning: Failed to persist generated wallet to wallets.json: ${e.message || err}`)
   }
 
   return wallet
@@ -98,11 +139,12 @@ async function fetchWithRateLimitRetry(
     )
     if (attempt < attempts) await sleep(waitMs)
   }
-  return lastResponse!
+  if (!lastResponse) throw new Error('All retry attempts failed')
+  return lastResponse
 }
 
 function getJupiterApiKey(): string | undefined {
-  return config.jupiter.apiKey || process.env.JUPITER_API_KEY
+  return config.jupiter.apiKey
 }
 
 interface JupiterReferralParams {
@@ -242,17 +284,18 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
         if (jupApiKey) jupHeaders['x-api-key'] = jupApiKey
         const pRes = await fetchWithRateLimitRetry(priceUrl, { headers: jupHeaders }, { attempts: 2 })
         if (pRes.ok) {
-          const pData = (await pRes.json()) as any
+          const pData = (await pRes.json()) as { data?: Record<string, { price?: string }> }
           if (pData?.data) {
-            for (const [m, pObj] of Object.entries<any>(pData.data)) {
+            for (const [m, pObj] of Object.entries(pData.data)) {
               const pNum = Number(pObj?.price)
               if (Number.isFinite(pNum)) prices[m] = pNum
             }
           }
         }
-      } catch (pErr: any) {
-        log('wallet_warn', `Jupiter Price API fetch failed: ${pErr?.message || pErr}`)
-      }
+} catch (pErr: unknown) {
+    const e = pErr as { message?: string }
+    log('wallet_warn', `Jupiter Price API fetch failed: ${e.message || pErr}`)
+  }
 
       const solPrice = prices[SOL_MINT] || 0
       const solUsd = solBalance * solPrice
@@ -286,12 +329,13 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
       _balanceCache = result
       _balanceCacheAt = Date.now()
       return result
-    } catch (rpcErr: any) {
-      log(
-        'wallet_warn',
-        `Standard RPC balance fetch failed (${rpcErr.message}); attempting Helius fallback if configured...`,
-      )
-    }
+} catch (rpcErr: unknown) {
+    const e = rpcErr as { message?: string }
+    log(
+      'wallet_warn',
+      `Standard RPC balance fetch failed (${e.message || rpcErr}); attempting Helius fallback if configured...`,
+    )
+  }
 
     // ─── 2. Optional Fallback: Helius Enhanced API ──────────────
     let HELIUS_API_KEY = config.connection?.heliusApiKey || process.env.HELIUS_API_KEY
@@ -308,21 +352,21 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
             if (!res.ok) {
               throw new Error(`Helius API error: ${res.status} ${res.statusText}`)
             }
-            return (await res.json()) as any
+            return (await res.json()) as { balances?: Array<{ mint: string; symbol?: string; balance: number; pricePerToken?: number; usdValue?: number }>; totalUsdValue?: number }
           },
           { label: 'Helius getWalletBalances' },
         )
         const balances = data.balances || []
 
-        const solEntry = balances.find((b: any) => b.mint === config.tokens.SOL || b.symbol === 'SOL')
-        const usdcEntry = balances.find((b: any) => b.mint === config.tokens.USDC || b.symbol === 'USDC')
+        const solEntry = balances.find((b) => b.mint === config.tokens.SOL || b.symbol === 'SOL')
+        const usdcEntry = balances.find((b) => b.mint === config.tokens.USDC || b.symbol === 'USDC')
 
         const solBalance = solEntry?.balance || 0
         const solPrice = solEntry?.pricePerToken || 0
         const solUsd = solEntry?.usdValue || 0
         const usdcBalance = usdcEntry?.balance || 0
 
-        const enrichedTokens = balances.map((b: any) => ({
+        const enrichedTokens = balances.map((b) => ({
           mint: b.mint,
           symbol: b.symbol || b.mint.slice(0, 8),
           balance: b.balance,
@@ -342,8 +386,9 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
         _balanceCache = result
         _balanceCacheAt = Date.now()
         return result
-      } catch (heliusErr: any) {
-        log('wallet_error', `Helius balance fallback also failed: ${heliusErr.message}`)
+      } catch (heliusErr: unknown) {
+    const e = heliusErr as { message?: string }
+    log('wallet_error', `Helius balance fallback also failed: ${e.message || heliusErr}`)
       }
     }
 
@@ -416,7 +461,7 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
   input_mint = normalizeMint(input_mint)
   output_mint = normalizeMint(output_mint)
 
-  if (process.env.DRY_RUN === 'true') {
+  if (config.connection.dryRun) {
     return {
       dry_run: true,
       would_swap: { input_mint, output_mint, amount },
@@ -448,7 +493,7 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
         const parsedData = mintInfo.value?.data
         decimals =
           parsedData && typeof parsedData === 'object' && 'parsed' in parsedData
-            ? ((parsedData as any).parsed?.info?.decimals ?? 9)
+            ? ((parsedData as { parsed?: { info?: { decimals?: number } } }).parsed?.info?.decimals ?? 9)
             : 9
         _mintDecimalsCache.set(input_mint, decimals)
       }
@@ -497,7 +542,7 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
       throw new Error(`Swap V2 order failed: ${orderRes.status} ${body}`)
     }
 
-    const order = (await orderRes.json()) as any
+    const order = (await orderRes.json()) as { errorCode?: string; errorMessage?: string; transaction?: string; requestId?: string; feeBps?: number; feeMint?: string }
     if (order.errorCode || order.errorMessage) {
       throw new Error(`Swap V2 order error: ${order.errorMessage || order.errorCode}`)
     }
@@ -522,7 +567,7 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
       throw new Error(`Swap V2 execute failed: ${execRes.status} ${await execRes.text()}`)
     }
 
-    const result = (await execRes.json()) as any
+    const result = (await execRes.json()) as { status?: string; code?: string; signature?: string; inputAmountResult?: number; outputAmountResult?: number }
     if (result.status === 'Failed') {
       throw new Error(`Swap failed on-chain: code=${result.code}`)
     }
@@ -560,8 +605,9 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
       fee_bps_applied: order.feeBps ?? null,
       fee_mint: order.feeMint ?? null,
     }
-  } catch (error: any) {
-    log('swap_error', error.message)
+  } catch (error: unknown) {
+    const e = error as { message?: string }
+    log('swap_error', e.message || error)
     logStructured({
       category: 'swap_error',
       message: `Swap failed: ${error.message}`,

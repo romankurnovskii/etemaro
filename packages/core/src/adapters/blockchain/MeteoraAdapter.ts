@@ -656,7 +656,7 @@ export async function deployPosition({
     )
   }
 
-  if (process.env.DRY_RUN === 'true') {
+  if (config.connection.dryRun) {
     return {
       dry_run: true,
       would_deploy: {
@@ -1633,7 +1633,7 @@ export async function searchPools({ query, limit = 10 }: { query: string; limit?
 // ─── Claim Fees ────────────────────────────────────────────────
 export async function claimFees({ position_address }: { position_address: string }) {
   position_address = normalizeMint(position_address)
-  if (process.env.DRY_RUN === 'true') {
+  if (config.connection.dryRun) {
     return {
       dry_run: true,
       would_claim: position_address,
@@ -1717,7 +1717,7 @@ export async function claimFees({ position_address }: { position_address: string
 // ─── Close Position ────────────────────────────────────────────
 export async function closePosition({ position_address, reason }: { position_address: string; reason?: string }) {
   position_address = normalizeMint(position_address)
-  if (process.env.DRY_RUN === 'true') {
+  if (config.connection.dryRun) {
     return {
       dry_run: true,
       would_close: position_address,

@@ -121,14 +121,14 @@ describe('connection module', () => {
       expect(getWalletAddress()).toBe(kp.publicKey.toString())
     })
 
-    it('resolves wallet from WALLET_PRIVATE_KEY when config is not set', () => {
+    it('throws when config walletPrivateKey is absent even if env var is set (config-as-contract)', () => {
       const kp = Keypair.generate()
       delete config.connection?.walletPrivateKey
       process.env.WALLET_PRIVATE_KEY = bs58.encode(kp.secretKey)
 
-      const resolved = getWalletKeypair()
-      expect(resolved.publicKey.toString()).toBe(kp.publicKey.toString())
-      expect(getWalletAddress()).toBe(kp.publicKey.toString())
+      // Env var alone is no longer a fallback — key must come from config.connection.walletPrivateKey
+      // (which is resolved from env.WALLET_PRIVATE_KEY at config load time via schema envString transform)
+      expect(() => getWalletKeypair()).toThrow(/Wallet private key is not configured/)
     })
 
     it('returns null for getWalletAddress when unconfigured', () => {
