@@ -72,10 +72,15 @@ export function importWallet(opts: {
   existing.wallets = existing.wallets || []
   existing.wallets.push(wallet)
   saveJsonFile(targetFile, existing)
-  log('wallet', `Imported wallet ${wallet.publicKey} as ${opts.label}`)
+log('wallet', `Imported wallet ${wallet.publicKey} as ${opts.label}`)
   return wallet
 }
 
+/**
+ * Generates a fresh Solana keypair, stores it in wallets.json under the config directory,
+ * and returns the public key and base58 private key.
+ */
+export function generateNewWallet(opts?: { label?: string; configDir?: string }): GeneratedWallet {
   const kp = Keypair.generate()
   const publicKey = kp.publicKey.toBase58()
   const privateKey = bs58.encode(kp.secretKey)

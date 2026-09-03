@@ -28,7 +28,6 @@ import {
   upsertEnvVars,
   writeRuntimeSkeleton,
 } from './firstSetup.js'
-import { loadJsonFile } from '../shared/utils.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -617,7 +616,7 @@ private async handleWalletList(): Promise<void> {
     if (!alias) die('Usage: etemaro wallet export --name <alias>')
     
     const walletPath = path.join(this.etemaroDir, 'config', 'wallets.json')
-    const existing = wallet.loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
+    const existing = loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
     const found = existing.wallets?.find(w => w.label === alias)
     if (!found) die(`Wallet alias not found: ${alias}`)
     
@@ -956,7 +955,7 @@ private async handleWalletList(): Promise<void> {
           }
           case '4': {
             const walletPath = path.join(this.etemaroDir, 'config', 'wallets.json')
-            const existing = loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
+            const existing = wallet.loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
             if (existing.wallets?.length) {
               console.log('Available wallets:')
               existing.wallets.forEach((w, i) => console.log(`  ${i+1}. ${w.label} (${w.publicKey})`))
