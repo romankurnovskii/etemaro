@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMinSafeBinsBelow } from '../shared/constants.js'
 import { scaleScreeningToTimeframe } from '../shared/utils.js'
@@ -294,6 +295,77 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
     }
   })
 
+  it('rejects unknown top-level keys (strict schema)', () => {
+    const mockEnv = {
+      WALLET_PRIVATE_KEY: 'test-key',
+      HELIUS_API_KEY: 'test-helius',
+      LLM_BASE_URL: 'https://openrouter.ai/api/v1',
+      LLM_API_KEY: 'test-llm',
+      LLM_MODEL: 'test-model',
+      TELEGRAM_BOT_TOKEN: 'test-token',
+      TELEGRAM_CHAT_ID: '123456',
+      TELEGRAM_ALLOWED_USER_IDS: '123456',
+      DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY: 'test-key',
+      GMGN_API_KEY: 'test-gmgn',
+      JUPITER_API_KEY: 'test-jup',
+    }
+    const originalEnv = { ...process.env }
+    Object.assign(process.env, mockEnv)
+
+    try {
+      const configWithUnknown = { ...DEFAULT_USER_CONFIG, unknownTopLevelKey: 'should-fail' }
+      const result = UserConfigSchema.safeParse(configWithUnknown)
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        const unrecognizedIssue = result.error.issues.find(
+          (i: any) => i.code === 'unrecognized_keys' && Array.isArray(i.keys) && i.keys.includes('unknownTopLevelKey'),
+        )
+        expect(unrecognizedIssue).toBeDefined()
+      }
+    } finally {
+      process.env = originalEnv
+    }
+  })
+
+  it('rejects unknown nested keys inside a section (strict schema)', () => {
+    const mockEnv = {
+      WALLET_PRIVATE_KEY: 'test-key',
+      HELIUS_API_KEY: 'test-helius',
+      LLM_BASE_URL: 'https://openrouter.ai/api/v1',
+      LLM_API_KEY: 'test-llm',
+      LLM_MODEL: 'test-model',
+      TELEGRAM_BOT_TOKEN: 'test-token',
+      TELEGRAM_CHAT_ID: '123456',
+      TELEGRAM_ALLOWED_USER_IDS: '123456',
+      DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY: 'test-key',
+      GMGN_API_KEY: 'test-gmgn',
+      JUPITER_API_KEY: 'test-jup',
+    }
+    const originalEnv = { ...process.env }
+    Object.assign(process.env, mockEnv)
+
+    try {
+      const configWithUnknownNested = {
+        ...DEFAULT_USER_CONFIG,
+        risk: {
+          ...DEFAULT_USER_CONFIG.risk,
+          unknownRiskField: 99,
+        },
+      }
+      const result = UserConfigSchema.safeParse(configWithUnknownNested)
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        const unrecognizedIssue = result.error.issues.find(
+          (i: any) => i.code === 'unrecognized_keys' && Array.isArray(i.keys) && i.keys.includes('unknownRiskField'),
+        )
+        expect(unrecognizedIssue).toBeDefined()
+      }
+    } finally {
+      process.env = originalEnv
+    }
+  })
+
+
   describe('resetConfig helper', () => {
     it('resets in-memory config singleton and keeps object reference identical', async () => {
       const { config, resetConfig } = await import('./Config.js')
@@ -307,6 +379,76 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
       const res = resetConfig()
       expect(res).toBe(config)
       expect(config.screening.timeframe).toBe(originalTimeframe)
+    })
+  })
+
+  describe('legacy RPC migration', () => {
+    const originalEnv = { ...process.env }
+    const originalUserConfigPath = process.env.USER_CONFIG_PATH
+
+    afterEach(() => {
+      process.env = { ...originalEnv }
+      if (originalUserConfigPath) {
+        process.env.USER_CONFIG_PATH = originalUserConfigPath
+      } else {
+        delete process.env.USER_CONFIG_PATH
+      }
+    })
+
+    it('migrates legacy hardcoded primary RPC to .env value when they differ', async () => {
+      const { loadAndValidateConfig } = await import('./ConfigValidator.js')
+      const tmpPath = `/tmp/etemaro-test-config-${Date.now()}.json`
+      fs.writeFileSync(
+        tmpPath,
+        JSON.stringify({
+          _version: 3,
+          connection: { rpcUrl: 'https://pump.helius-rpc.com' },
+          pnl: { source: 'rpc', rpcUrl: 'https://pump.helius-rpc.com' },
+        }),
+      )
+      process.env.USER_CONFIG_PATH = tmpPath
+      process.env.RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=test-key'
+
+      const result = loadAndValidateConfig()
+
+      expect(result.connection?.rpcUrl).toBe('https://mainnet.helius-rpc.com/?api-key=test-key')
+      expect(result.pnl?.rpcUrl).toBe('https://pump.helius-rpc.com')
+    })
+
+    it('does not migrate when .env RPC_URL matches legacy default', async () => {
+      const { loadAndValidateConfig } = await import('./ConfigValidator.js')
+      const tmpPath = `/tmp/etemaro-test-config-${Date.now()}.json`
+      fs.writeFileSync(
+        tmpPath,
+        JSON.stringify({
+          _version: 3,
+          connection: { rpcUrl: 'https://pump.helius-rpc.com' },
+        }),
+      )
+      process.env.USER_CONFIG_PATH = tmpPath
+      process.env.RPC_URL = 'https://pump.helius-rpc.com'
+
+      const result = loadAndValidateConfig()
+
+      expect(result.connection?.rpcUrl).toBe('https://pump.helius-rpc.com')
+    })
+
+    it('does not migrate when .env RPC_URL is unset', async () => {
+      const { loadAndValidateConfig } = await import('./ConfigValidator.js')
+      const tmpPath = `/tmp/etemaro-test-config-${Date.now()}.json`
+      fs.writeFileSync(
+        tmpPath,
+        JSON.stringify({
+          _version: 3,
+          connection: { rpcUrl: 'https://pump.helius-rpc.com' },
+        }),
+      )
+      process.env.USER_CONFIG_PATH = tmpPath
+      delete process.env.RPC_URL
+
+      const result = loadAndValidateConfig()
+
+      expect(result.connection?.rpcUrl).toBe('https://pump.helius-rpc.com')
     })
   })
 })

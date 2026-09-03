@@ -275,9 +275,9 @@ export async function registerHiveMindAgent({
         timestamp: new Date().toISOString(),
         reason,
         capabilities: {
-          telegram: !!process.env.TELEGRAM_BOT_TOKEN,
-          lpagent: !!process.env.LPAGENT_API_KEY,
-          dryRun: process.env.DRY_RUN === 'true',
+          telegram: !!config.connection.telegramBotToken,
+          lpagent: !!config.api.lpAgent?.apiKey,
+          dryRun: config.connection.dryRun,
         },
       },
     })

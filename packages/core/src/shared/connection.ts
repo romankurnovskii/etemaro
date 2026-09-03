@@ -4,9 +4,12 @@
  * Uses config.connection as the single source of truth with automatic RPC fallback support.
  */
 
+import path from 'node:path'
+import fs from 'node:fs'
 import { Connection, Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { config } from '../config/Config.js'
+import { etemaroHome } from './constants.js'
 import { log } from './logger.js'
 import { isTransientRpcError, type RpcRetryOptions, withRpcRetry } from './utils.js'
 
@@ -22,16 +25,13 @@ let _walletPrivateKey: string | null = null
 
 /**
  * Returns the configured primary or fallback RPC URL.
- * Reads from config.connection with env var fallback.
+ * Reads from config.connection only; env vars must be wired through config.
  */
 export function getRpcUrl(fallback = false): string {
   if (fallback && config.connection?.rpcUrl2) {
     return config.connection.rpcUrl2
   }
-  if (fallback && process.env.RPC_URL_2) {
-    return process.env.RPC_URL_2
-  }
-  return config.connection?.rpcUrl || process.env.RPC_URL || 'https://api.mainnet-beta.solana.com'
+  return config.connection?.rpcUrl || 'https://api.mainnet-beta.solana.com'
 }
 
 /**
@@ -64,10 +64,47 @@ export function getConnection(fallback = false): Connection {
  * Reads private key from config.connection.walletPrivateKey with WALLET_PRIVATE_KEY fallback.
  */
 export function getWalletKeypair(): Keypair {
-  const key = config.connection?.walletPrivateKey || process.env.WALLET_PRIVATE_KEY
+  let key = config.connection?.walletPrivateKey
+
+  // New: keystore alias support
+  if (!key && config.connection?.wallet) {
+    const alias = config.connection.wallet
+    const walletPath = path.join(etemaroHome, '.credentials', 'wallets', `${alias}.json`)
+    
+    if (fs.existsSync(walletPath)) {
+      try {
+        // Enforce strict permissions on POSIX systems
+        if (process.platform !== 'win32') {
+          const stats = fs.statSync(walletPath)
+          if ((stats.mode & 0o777) > 0o600) {
+            try {
+              fs.chmodSync(walletPath, 0o600)
+            } catch (chmodErr) {
+              throw new Error(
+                `[wallet] FATAL: Insecure file permissions on ${walletPath} (0${(stats.mode & 0o777).toString(8)}). Must be 0600 (owner read/write only).`
+              )
+            }
+          }
+        }
+        
+        const walletData = JSON.parse(fs.readFileSync(walletPath, 'utf8'))
+        // Support both Base58 strings and Solana CLI JSON arrays
+        if (Array.isArray(walletData)) {
+          key = bs58.encode(Uint8Array.from(walletData))
+        } else if (typeof walletData === 'string') {
+          key = walletData
+        } else if (walletData.privateKey) {
+          key = walletData.privateKey
+        }
+      } catch (err) {
+        log('wallet', `Failed to load wallet from keystore ${walletPath}: ${err}`)
+      }
+    }
+  }
+
   if (!key) {
     throw new Error(
-      'Wallet private key is not configured. Set connection.walletPrivateKey in config or WALLET_PRIVATE_KEY in env.',
+      'Wallet private key is not configured. Set connection.wallet (alias) or connection.walletPrivateKey in user-config.json.',
     )
   }
   if (!_walletKeypair || _walletPrivateKey !== key) {
@@ -89,10 +126,10 @@ export function getWalletAddress(): string | null {
 }
 
 /**
- * Returns true if a fallback RPC URL is configured.
+ * Returns true if a fallback RPC URL is configured in config.
  */
 export function hasFallbackRpc(): boolean {
-  return Boolean(config.connection?.rpcUrl2 || process.env.RPC_URL_2)
+  return Boolean(config.connection?.rpcUrl2)
 }
 
 /**

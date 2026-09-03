@@ -17,6 +17,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { getAgentIdForRequests } from '../adapters/external/AgentMeridianClient.js'
 import { dataPath } from './constants.js'
+import { getDryRun, setDryRun } from './flags.js'
+
+export { getDryRun, setDryRun }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
@@ -29,6 +32,7 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 
 const currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info'
 const minLevel = LOG_LEVELS[currentLevel] ?? LOG_LEVELS.info
+
 
 // ─── Sensitive Data Redaction ─────────────────────────────────
 
@@ -170,7 +174,7 @@ function getStructuredLogPath(): string {
 export function log(level: string, message: string): void {
   const ts = new Date().toISOString()
   const agentId = getAgentIdForRequests()
-  const dryTag = process.env.DRY_RUN === 'true' ? ' [DRY RUN]' : ''
+  const dryTag = getDryRun() ? ' [DRY RUN]' : ''
   const redacted = redactSensitive(message)
   const line = `[${ts}] [${level}] [${agentId}]${dryTag} ${redacted}\n`
   try {
@@ -209,7 +213,7 @@ export function logStructured({ category, message, metadata }: StructuredLogEntr
     ts: new Date().toISOString(),
     category: redactSensitive(category),
     agentId: getAgentIdForRequests(),
-    dryRun: process.env.DRY_RUN === 'true',
+    dryRun: getDryRun(),
     message: redactSensitive(message),
   }
   if (_correlationId) record.correlationId = _correlationId
@@ -259,7 +263,7 @@ export function logAction(entry: LogActionEntry): void {
   const record: Record<string, unknown> = {
     ts: new Date().toISOString(),
     agentId: getAgentIdForRequests(),
-    dryRun: process.env.DRY_RUN === 'true',
+    dryRun: getDryRun(),
     ...entry,
   }
   if (_correlationId) record.correlationId = _correlationId
