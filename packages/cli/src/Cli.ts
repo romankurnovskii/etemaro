@@ -17,6 +17,8 @@ import { stdin as stdinStream, stdout as stdoutStream } from 'node:process'
 import readline from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
+import type { GeneratedWallet } from '@etemaro/core'
+import { loadJsonFile } from '@etemaro/core'
 import { Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
 import {
@@ -29,9 +31,11 @@ import {
   writeRuntimeSkeleton,
 } from './firstSetup.js'
 
-const __filename = (typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:'))
-  ? fileURLToPath(import.meta.url)
-  : (typeof __filename !== 'undefined' ? __filename : path.join(process.cwd(), 'dist', 'Cli.cjs'))
+// ESM/CJS portable __filename/__dirname
+const __filename: string =
+  typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:')
+    ? fileURLToPath(import.meta.url)
+    : path.join(process.cwd(), 'dist', 'Cli.cjs')
 const __dirname = path.dirname(__filename)
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'))
 
@@ -129,6 +133,8 @@ export interface CliAdapters {
   wallet: {
     getWalletBalances: () => Promise<any>
     swapToken: (opts: any) => Promise<any>
+    generateNewWallet: (opts?: { label?: string; configDir?: string }) => GeneratedWallet
+    importWallet: (opts: { label: string; privateKey?: string; filePath?: string }) => GeneratedWallet
   }
   screening: {
     getTopCandidates: (opts: { limit: number }) => Promise<any>
@@ -575,7 +581,7 @@ export class Cli {
   private async handleWalletImport(flags: Record<string, any>): Promise<void> {
     const alias = flags.label
     if (!alias) die('Usage: etemaro wallet import --name <alias> [--file <path> | --prompt]')
-    
+
     let privateKey: string | undefined = flags['private-key']
     if (!privateKey && flags.file) {
       // File import handled by wallet.importWallet
@@ -585,13 +591,13 @@ export class Cli {
       privateKey = await rl.question('Enter Base58 private key: ')
       rl.close()
     }
-    
+
     const result = wallet.importWallet({
       label: alias,
       privateKey,
       filePath: flags.file,
     })
-    
+
     out({
       success: true,
       publicKey: result.publicKey,
@@ -601,27 +607,47 @@ export class Cli {
     })
   }
 
-private async handleWalletList(): Promise<void> {
+  private async handleWalletList(): Promise<void> {
     const walletPath = path.join(this.etemaroDir, 'config', 'wallets.json')
     const existing = loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
     const wallets = existing.wallets || []
-    out(wallets.map(w => ({
-      alias: w.label,
-      publicKey: w.publicKey,
-      createdAt: w.createdAt,
-    })))
+    out(
+      wallets.map((w) => ({
+        alias: w.label,
+        publicKey: w.publicKey,
+        createdAt: w.createdAt,
+      })),
+    )
   }
-
 
   private async handleWalletExport(flags: Record<string, any>): Promise<void> {
     const alias = flags.label
     if (!alias) die('Usage: etemaro wallet export --name <alias>')
-    
+
+    // Security: only allow export from an interactive TTY
+    if (!process.stdout.isTTY) {
+      die('wallet export requires an interactive terminal (stdout must be a TTY)')
+    }
+
+    const rl = readline.createInterface({ input: stdinStream, output: stdoutStream })
+    let confirmed = false
+    try {
+      const answer = await rl.question(
+        `WARNING: This will print the private key for "${alias}" to your terminal.\nType YES to confirm: `,
+      )
+      confirmed = answer.trim() === 'YES'
+    } finally {
+      rl.close()
+    }
+    if (!confirmed) {
+      console.error('Export cancelled.')
+      return
+    }
     const walletPath = path.join(this.etemaroDir, 'config', 'wallets.json')
     const existing = loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
-    const found = existing.wallets?.find(w => w.label === alias)
+    const found = existing.wallets?.find((w) => w.label === alias)
     if (!found) die(`Wallet alias not found: ${alias}`)
-    
+
     out({
       alias: found.label,
       publicKey: found.publicKey,
@@ -874,14 +900,14 @@ private async handleWalletList(): Promise<void> {
 
   private async handleStart(): Promise<void> {
     if (!this.adapters.daemon?.start) die('Start command requires daemon adapter')
-    
+
     // Check for one-time migration: WALLET_PRIVATE_KEY in env but no keystore
     if (process.env.WALLET_PRIVATE_KEY && !config.connection?.wallet) {
       const readline = await import('node:readline/promises')
       const rl = readline.createInterface({ input: stdinStream, output: stdoutStream })
       try {
         const answer = await rl.question(
-          'Found WALLET_PRIVATE_KEY in environment. Migrate to secure keystore (default.json)? (Y/n): '
+          'Found WALLET_PRIVATE_KEY in environment. Migrate to secure keystore (default.json)? (Y/n): ',
         )
         if (answer.toLowerCase() !== 'n') {
           const walletPath = path.join(this.etemaroDir, '.credentials', 'wallets')
@@ -908,7 +934,7 @@ private async handleWalletList(): Promise<void> {
         rl.close()
       }
     }
-    
+
     // Interactive first-run onboarding if no wallet configured
     if (!config.connection?.wallet && !config.connection?.walletPrivateKey) {
       const readline = await import('node:readline/promises')
@@ -916,11 +942,11 @@ private async handleWalletList(): Promise<void> {
       try {
         console.log('No Solana wallet configured for this instance.')
         const answer = await rl.question(
-          'What would you like to do?\n  1. Generate a new wallet\n  2. Import existing private key (Base58)\n  3. Import from file\n  4. Select existing wallet alias\nChoice (1-4): '
+          'What would you like to do?\n  1. Generate a new wallet\n  2. Import existing private key (Base58)\n  3. Import from file\n  4. Select existing wallet alias\nChoice (1-4): ',
         )
         switch (answer) {
           case '1': {
-            const label = await rl.question('Enter wallet alias: ') || 'default'
+            const label = (await rl.question('Enter wallet alias: ')) || 'default'
             const result = this.adapters.wallet.generateNewWallet({ label })
             console.log(`Generated wallet ${result.publicKey} as "${label}"`)
             // Update config
@@ -932,7 +958,7 @@ private async handleWalletList(): Promise<void> {
             break
           }
           case '2': {
-            const label = await rl.question('Enter wallet alias: ') || 'default'
+            const label = (await rl.question('Enter wallet alias: ')) || 'default'
             const key = await rl.question('Enter Base58 private key: ')
             const result = this.adapters.wallet.importWallet({ label, privateKey: key })
             console.log(`Imported wallet ${result.publicKey} as "${label}"`)
@@ -944,7 +970,7 @@ private async handleWalletList(): Promise<void> {
             break
           }
           case '3': {
-            const label = await rl.question('Enter wallet alias: ') || 'default'
+            const label = (await rl.question('Enter wallet alias: ')) || 'default'
             const filePath = await rl.question('Enter path to keypair file: ')
             const result = this.adapters.wallet.importWallet({ label, filePath })
             console.log(`Imported wallet ${result.publicKey} as "${label}"`)
@@ -957,14 +983,14 @@ private async handleWalletList(): Promise<void> {
           }
           case '4': {
             const walletPath = path.join(this.etemaroDir, 'config', 'wallets.json')
-            const existing = wallet.loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
+            const existing = loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
             if (existing.wallets?.length) {
               console.log('Available wallets:')
-              existing.wallets.forEach((w, i) => console.log(`  ${i+1}. ${w.label} (${w.publicKey})`))
+              existing.wallets.forEach((w, i) => void console.log(`  ${i + 1}. ${w.label} (${w.publicKey})`))
               const choice = await rl.question('Enter number: ')
               const idx = parseInt(choice, 10) - 1
               if (idx >= 0 && idx < existing.wallets.length) {
-                const selected = existing.wallets[idx]
+                const selected = existing.wallets[idx]!
                 const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
                 if (!configObj.connection) configObj.connection = {}
                 configObj.connection.wallet = selected.label
@@ -988,7 +1014,7 @@ private async handleWalletList(): Promise<void> {
         rl.close()
       }
     }
-    
+
     process.stderr.write('[etemaro] Starting autonomous agent...\n')
     await this.adapters.daemon.start({ tty: process.stdout.isTTY === true })
   }
