@@ -1491,11 +1491,11 @@ async function _runSafetyChecks(
     }
 
     case 'self_update': {
-      if (process.env.ALLOW_SELF_UPDATE !== 'true') {
+      if (!config.connection?.allowSelfUpdate) {
         return {
           pass: false,
           reason:
-            'self_update is disabled by default. Set ALLOW_SELF_UPDATE=true locally if you really want to enable it.',
+            'self_update is disabled by default. Set connection.allowSelfUpdate: true in your config to enable it.',
         }
       }
       if (!process.stdin.isTTY) {
