@@ -169,6 +169,8 @@ describe('WalletAdapter', () => {
         ...config.connection,
         heliusApiKey: 'fallback-helius-key',
       }
+      // Verify heliusApiKey is set
+      expect(config.connection?.heliusApiKey).toBe('fallback-helius-key')
       vi.spyOn(Connection.prototype, 'getBalance').mockRejectedValue(new Error('Solana RPC rate limited 429'))
 
       let heliusHit = false
@@ -186,7 +188,8 @@ describe('WalletAdapter', () => {
       }
 
       vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
-        if (String(url).includes('api.helius.xyz')) {
+        const urlStr = String(url)
+        if (urlStr.includes('api.helius.xyz')) {
           heliusHit = true
           return {
             ok: true,
