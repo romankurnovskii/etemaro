@@ -12,11 +12,18 @@
     "start": "node --import tsx src/Cli.ts"
   },
   "files": ["dist"],
-  "dependencies": {},
+  "dependencies": {
+    "ink": "^7.1.1",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.8",
+    "ws": "^8.21.3"
+  },
   "devDependencies": {
     "@etemaro/core": "workspace:*",
     "@etemaro/daemon": "workspace:*",
     "@types/node": "^26.3.0",
+    "@types/react": "^19.2.18",
+    "@types/ws": "^8.18.1",
     "dotenv": "^17.4.2",
     "tsup": "^8.5.1",
     "tsx": "^4.23.12",

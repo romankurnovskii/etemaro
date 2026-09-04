@@ -83,7 +83,7 @@ let _REPO_ROOT: CoreExports['REPO_ROOT'] = null as any
 let _DEFAULT_ACTIVE_STRATEGY_ID: CoreExports['DEFAULT_ACTIVE_STRATEGY_ID'] = null as any
 let _DEFAULT_STRATEGY_TYPE: CoreExports['DEFAULT_STRATEGY_TYPE'] = null as any
 let meteora: CoreExports['meteora'] = null as any
-const wallet: CoreExports['wallet'] = null as any
+let wallet: CoreExports['wallet'] = null as any
 let screening: CoreExports['screening'] = null as any
 let toolExecutor: CoreExports['toolExecutor'] = null as any
 let domain: CoreExports['domain'] = null as any
@@ -123,6 +123,7 @@ export async function loadCore(): Promise<void> {
   _DEFAULT_ACTIVE_STRATEGY_ID = coreMod.DEFAULT_ACTIVE_STRATEGY_ID
   _DEFAULT_STRATEGY_TYPE = coreMod.DEFAULT_STRATEGY_TYPE
   meteora = coreMod.meteora
+  wallet = coreMod.wallet
   screening = coreMod.screening
   toolExecutor = coreMod.toolExecutor
   domain = coreMod.domain
@@ -184,6 +185,7 @@ export interface CliAdapters {
   }
   daemon?: {
     start?: (options?: { tty?: boolean }) => Promise<void>
+    stop?: () => Promise<void>
     runScreeningCycle: (opts?: { silent?: boolean }) => Promise<string | null>
     runManagementCycle: (opts?: { silent?: boolean }) => Promise<string | null>
     startCronJobs: () => void
@@ -449,9 +451,14 @@ export class Cli {
         desc: { type: 'string' },
         id: { type: 'string' },
         'agent-id': { type: 'string' },
+        agent: { type: 'string' },
+        port: { type: 'string' },
+        token: { type: 'string' },
+        socket: { type: 'string' },
         force: { type: 'boolean' },
         yes: { type: 'boolean' },
         version: { type: 'boolean' },
+        headless: { type: 'boolean' },
       },
       allowPositionals: true,
       strict: false,
@@ -471,6 +478,7 @@ export class Cli {
           default:
             die(`Unknown agent subcommand: ${sub2}. Use: new, create`)
         }
+        break
       case 'generate-wallet':
       case 'new-wallet':
         return this.handleGenerateWallet(flags)
@@ -529,7 +537,7 @@ export class Cli {
       case 'study':
         return this.handleStudy(flags)
       case 'start':
-        return this.handleStart()
+        return this.handleStart(flags)
       case 'lessons':
         return this.handleLessons(argv, sub2, flags)
       case 'pool-memory':
@@ -542,6 +550,8 @@ export class Cli {
         return this.handlePerformance(flags)
       case 'init':
         return this.handleInit(flags)
+      case 'attach':
+        return this.handleAttach(flags)
       default:
         die(`Unknown command: ${subcommand}. Run 'etemaro help' for usage.`)
     }
@@ -618,10 +628,11 @@ export class Cli {
           description = inputDesc.trim() || undefined
         }
         if (!agentId) {
-          const baseSlug = (name || 'agent')
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '') || 'agent'
+          const baseSlug =
+            (name || 'agent')
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-|-$/g, '') || 'agent'
 
           let candidateId = baseSlug
           let counter = 1
@@ -643,10 +654,11 @@ export class Cli {
     }
 
     if (!agentId) {
-      const baseSlug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '') || 'agent'
+      const baseSlug =
+        name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '') || 'agent'
 
       let candidateId = baseSlug
       let counter = 1
@@ -686,18 +698,17 @@ export class Cli {
       }
     }
 
-    if (!templateContent) {
-      templateContent = defaultUserConfigStr ? JSON.parse(defaultUserConfigStr) : {}
-    }
+    const finalTemplateContent: Record<string, any> =
+      templateContent ?? (defaultUserConfigStr ? JSON.parse(defaultUserConfigStr) : {})
 
     // Populate metadata
-    templateContent.name = name
+    finalTemplateContent.name = name
     if (description) {
-      templateContent.description = description
+      finalTemplateContent.description = description
     } else {
-      delete templateContent.description
+      delete finalTemplateContent.description
     }
-    templateContent.agentId = agentId
+    finalTemplateContent.agentId = agentId
 
     // Target data directory
     const baseDataDir = typeof _getDataDir === 'function' ? _getDataDir() : path.join(this.etemaroDir, 'data')
@@ -705,7 +716,7 @@ export class Cli {
 
     // Create directories and write file
     fs.mkdirSync(instancesDir, { recursive: true })
-    fs.writeFileSync(targetConfigFile, `${JSON.stringify(templateContent, null, 2)}\n`, 'utf8')
+    fs.writeFileSync(targetConfigFile, `${JSON.stringify(finalTemplateContent, null, 2)}\n`, 'utf8')
 
     fs.mkdirSync(path.join(targetDataDir, 'logs'), { recursive: true })
 
@@ -722,8 +733,9 @@ export class Cli {
 
   private handleGenerateWallet(flags: Record<string, any>): void {
     const configDir = path.join(this.etemaroDir, 'config')
+    const alias = flags.name || flags.label || 'default'
     const result = wallet.generateNewWallet({
-      label: flags.label || 'CLI Generated Keypair',
+      label: alias,
       configDir,
     })
     out({
@@ -733,12 +745,12 @@ export class Cli {
       createdAt: result.createdAt,
       label: result.label,
       savedTo: path.join(configDir, 'wallets.json'),
-      message: 'New Solana wallet generated and saved to config/wallets.json',
+      message: `New Solana wallet generated and saved as "${alias}"`,
     })
   }
 
   private async handleWalletImport(flags: Record<string, any>): Promise<void> {
-    const alias = flags.label
+    const alias = flags.name || flags.label
     if (!alias) die('Usage: etemaro wallet import --name <alias> [--file <path> | --prompt]')
 
     let privateKey: string | undefined = flags['private-key']
@@ -767,20 +779,60 @@ export class Cli {
   }
 
   private async handleWalletList(): Promise<void> {
-    const walletPath = path.join(this.etemaroDir, 'config', 'wallets.json')
-    const existing = loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
-    const wallets = existing.wallets || []
-    out(
-      wallets.map((w) => ({
-        alias: w.label,
-        publicKey: w.publicKey,
-        createdAt: w.createdAt,
-      })),
-    )
+    const walletsMap = new Map<string, { alias: string; publicKey?: string; path: string }>()
+
+    const searchDirs = [
+      path.join(getEtemaroDir(), '.credentials', 'wallets'),
+      path.join(_REPO_ROOT, 'config', '.credentials', 'wallets'),
+    ]
+
+    for (const dir of searchDirs) {
+      if (fs.existsSync(dir)) {
+        try {
+          const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'))
+          for (const f of files) {
+            const alias = path.basename(f, '.json')
+            const fullPath = path.join(dir, f)
+            try {
+              const raw = JSON.parse(fs.readFileSync(fullPath, 'utf8'))
+              let key: string | null = null
+              if (Array.isArray(raw)) {
+                key = bs58.encode(Uint8Array.from(raw))
+              } else if (typeof raw === 'string') {
+                key = raw
+              } else if (raw.privateKey) {
+                key = raw.privateKey
+              }
+              const pk = key ? Keypair.fromSecretKey(bs58.decode(key)).publicKey.toBase58() : undefined
+              if (!walletsMap.has(alias)) {
+                walletsMap.set(alias, { alias, publicKey: pk, path: fullPath })
+              }
+            } catch {
+              if (!walletsMap.has(alias)) {
+                walletsMap.set(alias, { alias, path: fullPath })
+              }
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    const walletJsonPath = path.join(this.etemaroDir, 'config', 'wallets.json')
+    const existing = loadJsonFile<{ wallets: GeneratedWallet[] }>(walletJsonPath, { wallets: [] })
+    for (const w of existing.wallets || []) {
+      const alias = w.label || 'unnamed'
+      if (!walletsMap.has(alias)) {
+        walletsMap.set(alias, { alias, publicKey: w.publicKey, path: walletJsonPath })
+      }
+    }
+
+    out(Array.from(walletsMap.values()))
   }
 
   private async handleWalletExport(flags: Record<string, any>): Promise<void> {
-    const alias = flags.label
+    const alias = flags.name || flags.label
     if (!alias) die('Usage: etemaro wallet export --name <alias>')
 
     // Security: only allow export from an interactive TTY
@@ -1057,7 +1109,50 @@ export class Cli {
     out(await this.adapters.domain.studyTopLPers({ pool_address: flags.pool, limit }))
   }
 
-  private async handleStart(): Promise<void> {
+  private async handleAttach(flags: Record<string, any>): Promise<void> {
+    const agentId = flags.agent ? String(flags.agent) : process.env.ETEMARO_AGENT_ID || 'agent-default'
+    let foundConfig: any = {}
+
+    const candidates = [
+      path.join(process.cwd(), 'config', 'instances', `${agentId}.json`),
+      path.join(process.cwd(), 'data', 'instances', agentId, 'user-config.json'),
+      path.join(process.cwd(), 'config', 'user-config.json'),
+      path.join(process.cwd(), 'user-config.json'),
+    ]
+
+    for (const c of candidates) {
+      if (fs.existsSync(c)) {
+        try {
+          foundConfig = JSON.parse(fs.readFileSync(c, 'utf8'))
+          break
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    const conn = foundConfig?.connection || {}
+    const port = flags.port ? Number(flags.port) : conn.ipcPort ? Number(conn.ipcPort) : 8765
+    const token = flags.token ? String(flags.token) : conn.ipcToken || process.env.ETEMARO_IPC_TOKEN
+    const socketPath = flags.socket ? String(flags.socket) : conn.ipcSocketPath
+
+    const { render } = await import('ink')
+    const React = await import('react')
+    const { App } = await import('./ui/App.js')
+
+    const appInstance = render(
+      React.createElement(App, {
+        port,
+        token,
+        socketPath,
+        agentId,
+      }),
+    )
+
+    await appInstance.waitUntilExit()
+  }
+
+  private async handleStart(flags: Record<string, any> = {}): Promise<void> {
     if (!this.adapters.daemon?.start) die('Start command requires daemon adapter')
 
     // Check for one-time migration: WALLET_PRIVATE_KEY in env but no keystore
@@ -1081,7 +1176,6 @@ export class Cli {
           const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
           if (!configObj.connection) configObj.connection = {}
           configObj.connection.wallet = 'default'
-          delete configObj.connection.walletPrivateKey
           fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
           // Remove from process.env
           delete process.env.WALLET_PRIVATE_KEY
@@ -1095,7 +1189,7 @@ export class Cli {
     }
 
     // Interactive first-run onboarding if no wallet configured
-    if (!config.connection?.wallet && !config.connection?.walletPrivateKey) {
+    if (!config.connection?.wallet) {
       const readline = await import('node:readline/promises')
       const rl = readline.createInterface({ input: stdinStream, output: stdoutStream })
       try {
@@ -1112,7 +1206,6 @@ export class Cli {
             const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
             if (!configObj.connection) configObj.connection = {}
             configObj.connection.wallet = label
-            delete configObj.connection.walletPrivateKey
             fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
             break
           }
@@ -1124,7 +1217,6 @@ export class Cli {
             const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
             if (!configObj.connection) configObj.connection = {}
             configObj.connection.wallet = label
-            delete configObj.connection.walletPrivateKey
             fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
             break
           }
@@ -1136,7 +1228,6 @@ export class Cli {
             const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
             if (!configObj.connection) configObj.connection = {}
             configObj.connection.wallet = label
-            delete configObj.connection.walletPrivateKey
             fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
             break
           }
@@ -1153,7 +1244,6 @@ export class Cli {
                 const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
                 if (!configObj.connection) configObj.connection = {}
                 configObj.connection.wallet = selected.label
-                delete configObj.connection.walletPrivateKey
                 fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
                 console.log(`Selected wallet "${selected.label}"`)
               } else {
@@ -1174,8 +1264,20 @@ export class Cli {
       }
     }
 
-    process.stderr.write('[etemaro] Starting autonomous agent...\n')
-    await this.adapters.daemon.start({ tty: process.stdout.isTTY === true })
+    const isInteractiveTty = process.stdout.isTTY === true && flags.headless !== true && !process.env.PM2_HOME
+
+    if (isInteractiveTty) {
+      const { setStdoutMuted } = await import('@etemaro/core')
+      setStdoutMuted(true)
+      await this.adapters.daemon.start({ tty: false })
+      await this.handleAttach(flags)
+      if (this.adapters.daemon.stop) {
+        await this.adapters.daemon.stop()
+      }
+    } else {
+      process.stderr.write('[etemaro] Starting autonomous agent (headless)...\n')
+      await this.adapters.daemon.start({ tty: false })
+    }
   }
 
   private async handleLessons(argv: string[], sub2: string | undefined, flags: Record<string, any>): Promise<void> {
