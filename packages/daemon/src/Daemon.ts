@@ -21,6 +21,7 @@ import * as readline from 'node:readline'
 import {
   type AgentLoopDeps,
   type AgentMessage,
+  addLogListener,
   agentLoop,
   briefing,
   computeDeployAmount,
@@ -37,13 +38,13 @@ import {
   getTrackedPosition,
   getTrackedPositions,
   hivemind,
+  type IpcPositionSummary,
   isPnlSuspect,
   loadJsonFile,
   loadJsonFileWithInfo,
   log,
   meteora,
   registerExitSignal,
-  repoPath,
   SHARED_STRATEGY_LIB_FILENAME,
   SMART_WALLETS_FILENAME,
   STATE_FILENAME,
@@ -66,6 +67,7 @@ import {
   wallet,
 } from '@etemaro/core'
 import cron from 'node-cron'
+import { IpcServer } from './server/IpcServer.js'
 // These will be injected or resolved at runtime by the adapter layer.
 
 export interface DaemonAdapters {
@@ -308,6 +310,13 @@ export class Daemon {
   private latestCandidates: any[] = []
   private latestCandidatesAt: string | null = null
 
+  // Latest live positions cache (from Meteora on-chain / REST API)
+  private latestLivePositions: any[] = []
+
+  // IPC Server
+  private ipcServer: IpcServer | null = null
+  private unsubscribeLog: (() => void) | null = null
+
   /**
    * Synchronous atomic check-and-set lock acquisition for daemon async cycles.
    * Prevents overlapping timer ticks or event-loop delays from entering guarded sections concurrently.
@@ -512,9 +521,44 @@ export class Daemon {
       this.adapters.desktop.startServer((msg: any) => this.desktopHandler(msg))
     }
 
+    // Start WebSocket IPC server (Ink CLI / Desktop clients)
+    const ipcConfig = {
+      ipcPort: config.connection?.ipcPort ?? 8765,
+      ipcToken: config.connection?.ipcToken ?? process.env.ETEMARO_IPC_TOKEN,
+      ipcSocketPath: config.connection?.ipcSocketPath,
+    }
+    this.ipcServer = new IpcServer(ipcConfig)
+    try {
+      await this.ipcServer.start()
+      const bindInfo = ipcConfig.ipcSocketPath ? ipcConfig.ipcSocketPath : `ws://127.0.0.1:${ipcConfig.ipcPort}`
+      log('startup', `IPC server listening on ${bindInfo}`)
+
+      this.unsubscribeLog = addLogListener((entry) => {
+        this.ipcServer?.broadcastLog(entry)
+      })
+
+      this.ipcServer.onChat((prompt: string) => {
+        this.handleIpcChat(prompt).catch((err: any) => {
+          log('ipc_error', `Failed to handle IPC chat prompt: ${err?.message || err}`)
+        })
+      })
+
+      this.ipcServer.onAction((action: string, args?: unknown) => {
+        this.handleIpcAction(action, args).catch((err: any) => {
+          log('ipc_error', `Failed to handle IPC action ${action}: ${err?.message || err}`)
+        })
+      })
+
+      this.broadcastIpcState()
+    } catch (err: any) {
+      log('startup_warn', `Failed to start IPC server: ${err?.message || err}`)
+    }
+
     if (options.tty) {
       await this.startTTY()
     } else {
+      process.on('SIGINT', () => void this.shutdown('SIGINT'))
+      process.on('SIGTERM', () => void this.shutdown('SIGTERM'))
       log('startup', 'Non-TTY mode — starting cron cycles immediately.')
       this.startCronJobs()
       this.maybeRunMissedBriefing().catch((err: any) => {
@@ -524,11 +568,9 @@ export class Daemon {
       this.drainTelegramQueue().catch((err: any) => {
         log('telegram_warn', `Initial telegram queue drain failed: ${err?.message || err}`)
       })
-      try {
-        await this.runScreeningCycle({ silent: false })
-      } catch (e: any) {
+      this.runScreeningCycle({ silent: false }).catch((e: any) => {
         log('startup_error', e.message)
-      }
+      })
     }
   }
 
@@ -550,6 +592,16 @@ export class Daemon {
     this.adapters.telegram.stopPolling()
     if (this.adapters.desktop) {
       this.adapters.desktop.stopServer()
+    }
+    if (this.unsubscribeLog) {
+      this.unsubscribeLog()
+      this.unsubscribeLog = null
+    }
+    if (this.ipcServer) {
+      await this.ipcServer.stop().catch((err: any) => {
+        log('shutdown', `IPC server stop error: ${err?.message || err}`)
+      })
+      this.ipcServer = null
     }
     this.stopCronJobs()
 
@@ -671,6 +723,9 @@ Summarize the current portfolio health, total fees earned, and performance of al
           log('cron_error', `PnL poller failed to fetch positions: ${err?.message || err}`)
           return null
         })
+        if (result?.positions) {
+          this.latestLivePositions = result.positions
+        }
         if (!result?.positions?.length) return
         for (const p of result.positions) {
           confirmPeak(p.position, p.pnl_pct, confirmTicks)
@@ -716,6 +771,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
       } catch (e: any) {
         log('cron_error', `PnL poll failed: ${e.message}`)
       } finally {
+        this.broadcastIpcState()
         this.releaseLock('pnlPoll')
       }
     }, pnlPollMs)
@@ -984,6 +1040,9 @@ After evaluating, write a brief one-line result per position.
         log('cron_error', `Failed to fetch live positions in management cycle: ${err?.message || err}`)
         return null
       })
+      if (livePositions?.positions) {
+        this.latestLivePositions = livePositions.positions
+      }
       positions = livePositions?.positions || []
 
       if (positions.length === 0) {
@@ -1015,6 +1074,7 @@ After evaluating, write a brief one-line result per position.
           log('state', `Exit alert for ${p.pair}: ${exit.reason}`)
         }
       }
+      this.broadcastIpcState()
 
       // ── Deterministic rule checks (no LLM) ──────────────────────────
       const actionMap = new Map<string, any>()
@@ -2182,7 +2242,13 @@ IMPORTANT:
           const pnl = p.pnl_usd >= 0 ? `+${cur}${p.pnl_usd}` : `-${cur}${Math.abs(p.pnl_usd)}`
           const age = p.age_minutes != null ? `${p.age_minutes}m` : '?'
           const oor = !p.in_range ? ' ⚠️OOR' : ''
-          return `${i + 1}. ${p.pair} | ${cur}${p.total_value_usd} | PnL: ${pnl} | fees: ${cur}${p.unclaimed_fees_usd} | ${age}${oor}`
+          const val =
+            p.total_value_usd != null
+              ? `${cur}${Number(p.total_value_usd).toFixed(2)}`
+              : p.value_usd != null
+                ? `${cur}${Number(p.value_usd).toFixed(2)}`
+                : '?'
+          return `${i + 1}. ${p.pair} | Liq: ${val} | PnL: ${pnl} | fees: ${cur}${p.unclaimed_fees_usd ?? '0'} | ${age}${oor}`
         })
         await this.sendTelegramSafe(
           `📊 Open Positions (${total_positions}):\n\n${lines.join('\n')}\n\n/close <n> to close | /set <n> <note> to set instruction`,
@@ -2471,60 +2537,156 @@ IMPORTANT:
     }
   }
 
-  // ─── Desktop Handler ───────────────────────────────────────────
+  // ─── Desktop & CLI Command / Chat Handler ───────────────────────
 
-  private async desktopHandler(msg: { text: string }): Promise<string> {
-    const text = msg?.text?.trim()
+  private async processCommandOrChat(rawText: string, source: 'desktop' | 'cli'): Promise<string> {
+    const text = rawText?.trim()
     if (!text) return 'Empty message'
 
-    // Quick Command Handlers
-    if (text === '/help' || text === '/start') {
-      return this.formatHelpText()
+    const lower = text.toLowerCase()
+    const isCmd = (cmd: string) => lower === cmd || lower === `/${cmd}`
+
+    if (isCmd('help') || isCmd('start')) {
+      const reply = this.formatHelpText()
+      if (source === 'cli') {
+        log('agent_reply', `🤖\n${reply}`)
+        this.ipcServer?.broadcastChatReply(reply)
+      }
+      return reply
     }
-    if (text === '/wallet') {
+
+    if (isCmd('positions')) {
+      try {
+        const { positions, total_positions } = await this.adapters.meteora.getMyPositions({ force: true })
+        let reply = 'No open positions.'
+        if (total_positions > 0) {
+          const cur = config.management.solMode ? '◎' : '$'
+          const lines = positions.map((p: any, i: number) => {
+            const pnl = p.pnl_usd >= 0 ? `+${cur}${p.pnl_usd}` : `-${cur}${Math.abs(p.pnl_usd)}`
+            const age = p.age_minutes != null ? `${p.age_minutes}m` : '?'
+            const oor = !p.in_range ? ' ⚠️OOR' : ''
+            const val =
+              p.total_value_usd != null
+                ? `${cur}${Number(p.total_value_usd).toFixed(2)}`
+                : p.value_usd != null
+                  ? `${cur}${Number(p.value_usd).toFixed(2)}`
+                  : '?'
+            return `${i + 1}. ${p.pair} | Liq: ${val} | PnL: ${pnl} | fees: ${cur}${p.unclaimed_fees_usd ?? '0'} | ${age}${oor}`
+          })
+          reply = `📊 Open Positions (${total_positions}):\n\n${lines.join('\n')}`
+        }
+        if (source === 'cli') {
+          log('agent_reply', `🤖\n${reply}`)
+          this.ipcServer?.broadcastChatReply(reply)
+        }
+        return reply
+      } catch (e: any) {
+        const reply = `Positions error: ${e.message}`
+        if (source === 'cli') {
+          log('agent_reply', `🤖 ${reply}`)
+          this.ipcServer?.broadcastChatReply(reply)
+        }
+        return reply
+      }
+    }
+
+    if (isCmd('wallet') || isCmd('status')) {
       try {
         const [w, p] = await Promise.all([
           this.adapters.wallet.getWalletBalances(),
           this.adapters.meteora.getMyPositions({ silent: true }),
         ])
-        return this.formatWalletStatus(w, p)
+        const reply = this.formatWalletStatus(w, p)
+        if (source === 'cli') {
+          log('agent_reply', `🤖\n${reply}`)
+          this.ipcServer?.broadcastChatReply(reply)
+        }
+        return reply
       } catch (e: any) {
-        return `Wallet error: ${e.message}`
+        const reply = `Status error: ${e.message}`
+        if (source === 'cli') {
+          log('agent_reply', `🤖 ${reply}`)
+          this.ipcServer?.broadcastChatReply(reply)
+        }
+        return reply
       }
     }
-    if (text === '/screen') {
+
+    if (isCmd('screen')) {
       try {
-        return await this.runDeterministicScreen(5)
+        const reply = await this.runDeterministicScreen(5)
+        if (source === 'cli') {
+          log('agent_reply', `🤖\n${reply}`)
+          this.ipcServer?.broadcastChatReply(reply)
+        }
+        return reply
       } catch (e: any) {
-        return `Screen error: ${e.message}`
+        const reply = `Screen error: ${e.message}`
+        if (source === 'cli') {
+          log('agent_reply', `🤖 ${reply}`)
+          this.ipcServer?.broadcastChatReply(reply)
+        }
+        return reply
       }
     }
-    if (text === '/candidates') {
-      return this.describeLatestCandidates(5)
+
+    if (isCmd('candidates')) {
+      const reply = this.describeLatestCandidates(5)
+      if (source === 'cli') {
+        log('agent_reply', `🤖\n${reply}`)
+        this.ipcServer?.broadcastChatReply(reply)
+      }
+      return reply
     }
-    if (text === '/config') {
-      return this.formatConfigSnapshot()
+
+    if (isCmd('config')) {
+      const reply = this.formatConfigSnapshot()
+      if (source === 'cli') {
+        log('agent_reply', `🤖\n${reply}`)
+        this.ipcServer?.broadcastChatReply(reply)
+      }
+      return reply
     }
-    if (text === '/briefing') {
+
+    if (isCmd('briefing')) {
       try {
-        return await this.adapters.briefing.generateBriefing()
+        const reply = await this.adapters.briefing.generateBriefing()
+        if (source === 'cli') {
+          log('agent_reply', `🤖\n${reply}`)
+          this.ipcServer?.broadcastChatReply(reply)
+        }
+        return reply
       } catch (e: any) {
-        return `Briefing error: ${e.message}`
+        const reply = `Briefing error: ${e.message}`
+        if (source === 'cli') {
+          log('agent_reply', `🤖 ${reply}`)
+          this.ipcServer?.broadcastChatReply(reply)
+        }
+        return reply
       }
     }
 
     // Free-form LLM chat via agentLoop
+    return this.executeChatPrompt(text, source)
+  }
+
+  private async desktopHandler(msg: { text: string }): Promise<string> {
+    return this.processCommandOrChat(msg?.text, 'desktop')
+  }
+
+  private async executeChatPrompt(text: string, source: 'desktop' | 'cli' = 'desktop'): Promise<string> {
     this.busy = true
     let liveMessage: any = null
     try {
-      log('desktop_chat', `Incoming desktop chat: ${text}`)
+      const logCategory = source === 'cli' ? 'chat' : 'desktop_chat'
+      log(logCategory, `User prompt: ${text}`)
       const hasCloseIntent = /\bclose\b|\bsell\b|\bexit\b|\bwithdraw\b/i.test(text)
       const isDeployRequest =
         !hasCloseIntent && /\bdeploy\b|\bopen position\b|\blp into\b|\badd liquidity\b/i.test(text)
       const agentRole = isDeployRequest ? 'SCREENER' : 'GENERAL'
       const agentModel = agentRole === 'SCREENER' ? config.llm.screeningModel : config.llm.generalModel
 
-      if (this.adapters.desktop) {
+      if (source === 'desktop' && this.adapters.desktop) {
         liveMessage = await this.adapters.desktop.createLiveMessage(
           '🤖 Desktop Agent Update',
           `Request: ${text.slice(0, 240)}`,
@@ -2535,26 +2697,125 @@ IMPORTANT:
         deps: this.adapters.agentLoopDeps,
         interactive: true,
         onToolStart: async ({ name }: any) => {
-          await liveMessage?.toolStart(name)
+          if (liveMessage) await liveMessage.toolStart(name)
         },
         onToolFinish: async ({ name, result, success }: any) => {
-          await liveMessage?.toolFinish(name, result, success)
+          if (liveMessage) await liveMessage.toolFinish(name, result, success)
         },
       })
 
       this.appendHistory(text, content)
       const cleanContent = stripThink(content)
       if (liveMessage) await liveMessage.finalize(cleanContent)
+      log('agent_reply', `🤖 ${cleanContent}`)
+      if (source === 'cli') {
+        this.ipcServer?.broadcastChatReply(cleanContent)
+      }
       return cleanContent
     } catch (e: any) {
       if (liveMessage) await liveMessage.fail(e.message).catch(() => {})
-      return `Error: ${e.message}`
+      const errReply = `Error: ${e.message}`
+      if (source === 'cli') {
+        this.ipcServer?.broadcastChatReply(errReply)
+      }
+      return errReply
     } finally {
       this.busy = false
       this.refreshPrompt()
       this.drainTelegramQueue().catch((err: any) => {
         log('telegram_warn', `Failed to drain telegram queue: ${err?.message || err}`)
       })
+    }
+  }
+
+  private async handleIpcChat(prompt: string): Promise<void> {
+    const text = prompt?.trim()
+    if (!text) return
+
+    if (this.managementBusy || this.screeningBusy || this.pnlPollBusy || this.opportunityPollBusy || this.busy) {
+      log('ipc_warn', 'Agent is currently busy with an active cycle. Please wait.')
+      return
+    }
+
+    await this.processCommandOrChat(text, 'cli')
+  }
+
+  private async handleIpcAction(action: string, args?: unknown): Promise<void> {
+    log('ipc', `Received IPC action: ${action}`)
+    switch (action) {
+      case 'screen':
+        try {
+          await this.runScreeningCycle({ silent: false })
+        } catch (e: any) {
+          log('ipc_error', `Screening action failed: ${e.message}`)
+        }
+        break
+
+      case 'close': {
+        const posAddr = (args as any)?.position_address ?? (args as any)?.positionAddress
+        if (posAddr) {
+          try {
+            await this.adapters.toolExecutor.executeTool('close_position', {
+              position_address: posAddr,
+            })
+          } catch (e: any) {
+            log('ipc_error', `Close position action failed: ${e.message}`)
+          }
+        } else {
+          log('ipc_warn', 'Close action received without position_address in args')
+        }
+        break
+      }
+
+      case 'stop':
+        await this.shutdown('IPC stop command')
+        break
+
+      default:
+        log('ipc_warn', `Unknown IPC action: ${action}`)
+    }
+  }
+
+  private broadcastIpcState(): void {
+    if (!this.ipcServer) return
+    try {
+      const tracked = getTrackedPositions(true)
+      let totalPnlUsd = 0
+      const positions: IpcPositionSummary[] = tracked.map((p: any) => {
+        const live = this.latestLivePositions.find((lp: any) => lp.position === p.position || lp.pool === p.pool)
+        const pnl = Number(live?.pnl_usd ?? p.pnl_usd ?? 0)
+        totalPnlUsd += pnl
+        const pnlPct = Number(live?.pnl_pct ?? p.pnl_pct ?? p.peak_pnl_pct ?? 0)
+        const tokenSymbol =
+          live?.pair ?? p.pool_name ?? p.pair ?? p.tokenSymbol ?? (p.position ? p.position.slice(0, 8) : '')
+        const valueUsd = Number(live?.total_value_usd ?? live?.value_usd ?? p.initial_value_usd ?? 0)
+        return {
+          positionAddress: p.position ?? p.position_address ?? '',
+          poolAddress: p.pool ?? p.pool_address ?? '',
+          tokenSymbol,
+          pnlUsd: Math.round(pnl * 100) / 100,
+          pnlPct: Math.round(pnlPct * 100) / 100,
+          valueUsd: Math.round(valueUsd * 100) / 100,
+          deployedAt: p.deployed_at ? new Date(p.deployed_at).toISOString() : undefined,
+        }
+      })
+
+      const nextScreenAt = this.screeningLastRun
+        ? new Date(this.screeningLastRun + config.schedule.screeningIntervalMin * 60 * 1000).toISOString()
+        : new Date(Date.now() + config.schedule.screeningIntervalMin * 60 * 1000).toISOString()
+      const nextManageAt = this.managementLastRun
+        ? new Date(this.managementLastRun + config.schedule.managementIntervalMin * 60 * 1000).toISOString()
+        : new Date(Date.now() + config.schedule.managementIntervalMin * 60 * 1000).toISOString()
+
+      this.ipcServer.broadcastState({
+        positions,
+        totalPnlUsd: Math.round(totalPnlUsd * 100) / 100,
+        nextScreenAt,
+        nextManageAt,
+        busy: this.managementBusy || this.screeningBusy || this.busy,
+      })
+    } catch (e: any) {
+      log('ipc_warn', `Failed to broadcast IPC state: ${e.message}`)
     }
   }
 
@@ -2754,12 +3015,15 @@ IMPORTANT:
   }
 
   /**
-   * Sequentially drains queued Telegram messages while the daemon is not running busy cycles.
+   * Sequentially drains queued Telegram & IPC messages while the daemon is not running busy cycles.
    *
    * @returns {Promise<void>}
    */
   private async drainTelegramQueue(): Promise<void> {
-    if (!this.adapters.telegram?.isEnabled?.() || this.draining || this.shuttingDown) return
+    if (this.draining || this.shuttingDown) return
+    const hasTelegram = Boolean(this.adapters.telegram?.isEnabled?.())
+    if (!hasTelegram && this.telegramQueue.every((m: any) => m?.source !== 'ipc')) return
+
     this.draining = true
     try {
       while (
@@ -2777,7 +3041,11 @@ IMPORTANT:
         })
         const queued = stopIdx !== -1 ? this.telegramQueue.splice(stopIdx, 1)[0] : this.telegramQueue.shift()
         this.saveTelegramQueue()
-        await this.telegramHandler(queued)
+        if (queued?.source === 'ipc') {
+          await this.processCommandOrChat(queued.text, 'cli')
+        } else {
+          await this.telegramHandler(queued)
+        }
       }
     } finally {
       this.draining = false
