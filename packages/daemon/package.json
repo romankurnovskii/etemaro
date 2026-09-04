@@ -1,6 +1,6 @@
 {
   "name": "@etemaro/daemon",
-  "version": "3.4.5",
+  "version": "3.5.0",
   "type": "module",
   "main": "dist/Daemon.js",
   "types": "dist/Daemon.d.ts",
