@@ -3,7 +3,7 @@ class Etemaro < Formula
   homepage "https://github.com/romankurnovskii/etemaro"
   version "3.7.0"
   url "https://registry.npmjs.org/@etemaro/cli/-/cli-3.7.0.tgz"
-  sha256 "c8d3eae160a892e32837db3dcae515e843e5383fef52b8141940c8bcf8b6d59f"
+  sha256 "a51b7c9aaf501b59553e11e272c4d125a5029b8154bad3a41d12fdbc32b88da1"
   
   depends_on "node"
 
