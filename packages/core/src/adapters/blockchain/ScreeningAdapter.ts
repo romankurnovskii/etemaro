@@ -21,8 +21,6 @@ import { confirmIndicatorPreset } from '../indicators/ChartIndicatorsAdapter.js'
 
 export type { IndicatorConfirmation } from '../indicators/ChartIndicatorsAdapter.js'
 
-import { getAgentMeridianBase, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js'
-
 // ─── Constants ─────────────────────────────────────────────────
 
 const DATAPI_JUP = 'https://datapi.jup.ag/v1'
@@ -237,7 +235,7 @@ function getPoolLaunchpad(pool: RawPool): string | null {
   )
 }
 
-function getPoolBaseMint(pool: RawPool): string | null {
+function _getPoolBaseMint(pool: RawPool): string | null {
   return (
     pool?.token_x?.address ||
     (pool as any)?.base_token_address ||

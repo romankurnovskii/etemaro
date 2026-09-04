@@ -57,6 +57,30 @@ When you are ready for live trades: set `JUPITER_API_KEY`, then `etemaro start`.
 >
 ```
 
+## 4. Interactive Dashboard & Live Chat
+
+To see real-time streaming logs, monitor active positions, and converse with the agent:
+
+1. Start the agent (in the background or in a separate terminal):
+   ```bash
+   etemaro start --dry-run
+   # or with PM2:
+   pnpm run pm2:start
+   ```
+
+2. Attach the interactive terminal UI:
+   ```bash
+   etemaro attach
+   # or from source:
+   pnpm run attach
+   ```
+
+You will see:
+- **Top Header**: Connection status, wallet balances (SOL/USDC), and 24h PnL.
+- **Center Log Pane**: Real-time event log stream (screening discoveries, position rebalances, swap simulations).
+- **Bottom Chat Prompt**: Type any command or question (e.g., `"explain your current strategy"`, `"show top pool candidates"`, `"trigger screening"`).
+- **Detach**: Press `Ctrl+C` to exit the dashboard safely without stopping the trading agent.
+
 ## Quick health check
 
 ```bash
