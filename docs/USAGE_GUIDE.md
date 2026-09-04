@@ -64,6 +64,20 @@ npm start          # Live mode with REPL
 npm run pm2:start  # Headless daemon for VPS
 ```
 
+**Interactive Dashboard & Live Chat** (TUI):
+
+```bash
+# 1. Start daemon in background (or via PM2)
+pnpm run pm2:start
+# 2. Attach interactive terminal dashboard
+pnpm run attach     # or: etemaro attach
+```
+- **Real-time Log Stream**: Watch screening discoveries, rebalances, and execution logs in real time.
+- **State & PnL**: View SOL/USDC balances, active positions, countdowns to next cycle.
+- **Interactive Prompt**: Prompt the agent conversationally (`what pools are you watching?`, `run screen`, etc.).
+- **Safe Detach**: Exit anytime with `Ctrl+C` without stopping background trading.
+
+
 **One-shot CLI** (scripting / debugging):
 
 ```bash

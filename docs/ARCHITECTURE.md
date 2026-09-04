@@ -154,10 +154,9 @@ The wallet architecture separates public config metadata from the raw private ke
 ### Resolution Flow
 
 1. `connection.ts:getWalletKeypair()` reads `config.connection.wallet` (alias).
-2. Loads `~/.config/etemaro/.credentials/wallets/<alias>.json`.
+2. Loads `~/.config/etemaro/.credentials/wallets/<alias>.json` (or `config/.credentials/wallets/<alias>.json` for repo-local configs).
 3. Enforces `chmod 0600` on POSIX systems (auto-tightens; FATAL if it cannot).
 4. Supports Base58 secret strings and standard Solana CLI 64-byte JSON arrays.
-5. Fallback (deprecated): `config.connection.walletPrivateKey` for legacy configs.
 
 ### CLI Wallet Commands
 

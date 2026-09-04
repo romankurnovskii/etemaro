@@ -28,6 +28,33 @@
 
 ---
 
+## Interactive CLI & Terminal Dashboard
+
+### Q: What should I do if I just want to run Etemaro in my terminal, chat with it, and see live logs?
+
+**A:** Use the interactive terminal UI with `etemaro attach`:
+
+1. **Start the agent** (in background via PM2 or a background process):
+   ```bash
+   # Production / VPS (recommended):
+   npm run pm2:start
+   # Or in background directly:
+   etemaro start --dry-run &
+   ```
+2. **Attach the interactive CLI**:
+   ```bash
+   etemaro attach
+   # or from repo clone:
+   pnpm run attach
+   ```
+3. **What you get in the terminal**:
+   - **Live Log Stream**: Filtered, color-coded execution logs (screenings, swaps, bin rebalances) in real time.
+   - **Status & PnL**: Instant snapshot of your active positions, SOL/USDC balance, and countdowns to upcoming cycles.
+   - **Interactive Prompt**: Type questions or commands directly into the bottom chat box (e.g. `what is the current status?`, `why did you close position 1?`, `run screen`).
+4. **Detach**: Press `Ctrl+C` or `q` to leave the UI. The background agent continues trading uninterrupted 24/7.
+
+---
+
 ## Multi-Instance & Deployment
 
 ### Q: How do I run different strategies with different wallets on one host?
@@ -50,7 +77,6 @@
    ```bash
    pnpm install
    ```
-
 2. **Create Config Files**:
    Copy `config/user-config.json` (or generate using `pnpm cli init`) to create a custom config for each agent:
 
@@ -58,10 +84,8 @@
    cp config/user-config.json config/agt_my-agent-1.json
    cp config/user-config.json config/agt_my-agent-2.json
    ```
-
 3. **Configure Parameters**:
    Edit each JSON file to set your risk, deploy amount, and strategy settings. Use `"wallet": "agent-1"` (or your chosen alias) in `connection`. **Do not** use `walletPrivateKey` with env vars.
-
 4. **Set Up & Run PM2 Ecosystem**:
    Copy `config/templates/ecosystem.config.example.cjs` to `config/ecosystem.config.cjs` (`cp config/templates/ecosystem.config.example.cjs config/ecosystem.config.cjs`). In `config/ecosystem.config.cjs`, pass `USER_CONFIG_PATH` per agent:
 
@@ -99,20 +123,21 @@
    ```bash
    npm run pm2:start
    ```
+
 #### Option C: Docker Compose (Headless Server)
 
 1. **Create Config Files**:
    Copy `config/user-config.json` (or generate using `pnpm cli init`) to create a custom config for each agent:
+
    ```bash
    cp config/user-config.json config/agt_my-agent-1.json
    cp config/user-config.json config/agt_my-agent-2.json
    ```
-
 2. **Configure Parameters**:
    Edit each JSON file to set your risk, deploy amount, and strategy settings. Use `"wallet": "agent-1"` (or your alias) in `connection`. **Do not** use `walletPrivateKey` with env vars.
-
 3. **Define Docker Compose Services**:
    Define distinct container services sharing a `./data:/app/data` volume (or set `ETEMARO_DATA_DIR` per service) and set `USER_CONFIG_PATH` per container in `docker-compose.yml`:
+
    ```yaml
    version: '3.8'
    services:
@@ -131,20 +156,21 @@
          - ./data:/app/data
          - ~/.config/etemaro/.credentials:/root/.config/etemaro/.credentials
    ```
-
 4. **Launch Containers**:
    Start all agent services in detached mode:
+
    ```bash
    docker compose up -d
    ```
 
    **Note:** The keystore directory is mounted into each container so wallet resolution works. Each agent references its own wallet alias via its config.
+
 ### Q: Can I load my private key from an environment variable instead of writing it in `user-config.json`?
 
-**A:** The recommended approach is the **keystore** (see above). For legacy configs:
+**A:** Etemaro uses the secure **keystore**:
 
-- **Deprecated**: Set `"walletPrivateKey": "env.WALLET_PRIVATE_KEY"` in `user-config.json` still works for backward compatibility, but this is discouraged.
-- **Recommended**: Use `etemaro wallet import --name <alias> --prompt` (or `--file`) to store the key in `~/.config/etemaro/.credentials/wallets/<alias>.json`, then set `"wallet": "<alias>"` in config.
+- Use `etemaro wallet import --name <alias> --prompt` (or `--file`) to store the key in `~/.config/etemaro/.credentials/wallets/<alias>.json`, then set `"wallet": "<alias>"` in your instance config.
+- Legacy `walletPrivateKey` in configs has been removed in favor of named keystores.
 
 The keystore keeps private keys **out of `process.env` entirely** — crucial because `console.log(process.env)` or PM2 process tables (`pm2 describe`, `/proc/<pid>/environ`) could otherwise leak the key.
 
@@ -230,7 +256,6 @@ The app never opens a position **because** a tracked wallet did. The LLM screene
    - `study_top_lpers` / `get_top_lpers` — fetch top LPer aggregates for a pool: their positions, PnL, fees, strategies, historical performance (`StudyAdapter.ts:101-111`, endpoints `/top-lp/{pool}` and `/study-top-lp/{pool}`).
    - Open-position lookup — `fetchRawOpenPositionsFromMeridian` queries `/positions/open/raw?owner={wallet}` and the endpoint accepts any owner wallet address (`MeteoraAdapter.ts:1097-1120`); the app uses it for your own wallet via `getMyPositions`.
    - Smart-wallet check — fetches tracked wallets' LP positions to detect presence in a pool (`smart-wallets.ts:98-118`).
-
 3. **Execution relay (outbound, your own orders).** With `lpAgentRelayEnabled: true`, the app can submit its **own** deploy/close orders through the relay service using external providers (e.g. OKX, JUPITER_ULTRA): `/execution/zap-in/order|submit` (`MeteoraAdapter.ts:670-699`) and `/execution/zap-out/order|submit` (`MeteoraAdapter.ts:1486-1535`). This is an execution path for your own transactions, not copying.
 
 **API keys — what is actually required:**
@@ -257,7 +282,6 @@ The app never opens a position **because** a tracked wallet did. The LLM screene
    - `[swap]` — manual and auto swaps
    - `[positions]` / `[pnl_tick]` — portfolio/PnL polling during the management loop
    - Also `info` / `warn` / `error` / `debug` standard lines.
-
 2. **`data/logs/actions-<YYYY-MM-DD>.jsonl`** — structured per-tool **audit trail** (`logAction`, `ToolExecutor.ts:724`). Every tool call (e.g. `deploy_position`, `close_position`, `swap_token`, `claim_fees`, `screen`/candidate tools) is appended as one JSON line with `tool`, `args`, `result`, `duration_ms`, `success`/`error`. This is the most machine-readable way to replay the exact actions taken.
 3. **`data/decision-log.json`** — append-only structured **decisions** (`appendDecision`, `domain/decision-log.ts`), capped at `MAX_DECISIONS`. Types observed: `deploy`, `close`, `skip`, `no_deploy`, `note` (actors: `SCREENER`, `MANAGER`, etc.). This is the summary feed used by the daily briefing (`getDecisionSummary`).
 
@@ -323,13 +347,13 @@ Etemaro can track known smart wallets (top LPers, whales, KOLs) and use their pr
 }
 ```
 
-| Field      | Purpose                                                     |
-| ---------- | ----------------------------------------------------------- |
-| `name`     | Label you choose (e.g.`whale-sol`, `top-lper-1`)            |
-| `address`  | Solana base58 wallet address                                |
+| Field        | Purpose                                                               |
+| ------------ | --------------------------------------------------------------------- |
+| `name`     | Label you choose (e.g.`whale-sol`, `top-lper-1`)                  |
+| `address`  | Solana base58 wallet address                                          |
 | `category` | One of:`alpha`, `smart`, `fast`, `multi` (default: `alpha`) |
-| `type`     | `lp` = track positions, `holder` = track holdings only      |
-| `addedAt`  | ISO timestamp (auto-filled)                                 |
+| `type`     | `lp` = track positions, `holder` = track holdings only            |
+| `addedAt`  | ISO timestamp (auto-filled)                                           |
 
 ### How to add / remove / list
 
@@ -380,7 +404,6 @@ When this mode is enabled, the agent completely skips scraping public markets fo
 
    - **Price Win**: The underlying token asset price went **UP** while the position was open (`Price PnL > +0.1%`).
    - **Price Loss**: The underlying token asset price went **DOWN** while the position was open (`Price PnL < -0.1%`).
-
 2. **Net Return / Net PnL (`Price PnL + Fees Earned`)**:
 
    - **Net Win**: The overall trade made money **after adding LP trading fees** (`Net PnL > +0.1%`).
@@ -394,14 +417,12 @@ When this mode is enabled, the agent completely skips scraping public markets fo
   - Token price drops while in position, so principal asset value becomes **$90** (**Price Loss = -$10**).
   - You collect **$15** in LP trading fees.
   - **Net Return:** -$10 + $15 = **+$5** (**Net Win**).
-
 - **Price Win & Net Win**:
 
   - You deposit **$100**.
   - Token price rises to **$110** (**Price Win = +$10**).
   - You collect **$5** in LP trading fees.
   - **Net Return:** +$10 + $5 = **+$15** (**Net Win**).
-
 - **Price Loss & Net Loss (Token Price Dump)**:
 
   - You deposit **$100**.

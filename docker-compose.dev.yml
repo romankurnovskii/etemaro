@@ -16,6 +16,7 @@ services:
       - /app/packages/cli/node_modules
       - ./config:/app/config
       - ./data:/app/data
+      - ./sockets:/app/.sockets
     restart: unless-stopped
 
 networks:

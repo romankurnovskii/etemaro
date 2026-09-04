@@ -43,6 +43,29 @@ Live mode (real trades): add `JUPITER_API_KEY`, then `etemaro start`.
 
 _Or install via `npm install -g @etemaro/cli` / `brew install romankurnovskii/awesome-brew/etemaro`._
 
+### Interactive Dashboard & Live Chat (`etemaro attach`)
+
+To monitor the agent with a real-time terminal UI, stream live logs, and chat with it in plain English:
+
+1. **Start the agent** (in background or via PM2):
+   ```bash
+   etemaro start --dry-run
+   # or with PM2 (24/7 background):
+   pnpm run pm2:start
+   ```
+2. **Attach the interactive CLI**:
+   ```bash
+   etemaro attach
+   # or from source:
+   pnpm run attach
+   ```
+
+Inside the interactive terminal dashboard:
+- **Status & PnL** — Live wallet balance, open DLMM positions, 24h PnL, and next screening/management countdown timers.
+- **Log Stream** — Color-coded real-time log stream without stdout scraping or file tailing.
+- **Agent Chat** — Type instructions or questions at the bottom prompt (`what pools are you watching?`, `run screen`, `why did you close position 1?`).
+- **Detach** — Press `Ctrl+C` to detach at any time; the trading daemon continues running in the background.
+
 > Common questions: **[docs/QA.md](docs/QA.md)**.
 
 ---
