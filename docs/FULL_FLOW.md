@@ -31,7 +31,6 @@ graph TB
         TG["Telegram Bot"]
         CLI["CLI Tool"]
         CC["Claude Code"]
-        DISC["Discord Listener"]
     end
 
     subgraph "Core Agent System"
@@ -368,9 +367,7 @@ The Screening Agent runs every 30 minutes (configurable) to find and deploy into
 flowchart TD
     START["Screening Cycle Triggered"]
 
-    START --> CHECK_DISCORD{"Discord signals<br/>enabled?"}
-    CHECK_DISCORD -->|Yes| LOAD_SIGNALS["Load pending Discord signals<br/>(discord-signals.json)"]
-    CHECK_DISCORD -->|No| FETCH_CANDIDATES
+    START --> 
 
     LOAD_SIGNALS --> FETCH_CANDIDATES
 
@@ -385,7 +382,6 @@ flowchart TD
     LLM_SCREEN --> Note2
 
     Note2 --> EVAL["LLM evaluates each candidate"]
-    EVAL --> |"Has Discord signal?"| PRIORITY["Process Discord signal first"]
     EVAL --> |"No signal"| STANDARD["Standard evaluation"]
 
     PRIORITY --> DEEP_RESEARCH["Deep Research"]
@@ -771,19 +767,6 @@ graph TB
     HIVE_ADV --> AGENT_ETEMARO
 ```
 
-### Discord Signal Pipeline
-
-```mermaid
-flowchart TD
-    DISCORD["Discord Channel<br/>(LP Army)"]
-    DISCORD --> DEDUP["Dedup<br/>(last 10 min)"]
-    DEDUP --> |"New token"| BLACKLIST_CHECK["Blacklist check"]
-    BLACKLIST_CHECK --> |"Not blacklisted"| RESOLVE["Pool resolution<br/>→ Meteora DLMM pool"]
-    RESOLVE --> RUG_CHECK["Rug check<br/>(deployer blacklist)"]
-    RUG_CHECK --> |"Clean"| FEES_CHECK["Fees check<br/>(min DISCORD_MIN_FEES_SOL)"]
-    FEES_CHECK --> |"Passes"| QUEUE["Queue as pending signal<br/>(discord-signals.json)"]
-    QUEUE --> SCREEN["Screening agent<br/>picks up pending signals"]
-```
 
 ---
 
@@ -847,12 +830,11 @@ graph TD
 graph TB
     subgraph "Every Screening Cycle"
         direction TB
-        S1["Cron fires (30 min)"] --> S2["Load pending Discord signals"]
-        S2 --> S3["Fetch pool candidates from Discovery API"]
-        S3 --> S4["Apply hard filters + score (0-100)"]
-        S4 --> S5["Apply signal weight boosts (Darwin)"]
-        S5 --> S6["Build system prompt with context"]
-        S6 --> S7["LLM evaluates top candidates"]
+        S1["Cron fires (30 min)"] --> S2["Fetch pool candidates from Discovery API"]
+        S2 --> S3["Apply hard filters + score (0-100)"]
+        S3 --> S4["Apply signal weight boosts (Darwin)"]
+        S4 --> S5["Build system prompt with context"]
+        S5 --> S6["LLM evaluates top candidates"]
         S7 --> S8["Deep research: token audit, holders, narrative, smart wallets"]
         S8 --> S9["LLM decides: deploy or skip"]
         S9 --> S10{"Deploy?"}
