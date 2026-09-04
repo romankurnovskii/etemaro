@@ -1,9 +1,10 @@
+import { DEFAULT_AGENT_ID } from '../shared/constants.js'
 import type { UserConfigRaw } from './schema.js'
 
 export const DEFAULT_USER_CONFIG: UserConfigRaw = {
   _version: 3,
   preset: 'custom',
-  agentId: '',
+  agentId: DEFAULT_AGENT_ID,
 
   connection: {
     description:
@@ -166,10 +167,11 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
   },
 
   pnl: {
-    description: 'PnL tracking source, RPC endpoint, and polling cadence for position valuation.',
-    source: 'rpc',
+    description:
+      "PnL tracking source, RPC endpoint, and polling cadence for position valuation. Source options: 'meteora_api' (recommended default: free Meteora REST Datapi, 0 RPC credits, ~5-15s indexing lag) or 'rpc' (on-chain DLMM SDK via getProgramAccounts, real-time sub-second precision, ~100 Helius credits/call). Polling cadence: pollIntervalSec defines seconds between PnL checks (default 15s; reduce to e.g. 3s for risky pools where every second matters, though frequent polling drastically increases RPC credit usage when source is 'rpc'). confirmTicks defines consecutive confirming ticks required before exit execution (latency = pollIntervalSec * confirmTicks).",
+    source: 'meteora_api',
     rpcUrl: 'env.PNL_RPC_URL',
-    pollIntervalSec: 3,
+    pollIntervalSec: 15,
     depositCacheTtlSec: 300,
     confirmTicks: 2,
   },
