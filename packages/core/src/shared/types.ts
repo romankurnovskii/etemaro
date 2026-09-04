@@ -559,7 +559,6 @@ export interface AgentLoopResult {
 export interface ConnectionConfig {
   rpcUrl?: string
   rpcUrl2?: string | null
-  walletPrivateKey?: string
   wallet?: string
   heliusApiKey?: string | null
   telegramBotToken?: string | null
@@ -567,6 +566,9 @@ export interface ConnectionConfig {
   telegramAllowedUserIds?: string | null
   dryRun: boolean
   allowSelfUpdate: boolean
+  ipcPort?: number
+  ipcToken?: string
+  ipcSocketPath?: string
 }
 
 export interface AppConfig {

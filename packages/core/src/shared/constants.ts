@@ -115,7 +115,7 @@ export function getInstanceId(): string {
   return ''
 }
 
-function getAgentSuffix(): string {
+function _getAgentSuffix(): string {
   return getInstanceId()
 }
 
@@ -200,23 +200,20 @@ export function sharedDataPath(...segments: string[]): string {
 export const strategyLibraryPath = sharedDataPath
 
 /**
- * Resolve a path relative to the credentials/keystore directory (Chapter 7: .credentials/wallets/<alias>.json).
+ * Resolve a path relative to the credentials/keystore directory (.credentials/wallets/<alias>.json).
  * Priority:
- * 1. REPO_ROOT/.credentials/wallets/<segments> (if exists)
- * 2. ~/.config/etemaro/.credentials/wallets/<segments> (if exists)
- * 3. REPO_ROOT/.credentials/<segments>
+ * 1. ~/.config/etemaro/.credentials/wallets/<segments> (if exists)
+ * 2. REPO_ROOT/config/.credentials/wallets/<segments> (if exists)
+ * Fallback: ~/.config/etemaro/.credentials/wallets/<segments>
  */
 export function credentialsPath(...segments: string[]): string {
-  const inRepoWallets = path.join(REPO_ROOT, '.credentials', 'wallets', ...segments)
-  if (fs.existsSync(inRepoWallets)) return inRepoWallets
-
   const inUserWallets = path.join(getEtemaroDir(), '.credentials', 'wallets', ...segments)
   if (fs.existsSync(inUserWallets)) return inUserWallets
 
-  const inRepoRoot = path.join(REPO_ROOT, '.credentials', ...segments)
-  if (fs.existsSync(inRepoRoot)) return inRepoRoot
+  const inRepoWallets = path.join(REPO_ROOT, 'config', '.credentials', 'wallets', ...segments)
+  if (fs.existsSync(inRepoWallets)) return inRepoWallets
 
-  return inRepoWallets
+  return inUserWallets
 }
 
 /** Resolve a path relative to the config directory. */
@@ -249,9 +246,9 @@ export function getDefaultConfigPath(): string {
 
 /** Canonical path to user-config.json or default instance (honors USER_CONFIG_PATH env override). */
 export const USER_CONFIG_PATH = process.env.USER_CONFIG_PATH?.trim()
-  ? (path.isAbsolute(process.env.USER_CONFIG_PATH.trim())
-      ? process.env.USER_CONFIG_PATH.trim()
-      : path.resolve(REPO_ROOT, process.env.USER_CONFIG_PATH.trim()))
+  ? path.isAbsolute(process.env.USER_CONFIG_PATH.trim())
+    ? process.env.USER_CONFIG_PATH.trim()
+    : path.resolve(REPO_ROOT, process.env.USER_CONFIG_PATH.trim())
   : getDefaultConfigPath()
 
 /** Get the etemaro runtime/config home directory (e.g. ~/.config/etemaro).

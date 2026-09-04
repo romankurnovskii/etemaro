@@ -9,15 +9,16 @@
  *
  * @dependencies vitest
  */
-import { afterEach, describe, expect, it } from 'vitest'
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   configPath,
   credentialsPath,
   dataPath,
   getDataDir,
+  getEtemaroDir,
   getInstanceId,
   instanceDataPath,
   REPO_ROOT,
@@ -222,14 +223,16 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
   })
 
   it('sharedConfigPath resolves knowledge files in config/shared/', () => {
-    expect(sharedConfigPath('strategy-library.json')).toBe(
-      path.join(REPO_ROOT, 'config', 'shared', 'strategy-library.json'),
+    expect(sharedConfigPath('token-blacklist.json')).toBe(
+      path.join(REPO_ROOT, 'config', 'shared', 'token-blacklist.json'),
     )
     expect(sharedConfigPath('smart-wallets.json')).toBe(path.join(REPO_ROOT, 'config', 'shared', 'smart-wallets.json'))
   })
 
-  it('credentialsPath resolves repo .credentials/wallets/', () => {
-    expect(credentialsPath('main-scalp.json')).toBe(path.join(REPO_ROOT, '.credentials', 'wallets', 'main-scalp.json'))
+  it('credentialsPath resolves user .credentials/wallets/ by default', () => {
+    expect(credentialsPath('main-scalp.json')).toBe(
+      path.join(getEtemaroDir(), '.credentials', 'wallets', 'main-scalp.json'),
+    )
   })
 
   it('configPath finds configs in config/instances/ if present', () => {
