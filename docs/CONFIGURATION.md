@@ -31,7 +31,6 @@ etemaro wallet import --name main-scalp --prompt
 # "connection": { "wallet": "main-scalp" }
 ```
 
-> **Legacy** (deprecated): Setting `"walletPrivateKey": "env.WALLET_PRIVATE_KEY"` in config still works but is discouraged. The keystore approach keeps private keys out of process environment entirely.
 
 ---
 
@@ -121,7 +120,7 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
     "meridian": { "enabled": true, "url": "...", "publicApiKey": "...", "lpAgentRelayEnabled": false },
     "lpAgent": { "enabled": false, "url": "https://api.lpagent.io/open-api/v1", "apiKey": "env.LPAGENT_API_KEY" }
   },
-  "pnl": { "source": "rpc", "rpcUrl": "...", ... },
+  "pnl": { "source": "meteora_api", "rpcUrl": "...", "pollIntervalSec": 15, ... },
   "opportunity": { "enabled": true, "minScore": 40, ... },
   "gmgn": { "enabled": false, "feeSource": "gmgn", "baseUrl": "...", ... },
   "jupiter": { "apiKey": "env.JUPITER_API_KEY", ... },
@@ -177,8 +176,6 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 | `minBinStep` / `maxBinStep`               | Allowed Meteora bin-step range.                   | `80`–`125`                                                                                    |
 | `minFeeActiveTvlRatio`                    | Yield-quality gate: fees ÷ active TVL.            | `0.05` → keep pools paying ≥5%.                                                               |
 | `minTokenFeesSol`                         | Minimum lifetime fees the token has earned (SOL). | `30`                                                                                          |
-| `useDiscordSignals`                       | Enable external Discord signal ingestion.         | `false`                                                                                       |
-| `discordSignalMode`                       | How signals combine with internal scoring.        | `"merge"` blends; `"replace"` trusts signals only.                                            |
 | `avoidPvpSymbols` / `blockPvpSymbols`     | Handle PvP tokens.                                | `avoidPvpSymbols: true` de-prioritizes; `blockPvpSymbols: true` hard-blocks.                  |
 | `maxBotHoldersPct`                        | Max % of holders that are bots.                   | `30`                                                                                          |
 | `maxTop10Pct`                             | Max % of supply held by top 10 wallets.           | `60`                                                                                          |
@@ -242,11 +239,11 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 | ----------------------------------------------------- | -------------------------------------- | -------------------------------- |
 | `baseUrl`                                             | Custom OpenAI-compatible LLM endpoint. | `"env.LLM_BASE_URL"`             |
 | `apiKey`                                              | LLM provider API key.                  | `"env.LLM_API_KEY"`              |
-| `defaultModel`                                        | Global fallback LLM model.             | `"env.LLM_MODEL"`                |
+| `defaultModel` (or `model`)                           | Global fallback LLM model. Can be a direct model string or an env reference. When set directly (e.g. `"anthropic/claude-3.5-sonnet"`), `LLM_MODEL` env var is not required. | `"env.LLM_MODEL"` or `"anthropic/claude-3.5-sonnet"` |
 | `temperature`                                         | Sampling temperature.                  | `0.37`                           |
 | `maxTokens`                                           | Max tokens per LLM response.           | `10000`                          |
 | `maxSteps`                                            | Max ReAct steps per loop.              | `20`                             |
-| `managementModel` / `screeningModel` / `generalModel` | Per-role model overrides.              | `"env.LLM_MODEL"` → use env var. |
+| `managementModel` / `screeningModel` / `generalModel` | Per-role model overrides. Automatically fall back to `defaultModel` if omitted or if `LLM_MODEL` is unset. | `"env.LLM_MODEL"` or `"openai/gpt-4o"` |
 
 #### Darwin (Signal Evolution)
 
@@ -296,13 +293,13 @@ The `api` block contains two independent services.
 
 | Field                | Purpose                      | Example                                                |
 | -------------------- | ---------------------------- | ------------------------------------------------------ |
-| `source`             | PnL data source.             | `"portfolio"` (Recommended: free Meteora Datapi) or `"rpc"` (On-chain DLMM reads). |
+| `source`             | PnL data source.             | `"meteora_api"` (Recommended default: free Meteora Datapi, 0 RPC credits) or `"rpc"` (On-chain DLMM reads). |
 | `rpcUrl`             | RPC used for PnL reads.      | `"https://pump.helius-rpc.com"` or `"env.PNL_RPC_URL"` |
-| `pollIntervalSec`    | Poll interval (seconds).     | `3`                                                    |
+| `pollIntervalSec`    | Poll interval (seconds).     | `15`                                                   |
 | `depositCacheTtlSec` | Deposit cache TTL (seconds). | `300`                                                  |
 | `confirmTicks`       | Confirm ticks for PnL calc.  | `2`                                                    |
 
-> **Cost Optimization Note**: Setting `source: "portfolio"` eliminates all Solana RPC calls for position tracking and PnL monitoring by utilizing Meteora's free indexed REST API. See [RPC_AND_API_OPTIMIZATION.md](RPC_AND_API_OPTIMIZATION.md) for full details.
+> **Cost Optimization Note**: Setting `source: "meteora_api"` eliminates Solana RPC calls for position tracking and PnL monitoring by utilizing Meteora's free indexed REST API. See [RPC_AND_API_OPTIMIZATION.md](RPC_AND_API_OPTIMIZATION.md) for full details.
 
 #### Opportunity (Smart Wallet Poller)
 

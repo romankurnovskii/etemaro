@@ -34,10 +34,20 @@ https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_API_
 A standard 3-agent setup makes **~10,000 to 25,000 calls per day**. Over 30 days, that is **300,000 to 750,000 HTTP requests**.
 Because Helius Enhanced APIs are weighted at higher credit costs per request (10–50 credits/call vs 1 credit for standard RPC), this burns **1,000,000 to 10,000,000+ Helius credits monthly** with zero trade volume.
 
-### 1.2 The On-Chain Position Queries (`config.pnl.source: "rpc"`)
-If `config.pnl.source` is set to `"rpc"` (or used as fallback), `computePositions()` invokes `DLMM.getAllLbPairPositionsByUser()` which issues `getProgramAccounts` on the Meteora DLMM program (`LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo`).
-- `getProgramAccounts` is heavily throttled and costs **100+ credits per call** on Helius and standard RPC providers.
-- Bypassing the local cache via `{ force: true }` in fast background loops (such as the opportunity poller) amplifies this waste.
+### 1.2 The Two PnL Source Options (`meteora_api` vs `rpc`)
+Etemaro supports two explicit PnL tracking and position valuation modes under `config.pnl.source`:
+
+1. **`meteora_api` (Default & Recommended)**:
+   - Queries the official Meteora REST Datapi (`https://dlmm.datapi.meteora.ag/portfolio/open` and `/pool/{poolAddress}/pnl/{walletAddress}`).
+   - **Cost**: **0 Solana RPC credits** (100% free).
+   - **Latency**: ~5–15s indexing lag behind real-time blocks.
+   - **Resilience**: Automatically falls back to on-chain RPC computation if Meteora REST API experiences a network outage.
+
+2. **`rpc` (High-Precision / Volatile Pool Mode)**:
+   - Invokes `DLMM.getAllLbPairPositionsByUser()` directly on-chain via `getProgramAccounts` on the Meteora DLMM program (`LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo`).
+   - **Cost**: **100+ Helius credits per call** (~2,880,000 credits/day on 3s polling).
+   - **Latency**: Sub-second real-time on-chain precision.
+   - **Use Case**: Strictly reserved for high-risk, ultra-volatile meme pools where every second counts for stop-loss execution and the operator can afford elevated RPC credit consumption.
 
 ---
 
@@ -164,6 +174,23 @@ this.adapters.wallet.getWalletBalances() // Uncached Helius fetch every 45s
 this.adapters.meteora.getMyPositions({ silent: true }) // Uses 30s TTL cache
 this.adapters.wallet.getWalletBalances({ force: false }) // Uses 30s TTL cache
 ```
+
+### 4.3 PnL Polling Cadence & Risk Trade-Off (`pollIntervalSec` & `confirmTicks`)
+In `config/user-config.json` and template:
+```json
+"pnl": {
+  "source": "meteora_api",
+  "rpcUrl": "https://pump.helius-rpc.com",
+  "pollIntervalSec": 15,
+  "depositCacheTtlSec": 300,
+  "confirmTicks": 2
+}
+```
+
+- **`pollIntervalSec` (Default: 15s)**: Seconds between PnL checks in the background daemon poller.
+  - **Standard Operation (15s)**: Combined with `confirmTicks: 2`, exit latency is 30 seconds (`15s × 2`), protecting against transient price spikes while saving >90% of poller CPU/network overhead.
+  - **High-Risk / Fast-Dump Pools (3s)**: When trading risky meme coins where dumps occur in seconds and every second matters, reduce `pollIntervalSec: 3` (and optionally `confirmTicks: 1` or `2`). Note: frequent polling in conjunction with `"source": "rpc"` increases RPC credit usage by 5x (~2.88M Helius credits/day).
+- **`confirmTicks` (Default: 2)**: Number of consecutive polling ticks that must confirm an exit signal (stop-loss, trailing take-profit, out-of-range) before triggering a close transaction. Prevents false exits caused by single-block liquidity wicks. Total exit detection latency = `pollIntervalSec × confirmTicks`.
 
 ### 4.4 Centralized RPC & Wallet Connection Manager (`packages/core/src/shared/connection.ts`)
 Instead of reading `process.env.RPC_URL` or `process.env.WALLET_PRIVATE_KEY` in multiple ad-hoc places, `packages/core/src/shared/connection.ts` serves as the single source of truth:
