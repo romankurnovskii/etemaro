@@ -9,7 +9,7 @@ import path from 'node:path'
 import { Connection, Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { config } from '../config/Config.js'
-import { credentialsPath } from './constants.js'
+import { configPath, credentialsPath } from './constants.js'
 import { log } from './logger.js'
 import { isTransientRpcError, type RpcRetryOptions, withRpcRetry } from './utils.js'
 
@@ -21,7 +21,7 @@ interface ConnectionSlot {
 const _connections = new Map<string, ConnectionSlot>()
 
 let _walletKeypair: Keypair | null = null
-let _walletPrivateKey: string | null = null
+let _walletAlias: string | null = null
 
 /**
  * Returns the configured primary or fallback RPC URL.
@@ -61,56 +61,87 @@ export function getConnection(fallback = false): Connection {
 
 /**
  * Returns the Keypair for the configured wallet.
- * Reads private key from config.connection.walletPrivateKey with WALLET_PRIVATE_KEY fallback.
+ * Resolves the keypair from the secure keystore using config.connection.wallet alias.
  */
 export function getWalletKeypair(): Keypair {
-  let key = config.connection?.walletPrivateKey
+  if (_walletKeypair) {
+    return _walletKeypair
+  }
 
-  // New: keystore alias support
-  if (!key && config.connection?.wallet) {
-    const alias = config.connection.wallet
-    const walletPath = credentialsPath(`${alias}.json`)
+  const alias = config.connection?.wallet?.trim()
+  if (!alias) {
+    throw new Error('Wallet is not configured. Set connection.wallet (alias) in your configuration.')
+  }
 
-    if (fs.existsSync(walletPath)) {
+  const walletPath = credentialsPath(`${alias}.json`)
+  if (!fs.existsSync(walletPath)) {
+    // Fallback: check config/wallets.json for alias and auto-migrate to keystore
+    const walletsJsonPath = configPath('wallets.json')
+    if (fs.existsSync(walletsJsonPath)) {
       try {
-        // Enforce strict permissions on POSIX systems
-        if (process.platform !== 'win32') {
-          const stats = fs.statSync(walletPath)
-          if ((stats.mode & 0o777) > 0o600) {
+        const store = JSON.parse(fs.readFileSync(walletsJsonPath, 'utf8'))
+        const found = store.wallets?.find((w: any) => w.label === alias)
+        if (found?.privateKey) {
+          const credDir = path.dirname(walletPath)
+          if (!fs.existsSync(credDir)) {
+            fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
+          }
+          fs.writeFileSync(walletPath, JSON.stringify(found.privateKey), { mode: 0o600 })
+          if (process.platform !== 'win32') {
             try {
               fs.chmodSync(walletPath, 0o600)
-            } catch (chmodErr) {
-              throw new Error(
-                `[wallet] FATAL: Insecure file permissions on ${walletPath} (0${(stats.mode & 0o777).toString(8)}). Must be 0600 (owner read/write only).`,
-              )
+            } catch {
+              /* ignore */
             }
           }
         }
-
-        const walletData = JSON.parse(fs.readFileSync(walletPath, 'utf8'))
-        // Support both Base58 strings and Solana CLI JSON arrays
-        if (Array.isArray(walletData)) {
-          key = bs58.encode(Uint8Array.from(walletData))
-        } else if (typeof walletData === 'string') {
-          key = walletData
-        } else if (walletData.privateKey) {
-          key = walletData.privateKey
-        }
-      } catch (err) {
-        log('wallet', `Failed to load wallet from keystore ${walletPath}: ${err}`)
+      } catch {
+        /* ignore */
       }
     }
   }
 
-  if (!key) {
+  if (!fs.existsSync(walletPath)) {
     throw new Error(
-      'Wallet private key is not configured. Set connection.wallet (alias) or connection.walletPrivateKey in user-config.json.',
+      `Wallet keystore not found for alias "${alias}" at ${walletPath}. Import or generate a wallet first (e.g. etemaro wallet import --name ${alias}).`,
     )
   }
-  if (!_walletKeypair || _walletPrivateKey !== key) {
-    _walletKeypair = Keypair.fromSecretKey(bs58.decode(key))
-    _walletPrivateKey = key
+
+  // Enforce strict permissions on POSIX systems
+  if (process.platform !== 'win32') {
+    const stats = fs.statSync(walletPath)
+    if ((stats.mode & 0o777) > 0o600) {
+      try {
+        fs.chmodSync(walletPath, 0o600)
+      } catch {
+        throw new Error(
+          `[wallet] FATAL: Insecure file permissions on ${walletPath} (0${(stats.mode & 0o777).toString(8)}). Must be 0600 (owner read/write only).`,
+        )
+      }
+    }
   }
+
+  let key: string | null = null
+  try {
+    const walletData = JSON.parse(fs.readFileSync(walletPath, 'utf8'))
+    // Support both Base58 strings and Solana CLI JSON arrays
+    if (Array.isArray(walletData)) {
+      key = bs58.encode(Uint8Array.from(walletData))
+    } else if (typeof walletData === 'string') {
+      key = walletData
+    } else if (walletData.privateKey) {
+      key = walletData.privateKey
+    }
+  } catch (err) {
+    throw new Error(`Failed to parse wallet keystore file at ${walletPath}: ${err}`)
+  }
+
+  if (!key) {
+    throw new Error(`Wallet keystore file at ${walletPath} does not contain a valid private key.`)
+  }
+
+  _walletKeypair = Keypair.fromSecretKey(bs58.decode(key))
+  _walletAlias = alias
   return _walletKeypair
 }
 
@@ -188,5 +219,13 @@ export async function withRpcFailover<T>(
 export function resetConnectionState(): void {
   _connections.clear()
   _walletKeypair = null
-  _walletPrivateKey = null
+  _walletAlias = null
+}
+
+/**
+ * Sets or overrides the active wallet keypair directly (used for test isolation).
+ */
+export function setWalletKeypair(kp: Keypair | null): void {
+  _walletKeypair = kp
+  _walletAlias = kp ? config.connection?.wallet || 'mock' : null
 }

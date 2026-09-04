@@ -2,7 +2,7 @@ import { DEFAULT_AGENT_ID } from '../shared/constants.js'
 import type { UserConfigRaw } from './schema.js'
 
 export const DEFAULT_USER_CONFIG: UserConfigRaw = {
-  _version: 3,
+  _version: 4,
   preset: 'custom',
   agentId: DEFAULT_AGENT_ID,
 
@@ -11,7 +11,7 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
       'Network endpoints, API credentials, wallet key, LLM provider settings, and runtime mode. These values are also propagated to environment variables on startup.',
     rpcUrl: 'env.RPC_URL',
     rpcUrl2: 'env.RPC_URL_2',
-    walletPrivateKey: 'env.WALLET_PRIVATE_KEY',
+    wallet: 'default',
     heliusApiKey: 'env.HELIUS_API_KEY',
     telegramBotToken: 'env.TELEGRAM_BOT_TOKEN',
     telegramChatId: 'env.TELEGRAM_CHAT_ID',

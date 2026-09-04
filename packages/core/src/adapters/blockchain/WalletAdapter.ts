@@ -17,7 +17,7 @@ import { Keypair, PublicKey, VersionedTransaction } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { config } from '../../config/Config.js'
 import { getConnection, getWalletKeypair, withRpcFailover } from '../../shared/connection.js'
-import { configPath } from '../../shared/constants.js'
+import { configPath, credentialsPath } from '../../shared/constants.js'
 import { createTimer, log, logStructured } from '../../shared/logger.js'
 import type { WalletBalancesResult } from '../../shared/types.js'
 import { loadJsonFile, saveJsonFile, withRpcRetry } from '../../shared/utils.js'
@@ -66,12 +66,32 @@ export function importWallet(opts: { label: string; privateKey?: string; filePat
     createdAt: new Date().toISOString(),
     label: opts.label,
   }
-  // Persist
+  // Persist to wallets store
   const targetFile = configPath('wallets.json')
   const existing = loadJsonFile<WalletsStore>(targetFile, { wallets: [] })
   existing.wallets = existing.wallets || []
   existing.wallets.push(wallet)
   saveJsonFile(targetFile, existing)
+
+  // Persist to secure individual keystore file
+  try {
+    const credFile = credentialsPath(`${opts.label}.json`)
+    const credDir = path.dirname(credFile)
+    if (!fs.existsSync(credDir)) {
+      fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
+    }
+    fs.writeFileSync(credFile, JSON.stringify(key), { mode: 0o600 })
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(credFile, 0o600)
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch (err: any) {
+    log('wallet', `Warning: Failed to persist individual keystore file: ${err?.message || err}`)
+  }
+
   log('wallet', `Imported wallet ${wallet.publicKey} as ${opts.label}`)
   return wallet
 }
@@ -101,6 +121,26 @@ export function generateNewWallet(opts?: { label?: string; configDir?: string })
   } catch (err: unknown) {
     const e = err as { message?: string }
     log('wallet', `Warning: Failed to persist generated wallet to wallets.json: ${e.message || err}`)
+  }
+
+  if (wallet.label) {
+    try {
+      const credFile = credentialsPath(`${wallet.label}.json`)
+      const credDir = path.dirname(credFile)
+      if (!fs.existsSync(credDir)) {
+        fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
+      }
+      fs.writeFileSync(credFile, JSON.stringify(privateKey), { mode: 0o600 })
+      if (process.platform !== 'win32') {
+        try {
+          fs.chmodSync(credFile, 0o600)
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch (err: any) {
+      log('wallet', `Warning: Failed to persist individual keystore file: ${err?.message || err}`)
+    }
   }
 
   return wallet

@@ -90,7 +90,7 @@ const envBoolean = z.union([z.boolean(), z.string()]).transform((val, ctx) => {
 
 export const UserConfigSchema = z
   .object({
-    _version: z.number().optional().default(3),
+    _version: z.number().optional().default(4),
     preset: z.string().optional(),
     name: z.string().optional(),
     description: z.string().optional(),
@@ -100,7 +100,6 @@ export const UserConfigSchema = z
         description: z.string().optional(),
         rpcUrl: envString.optional(),
         rpcUrl2: envStringNullable.optional(),
-        walletPrivateKey: envString.optional(),
         wallet: z.string().optional(),
         heliusApiKey: envStringNullable.optional(),
         telegramBotToken: envStringNullable.optional(),
@@ -108,6 +107,10 @@ export const UserConfigSchema = z
         telegramAllowedUserIds: envStringNullable.optional(),
         dryRun: envBoolean,
         allowSelfUpdate: envBoolean.optional().default(false),
+        // IPC WebSocket server (daemon) / client (CLI / Desktop) configuration
+        ipcPort: z.number().int().min(1024).max(65535).optional(),
+        ipcToken: z.string().min(1).optional(),
+        ipcSocketPath: z.string().optional(),
       })
       .strict()
       .optional(),

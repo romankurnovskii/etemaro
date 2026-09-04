@@ -18,10 +18,42 @@ import path from 'node:path'
 import { getAgentIdForRequests } from '../adapters/external/AgentMeridianClient.js'
 import { DEFAULT_AGENT_ID, dataPath } from './constants.js'
 import { getDryRun, setDryRun } from './flags.js'
+import type { IpcLogEntry } from './ipc-protocol.js'
 
 export { getDryRun, setDryRun }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+export type LogListener = (entry: IpcLogEntry) => void
+
+const _logListeners = new Set<LogListener>()
+
+/**
+ * Register a listener that receives all formatted log and structured log events.
+ * Returns an unregister function.
+ */
+export function addLogListener(listener: LogListener): () => void {
+  _logListeners.add(listener)
+  return () => {
+    _logListeners.delete(listener)
+  }
+}
+
+/** Clear all active log listeners (primarily for testing). */
+export function clearLogListeners(): void {
+  _logListeners.clear()
+}
+
+let _stdoutMuted = false
+
+/** Enable or disable raw stdout writes (used when TUI takes over terminal output). */
+export function setStdoutMuted(muted: boolean): void {
+  _stdoutMuted = muted
+}
+
+export function isStdoutMuted(): boolean {
+  return _stdoutMuted
+}
 
 const LOG_LEVELS: Record<LogLevel, number> = {
   debug: 0,
@@ -184,8 +216,24 @@ export function log(level: string, message: string): void {
   const categoryLevel =
     LOG_LEVELS[level as LogLevel] ??
     (level.includes('error') ? LOG_LEVELS.error : level.includes('warn') ? LOG_LEVELS.warn : LOG_LEVELS.info)
-  if (categoryLevel >= minLevel) {
+  if (!_stdoutMuted && categoryLevel >= minLevel) {
     process.stdout.write(line)
+  }
+
+  if (_logListeners.size > 0) {
+    const entry: IpcLogEntry = {
+      category: level,
+      message: redacted,
+      agentId,
+      ts,
+    }
+    for (const listener of _logListeners) {
+      try {
+        listener(entry)
+      } catch {
+        /* ignore */
+      }
+    }
   }
 }
 
@@ -236,9 +284,26 @@ export function logStructured({ category, message, metadata }: StructuredLogEntr
     /* ignore */
   }
 
+  if (_logListeners.size > 0) {
+    const entry: IpcLogEntry = {
+      category: record.category as string,
+      message: record.message as string,
+      agentId: record.agentId as string,
+      ts: record.ts as string,
+      metadata: record.metadata as Record<string, unknown> | undefined,
+    }
+    for (const listener of _logListeners) {
+      try {
+        listener(entry)
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   // Also echo to stdout if category maps to a standard level
   const levelHint = category.endsWith('_error') ? 'error' : category.endsWith('_warn') ? 'warn' : 'info'
-  if (LOG_LEVELS[levelHint as LogLevel] >= minLevel) {
+  if (!_stdoutMuted && LOG_LEVELS[levelHint as LogLevel] >= minLevel) {
     process.stdout.write(redactSensitive(line))
   }
 }
