@@ -3,20 +3,6 @@ description: Full screening cycle — find best pool and deploy if wallet has fu
 ---
 Run a full screening cycle. Use the Bash tool for all commands sequentially (never background, never parallel).
 
-**Step 0 — Check discord signal queue:**
-```
-node --import tsx packages/cli/src/Cli.ts discord-signals
-```
-If any signals show `status: "pending"`:
-- Use the newest pending signal as the **priority candidate** for this cycle
-- Note its pool_address, base_symbol, discord_author, channel, and **token_age_minutes**
-- Skip Step 3 (regular candidates scan) — go directly to Step 5 (deep research) on this pool
-- Label it "Discord signal from @<author> in #<channel>"
-- **Token age rule:** If `token_age_minutes <= 30` (brand new token), favor **2-sided Spot** strategy regardless of other signals. New tokens need uniform distribution during price discovery — Bid-Ask is too risky this early.
-- If this signal fails deep research (hard reject), add its mint to blacklist: `node --import tsx packages/cli/src/Cli.ts blacklist add --mint <mint> --reason "discord signal — failed screening"`
-
-If no pending signals: proceed with normal cycle (Steps 1–6 as written).
-
 **Step 1 — Read config:**
 ```
 cat user-config.json
