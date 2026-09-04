@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DEFAULT_PNL_SOURCE } from '../shared/constants.js'
 import { resolveEnvString } from '../shared/utils.js'
 
 // Helper to handle process.env references for strings
@@ -10,6 +11,7 @@ const envString = z.string().transform((val, ctx) => {
       ctx.addIssue({
         code: 'custom',
         message: `Environment variable ${envVar} is not set but is referenced by configuration.\nSet ${envVar} in your .env file or environment.`,
+        params: { envVar, ref: val },
       })
       return z.NEVER
     }
@@ -40,6 +42,7 @@ const envNumber = z.union([z.number(), z.string()]).transform((val, ctx) => {
         ctx.addIssue({
           code: 'custom',
           message: `Environment variable ${envVar} is not set but is referenced.`,
+          params: { envVar, ref: val },
         })
         return z.NEVER
       }
@@ -89,6 +92,8 @@ export const UserConfigSchema = z
   .object({
     _version: z.number().optional().default(3),
     preset: z.string().optional(),
+    name: z.string().optional(),
+    description: z.string().optional(),
     agentId: envStringNullable.optional(),
     connection: z
       .object({
@@ -132,8 +137,8 @@ export const UserConfigSchema = z
         timeframe: envString,
         category: envString,
         minTokenFeesSol: envNumber,
-        useDiscordSignals: envBoolean,
-        discordSignalMode: envString,
+        useDiscordSignals: envBoolean.optional().default(false),
+        discordSignalMode: z.string().optional().default('merge'),
         avoidPvpSymbols: envBoolean,
         blockPvpSymbols: envBoolean,
         maxBotHoldersPct: envNumber,
@@ -207,13 +212,80 @@ export const UserConfigSchema = z
         temperature: envNumber,
         maxTokens: envNumber,
         maxSteps: envNumber,
-        defaultModel: envString,
+        model: z.string().nullable().optional(),
+        defaultModel: z.string().nullable().optional(),
         fallbackModel: envStringNullable.optional(),
-        managementModel: envString,
-        screeningModel: envString,
-        generalModel: envString,
+        managementModel: z.string().nullable().optional(),
+        screeningModel: z.string().nullable().optional(),
+        generalModel: z.string().nullable().optional(),
       })
-      .strict(),
+      .strict()
+      .superRefine((val, ctx) => {
+        // Resolve candidate base model
+        let directModel: string | null = null
+        if (val.defaultModel && typeof val.defaultModel === 'string' && val.defaultModel.trim() !== '') {
+          if (!val.defaultModel.startsWith('env.')) {
+            directModel = val.defaultModel.trim()
+          } else {
+            const envVar = val.defaultModel.slice(4)
+            const envVal = process.env[envVar]?.trim()
+            if (envVal) directModel = envVal
+          }
+        }
+        if (!directModel && val.model && typeof val.model === 'string' && val.model.trim() !== '') {
+          if (!val.model.startsWith('env.')) {
+            directModel = val.model.trim()
+          } else {
+            const envVar = val.model.slice(4)
+            const envVal = process.env[envVar]?.trim()
+            if (envVal) directModel = envVal
+          }
+        }
+
+        // If no model is defined directly and no referenced env var is set, report the missing env var
+        if (!directModel) {
+          const rawRef = val.defaultModel?.startsWith('env.')
+            ? val.defaultModel
+            : val.model?.startsWith('env.')
+              ? val.model
+              : 'env.LLM_MODEL'
+          const envVar = rawRef.startsWith('env.') ? rawRef.slice(4) : 'LLM_MODEL'
+          ctx.addIssue({
+            code: 'custom',
+            message: `Environment variable ${envVar} is not set but is referenced by configuration.\nSet ${envVar} in your .env file or environment, or set "defaultModel" directly in your JSON config file.`,
+            params: { envVar, ref: rawRef },
+            path: ['defaultModel'],
+          })
+        }
+      })
+      .transform((val) => {
+        let baseModel = ''
+        if (val.defaultModel && typeof val.defaultModel === 'string' && !val.defaultModel.startsWith('env.')) {
+          baseModel = val.defaultModel.trim()
+        } else if (val.model && typeof val.model === 'string' && !val.model.startsWith('env.')) {
+          baseModel = val.model.trim()
+        } else if (val.defaultModel?.startsWith('env.')) {
+          baseModel = process.env[val.defaultModel.slice(4)]?.trim() || ''
+        } else if (val.model?.startsWith('env.')) {
+          baseModel = process.env[val.model.slice(4)]?.trim() || ''
+        }
+
+        const resolveRoleModel = (roleVal?: string | null): string => {
+          if (!roleVal || roleVal.trim() === '') return baseModel
+          if (!roleVal.startsWith('env.')) return roleVal.trim()
+          const envVar = roleVal.slice(4)
+          const resolved = process.env[envVar]?.trim()
+          return resolved || baseModel
+        }
+
+        return {
+          ...val,
+          defaultModel: baseModel,
+          managementModel: resolveRoleModel(val.managementModel),
+          screeningModel: resolveRoleModel(val.screeningModel),
+          generalModel: resolveRoleModel(val.generalModel),
+        }
+      }),
     darwin: z
       .object({
         description: z.string().optional(),
@@ -264,11 +336,11 @@ export const UserConfigSchema = z
     pnl: z
       .object({
         description: z.string().optional(),
-        rpcUrl: envString,
-        source: envString,
-        pollIntervalSec: envNumber,
-        depositCacheTtlSec: envNumber,
-        confirmTicks: envNumber,
+        rpcUrl: envString.default('https://pump.helius-rpc.com'),
+        source: envString.default(DEFAULT_PNL_SOURCE),
+        pollIntervalSec: envNumber.default(15),
+        depositCacheTtlSec: envNumber.default(300),
+        confirmTicks: envNumber.default(2),
       })
       .strict(),
     opportunity: z
@@ -299,9 +371,9 @@ export const UserConfigSchema = z
     jupiter: z
       .object({
         description: z.string().optional(),
-        apiKey: envString,
-        referralAccount: envString,
-        referralFeeBps: envNumber,
+        apiKey: envStringNullable.optional(),
+        referralAccount: envStringNullable.optional(),
+        referralFeeBps: envNumber.optional().default(50),
       })
       .strict(),
     chartIndicators: z
