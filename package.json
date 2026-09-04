@@ -11,8 +11,8 @@
   "scripts": {
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
-    "start": "node --import tsx packages/daemon/src/Daemon.ts",
-    "dev": "DRY_RUN=true node --import tsx packages/daemon/src/Daemon.ts",
+    "start": "node --import tsx packages/cli/src/Cli.ts start",
+    "dev": "DRY_RUN=true node --import tsx packages/cli/src/Cli.ts start",
     "cli": "node --import tsx packages/cli/src/Cli.ts",
     "balance": "node --import tsx packages/cli/src/Cli.ts balance",
     "positions": "node --import tsx packages/cli/src/Cli.ts positions",
@@ -23,6 +23,7 @@
     "evolve": "node --import tsx packages/cli/src/Cli.ts evolve",
     "blacklist": "node --import tsx packages/cli/src/Cli.ts blacklist",
     "lessons": "node --import tsx packages/cli/src/Cli.ts lessons",
+    "attach": "node --import tsx packages/cli/src/Cli.ts attach",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --passWithNoTests",
     "test:coverage": "vitest run --coverage",

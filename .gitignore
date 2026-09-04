@@ -75,3 +75,7 @@ jobs_*.json
 logs.zip
 *_log.txt
 test
+
+# IPC sockets
+sockets/*.sock
+.sockets/

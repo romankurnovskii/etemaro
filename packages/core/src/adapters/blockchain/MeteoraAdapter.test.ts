@@ -238,32 +238,27 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
     })
 
     // Mock fetch for pool metadata, portfolio, and closed PnL
-    let pnlCalls = 0
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
       const urlStr = url?.toString?.() || ''
-      if (urlStr.includes('/pools')) {
+      if (urlStr.includes('/pools') || urlStr.includes('/portfolio')) {
         return {
           ok: true,
           json: async () => ({ pools: [] }),
         } as any
       }
       if (urlStr.includes('/pnl')) {
-        pnlCalls++
         return {
           ok: true,
           json: async () => ({
-            positions:
-              pnlCalls === 1
-                ? [
-                    {
-                      positionAddress,
-                      pnlUsd: '0',
-                      allTimeWithdrawals: { total: { usd: '100' } },
-                      allTimeDeposits: { total: { usd: '100' } },
-                      allTimeFees: { total: { usd: '0' } },
-                    },
-                  ]
-                : [],
+            positions: [
+              {
+                positionAddress,
+                pnlUsd: '0',
+                allTimeWithdrawals: { total: { usd: '100' } },
+                allTimeDeposits: { total: { usd: '100' } },
+                allTimeFees: { total: { usd: '0' } },
+              },
+            ],
           }),
         } as any
       }
