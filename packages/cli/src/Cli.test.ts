@@ -167,7 +167,7 @@ describe('Cli handleNewAgent', () => {
 
       // Verifies config file write
       expect(writeSpy).toHaveBeenCalled()
-      const writtenContent = JSON.parse(writeSpy.mock.calls[0][1] as string)
+      const writtenContent = JSON.parse(writeSpy.mock.calls[0]?.[1] as string)
       expect(writtenContent.name).toBe('Sol Scalper Alpha')
       expect(writtenContent.description).toBe('Fast 15m bid-ask scalper')
       expect(writtenContent.agentId).toBe('sol-scalper-alpha')
@@ -216,3 +216,35 @@ describe('Cli handleNewAgent', () => {
   })
 })
 
+describe('Cli handleAttach', () => {
+  it('dispatches to handleAttach when attach subcommand is passed', async () => {
+    await loadCore()
+    const adapters: any = { domain: {}, wallet: {}, meteora: {}, screening: {} }
+    const cli = new Cli(adapters)
+    const attachSpy = vi.spyOn(cli as any, 'handleAttach').mockResolvedValue(undefined)
+
+    await cli.run(['attach', '--agent', 'custom-agent', '--port', '9999'])
+    expect(attachSpy).toHaveBeenCalledOnce()
+    expect(attachSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: 'custom-agent',
+        port: '9999',
+      }),
+    )
+  })
+})
+
+describe('Cli handleStart', () => {
+  it('dispatches to daemon.start({ tty: false }) in headless mode', async () => {
+    await loadCore()
+    const mockDaemon = {
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+    }
+    const adapters: any = { domain: {}, wallet: {}, meteora: {}, screening: {}, daemon: mockDaemon }
+    const cli = new Cli(adapters)
+
+    await cli.run(['start', '--headless'])
+    expect(mockDaemon.start).toHaveBeenCalledWith({ tty: false })
+  })
+})
