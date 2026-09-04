@@ -22,14 +22,21 @@ _Or:_ `npm install -g @etemaro/cli`
 etemaro init
 ```
 
-This creates `~/.config/etemaro` and checks the only two keys needed to start in dry-run:
+This creates `~/.config/etemaro` and runs the **interactive onboarding wizard**:
 
-| Variable             | What it is                                              |
-| -------------------- | ------------------------------------------------------- |
-| `WALLET_PRIVATE_KEY` | Solana wallet base58 key (or `etemaro generate-wallet`) |
-| `LLM_API_KEY`        | OpenRouter / OpenAI / compatible LLM key                |
+1. **Solana Network & RPC** — choose Mainnet (Quickstart/Helius) or custom RPC
+2. **Wallet Setup** — choose one:
+   - **Generate new wallet** (recommended) — creates fresh keypair, saves to keystore
+   - Import existing private key (Base58)
+   - Import from Solana CLI keypair file
+   - Select existing wallet alias
+3. **Strategy Selection** — pick from library (e.g., `bid_ask_wide`, `spot_wide`, `copy_trade_lag`)
+4. **Risk & Allocation** — max positions, max SOL per position
+5. **(Optional) Telegram Alerts** — bot token
 
-On a terminal it will prompt. On a server without a TTY, paste the keys into `~/.config/etemaro/.env` and run `etemaro init` again.
+> **Wallet keystore** (recommended): The wizard creates wallets in `~/.config/etemaro/.credentials/wallets/<alias>.json` with `0600` permissions. No private keys in `.env` or process environment.
+
+On a terminal it will prompt. On a server without a TTY, run `etemaro wallet generate --name main-scalp` first, then add `"wallet": "main-scalp"` to your config.
 
 Jupiter, Telegram, and strategy JSON are **not** part of first setup. Add `JUPITER_API_KEY` only when you go live.
 

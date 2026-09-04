@@ -18,6 +18,21 @@ Etemaro uses a strict schema-validated configuration system (Version 3): every r
 
 > First-time setup: `etemaro init` (creates `~/.config/etemaro` and checks wallet + LLM keys). From a source clone you can also run `pnpm cli init`.
 
+**Wallet Setup (Recommended):** Use the secure keystore instead of env vars:
+```bash
+# Generate a new wallet (saved to ~/.config/etemaro/.credentials/wallets/<alias>.json)
+etemaro wallet generate --name main-scalp
+
+# Or import an existing key
+etemaro wallet import --name main-scalp --prompt
+# or: etemaro wallet import --name main-scalp --file /path/to/keypair.json
+
+# Then reference the alias in your config:
+# "connection": { "wallet": "main-scalp" }
+```
+
+> **Legacy** (deprecated): Setting `"walletPrivateKey": "env.WALLET_PRIVATE_KEY"` in config still works but is discouraged. The keystore approach keeps private keys out of process environment entirely.
+
 ---
 
 ## 1. `env.` Pattern (Referencing Environment Variables)
@@ -43,9 +58,10 @@ This keeps secrets out of the JSON file — ideal for `walletPrivateKey`, API ke
 
 ## 2. Environment Variables
 
+> **Note:** The recommended approach for wallet private keys is the **keystore** (`~/.config/etemaro/.credentials/wallets/<alias>.json`). Environment variables for wallet keys are deprecated but still supported for backward compatibility.
+
 Conventional environment variables the daemon reads:
 
-- `WALLET_PRIVATE_KEY`: Your Solana wallet's base58 private key.
 - `RPC_URL`: Optional override for `connection.rpcUrl`.
 - `RPC_URL_2`: Optional override for `connection.rpcUrl2` (fallback RPC URL on errors / rate limits).
 - `HELIUS_API_KEY`: Helius API key used for wallet balances and token valuations. Required for normal wallet operation.
@@ -71,7 +87,6 @@ Required only when the related integration is enabled:
 Optional:
 
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, and `TELEGRAM_ALLOWED_USER_IDS`: Telegram notifications and control.
-- `ALLOW_SELF_UPDATE`: administrative self-update control; defaults to `false`.
 - `DRY_RUN` and `LOG_LEVEL`: runtime behavior overrides; defaults are `false` and `info`.
 
 ---
@@ -131,7 +146,8 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 | ------------------------ | ------------------------------------------------------------- | --------------------------------- |
 | `rpcUrl`                 | Primary Solana RPC endpoint for chain reads and transactions. | `"https://pump.helius-rpc.com"`   |
 | `rpcUrl2`                | Fallback Solana RPC endpoint on errors/rate-limits (optional).| `"env.RPC_URL_2"`                 |
-| `walletPrivateKey`       | Wallet private key (base58).                                  | `"env.WALLET_PRIVATE_KEY"`        |
+| `wallet`                 | **Recommended.** Alias of a wallet in the keystore (`~/.config/etemaro/.credentials/wallets/<alias>.json`). | `"main-scalp"`                    |
+| `walletPrivateKey`       | **Deprecated.** Wallet private key (base58). Use `wallet` alias instead. | `"env.WALLET_PRIVATE_KEY"`        |
 | `heliusApiKey`           | Helius Wallet API key.                                        | `"env.HELIUS_API_KEY"`            |
 | `dryRun`                 | Prevent live trade execution.                                 | `true`                            |
 | `telegramChatId`         | Telegram destination chat ID.                                 | `"env.TELEGRAM_CHAT_ID"`          |
