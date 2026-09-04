@@ -89,7 +89,7 @@ describe('writeRuntimeSkeleton', () => {
   it('creates .env, config, and data on a fresh directory', () => {
     const dir = tmpDir()
     const result = writeRuntimeSkeleton(dir, {
-      defaultUserConfigStr: '{"_version":3}',
+      defaultUserConfigStr: '{"_version":4}',
       defaultStrategies: [{ id: 'spot' }],
     })
     expect(result.env.created).toBe(true)
