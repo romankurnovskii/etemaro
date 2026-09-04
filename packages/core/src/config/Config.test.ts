@@ -80,7 +80,7 @@ describe('hiveMind agentId support', () => {
     const baseConfig = JSON.parse(defaultUserConfigStr)
 
     mockReadFileSync = vi.fn((path: string, _encoding: string) => {
-      if (path.endsWith('user-config.json')) {
+      if (path.endsWith('user-config.json') || path.endsWith('agent-default.json')) {
         return JSON.stringify({
           ...baseConfig,
           agentId: 'local-top-level-agent',
@@ -117,10 +117,10 @@ describe('hiveMind agentId support', () => {
     expect(testConfig.hiveMind.agentId).toBe('nested-hive-agent')
   })
 
-  it('sets hiveMind.agentId correctly when no top-level agentId is present', async () => {
+  it('falls back to agent-default agentId when top-level agentId is null or empty', async () => {
     const baseConfig = JSON.parse(defaultUserConfigStr)
     mockReadFileSync.mockImplementation((path: string, _encoding: string) => {
-      if (path.endsWith('user-config.json')) {
+      if (path.endsWith('user-config.json') || path.endsWith('agent-default.json')) {
         return JSON.stringify({
           ...baseConfig,
           agentId: null,
@@ -136,7 +136,7 @@ describe('hiveMind agentId support', () => {
     })
 
     const { config: testConfig } = await import('./Config.js')
-    expect(testConfig.agentId).toBeNull()
+    expect(testConfig.agentId).toBe('agent-default')
     expect(testConfig.hiveMind.agentId).toBe('hive-only-agent')
   })
 })
@@ -365,7 +365,6 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
     }
   })
 
-
   describe('resetConfig helper', () => {
     it('resets in-memory config singleton and keeps object reference identical', async () => {
       const { config, resetConfig } = await import('./Config.js')
@@ -398,14 +397,10 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
     it('migrates legacy hardcoded primary RPC to .env value when they differ', async () => {
       const { loadAndValidateConfig } = await import('./ConfigValidator.js')
       const tmpPath = `/tmp/etemaro-test-config-${Date.now()}.json`
-      fs.writeFileSync(
-        tmpPath,
-        JSON.stringify({
-          _version: 3,
-          connection: { rpcUrl: 'https://pump.helius-rpc.com' },
-          pnl: { source: 'rpc', rpcUrl: 'https://pump.helius-rpc.com' },
-        }),
-      )
+      const fullConfig = JSON.parse(defaultUserConfigStr)
+      fullConfig.connection.rpcUrl = 'https://pump.helius-rpc.com'
+      fullConfig.pnl = { ...(fullConfig.pnl || {}), source: 'rpc', rpcUrl: 'https://pump.helius-rpc.com' }
+      fs.writeFileSync(tmpPath, JSON.stringify(fullConfig))
       process.env.USER_CONFIG_PATH = tmpPath
       process.env.RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=test-key'
 
@@ -418,13 +413,9 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
     it('does not migrate when .env RPC_URL matches legacy default', async () => {
       const { loadAndValidateConfig } = await import('./ConfigValidator.js')
       const tmpPath = `/tmp/etemaro-test-config-${Date.now()}.json`
-      fs.writeFileSync(
-        tmpPath,
-        JSON.stringify({
-          _version: 3,
-          connection: { rpcUrl: 'https://pump.helius-rpc.com' },
-        }),
-      )
+      const fullConfig = JSON.parse(defaultUserConfigStr)
+      fullConfig.connection.rpcUrl = 'https://pump.helius-rpc.com'
+      fs.writeFileSync(tmpPath, JSON.stringify(fullConfig))
       process.env.USER_CONFIG_PATH = tmpPath
       process.env.RPC_URL = 'https://pump.helius-rpc.com'
 
@@ -436,19 +427,67 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
     it('does not migrate when .env RPC_URL is unset', async () => {
       const { loadAndValidateConfig } = await import('./ConfigValidator.js')
       const tmpPath = `/tmp/etemaro-test-config-${Date.now()}.json`
-      fs.writeFileSync(
-        tmpPath,
-        JSON.stringify({
-          _version: 3,
-          connection: { rpcUrl: 'https://pump.helius-rpc.com' },
-        }),
-      )
+      const fullConfig = JSON.parse(defaultUserConfigStr)
+      fullConfig.connection.rpcUrl = 'https://pump.helius-rpc.com'
+      fs.writeFileSync(tmpPath, JSON.stringify(fullConfig))
       process.env.USER_CONFIG_PATH = tmpPath
       delete process.env.RPC_URL
 
       const result = loadAndValidateConfig()
 
       expect(result.connection?.rpcUrl).toBe('https://pump.helius-rpc.com')
+    })
+  })
+
+  describe('direct model configuration and formatConfigLoadError', () => {
+    it('resolves direct model without requiring LLM_MODEL env var', async () => {
+      const { UserConfigSchema } = await import('./schema.js')
+      const baseConfig = JSON.parse(defaultUserConfigStr)
+      baseConfig.llm.defaultModel = 'anthropic/claude-3.5-sonnet'
+      // Set role models to reference an unset env var
+      baseConfig.llm.managementModel = 'env.UNSET_LLM_MODEL'
+      baseConfig.llm.screeningModel = 'env.UNSET_LLM_MODEL'
+      baseConfig.llm.generalModel = 'env.UNSET_LLM_MODEL'
+
+      const parsed = UserConfigSchema.parse(baseConfig)
+      expect(parsed.llm.defaultModel).toBe('anthropic/claude-3.5-sonnet')
+      expect(parsed.llm.managementModel).toBe('anthropic/claude-3.5-sonnet')
+      expect(parsed.llm.screeningModel).toBe('anthropic/claude-3.5-sonnet')
+      expect(parsed.llm.generalModel).toBe('anthropic/claude-3.5-sonnet')
+    })
+
+    it('resolves model alias without requiring LLM_MODEL env var', async () => {
+      const { UserConfigSchema } = await import('./schema.js')
+      const baseConfig = JSON.parse(defaultUserConfigStr)
+      delete baseConfig.llm.defaultModel
+      baseConfig.llm.model = 'openai/gpt-4o'
+      baseConfig.llm.managementModel = 'env.UNSET_LLM_MODEL'
+
+      const parsed = UserConfigSchema.parse(baseConfig)
+      expect(parsed.llm.defaultModel).toBe('openai/gpt-4o')
+      expect(parsed.llm.managementModel).toBe('openai/gpt-4o')
+    })
+
+    it('formats config load error pointing to exact json file path and instructs user how to set env or edit directly', async () => {
+      const { formatConfigLoadError } = await import('./formatConfigLoadError.js')
+      const error = {
+        name: 'ConfigLoadError',
+        configPath: '/Users/r/test/user-config.json',
+        issues: [
+          {
+            path: ['llm', 'defaultModel'],
+            message: 'Environment variable LLM_MODEL is not set',
+            params: { envVar: 'LLM_MODEL', ref: 'env.LLM_MODEL' },
+          },
+        ],
+      }
+      const output = formatConfigLoadError(error)
+      expect(output).toContain('/Users/r/test/user-config.json')
+      expect(output).toContain('Field "llm.defaultModel" requires environment variable: LLM_MODEL')
+      expect(output).toContain('Set the environment variable in your .env file or system environment:')
+      expect(output).toContain('LLM_MODEL=<value>')
+      expect(output).toContain('OR update the value directly in your configuration file:')
+      expect(output).toContain('/Users/r/test/user-config.json')
     })
   })
 })

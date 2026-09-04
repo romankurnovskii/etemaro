@@ -16,7 +16,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { getAgentIdForRequests } from '../adapters/external/AgentMeridianClient.js'
-import { dataPath } from './constants.js'
+import { DEFAULT_AGENT_ID, dataPath } from './constants.js'
 import { getDryRun, setDryRun } from './flags.js'
 
 export { getDryRun, setDryRun }
@@ -32,7 +32,6 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 
 const currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info'
 const minLevel = LOG_LEVELS[currentLevel] ?? LOG_LEVELS.info
-
 
 // ─── Sensitive Data Redaction ─────────────────────────────────
 
@@ -143,7 +142,7 @@ function ensureLogsDir(): string {
 }
 
 function getAgentSlug(): string {
-  return (getAgentIdForRequests() || 'agent-local').replace(/[^a-zA-Z0-9_-]/g, '_')
+  return (getAgentIdForRequests() || DEFAULT_AGENT_ID).replace(/[^a-zA-Z0-9_-]/g, '_')
 }
 
 function getLogPath(): string {

@@ -35,9 +35,11 @@ function findRepoRoot(startDir: string): string {
 }
 
 const currentFileDir =
-  (typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:'))
+  typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:')
     ? path.dirname(fileURLToPath(import.meta.url))
-    : (typeof __dirname !== 'undefined' ? __dirname : process.cwd())
+    : typeof __dirname !== 'undefined'
+      ? __dirname
+      : process.cwd()
 
 /** Absolute path to the repository root (the pnpm workspace root). */
 export const REPO_ROOT: string = findRepoRoot(currentFileDir)
@@ -83,10 +85,26 @@ export function getDataDir(): string {
   return path.join(REPO_ROOT, 'data')
 }
 
-function getAgentSuffix(): string {
-  const envPath = process.env.USER_CONFIG_PATH
-  if (envPath) {
-    const base = path.basename(envPath, path.extname(envPath))
+/**
+ * Detect the active instance identifier if running in multi-instance mode.
+ * Resolution order:
+ * 1. ETEMARO_INSTANCE_ID or INSTANCE_ID
+ * 2. If USER_CONFIG_PATH points to config/instances/<name>.json, extract <name>
+ * 3. If USER_CONFIG_PATH points to custom config file (e.g. agt_xxx.json), extract clean slug
+ */
+export function getInstanceId(): string {
+  const envInstance = process.env.ETEMARO_INSTANCE_ID || process.env.INSTANCE_ID
+  if (envInstance?.trim()) {
+    return envInstance.trim()
+  }
+  const configFilePath = process.env.USER_CONFIG_PATH?.trim() || USER_CONFIG_PATH
+  if (configFilePath) {
+    const norm = configFilePath.replace(/\\/g, '/')
+    const instanceMatch = norm.match(/(?:^|\/)instances\/([^/]+)\.json$/)
+    if (instanceMatch?.[1]) {
+      return instanceMatch[1]
+    }
+    const base = path.basename(configFilePath, path.extname(configFilePath))
     if (
       base &&
       !['user-config', 'user-config.v2', 'user-config.prod', 'user-config.example'].includes(base.toLowerCase())
@@ -97,21 +115,67 @@ function getAgentSuffix(): string {
   return ''
 }
 
-/** Resolve a path relative to the data directory, automatically adding agent suffix for custom config runs. */
+function getAgentSuffix(): string {
+  return getInstanceId()
+}
+
+/** Resolve a path inside an instance's isolated runtime directory (Chapter 7: data/instances/<instanceId>/...). */
+export function instanceDataPath(instanceId: string, ...segments: string[]): string {
+  return path.join(getDataDir(), 'instances', instanceId, ...segments)
+}
+
+/**
+ * Resolve a path relative to the data directory, automatically isolating per-instance
+ * state when running named instances (Chapter 7) while maintaining backward compatibility.
+ */
 export function dataPath(...segments: string[]): string {
   const baseDir = getDataDir()
+  const instanceId = getInstanceId()
 
-  const suffix = getAgentSuffix()
-  if (suffix && segments.length > 0) {
+  const activeConfig = (process.env.USER_CONFIG_PATH?.trim() || USER_CONFIG_PATH).replace(/\\/g, '/')
+  const isExplicitInstance = Boolean(
+    process.env.ETEMARO_INSTANCE_ID ||
+      process.env.INSTANCE_ID ||
+      activeConfig.includes('/instances/') ||
+      activeConfig.startsWith('instances/'),
+  )
+
+  if (instanceId && segments.length > 0) {
+    const instanceDir = path.join(baseDir, 'instances', instanceId)
+    const targetFile = path.join(instanceDir, ...segments)
+
+    // If running as an instance or instance dir already exists, isolate in data/instances/<id>/
+    if (isExplicitInstance || fs.existsSync(instanceDir) || fs.existsSync(targetFile)) {
+      return targetFile
+    }
+
+    // Otherwise maintain legacy suffixed file compatibility for flat runs
     const last = segments[segments.length - 1]
     if (last && (last.endsWith('.json') || last.endsWith('.jsonl'))) {
       const ext = path.extname(last)
       const name = path.basename(last, ext)
-      const suffixedFile = `${name}-${suffix}${ext}`
+      const suffixedFile = `${name}-${instanceId}${ext}`
       return path.join(baseDir, ...segments.slice(0, -1), suffixedFile)
     }
   }
   return path.join(baseDir, ...segments)
+}
+
+/**
+ * Resolve a path for global shared configuration / knowledge files (Chapter 7: config/shared/...).
+ * Checks config/shared/ first, falling back to data/shared/ and data/.
+ */
+export function sharedConfigPath(...segments: string[]): string {
+  const inConfigShared = path.join(REPO_ROOT, 'config', 'shared', ...segments)
+  if (fs.existsSync(inConfigShared)) return inConfigShared
+
+  const inDataShared = path.join(getDataDir(), 'shared', ...segments)
+  if (fs.existsSync(inDataShared)) return inDataShared
+
+  const inDataLegacy = path.join(getDataDir(), ...segments)
+  if (fs.existsSync(inDataLegacy)) return inDataLegacy
+
+  return inConfigShared
 }
 
 /**
@@ -121,10 +185,11 @@ export function dataPath(...segments: string[]): string {
  * `strategy-library.shared.json`, `token-blacklist.json`, `dev-blocklist.json`) must NOT get an
  * agent-name suffix when running under a custom `USER_CONFIG_PATH`.
  *
- * Per-agent ephemeral state files (e.g. `state.json`, `decision-log.json`, `lessons.json`,
- * `performance.json`, `.smart-wallets-snapshot.json`) must continue to use `dataPath()`.
+ * Checks data/shared/ first if it exists, then data/.
  */
 export function sharedDataPath(...segments: string[]): string {
+  const inDataShared = path.join(getDataDir(), 'shared', ...segments)
+  if (fs.existsSync(inDataShared)) return inDataShared
   return path.join(getDataDir(), ...segments)
 }
 
@@ -133,6 +198,26 @@ export function sharedDataPath(...segments: string[]): string {
  * @see sharedDataPath
  */
 export const strategyLibraryPath = sharedDataPath
+
+/**
+ * Resolve a path relative to the credentials/keystore directory (Chapter 7: .credentials/wallets/<alias>.json).
+ * Priority:
+ * 1. REPO_ROOT/.credentials/wallets/<segments> (if exists)
+ * 2. ~/.config/etemaro/.credentials/wallets/<segments> (if exists)
+ * 3. REPO_ROOT/.credentials/<segments>
+ */
+export function credentialsPath(...segments: string[]): string {
+  const inRepoWallets = path.join(REPO_ROOT, '.credentials', 'wallets', ...segments)
+  if (fs.existsSync(inRepoWallets)) return inRepoWallets
+
+  const inUserWallets = path.join(getEtemaroDir(), '.credentials', 'wallets', ...segments)
+  if (fs.existsSync(inUserWallets)) return inUserWallets
+
+  const inRepoRoot = path.join(REPO_ROOT, '.credentials', ...segments)
+  if (fs.existsSync(inRepoRoot)) return inRepoRoot
+
+  return inRepoWallets
+}
 
 /** Resolve a path relative to the config directory. */
 export function configPath(...segments: string[]): string {
@@ -143,11 +228,31 @@ export function configPath(...segments: string[]): string {
       return path.isAbsolute(envPath) ? envPath : path.resolve(REPO_ROOT, envPath)
     }
   }
+  // Check config/instances/<file> if looking for an instance configuration
+  if (segments.length === 1) {
+    const inInstances = path.join(REPO_ROOT, 'config', 'instances', segments[0]!)
+    if (fs.existsSync(inInstances)) return inInstances
+  }
   return path.join(REPO_ROOT, 'config', ...segments)
 }
 
-/** Canonical path to user-config.json (honors USER_CONFIG_PATH env override). */
-export const USER_CONFIG_PATH = configPath('user-config.json')
+/**
+ * Canonical default configuration path.
+ * Prefers config/instances/agent-default.json (Chapter 7 zero-fallback model),
+ * falling back to config/user-config.json if the instance file has not yet been initialized.
+ */
+export function getDefaultConfigPath(): string {
+  const inInstances = path.join(REPO_ROOT, 'config', 'instances', 'agent-default.json')
+  if (fs.existsSync(inInstances)) return inInstances
+  return path.join(REPO_ROOT, 'config', 'user-config.json')
+}
+
+/** Canonical path to user-config.json or default instance (honors USER_CONFIG_PATH env override). */
+export const USER_CONFIG_PATH = process.env.USER_CONFIG_PATH?.trim()
+  ? (path.isAbsolute(process.env.USER_CONFIG_PATH.trim())
+      ? process.env.USER_CONFIG_PATH.trim()
+      : path.resolve(REPO_ROOT, process.env.USER_CONFIG_PATH.trim()))
+  : getDefaultConfigPath()
 
 /** Get the etemaro runtime/config home directory (e.g. ~/.config/etemaro).
  *  Resolution order:
@@ -194,7 +299,14 @@ export const SOLANA_PUBKEY_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 export const DEFAULT_HIVEMIND_URL = 'https://api.agentmeridian.xyz'
 export const DEFAULT_AGENT_MERIDIAN_API_URL = 'https://api.agentmeridian.xyz/api'
 export const DEFAULT_LLM_BASE_URL = 'https://openrouter.ai/api/v1'
-export const DEFAULT_LLM_MODEL = 'openrouter/healer-alpha'
+export const DEFAULT_LLM_MODEL = 'openrouter/openrouter-free'
+
+/**
+ * Single source of truth for the fallback agentId used when no agentId is configured.
+ * Used by Config.ts (config loader), AgentMeridianClient.ts (request identity),
+ * logger.ts (log slug), and MeteoraAdapter.ts (relay calls).
+ */
+export const DEFAULT_AGENT_ID = 'agent-default'
 
 // TODO 2026-09-30: add option to override this in user config, and/or read from env var
 export const DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY = 'bWVyaWRpYW4taXMtdGhlLWJlc3QtYWdlbnRz'
@@ -214,20 +326,16 @@ export const DECISION_LOG_FILENAME = 'decision-log.json'
 export const LESSONS_FILENAME = 'lessons.json'
 export const POOL_MEMORY_FILENAME = 'pool-memory.json'
 export const SIGNAL_WEIGHTS_FILENAME = 'signal-weights.json'
-export const DISCORD_SIGNALS_FILENAME = 'discord-signals.json'
 export const TELEGRAM_QUEUE_FILENAME = 'telegram_queue.json'
 
 // Source identifiers and constants
 export const DEFAULT_ENTRY_SOURCE = 'market'
-export const DEFAULT_PNL_SOURCE = 'rpc'
-export const DEFAULT_DISCORD_SIGNAL_MODE = 'merge'
+export const DEFAULT_PNL_SOURCE = 'meteora_api'
 export const DEFAULT_GMGN_FEE_SOURCE = 'gmgn'
-export const DEFAULT_DISCORD_MODE = 'merge'
 
 // Default preset names
 export const DEFAULT_ACTIVE_STRATEGY_ID = 'single_sided_reseed'
 export const DEFAULT_STRATEGY_TYPE = 'bid_ask'
-export const DEFAULT_DISCORD_MODE_MERGE = 'merge'
 
 // Desktop chat defaults
 export const DEFAULT_DESKTOP_CHAT_ENDPOINT = '/chat'

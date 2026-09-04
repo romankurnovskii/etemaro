@@ -390,7 +390,6 @@ function coerceStringArray(value: unknown, key: string): string[] {
 function normalizeConfigValue(key: string, value: unknown): unknown {
   const booleanKeys = new Set([
     'excludeHighSupplyConcentration',
-    'useDiscordSignals',
     'avoidPvpSymbols',
     'blockPvpSymbols',
     'autoSwapAfterClaim',
@@ -404,7 +403,6 @@ function normalizeConfigValue(key: string, value: unknown): unknown {
   const stringKeys = new Set([
     'timeframe',
     'category',
-    'discordSignalMode',
     'strategy',
     'managementModel',
     'screeningModel',
@@ -569,8 +567,6 @@ const toolMap: Record<string, ToolFn> = {
       timeframe: ['screening', 'timeframe'],
       category: ['screening', 'category'],
       minTokenFeesSol: ['screening', 'minTokenFeesSol'],
-      useDiscordSignals: ['screening', 'useDiscordSignals'],
-      discordSignalMode: ['screening', 'discordSignalMode'],
       avoidPvpSymbols: ['screening', 'avoidPvpSymbols'],
       blockPvpSymbols: ['screening', 'blockPvpSymbols'],
       maxBotHoldersPct: ['screening', 'maxBotHoldersPct'],

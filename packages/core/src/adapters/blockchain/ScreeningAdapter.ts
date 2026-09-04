@@ -86,11 +86,6 @@ export interface RawPool {
   volatility_timeframe?: string
   bin_step?: number
   dlmm_params?: { bin_step?: number }
-  discord_signal?: boolean
-  discord_signal_count?: number
-  discord_signal_seen_count?: number
-  discord_signal_first_seen_at?: string | null
-  discord_signal_last_seen_at?: string | null
   active_positions?: number
   active_positions_pct?: number
   open_positions?: number
@@ -149,10 +144,6 @@ export interface CondensedPool {
   active_positions: number | null
   active_pct: number | null
   open_positions: number | null
-  discord_signal: boolean
-  discord_signal_count: number
-  discord_signal_seen_count: number
-  discord_signal_last_seen_at: string | null
   price: number | null
   price_change_pct: number | null
   price_trend: string | null
@@ -368,15 +359,6 @@ export function getRawPoolScreeningRejectReason(pool: RawPool, s: typeof config.
   if (quoteOrganic == null || quoteOrganic < s.minQuoteOrganic) {
     return `quote organic ${quoteOrganic ?? 'unknown'} below minQuoteOrganic ${s.minQuoteOrganic}`
   }
-  if (
-    pool?.discord_signal &&
-    Array.isArray(s.allowedLaunchpads) &&
-    s.allowedLaunchpads.length > 0 &&
-    launchpad &&
-    !includesCaseInsensitive(s.allowedLaunchpads, launchpad)
-  ) {
-    return `launchpad ${launchpad} not in allow-list`
-  }
   if (includesCaseInsensitive(s.blockedLaunchpads, launchpad)) {
     return `blocked launchpad (${launchpad})`
   }
@@ -392,15 +374,6 @@ export function getRawPoolScreeningRejectReason(pool: RawPool, s: typeof config.
 }
 
 // ─── Fetch helpers ─────────────────────────────────────────────
-
-async function fetchDiscordSignalCandidates(): Promise<unknown[]> {
-  const res = await fetch(`${getAgentMeridianBase()}/signals/discord/candidates`, {
-    headers: getAgentMeridianHeaders(),
-  })
-  if (!res.ok) throw new Error(`discord signal candidates ${res.status}`)
-  const data = await res.json()
-  return Array.isArray((data as any)?.candidates) ? (data as any).candidates : []
-}
 
 async function fetchPoolDiscoveryPage({
   page_size,
@@ -558,65 +531,6 @@ async function searchAssetsBySymbol(symbol: string): Promise<unknown[]> {
   return Array.isArray(data) ? data : [data]
 }
 
-// ─── Discord signal launchpad enrichment ───────────────────────
-
-async function enrichDiscordSignalLaunchpads(rawPools: RawPool[]): Promise<void> {
-  const missing = rawPools.filter((pool) => pool?.discord_signal && !getPoolLaunchpad(pool) && getPoolBaseMint(pool))
-  if (missing.length === 0) return
-
-  const uniqueMints = [...new Set(missing.map(getPoolBaseMint).filter(Boolean))] as string[]
-  const results = await Promise.allSettled(
-    uniqueMints.map(async (mint) => {
-      const assets = await searchAssetsBySymbol(mint)
-      const asset = assets.find((item: any) => item?.id === mint) || assets[0] || null
-      return { mint, asset }
-    }),
-  )
-
-  const byMint = new Map<
-    string,
-    {
-      launchpad: string
-      dev: string | null
-      holderCount: number | null
-      organicScore: number | null
-      marketCap: number | null
-      createdAt: number | null
-    }
-  >()
-  for (const result of results) {
-    if (result.status !== 'fulfilled') continue
-    const asset = result.value.asset as any
-    const launchpad = asset?.launchpad || asset?.launchpadPlatform || null
-    if (!launchpad) continue
-    byMint.set(result.value.mint, {
-      launchpad,
-      dev: asset?.dev || null,
-      holderCount: numeric(asset?.holderCount),
-      organicScore: numeric(asset?.organicScore),
-      marketCap: numeric(asset?.mcap ?? asset?.fdv),
-      createdAt: asset?.createdAt ? Date.parse(asset.createdAt) : null,
-    })
-  }
-
-  for (const pool of missing) {
-    const mint = getPoolBaseMint(pool)
-    if (!mint) continue
-    const asset = byMint.get(mint)
-    if (!asset) continue
-    pool.token_x = pool.token_x || ({} as any)
-    ;(pool.token_x as any).launchpad = asset.launchpad
-    pool.base_token_launchpad = asset.launchpad
-    if (asset.dev && !pool.token_x?.dev) pool.token_x!.dev = asset.dev
-    if (asset.holderCount != null && pool.base_token_holders == null) pool.base_token_holders = asset.holderCount
-    if (asset.organicScore != null && pool.token_x?.organic_score == null)
-      pool.token_x!.organic_score = asset.organicScore
-    if (asset.marketCap != null && pool.token_x?.market_cap == null) pool.token_x!.market_cap = asset.marketCap
-    if (asset.createdAt != null && pool.token_x?.created_at == null) pool.token_x!.created_at = asset.createdAt
-    log('screening', `Discord signal launchpad enriched from Jupiter: ${pool.name || mint} — ${asset.launchpad}`)
-  }
-}
-
 // ─── PVP risk enrichment ──────────────────────────────────────
 
 async function findRivalPool(mint: string): Promise<RawPool | null> {
@@ -682,30 +596,6 @@ async function enrichPvpRisk(pools: CondensedPool[]): Promise<void> {
   )
 }
 
-// ─── Discord-only pool refresh ─────────────────────────────────
-
-async function refreshDiscordOnlyPools(pools: RawPool[], timeframe: string): Promise<void> {
-  if (!pools.length) return
-  const FIELDS = ['volume', 'fee', 'active_tvl', 'tvl', 'volatility', 'fee_active_tvl_ratio']
-  const results = await Promise.allSettled(
-    pools.map((pool) =>
-      fetchPoolDiscoveryDetail({ poolAddress: pool.pool_address!, timeframe }).then((fresh) => ({ pool, fresh })),
-    ),
-  )
-  for (const result of results) {
-    if (result.status !== 'fulfilled' || !result.value.fresh) continue
-    const { pool, fresh } = result.value
-    for (const field of FIELDS) {
-      const val = numeric((fresh as any)[field])
-      if (val != null) (pool as any)[field] = val
-    }
-    log(
-      'screening',
-      `Discord signal refreshed live data: ${pool.name || pool.pool_address} — vol=${(pool as any).volume?.toFixed(0)} fee=${(pool as any).fee?.toFixed(2)}`,
-    )
-  }
-}
-
 // ─── Condense pool for LLM ────────────────────────────────────
 
 function condensePool(p: RawPool): CondensedPool {
@@ -741,10 +631,6 @@ function condensePool(p: RawPool): CondensedPool {
     active_positions: (p as any).active_positions ?? null,
     active_pct: fix((p as any).active_positions_pct, 1),
     open_positions: (p as any).open_positions ?? null,
-    discord_signal: Boolean(p.discord_signal),
-    discord_signal_count: p.discord_signal_count || 0,
-    discord_signal_seen_count: p.discord_signal_seen_count || 0,
-    discord_signal_last_seen_at: p.discord_signal_last_seen_at || null,
     price: (p as any).pool_price ?? null,
     price_change_pct: fix((p as any).pool_price_change_pct, 1),
     price_trend: (p as any).price_trend ?? null,
@@ -801,63 +687,13 @@ export async function discoverPools({ page_size = 50 } = {}): Promise<DiscoverPo
 
   let rawPools: RawPool[] = Array.isArray(data.data) ? data.data : []
 
-  if (config.screening.useDiscordSignals) {
-    const signalCandidates = await fetchDiscordSignalCandidates().catch((error) => {
-      log('screening', `Discord signal fetch failed: ${error.message}`)
-      return []
-    })
-    const signalPools = (signalCandidates as any[])
-      .map((candidate) => {
-        const discoveryPool = candidate.discovery_pool
-        if (!discoveryPool?.pool_address) return null
-        return {
-          ...discoveryPool,
-          discord_signal: true,
-          discord_signal_count: candidate.source_count || 1,
-          discord_signal_seen_count: candidate.seen_count || 1,
-          discord_signal_first_seen_at: candidate.first_seen_at || null,
-          discord_signal_last_seen_at: candidate.last_seen_at || null,
-        }
-      })
-      .filter(Boolean)
-
-    if (config.screening.discordSignalMode === 'only') {
-      rawPools = signalPools
-      await refreshDiscordOnlyPools(rawPools, s.timeframe)
-    } else if (signalPools.length > 0) {
-      const byPool = new Map(rawPools.map((pool) => [pool.pool_address, pool]))
-      const discordOnlyPools: RawPool[] = []
-      for (const signalPool of signalPools) {
-        if (byPool.has(signalPool.pool_address)) {
-          byPool.set(signalPool.pool_address, {
-            ...byPool.get(signalPool.pool_address),
-            discord_signal: true,
-            discord_signal_count: signalPool.discord_signal_count,
-            discord_signal_seen_count: signalPool.discord_signal_seen_count,
-            discord_signal_first_seen_at: signalPool.discord_signal_first_seen_at,
-            discord_signal_last_seen_at: signalPool.discord_signal_last_seen_at,
-          })
-        } else {
-          byPool.set(signalPool.pool_address, signalPool)
-          discordOnlyPools.push(signalPool)
-        }
-      }
-      rawPools = Array.from(byPool.values())
-      if (discordOnlyPools.length > 0) {
-        await refreshDiscordOnlyPools(discordOnlyPools, s.timeframe)
-      }
-    }
-  }
-
   rawPools = await applyVolatilityTimeframe(rawPools, s.timeframe)
-  await enrichDiscordSignalLaunchpads(rawPools)
 
   const filteredExamples: FilteredExample[] = []
   const thresholdedRawPools = rawPools.filter((pool) => {
     const reason = getRawPoolScreeningRejectReason(pool, s)
     if (!reason) return true
     filteredExamples.push({ name: pool.name || pool.pool_address || 'unknown pool', reason })
-    if (pool.discord_signal) log('screening', `Discord signal filtered: ${pool.name || pool.pool_address} — ${reason}`)
     return false
   })
 

@@ -133,6 +133,7 @@ export interface GetMyPositionsResult {
   wallet: string | null
   total_positions: number
   positions: OnChainPosition[]
+  source?: 'rpc' | 'meteora_api'
   error?: string
 }
 
@@ -570,7 +571,7 @@ export interface ConnectionConfig {
 
 export interface AppConfig {
   _version?: number
-  agentId?: string | null
+  agentId: string
   connection: ConnectionConfig
   risk: {
     maxPositions: number
@@ -609,8 +610,6 @@ export interface ScreeningConfig {
   timeframe: string
   category: string
   minTokenFeesSol: number
-  useDiscordSignals: boolean
-  discordSignalMode: string
   avoidPvpSymbols: boolean
   blockPvpSymbols: boolean
   maxBotHoldersPct: number
