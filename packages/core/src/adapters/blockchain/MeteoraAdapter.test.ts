@@ -75,10 +75,12 @@ vi.mock('../../config/Config.js', () => ({
 }))
 
 import { Keypair, PublicKey, Transaction } from '@solana/web3.js'
-import bs58 from 'bs58'
 import { config } from '../../config/Config.js'
-import { recordClose } from '../../domain/state.js'
-import { getConnection, resetConnectionState } from '../../shared/connection.js'
+import { getTrackedPosition, recordClose } from '../../domain/state.js'
+import * as connectionModule from '../../shared/connection.js'
+
+const { getConnection, resetConnectionState, setWalletKeypair } = connectionModule
+
 import { agentMeridianJson } from '../external/AgentMeridianClient.js'
 import { computePositions, fetchDlmmPnlForPool } from '../PnLAdapter.js'
 import { closePosition, getMyPositions, getPositionPnl, getWalletPositions } from './MeteoraAdapter.js'
@@ -174,13 +176,18 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     resetConnectionState()
+    vi.mocked(getTrackedPosition).mockReturnValue({
+      pool: '11111111111111111111111111111111',
+      pool_name: 'TEST-SOL',
+    } as any)
   })
 
   it('passes replaceRecentBlockhash: true in simulateTransaction options to prevent blockhash expiry errors', async () => {
     const testWallet = Keypair.generate()
+    setWalletKeypair(testWallet)
     config.connection = {
       rpcUrl: 'https://api.mainnet-beta.solana.com',
-      walletPrivateKey: bs58.encode(testWallet.secretKey),
+      wallet: 'default',
       dryRun: false,
     } as any
     config.api = {
@@ -231,27 +238,32 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
     })
 
     // Mock fetch for pool metadata, portfolio, and closed PnL
+    let pnlCalls = 0
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
-      const urlStr = String(url)
-      if (urlStr.includes('/portfolio/')) {
+      const urlStr = url?.toString?.() || ''
+      if (urlStr.includes('/pools')) {
         return {
           ok: true,
           json: async () => ({ pools: [] }),
         } as any
       }
       if (urlStr.includes('/pnl')) {
+        pnlCalls++
         return {
           ok: true,
           json: async () => ({
-            positions: [
-              {
-                positionAddress,
-                pnlUsd: '0',
-                allTimeWithdrawals: { total: { usd: '0' } },
-                allTimeDeposits: { total: { usd: '0' } },
-                allTimeFees: { total: { usd: '0' } },
-              },
-            ],
+            positions:
+              pnlCalls === 1
+                ? [
+                    {
+                      positionAddress,
+                      pnlUsd: '0',
+                      allTimeWithdrawals: { total: { usd: '100' } },
+                      allTimeDeposits: { total: { usd: '100' } },
+                      allTimeFees: { total: { usd: '0' } },
+                    },
+                  ]
+                : [],
           }),
         } as any
       }

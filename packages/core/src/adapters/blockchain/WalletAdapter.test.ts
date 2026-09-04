@@ -5,7 +5,10 @@ import { Connection, Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../../config/Config.js'
-import { resetConnectionState } from '../../shared/connection.js'
+import * as connectionModule from '../../shared/connection.js'
+
+const { resetConnectionState, setWalletKeypair } = connectionModule
+
 import {
   BALANCE_CACHE_TTL,
   clearMintDecimalsCache,
@@ -26,16 +29,14 @@ describe('WalletAdapter', () => {
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'etemaro-wallet-test-'))
+    resetConnectionState()
     testKeypair = Keypair.generate()
-    const privKey = bs58.encode(testKeypair.secretKey)
-    process.env.WALLET_PRIVATE_KEY = privKey
-    process.env.RPC_URL = 'https://api.mainnet-beta.solana.com'
+    setWalletKeypair(testKeypair)
     config.connection = {
       ...config.connection,
-      walletPrivateKey: privKey,
+      wallet: 'default',
       rpcUrl: 'https://api.mainnet-beta.solana.com',
     }
-    resetConnectionState()
     invalidateBalanceCache()
     clearMintDecimalsCache()
 

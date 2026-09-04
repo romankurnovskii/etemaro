@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -13,6 +15,7 @@ import {
   resetConnectionState,
   withRpcFailover,
 } from './connection.js'
+import { credentialsPath } from './constants.js'
 
 describe('connection module', () => {
   const originalEnv = { ...process.env }
@@ -109,34 +112,41 @@ describe('connection module', () => {
   })
 
   describe('getWalletKeypair and getWalletAddress', () => {
-    it('resolves wallet from config.connection.walletPrivateKey', () => {
+    it('resolves wallet from keystore file using config.connection.wallet alias', () => {
       const kp = Keypair.generate()
-      config.connection = {
-        ...config.connection,
-        walletPrivateKey: bs58.encode(kp.secretKey),
-      }
+      const alias = 'test-unit-wallet'
+      const keyfilePath = credentialsPath(`${alias}.json`)
+      fs.mkdirSync(path.dirname(keyfilePath), { recursive: true })
+      fs.writeFileSync(keyfilePath, JSON.stringify(bs58.encode(kp.secretKey)), { mode: 0o600 })
 
-      const resolved = getWalletKeypair()
-      expect(resolved.publicKey.toString()).toBe(kp.publicKey.toString())
-      expect(getWalletAddress()).toBe(kp.publicKey.toString())
+      try {
+        config.connection = {
+          ...config.connection,
+          wallet: alias,
+        }
+
+        const resolved = getWalletKeypair()
+        expect(resolved.publicKey.toString()).toBe(kp.publicKey.toString())
+        expect(getWalletAddress()).toBe(kp.publicKey.toString())
+      } finally {
+        if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
+      }
     })
 
-    it('throws when config walletPrivateKey is absent even if env var is set (config-as-contract)', () => {
-      const kp = Keypair.generate()
-      delete config.connection?.walletPrivateKey
-      process.env.WALLET_PRIVATE_KEY = bs58.encode(kp.secretKey)
+    it('throws when config wallet is not found in keystore', () => {
+      config.connection = {
+        ...config.connection,
+        wallet: 'non-existent-alias',
+      }
 
-      // Env var alone is no longer a fallback — key must come from config.connection.walletPrivateKey
-      // (which is resolved from env.WALLET_PRIVATE_KEY at config load time via schema envString transform)
-      expect(() => getWalletKeypair()).toThrow(/Wallet private key is not configured/)
+      expect(() => getWalletKeypair()).toThrow(/Wallet keystore not found for alias "non-existent-alias"/)
     })
 
     it('returns null for getWalletAddress when unconfigured', () => {
-      delete config.connection?.walletPrivateKey
-      delete process.env.WALLET_PRIVATE_KEY
+      delete config.connection?.wallet
 
       expect(getWalletAddress()).toBeNull()
-      expect(() => getWalletKeypair()).toThrow(/Wallet private key is not configured/)
+      expect(() => getWalletKeypair()).toThrow(/Wallet is not configured/)
     })
   })
 
