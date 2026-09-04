@@ -2,8 +2,8 @@
   "name": "@etemaro/daemon",
   "version": "3.5.0",
   "type": "module",
-  "main": "dist/Daemon.js",
-  "types": "dist/Daemon.d.ts",
+  "main": "src/Daemon.ts",
+  "types": "src/Daemon.ts",
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
@@ -11,10 +11,12 @@
   },
   "dependencies": {
     "@etemaro/core": "workspace:*",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/node": "^26.3.0",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2"
   }
