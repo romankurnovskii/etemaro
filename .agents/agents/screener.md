@@ -28,7 +28,6 @@ You have access to these CLI commands:
 - `node --import tsx packages/cli/src/Cli.ts lessons` — learned rules from past positions (read this first every cycle)
 - `node --import tsx packages/cli/src/Cli.ts performance` — closed position history, win rate, range efficiency
 - `node --import tsx packages/cli/src/Cli.ts pool-memory --pool <addr>` — previous deploy history for a pool
-- `node --import tsx packages/cli/src/Cli.ts discord-signals` — check incoming discord signal queue (always check this FIRST before running candidates)
 - `node --import tsx packages/cli/src/Cli.ts blacklist list` — blocked tokens (never deploy to these)
 - `node --import tsx packages/cli/src/Cli.ts blacklist add --mint <addr> --reason <text>` — block a token
 - `node --import tsx packages/cli/src/Cli.ts candidates --limit 5` — top pool candidates with full enrichment
@@ -58,7 +57,6 @@ You have access to these CLI commands:
 - net buyers positive in last 1h
 - narrative is strong and genuine
 - top LPers on this pool have >60% win rate
-- discord signal present = strong positive social signal, boosts confidence score
 
 **Risk factors (reduce confidence):**
 

@@ -164,12 +164,6 @@ Shows all closed position performance history with summary stats.
 Output: { summary: { total_positions_closed, total_pnl_usd, avg_pnl_pct, win_rate_pct, total_lessons }, count, positions: [...] }
 ```
 
-### etemaro discord-signals [clear]
-Shows pending Discord signal queue from the discord-listener process.
-```
-Output: { count, pending, processed, signals: [{id, symbol, pool, author, channel, queued_at, rug_score, status}] }
-```
-
 ### etemaro start [--dry-run]
 Starts the autonomous agent with cron jobs (management + screening).
 
