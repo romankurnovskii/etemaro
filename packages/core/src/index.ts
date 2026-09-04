@@ -6,11 +6,13 @@ import * as token from './adapters/blockchain/TokenDataAdapter.js'
 import * as wallet from './adapters/blockchain/WalletAdapter.js'
 import * as desktop from './adapters/chat/DesktopAdapter.js'
 import * as hivemind from './adapters/external/HivemindAdapter.js'
+import * as price from './adapters/external/PriceProvider.js'
 import * as telegram from './adapters/notifications/TelegramAdapter.js'
 import * as toolExecutor from './adapters/ToolExecutor.js'
 import * as domain from './domain/index.js'
 
 export * from './adapters/blockchain/WalletAdapter.js'
+export * from './adapters/external/PriceProvider.js'
 export * from './adapters/ToolDefinitions.js'
 // Resolve name collision by explicitly exporting AgentLoopResult from agent-loop.js
 export type { AgentLoopResult } from './application/agent-loop.js'
@@ -25,4 +27,4 @@ export * from './shared/logger.js'
 export * from './shared/mutex.js'
 export * from './shared/types.js'
 export * from './shared/utils.js'
-export { briefing, desktop, domain, hivemind, meteora, screening, study, telegram, token, toolExecutor, wallet }
+export { briefing, desktop, domain, hivemind, meteora, price, screening, study, telegram, token, toolExecutor, wallet }
