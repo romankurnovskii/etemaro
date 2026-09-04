@@ -183,7 +183,7 @@ describe('isTransientRpcError', () => {
     const { isTransientRpcError } = await import('./utils.js')
     expect(isTransientRpcError(new Error('Invalid public key'))).toBe(false)
     expect(isTransientRpcError(new Error('Insufficient balance'))).toBe(false)
-    expect(isTransientRpcError(new Error('WALLET_PRIVATE_KEY not set'))).toBe(false)
+    expect(isTransientRpcError(new Error('private key not set'))).toBe(false)
     expect(isTransientRpcError(null)).toBe(false)
   })
 })

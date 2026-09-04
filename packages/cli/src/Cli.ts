@@ -1155,39 +1155,6 @@ export class Cli {
   private async handleStart(flags: Record<string, any> = {}): Promise<void> {
     if (!this.adapters.daemon?.start) die('Start command requires daemon adapter')
 
-    // Check for one-time migration: WALLET_PRIVATE_KEY in env but no keystore
-    if (process.env.WALLET_PRIVATE_KEY && !config.connection?.wallet) {
-      const readline = await import('node:readline/promises')
-      const rl = readline.createInterface({ input: stdinStream, output: stdoutStream })
-      try {
-        const answer = await rl.question(
-          'Found WALLET_PRIVATE_KEY in environment. Migrate to secure keystore (default.json)? (Y/n): ',
-        )
-        if (answer.toLowerCase() !== 'n') {
-          const walletPath = path.join(this.etemaroDir, '.credentials', 'wallets')
-          fs.mkdirSync(walletPath, { recursive: true })
-          const keyfilePath = path.join(walletPath, 'default.json')
-          fs.writeFileSync(keyfilePath, JSON.stringify(process.env.WALLET_PRIVATE_KEY), { mode: 0o600 })
-          // Verify migration
-          const testKey = JSON.parse(fs.readFileSync(keyfilePath, 'utf8'))
-          const kp = Keypair.fromSecretKey(bs58.decode(testKey))
-          console.log(`Migrated wallet ${kp.publicKey.toBase58()} to ${keyfilePath}`)
-          // Update config to use wallet alias
-          const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
-          if (!configObj.connection) configObj.connection = {}
-          configObj.connection.wallet = 'default'
-          fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
-          // Remove from process.env
-          delete process.env.WALLET_PRIVATE_KEY
-          console.log('Migration complete. Please restart to use the new keystore.')
-        }
-      } catch (err) {
-        console.error('Migration failed:', err)
-      } finally {
-        rl.close()
-      }
-    }
-
     // Interactive first-run onboarding if no wallet configured
     if (!config.connection?.wallet) {
       const readline = await import('node:readline/promises')

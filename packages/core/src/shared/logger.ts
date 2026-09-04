@@ -290,6 +290,7 @@ export function logStructured({ category, message, metadata }: StructuredLogEntr
       message: record.message as string,
       agentId: record.agentId as string,
       ts: record.ts as string,
+      correlationId: record.correlationId as string | undefined,
       metadata: record.metadata as Record<string, unknown> | undefined,
     }
     for (const listener of _logListeners) {
