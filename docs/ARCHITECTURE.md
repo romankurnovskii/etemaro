@@ -104,7 +104,7 @@ The strategy library defines preset configurations for Meteora DLMM pool deploym
 
 ## Dry-Run Mode & Transaction Interception
 
-When `DRY_RUN=true` is set in the environment:
+When `config.connection.dryRun` is `true` (resolved at config boundary, not via env var):
 
 - **Interceptors**: Inside `MeteoraAdapter.ts`, the functions `deployPosition`, `claimFees`, and `closePosition` check for the dry-run flag.
 - **Mock Responses**: Instead of submitting a transaction payload to the Solana blockchain, the adapter intercepts the call and returns a mock object containing `dry_run: true` and a mock transaction ID.
@@ -115,11 +115,73 @@ When `DRY_RUN=true` is set in the environment:
 ## Configuration Lifecycle & State Isolation
 
 1. **Singleton Pattern**: The configuration is parsed once at application start into an immutable-by-convention `config` singleton exported by `@etemaro/core`.
-2. **In-Place Runtime Mutations**: Dynamic parameter modifications (such as screening threshold reloads via `reloadScreeningThresholds()` or active strategy switching via `setActiveStrategy()`) mutate fields directly on the shared `config` instance, ensuring that all consumers maintain synchronized view without stale module cache references.
-3. **Environment Propagation**: User-defined credentials and URLs in `user-config.json` are conditionally populated into `process.env` using `||=` fallback assignment, ensuring that environment variables passed explicitly via CLI or `.env` take precedence.
-4. **Test Isolation**: Test suites that mutate `process.env` or mock file system configs must snapshot and restore `process.env` in `beforeEach`/`afterEach`, and use `resetConfig()` from `@etemaro/core` to cleanly re-initialize the singleton state between test cases.
+
+2. **Config-as-Contract**: The JSON configuration file is the explicit contract of requirements; all `env.*` references are resolved once at the boundary (via `Config.ts`). If a variable is missing, the application fails immediately on boot with a clear error:
+   `[config] Error: Missing required environment variable "LLM_API_KEY" referenced in config.llm.apiKey`.
+
+3. **Strict Schema & Unknown Field Handling**:
+   - The Zod configuration schema (`schema.ts`) uses `.strict()` — unknown fields are **rejected with a parse error** rather than silently dropped. This ensures the user is notified if they've pasted a secret into the wrong field.
+   - The `wallet` field in `connection` is `z.string().optional()` — only an alias (e.g. `"main-scalp"`) is allowed; raw private keys are not stored in config.
+
+4. **Key Segregation / Keystore Architecture** (recommended):
+   - Private keys are **never** stored in the general `config` dictionary that LLM agents or decision loggers read.
+   - Keys are loaded in memory only by `WalletAdapter` / `SolanaAdapter`, and only referenced by alias: `"wallet": "main-scalp"`.
+   - Files are stored in a dedicated, secure directory (`~/.config/etemaro/.credentials/wallets/`) with Unix file permissions locked to owner-only (`chmod 0600`).
+
+5. **Zero `process.env` in Business Logic**:
+   - `applyUserConfigToEnv()` was removed. The `config` object is the single source of truth.
+   - Downstream adapters (TelegramAdapter, WalletAdapter, GmgnClient) read directly from `config` only — no `process.env` fallbacks.
+   - The only remaining `process.env` reads are infrastructure-tier (`USER_CONFIG_PATH`, `ETEMARO_DATA_DIR`, `HOME`, PM2 `pm_id`).
+
+6. **Test Isolation**: Test suites that modify `process.env` or invoke config reloads must snapshot `process.env` in `beforeEach` and restore it in `afterEach` to prevent test pollution.
 
 ---
+
+## Keystore & Wallet Management
+
+The wallet architecture separates public config metadata from the raw private key:
+
+```
+~/.config/etemaro/
+├── config/
+│   └── user-config.json          # PUBLIC — references wallet by alias only:
+│                                  #   "connection": { "wallet": "main-scalp" }
+└── .credentials/                 # SECURE — gitignored, chmod 700
+    └── wallets/
+        └── main-scalp.json       # PRIVATE — keypair (Base58 or Solana CLI array), chmod 0600
+```
+
+### Resolution Flow
+
+1. `connection.ts:getWalletKeypair()` reads `config.connection.wallet` (alias).
+2. Loads `~/.config/etemaro/.credentials/wallets/<alias>.json`.
+3. Enforces `chmod 0600` on POSIX systems (auto-tightens; FATAL if it cannot).
+4. Supports Base58 secret strings and standard Solana CLI 64-byte JSON arrays.
+5. Fallback (deprecated): `config.connection.walletPrivateKey` for legacy configs.
+
+### CLI Wallet Commands
+
+| Command | Description |
+|--------|-------------|
+| `etemaro wallet generate --name <alias>` | Generate fresh keypair, save to keystore, `0600` |
+| `etemaro wallet import --name <alias> --file <path>` | Import from Solana CLI keypair JSON |
+| `etemaro wallet import --name <alias> --prompt` | Import Base58 key interactively (no shell history) |
+| `etemaro wallet list` | List wallet aliases + public keys (never private) |
+| `etemaro wallet export --name <alias>` | Print private key on explicit request |
+
+### First-Run Onboarding
+
+`etemaro start` (or `etemaro init`) detects no wallet config and interactively prompts:
+- Generate a new wallet
+- Import existing private key (Base58 / file)
+- Select existing wallet alias
+
+### Env-to-Keystore Migration
+
+On startup, if `WALLET_PRIVATE_KEY` exists but no keystore, the CLI prompts to migrate:
+1. Writes key to `.credentials/wallets/default.json` (`0600`)
+2. Verifies the parsed public key matches the original
+3. Only after verification, purges `process.env.WALLET_PRIVATE_KEY`
 
 ## RPC & API Efficiency Architecture
 

@@ -19,11 +19,11 @@
 
 **A:** Getting started with the Desktop App requires only a couple of clicks:
 
-1. **Launch App**: Open the Etemaro Desktop App. The first-run wizard automatically sets up local directories (`~/.etemaro/config` and `~/.etemaro/data`) and prepares the agent engine.
+1. **Launch App**: Open the Etemaro Desktop App. The first-run wizard automatically sets up local directories (`~/.config/etemaro/config` and `~/.config/etemaro/data`) and prepares the agent engine.
 2. **Configure Environment & Strategy**:
-   - The app automatically verifies your configuration on launch (`validate_agent_config`). If `connection.walletPrivateKey` is set to `"env.WALLET_PRIVATE_KEY"` but no key is found in `.env`, the GUI displays a warning notice.
-   - **Environment Manager (Settings Tab)**: Go to **Settings** $\rightarrow$ **Environment Variables (.env)**. You can view, add, edit, or remove process environment variables (`WALLET_PRIVATE_KEY`, `LLM_API_KEY`, etc.) directly in the app. If `.env` does not exist yet, the app automatically copies default entries from `.env.example`.
-   - **Direct Wallet Key Entry**: Alternatively, paste your Solana Private Key (Base58 string) directly into `"walletPrivateKey"` in the agent config settings.
+   - The app automatically verifies your configuration on launch (`validate_agent_config`). If `connection.wallet` is set to an alias but no keystore entry exists, the GUI displays a warning notice.
+   - **Environment Manager (Settings Tab)**: Go to **Settings** $\rightarrow$ **Environment Variables (.env)**. You can view, add, edit, or remove process environment variables (`LLM_API_KEY`, etc.) directly in the app. If `.env` does not exist yet, the app automatically copies default entries from `.env.example`.
+   - **Wallet Management**: Use `etemaro wallet generate --name <alias>` or `etemaro wallet import` to set up a keystore wallet, then set `"wallet": "<alias>"` in the agent config.
 3. **Start Agent**: Click **"Start Agent"**. The daemon runs in the background and streams live logs, open positions, PnL metrics, and notifications directly to the desktop dashboard.
 
 ---
@@ -37,8 +37,8 @@
 #### Option A: Desktop App (GUI)
 
 1. **Add Agent**: Click **"Add Agent"** in the Desktop App UI. A new agent instance is created automatically.
-2. **Configure Settings**: Set the agent's strategy parameters (risk, sizing, stop-loss, filters) and paste its dedicated wallet private key string directly into the agent's wallet field in the GUI settings.
-3. **Run**: Click **"Start"** on each agent. Desktop injects `USER_CONFIG_PATH` and `ETEMARO_DATA_DIR` (from the agent’s `dataDir`, default `~/.etemaro/data`). State and logs land under that data dir with an agent suffix (e.g. `state-agt_my-agent-1.json`, `logs/agent-agt_…-YYYY-MM-DD.log`).
+2. **Configure Settings**: Set the agent's strategy parameters (risk, sizing, stop-loss, filters). Create a wallet in the keystore: `etemaro wallet generate --name agent-1` (or import via `--file` / `--prompt`). Then set `"wallet": "agent-1"` in the agent's config.
+3. **Run**: Click **"Start"** on each agent. Desktop injects `USER_CONFIG_PATH` and `ETEMARO_DATA_DIR` (from the agent's `dataDir`, default `~/.config/etemaro/data`). State and logs land under that data dir with an agent suffix (e.g. `state-agt_my-agent-1.json`, `logs/agent-agt_…-YYYY-MM-DD.log`).
 
 ---
 
@@ -60,9 +60,10 @@
    ```
 
 3. **Configure Parameters**:
-   Edit each JSON file to set your risk, deploy amount, and strategy settings. Keep `"walletPrivateKey": "env.WALLET_PRIVATE_KEY"` so each daemon process reads `WALLET_PRIVATE_KEY` from its own process environment.
+   Edit each JSON file to set your risk, deploy amount, and strategy settings. Use `"wallet": "agent-1"` (or your chosen alias) in `connection`. **Do not** use `walletPrivateKey` with env vars.
+
 4. **Set Up & Run PM2 Ecosystem**:
-   Copy `config/templates/ecosystem.config.example.cjs` to `config/ecosystem.config.cjs` (`cp config/templates/ecosystem.config.example.cjs config/ecosystem.config.cjs`). In `config/ecosystem.config.cjs`, pass `USER_CONFIG_PATH` and the process-specific `WALLET_PRIVATE_KEY`:
+   Copy `config/templates/ecosystem.config.example.cjs` to `config/ecosystem.config.cjs` (`cp config/templates/ecosystem.config.example.cjs config/ecosystem.config.cjs`). In `config/ecosystem.config.cjs`, pass `USER_CONFIG_PATH` per agent:
 
    ```javascript
    module.exports = {
@@ -76,7 +77,6 @@
            USER_CONFIG_PATH: 'config/agt_my-agent-1.json',
            // Optional: separate data root (default is <cwd>/data)
            // ETEMARO_DATA_DIR: '/var/lib/etemaro/agent-1',
-           WALLET_PRIVATE_KEY: 'your_private_key_base58_for_agent_1',
          },
        },
        {
@@ -86,19 +86,19 @@
          cwd: '/path/to/etemaro',
          env: {
            USER_CONFIG_PATH: 'config/agt_my-agent-2.json',
-           WALLET_PRIVATE_KEY: 'your_private_key_base58_for_agent_2',
          },
        },
      ],
    };
    ```
 
+   **Note:** Each agent's wallet is resolved from the keystore at `~/.config/etemaro/.credentials/wallets/<alias>.json` based on the `wallet` alias in its config. The keystore is shared across agents, but each agent references a different alias.
+
    Start the processes with:
 
    ```bash
    npm run pm2:start
    ```
-
 #### Option C: Docker Compose (Headless Server)
 
 1. **Create Config Files**:
@@ -107,10 +107,12 @@
    cp config/user-config.json config/agt_my-agent-1.json
    cp config/user-config.json config/agt_my-agent-2.json
    ```
+
 2. **Configure Parameters**:
-   Edit each JSON file to set your risk, deploy amount, and strategy settings. Keep `"walletPrivateKey": "env.WALLET_PRIVATE_KEY"` so each daemon process reads `WALLET_PRIVATE_KEY` from its own process environment.
+   Edit each JSON file to set your risk, deploy amount, and strategy settings. Use `"wallet": "agent-1"` (or your alias) in `connection`. **Do not** use `walletPrivateKey` with env vars.
+
 3. **Define Docker Compose Services**:
-   Define distinct container services sharing a `./data:/app/data` volume (or set `ETEMARO_DATA_DIR` per service) and set `USER_CONFIG_PATH` and `WALLET_PRIVATE_KEY` per container in `docker-compose.yml`:
+   Define distinct container services sharing a `./data:/app/data` volume (or set `ETEMARO_DATA_DIR` per service) and set `USER_CONFIG_PATH` per container in `docker-compose.yml`:
    ```yaml
    version: '3.8'
    services:
@@ -118,28 +120,33 @@
        build: .
        environment:
          - USER_CONFIG_PATH=config/agt_my-agent-1.json
-         - WALLET_PRIVATE_KEY=your_private_key_base58_for_agent_1
        volumes:
          - ./data:/app/data
+         - ~/.config/etemaro/.credentials:/root/.config/etemaro/.credentials
      agent-degen:
        build: .
        environment:
          - USER_CONFIG_PATH=config/agt_my-agent-2.json
-         - WALLET_PRIVATE_KEY=your_private_key_base58_for_agent_2
        volumes:
          - ./data:/app/data
+         - ~/.config/etemaro/.credentials:/root/.config/etemaro/.credentials
    ```
+
 4. **Launch Containers**:
    Start all agent services in detached mode:
    ```bash
    docker compose up -d
    ```
 
-_Note:_ State files (`state-*.json`, `lessons-*.json`, `pool-memory-*.json`) automatically acquire each agent's configuration filename suffix under the active data dir (`ETEMARO_DATA_DIR` / `DATA_DIR` / `<repo>/data`). Multiple processes can share one data directory without filename collisions when each has a distinct `USER_CONFIG_PATH` basename.
-
+   **Note:** The keystore directory is mounted into each container so wallet resolution works. Each agent references its own wallet alias via its config.
 ### Q: Can I load my private key from an environment variable instead of writing it in `user-config.json`?
 
-**A:** **Yes.** Set `"walletPrivateKey": "env.WALLET_PRIVATE_KEY"` in `user-config.json`. The config loader resolves any `"env.VAR_NAME"` string directly from `process.env` at startup ([CONFIGURATION.md](CONFIGURATION.md#1-env-pattern-referencing-environment-variables)). This keeps private keys and API credentials out of JSON config files.
+**A:** The recommended approach is the **keystore** (see above). For legacy configs:
+
+- **Deprecated**: Set `"walletPrivateKey": "env.WALLET_PRIVATE_KEY"` in `user-config.json` still works for backward compatibility, but this is discouraged.
+- **Recommended**: Use `etemaro wallet import --name <alias> --prompt` (or `--file`) to store the key in `~/.config/etemaro/.credentials/wallets/<alias>.json`, then set `"wallet": "<alias>"` in config.
+
+The keystore keeps private keys **out of `process.env` entirely** — crucial because `console.log(process.env)` or PM2 process tables (`pm2 describe`, `/proc/<pid>/environ`) could otherwise leak the key.
 
 ---
 
@@ -162,7 +169,7 @@ _Note:_ State files (`state-*.json`, `lessons-*.json`, `pool-memory-*.json`) aut
 
 ### Q: Does the app support running "screen" in dry-run mode with simulated buy, sell, or rebalancing over time?
 
-**A:** **No.** The dry-run mode (`DRY_RUN=true`) is designed to test your configurations, API calls, and LLM reasoning steps without executing on-chain transactions.
+**A:** **No.** The dry-run mode (`config.connection.dryRun: true`) is designed to test your configurations, API calls, and LLM reasoning steps without executing on-chain transactions.
 
 - It intercepts the deploy command and returns a mock position, but **it does not simulate the position's performance or price changes over time**.
 - Because the mock position does not exist on-chain, the management loop (which fetches active positions from the blockchain via `getMyPositions`) will not see it, and therefore will not simulate PnL checks, range triggers, or rebalances.
