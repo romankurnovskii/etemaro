@@ -1,6 +1,6 @@
 {
   "name": "etemaro",
-  "version": "3.4.5",
+  "version": "3.5.0",
   "type": "module",
   "packageManager": "pnpm@9.15.4",
   "description": "Autonomous DLMM LP agent for Meteora on Solana",
@@ -38,7 +38,10 @@
     "postinstall": "node scripts/patch-anchor.js"
   },
   "knip": {
-    "ignore": ["discord-listener/**", "dist/**"]
+    "ignore": [
+      "discord-listener/**",
+      "dist/**"
+    ]
   },
   "dependencies": {
     "@meteora-ag/dlmm": "1.9.14",
@@ -66,6 +69,8 @@
     "vitest": "^4.1.11"
   },
   "lint-staged": {
-    "**/*.{ts,tsx,js,jsx,json,md,html,css,sh}": ["biome check --write --unsafe --no-errors-on-unmatched"]
+    "**/*.{ts,tsx,js,jsx,json,md,html,css,sh}": [
+      "biome check --write --unsafe --no-errors-on-unmatched"
+    ]
   }
 }
