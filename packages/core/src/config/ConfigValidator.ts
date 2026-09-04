@@ -11,12 +11,42 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { USER_CONFIG_PATH } from '../shared/constants.js'
+import dotenv from 'dotenv'
+import { getEtemaroDir, REPO_ROOT, USER_CONFIG_PATH } from '../shared/constants.js'
 import { defaultUserConfigStr } from './defaultUserConfig.js'
 import { UserConfigSchema, type ValidatedUserConfig } from './schema.js'
 
+let dotenvLoaded = false
+export function ensureDotenvLoaded(): void {
+  if (dotenvLoaded) return
+  dotenvLoaded = true
+  if (process.env.NODE_ENV === 'test' || process.env.VITEST) return
+
+  // 1. Load user-level env (~/.config/etemaro/.env)
+  const homeEnv = path.join(getEtemaroDir(), '.env')
+  if (fs.existsSync(homeEnv)) {
+    dotenv.config({ path: homeEnv })
+  }
+
+  // 2. Load workspace/repo .env if present
+  const repoEnv = path.join(REPO_ROOT, '.env')
+  if (fs.existsSync(repoEnv)) {
+    dotenv.config({ path: repoEnv, override: true })
+  } else {
+    dotenv.config({ override: true })
+  }
+}
+
+function getActiveConfigPath(): string {
+  const envPath = process.env.USER_CONFIG_PATH?.trim()
+  if (envPath) {
+    return path.isAbsolute(envPath) ? envPath : path.resolve(REPO_ROOT, envPath)
+  }
+  return USER_CONFIG_PATH
+}
+
 function getConfigFileName(): string {
-  return path.basename(USER_CONFIG_PATH)
+  return path.basename(getActiveConfigPath())
 }
 
 export function isHelpOrInfoCommand(): boolean {
@@ -29,30 +59,32 @@ export function isHelpOrInfoCommand(): boolean {
 }
 
 export function loadAndValidateConfig(): ValidatedUserConfig {
+  ensureDotenvLoaded()
   const isExplicitConfig = Boolean(process.env.USER_CONFIG_PATH?.trim())
+  const activeConfigPath = getActiveConfigPath()
 
   // Ensure user config directory and file exist
-  if (!fs.existsSync(USER_CONFIG_PATH)) {
+  if (!fs.existsSync(activeConfigPath)) {
     if (isExplicitConfig) {
       if (isHelpOrInfoCommand()) {
         return JSON.parse(defaultUserConfigStr)
       }
-      throw new Error(`Configuration file not found at "${USER_CONFIG_PATH}"`)
+      throw new Error(`Configuration file not found at "${activeConfigPath}"`)
     }
     console.log(`[config] ${getConfigFileName()} not found, initializing from default config`)
-    fs.mkdirSync(path.dirname(USER_CONFIG_PATH), { recursive: true })
-    fs.writeFileSync(USER_CONFIG_PATH, `${defaultUserConfigStr}\n`, 'utf8')
+    fs.mkdirSync(path.dirname(activeConfigPath), { recursive: true })
+    fs.writeFileSync(activeConfigPath, `${defaultUserConfigStr}\n`, 'utf8')
   }
 
   // Read user config
   let raw: Record<string, unknown>
   try {
-    const content = fs.readFileSync(USER_CONFIG_PATH, 'utf8')
+    const content = fs.readFileSync(activeConfigPath, 'utf8')
     if (!content.trim()) {
       if (isExplicitConfig) {
-        throw new Error(`Configuration file is empty: "${USER_CONFIG_PATH}"`)
+        throw new Error(`Configuration file is empty: "${activeConfigPath}"`)
       }
-      fs.writeFileSync(USER_CONFIG_PATH, `${defaultUserConfigStr}\n`, 'utf8')
+      fs.writeFileSync(activeConfigPath, `${defaultUserConfigStr}\n`, 'utf8')
       raw = JSON.parse(defaultUserConfigStr)
     } else {
       raw = JSON.parse(content)
@@ -75,7 +107,6 @@ export function loadAndValidateConfig(): ValidatedUserConfig {
     rawConnection.rpcUrl = process.env.RPC_URL
   }
 
-
   // If running info commands, we can bypass strict parsing
   if (isHelpOrInfoCommand()) {
     return raw as unknown as ValidatedUserConfig // Bypass validation
@@ -87,10 +118,14 @@ export function loadAndValidateConfig(): ValidatedUserConfig {
   if (!result.success) {
     const issues = result.error?.issues ?? (result.error as any)?.errors ?? []
     const errorMessages = issues.map((err: any) => `  - ${err.path.join('.')}: ${err.message}`).join('\n')
-    throw new Error(
+    const err: any = new Error(
       `${getConfigFileName()} has invalid or missing fields:\n${errorMessages}\n\n` +
         'Please ensure you are using the Version 3 schema structure.',
+      { cause: result.error },
     )
+    err.issues = issues
+    err.configPath = USER_CONFIG_PATH
+    throw err
   }
 
   return result.data

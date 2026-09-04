@@ -39,7 +39,7 @@ import {
   trackPosition,
 } from '../../domain/state.js'
 import { getConnection, getWalletKeypair as getWallet, withRpcFailover } from '../../shared/connection.js'
-import { getMinSafeBinsBelow } from '../../shared/constants.js'
+import { DEFAULT_AGENT_ID, getMinSafeBinsBelow } from '../../shared/constants.js'
 import { log, logStructured } from '../../shared/logger.js'
 import type { GetMyPositionsResult } from '../../shared/types.js'
 import { agentMeridianJson, getAgentIdForRequests, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js'
@@ -1095,7 +1095,30 @@ export async function getPositionPnl({
   try {
     const byAddress = await fetchDlmmPnlForPool(pool_address, walletAddress)
     const p = byAddress[position_address]
-    if (!p) return { error: 'Position not found in PnL API' }
+    if (!p) {
+      if (config.pnl.source !== 'rpc') {
+        try {
+          const payload = await getMyPositions({ force: true, silent: true })
+          const rpcPos = payload?.positions?.find((position: any) => position.position === position_address)
+          if (rpcPos) {
+            return {
+              pnl_usd: rpcPos.pnl_usd,
+              pnl_pct: rpcPos.pnl_pct,
+              current_value_usd: rpcPos.total_value_usd,
+              unclaimed_fee_usd: rpcPos.unclaimed_fees_usd,
+              all_time_fees_usd: rpcPos.collected_fees_usd,
+              fee_per_tvl_24h: rpcPos.fee_per_tvl_24h,
+              in_range: rpcPos.in_range,
+              lower_bin: rpcPos.lower_bin,
+              upper_bin: rpcPos.upper_bin,
+              active_bin: rpcPos.active_bin,
+              age_minutes: rpcPos.age_minutes,
+            }
+          }
+        } catch {}
+      }
+      return { error: 'Position not found in PnL API' }
+    }
 
     const solMode = config.management.solMode
     const unclaimedValue = solMode
@@ -1119,6 +1142,30 @@ export async function getPositionPnl({
       age_minutes: p.createdAt ? Math.floor((Date.now() - p.createdAt * 1000) / 60000) : null,
     }
   } catch (error: any) {
+    if (config.pnl.source !== 'rpc') {
+      try {
+        log('pnl_warn', `Meteora PnL API failed; falling back to RPC PnL path: ${error.message}`)
+        const payload = await getMyPositions({ force: true, silent: true })
+        const rpcPos = payload?.positions?.find((position: any) => position.position === position_address)
+        if (rpcPos) {
+          return {
+            pnl_usd: rpcPos.pnl_usd,
+            pnl_pct: rpcPos.pnl_pct,
+            current_value_usd: rpcPos.total_value_usd,
+            unclaimed_fee_usd: rpcPos.unclaimed_fees_usd,
+            all_time_fees_usd: rpcPos.collected_fees_usd,
+            fee_per_tvl_24h: rpcPos.fee_per_tvl_24h,
+            in_range: rpcPos.in_range,
+            lower_bin: rpcPos.lower_bin,
+            upper_bin: rpcPos.upper_bin,
+            active_bin: rpcPos.active_bin,
+            age_minutes: rpcPos.age_minutes,
+          }
+        }
+      } catch (rpcErr: any) {
+        log('pnl_error', `Both Meteora API and RPC PnL paths failed: ${rpcErr.message}`)
+      }
+    }
     log('pnl_error', error.message)
     return { error: error.message }
   }
@@ -1239,7 +1286,7 @@ async function _fetchRawOpenPositionsFromMeridian({
 }) {
   const search = new URLSearchParams({
     owner: walletAddress,
-    agentId: agentId || 'agent-local',
+    agentId: agentId || DEFAULT_AGENT_ID,
   })
   const payload = await agentMeridianJson(`/positions/open/raw?${search.toString()}`, {
     headers: getAgentMeridianHeaders(),
@@ -1264,7 +1311,7 @@ async function _fetchRawOpenPositionsFromMeridian({
 // ─── Get My Positions ──────────────────────────────────────────
 /**
  * Fetches open DLMM positions for the wallet.
- * Uses Meteora REST Datapi by default (config.pnl.source === 'portfolio') for 0 Solana RPC credit consumption.
+ * Uses Meteora REST Datapi by default (config.pnl.source === 'meteora_api') for 0 Solana RPC credit consumption.
  * Uses on-chain DLMM RPC when config.pnl.source === 'rpc'.
  */
 export async function getMyPositions({
@@ -1312,13 +1359,15 @@ export async function getMyPositions({
         try {
           if (!silent) log('positions', `Computing PnL from RPC (${config.pnl.rpcUrl})...`)
           const rpcResult = await computePositions(walletAddress)
+          const result = { ...rpcResult, source: 'rpc' as const }
           if (useLocalWallet) {
-            syncOpenPositions(rpcResult.positions.map((p: any) => p.position))
-            reconcileTrackedPositions(rpcResult.positions)
-            _positionsCache = rpcResult
+            syncOpenPositions(result.positions.map((p: any) => p.position))
+            reconcileTrackedPositions(result.positions)
+            _positionsCache = result
             _positionsCacheAt = Date.now()
           }
-          return rpcResult
+          log('positions', `Found ${result.positions.length} pool(s) with open positions (source: Solana RPC)`)
+          return result
         } catch (error: any) {
           log('positions_warn', `RPC PnL path failed; falling back to Meteora portfolio API: ${error.message}`)
         }
@@ -1331,7 +1380,7 @@ export async function getMyPositions({
       const portfolio = (await res.json()) as any
 
       const pools = portfolio.pools || []
-      log('positions', `Found ${pools.length} pool(s) with open positions`)
+      log('positions', `Found ${pools.length} pool(s) with open positions (source: Meteora Datapi)`)
 
       const binDataByPool: Record<string, any> = {}
       const pnlMaps = await Promise.all(pools.map((pool: any) => fetchDlmmPnlForPool(pool.poolAddress, walletAddress)))
@@ -1487,7 +1536,7 @@ export async function getMyPositions({
         wallet: walletAddress,
         total_positions: positions.length,
         positions,
-        source: 'meteora',
+        source: 'meteora_api' as const,
       }
       if (useLocalWallet) {
         syncOpenPositions(positions.map((p) => p.position))
@@ -1498,6 +1547,21 @@ export async function getMyPositions({
       return result
     } catch (error: any) {
       log('positions_error', `Portfolio fetch failed: ${error.stack || error.message}`)
+      if (config.pnl.source !== 'rpc') {
+        try {
+          log('positions_warn', `Meteora portfolio API failed; falling back to RPC (${config.pnl.rpcUrl})...`)
+          const rpcResult = await computePositions(walletAddress)
+          if (useLocalWallet) {
+            syncOpenPositions(rpcResult.positions.map((p: any) => p.position))
+            reconcileTrackedPositions(rpcResult.positions)
+            _positionsCache = rpcResult
+            _positionsCacheAt = Date.now()
+          }
+          return rpcResult
+        } catch (rpcErr: any) {
+          log('positions_error', `RPC fallback also failed: ${rpcErr.message}`)
+        }
+      }
       return {
         wallet: walletAddress,
         total_positions: 0,
@@ -1511,15 +1575,16 @@ export async function getMyPositions({
 
   if (useLocalWallet) {
     _positionsInflight = loadPositions()
-    return _positionsInflight
+    return _positionsInflight as any
   }
 
-  return loadPositions()
+  return loadPositions() as any
 }
 
 // ─── Get Positions for Any Wallet ─────────────────────────────
 export async function getWalletPositions({ wallet_address }: { wallet_address: string }) {
   try {
+    // Meteora DLMM Program by Meteora on Solana
     const DLMM_PROGRAM = new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo')
 
     const accounts = await withRpcFailover(

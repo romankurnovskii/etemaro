@@ -18,9 +18,18 @@ import readline from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import type { GeneratedWallet } from '@etemaro/core'
-import { loadJsonFile } from '@etemaro/core'
 import { Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
+
+function loadJsonFile<T>(filePath: string, fallback: T): T {
+  try {
+    if (!fs.existsSync(filePath)) return fallback
+    return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T
+  } catch {
+    return fallback
+  }
+}
+
 import {
   assessSetup,
   formatInitMessage,
@@ -48,9 +57,7 @@ const currentFileDir = path.dirname(currentFilePath)
 // Resolve our own package.json relative to the CLI's actual location, not cwd
 let pkgVersion = 'unknown'
 try {
-  pkgVersion = JSON.parse(
-    fs.readFileSync(path.join(currentFileDir, '..', 'package.json'), 'utf8'),
-  ).version
+  pkgVersion = JSON.parse(fs.readFileSync(path.join(currentFileDir, '..', 'package.json'), 'utf8')).version
 } catch {
   // ignore: fall back to 'unknown'
 }
@@ -70,14 +77,13 @@ let getEtemaroDir: CoreExports['getEtemaroDir'] = null as any
 let _USER_CONFIG_PATH: CoreExports['USER_CONFIG_PATH'] = null as any
 let _DEFAULT_ENTRY_SOURCE: CoreExports['DEFAULT_ENTRY_SOURCE'] = null as any
 let _SMART_WALLETS_FILENAME: CoreExports['SMART_WALLETS_FILENAME'] = null as any
-let DISCORD_SIGNALS_FILENAME: CoreExports['DISCORD_SIGNALS_FILENAME'] = null as any
 let LESSONS_FILENAME: CoreExports['LESSONS_FILENAME'] = null as any
 let _WALLETS_KEYPAIR_FILENAME: CoreExports['WALLETS_KEYPAIR_FILENAME'] = null as any
+let _REPO_ROOT: CoreExports['REPO_ROOT'] = null as any
 let _DEFAULT_ACTIVE_STRATEGY_ID: CoreExports['DEFAULT_ACTIVE_STRATEGY_ID'] = null as any
 let _DEFAULT_STRATEGY_TYPE: CoreExports['DEFAULT_STRATEGY_TYPE'] = null as any
-let _DEFAULT_DISCORD_MODE_MERGE: CoreExports['DEFAULT_DISCORD_MODE_MERGE'] = null as any
 let meteora: CoreExports['meteora'] = null as any
-let wallet: CoreExports['wallet'] = null as any
+const wallet: CoreExports['wallet'] = null as any
 let screening: CoreExports['screening'] = null as any
 let toolExecutor: CoreExports['toolExecutor'] = null as any
 let domain: CoreExports['domain'] = null as any
@@ -111,14 +117,12 @@ export async function loadCore(): Promise<void> {
   _USER_CONFIG_PATH = coreMod.USER_CONFIG_PATH
   _DEFAULT_ENTRY_SOURCE = coreMod.DEFAULT_ENTRY_SOURCE
   _SMART_WALLETS_FILENAME = coreMod.SMART_WALLETS_FILENAME
-  DISCORD_SIGNALS_FILENAME = coreMod.DISCORD_SIGNALS_FILENAME
   LESSONS_FILENAME = coreMod.LESSONS_FILENAME
   _WALLETS_KEYPAIR_FILENAME = coreMod.WALLETS_KEYPAIR_FILENAME
+  _REPO_ROOT = coreMod.REPO_ROOT
   _DEFAULT_ACTIVE_STRATEGY_ID = coreMod.DEFAULT_ACTIVE_STRATEGY_ID
   _DEFAULT_STRATEGY_TYPE = coreMod.DEFAULT_STRATEGY_TYPE
-  _DEFAULT_DISCORD_MODE_MERGE = coreMod.DEFAULT_DISCORD_MODE_MERGE
   meteora = coreMod.meteora
-  wallet = coreMod.wallet
   screening = coreMod.screening
   toolExecutor = coreMod.toolExecutor
   domain = coreMod.domain
@@ -358,14 +362,12 @@ Shows all closed position performance history with summary stats.
 Output: { summary: { total_positions_closed, total_pnl_usd, avg_pnl_pct, win_rate_pct, total_lessons }, count, positions: [...] }
 \`\`\`
 
-### etemaro discord-signals [clear]
-Shows pending Discord signal queue from the discord-listener process.
-\`\`\`
-Output: { count, pending, processed, signals: [{id, symbol, pool, author, channel, queued_at, rug_score, status}] }
-\`\`\`
-
 ### etemaro init [--dir <path>]
 First-time setup (~1 minute). Creates runtime files and checks wallet + LLM keys.
+
+### etemaro new-agent [--name <name>] [--desc <description>] [--id <agentId>]
+Creates a new agent configuration under config/instances/<agentId>.json and initializes data/instances/<agentId>/.
+In interactive mode, prompts for Name, optional Description, and Agent ID (auto-suggested from Name).
 
 ### etemaro start [--dry-run]
 Starts the autonomous agent with cron jobs (management + screening).
@@ -442,6 +444,12 @@ export class Cli {
         limit: { type: 'string' },
         dir: { type: 'string' },
         label: { type: 'string' },
+        name: { type: 'string' },
+        description: { type: 'string' },
+        desc: { type: 'string' },
+        id: { type: 'string' },
+        'agent-id': { type: 'string' },
+        force: { type: 'boolean' },
         yes: { type: 'boolean' },
         version: { type: 'boolean' },
       },
@@ -452,6 +460,17 @@ export class Cli {
     applyCliRuntimeFlags(flags as Record<string, unknown>, process.env)
 
     switch (subcommand) {
+      case 'new-agent':
+      case 'create-agent':
+        return this.handleNewAgent(flags)
+      case 'agent':
+        switch (sub2) {
+          case 'new':
+          case 'create':
+            return this.handleNewAgent(flags)
+          default:
+            die(`Unknown agent subcommand: ${sub2}. Use: new, create`)
+        }
       case 'generate-wallet':
       case 'new-wallet':
         return this.handleGenerateWallet(flags)
@@ -521,8 +540,6 @@ export class Cli {
         return this.handleBlacklist(argv, sub2, flags)
       case 'performance':
         return this.handlePerformance(flags)
-      case 'discord-signals':
-        return this.handleDiscordSignals(sub2)
       case 'init':
         return this.handleInit(flags)
       default:
@@ -575,6 +592,132 @@ export class Cli {
       process.stdout.write(`\nCustom dir: export ETEMARO_HOME="${targetDir}" before etemaro start\n`)
     }
     process.exit(status.readyForDryRun ? 0 : 1)
+  }
+
+  private async handleNewAgent(flags: Record<string, any>): Promise<void> {
+    const isInteractive = Boolean(process.stdin.isTTY && !process.env.CI)
+
+    let name = (flags.name as string | undefined)?.trim()
+    let description = ((flags.description || flags.desc) as string | undefined)?.trim()
+    let agentId = ((flags.id || flags['agent-id']) as string | undefined)?.trim()
+
+    // Determine config directory root (repo-first, else CLI etemaroDir)
+    const repoConfigDir = _REPO_ROOT ? path.join(_REPO_ROOT, 'config') : path.join(this.etemaroDir, 'config')
+    const instancesDir = path.join(repoConfigDir, 'instances')
+
+    // Interactive prompt if missing fields in a TTY environment
+    if (isInteractive && (!name || description === undefined || !agentId)) {
+      const rl = readline.createInterface({ input: stdinStream, output: stdoutStream })
+      try {
+        if (!name) {
+          const inputName = await rl.question('? Agent Name (e.g. Sol Scalper Alpha): ')
+          name = inputName.trim()
+        }
+        if (description === undefined) {
+          const inputDesc = await rl.question('? Description (optional): ')
+          description = inputDesc.trim() || undefined
+        }
+        if (!agentId) {
+          const baseSlug = (name || 'agent')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '') || 'agent'
+
+          let candidateId = baseSlug
+          let counter = 1
+          while (fs.existsSync(path.join(instancesDir, `${candidateId}.json`))) {
+            candidateId = `${baseSlug}-${counter}`
+            counter++
+          }
+
+          const inputId = (await rl.question(`? Agent ID [${candidateId}]: `)).trim()
+          agentId = inputId || candidateId
+        }
+      } finally {
+        rl.close()
+      }
+    }
+
+    if (!name) {
+      name = 'New Agent'
+    }
+
+    if (!agentId) {
+      const baseSlug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'agent'
+
+      let candidateId = baseSlug
+      let counter = 1
+      while (fs.existsSync(path.join(instancesDir, `${candidateId}.json`))) {
+        candidateId = `${baseSlug}-${counter}`
+        counter++
+      }
+      agentId = candidateId
+    }
+
+    // Validate agentId format: alphanumeric, hyphens, underscores
+    if (!/^[a-zA-Z0-9_-]+$/.test(agentId)) {
+      die(`Invalid agentId: "${agentId}". Must contain only alphanumeric characters, hyphens, and underscores.`)
+    }
+
+    const targetConfigFile = path.join(instancesDir, `${agentId}.json`)
+    if (fs.existsSync(targetConfigFile) && !flags.force && !flags.yes) {
+      die(`Agent configuration already exists at ${targetConfigFile}. Use --force to overwrite.`)
+    }
+
+    // Load template: prefer templates/user-config.example.json, fallback to instances/agent-default.json, then defaultUserConfigStr
+    const templateCandidates = [
+      path.join(repoConfigDir, 'templates', 'user-config.example.json'),
+      path.join(repoConfigDir, 'instances', 'agent-default.json'),
+      path.join(repoConfigDir, 'user-config.json'),
+    ]
+
+    let templateContent: Record<string, any> | null = null
+    for (const candidate of templateCandidates) {
+      if (fs.existsSync(candidate)) {
+        try {
+          templateContent = JSON.parse(fs.readFileSync(candidate, 'utf8'))
+          break
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (!templateContent) {
+      templateContent = defaultUserConfigStr ? JSON.parse(defaultUserConfigStr) : {}
+    }
+
+    // Populate metadata
+    templateContent.name = name
+    if (description) {
+      templateContent.description = description
+    } else {
+      delete templateContent.description
+    }
+    templateContent.agentId = agentId
+
+    // Target data directory
+    const baseDataDir = typeof _getDataDir === 'function' ? _getDataDir() : path.join(this.etemaroDir, 'data')
+    const targetDataDir = path.join(baseDataDir, 'instances', agentId)
+
+    // Create directories and write file
+    fs.mkdirSync(instancesDir, { recursive: true })
+    fs.writeFileSync(targetConfigFile, `${JSON.stringify(templateContent, null, 2)}\n`, 'utf8')
+
+    fs.mkdirSync(path.join(targetDataDir, 'logs'), { recursive: true })
+
+    out({
+      success: true,
+      agentId,
+      name,
+      description: description || null,
+      configFile: targetConfigFile,
+      dataDir: targetDataDir,
+      message: `Created agent "${name}" (${agentId})`,
+    })
   }
 
   private handleGenerateWallet(flags: Record<string, any>): void {
@@ -1091,51 +1234,6 @@ export class Cli {
     const summary = this.adapters.domain.getPerformanceSummary()
     out({ summary, ...history })
   }
-
-  private handleDiscordSignals(sub2: string | undefined): void {
-    const sigFile = dataPath(DISCORD_SIGNALS_FILENAME)
-    if (!fs.existsSync(sigFile)) {
-      out({
-        count: 0,
-        pending: 0,
-        signals: [],
-        message: `No ${DISCORD_SIGNALS_FILENAME} found. Is the listener running?`,
-      })
-      return
-    }
-    let signals: any[] = []
-    try {
-      signals = JSON.parse(fs.readFileSync(sigFile, 'utf8'))
-    } catch {
-      die(`Failed to parse ${DISCORD_SIGNALS_FILENAME}`)
-    }
-
-    if (sub2 === 'clear') {
-      const pending = signals.filter((s) => s.status === 'pending')
-      fs.writeFileSync(sigFile, JSON.stringify(pending, null, 2))
-      out({ cleared: signals.length - pending.length, remaining: pending.length })
-      return
-    }
-
-    const pending = signals.filter((s) => s.status === 'pending')
-    const processed = signals.filter((s) => s.status !== 'pending')
-    out({
-      count: signals.length,
-      pending: pending.length,
-      processed: processed.length,
-      signals: signals.map((s) => ({
-        id: s.id,
-        symbol: s.base_symbol,
-        pool: s.pool_address,
-        author: s.discord_author,
-        channel: s.discord_channel,
-        queued_at: s.queued_at,
-        rug_score: s.rug_score,
-        status: s.status,
-        snippet: s.discord_message_snippet?.slice(0, 60),
-      })),
-    })
-  }
 }
 
 function isCliTarget(filePath: string | undefined): boolean {
@@ -1152,11 +1250,105 @@ function isCliTarget(filePath: string | undefined): boolean {
   )
 }
 
+/**
+ * Format a human-readable error message when configuration loading or validation fails.
+ * Points to the exact JSON configuration file path, identifies required fields pointing to
+ * unset environment variables, and instructs the user how to either set the env var or
+ * update the JSON file directly.
+ */
+export function formatConfigLoadError(err: any): string {
+  const configFilePath =
+    err?.configPath ||
+    err?.cause?.configPath ||
+    process.env.USER_CONFIG_PATH ||
+    _USER_CONFIG_PATH ||
+    path.resolve(process.cwd(), 'config', 'user-config.json')
+
+  const issues: any[] =
+    (Array.isArray(err?.issues) && err.issues) ||
+    (Array.isArray(err?.cause?.issues) && err.cause.issues) ||
+    (Array.isArray(err?.cause?.cause?.issues) && err.cause.cause.issues) ||
+    (Array.isArray(err?.cause?.cause?.errors) && err.cause.cause.errors) ||
+    []
+
+  if (issues.length === 0) {
+    return [
+      '',
+      '[config] Failed to load configuration:',
+      `  Configuration file: ${configFilePath}`,
+      `  Error: ${err?.message ?? String(err)}`,
+      '',
+    ].join('\n')
+  }
+
+  const envIssues: Array<{ field: string; envVar: string }> = []
+  const otherIssues: Array<{ field: string; message: string }> = []
+
+  for (const issue of issues) {
+    const field = Array.isArray(issue.path) && issue.path.length > 0 ? issue.path.join('.') : 'configuration'
+    const envMatch = issue.message?.match(/Environment variable (\w+)/)
+    const envVar = issue.params?.envVar || envMatch?.[1]
+    if (envVar) {
+      envIssues.push({ field, envVar })
+    } else {
+      otherIssues.push({ field, message: issue.message || 'Invalid value' })
+    }
+  }
+
+  const lines: string[] = []
+  lines.push('')
+  lines.push('[config] Configuration validation failed:')
+  lines.push(`  Configuration file: ${configFilePath}`)
+  lines.push('')
+
+  if (envIssues.length > 0) {
+    lines.push('The following required configuration values reference environment variables that are not set:')
+    for (const item of envIssues) {
+      lines.push(
+        `  • Field "${item.field}" requires environment variable: ${item.envVar} (referenced as "env.${item.envVar}")`,
+      )
+    }
+    lines.push('')
+    lines.push('You should EITHER:')
+    lines.push('  1. Set the environment variable in your .env file or system environment:')
+    const uniqueVars = [...new Set(envIssues.map((i) => i.envVar))]
+    for (const v of uniqueVars) {
+      lines.push(`     ${v}=<value>`)
+    }
+    lines.push('')
+    lines.push('  2. OR update the value directly in your configuration file:')
+    lines.push(`     ${configFilePath}`)
+    lines.push('     (specify the actual value directly instead of referencing "env.VARIABLE")')
+  }
+
+  if (otherIssues.length > 0) {
+    if (envIssues.length > 0) lines.push('')
+    lines.push('Additional configuration schema errors:')
+    for (const item of otherIssues) {
+      lines.push(`  • Field "${item.field}": ${item.message}`)
+    }
+    lines.push(`\nPlease review and fix your configuration file: ${configFilePath}`)
+  }
+
+  lines.push('')
+  return lines.join('\n')
+}
+
 const isMain = isCliTarget(process.argv[1]) || (typeof require !== 'undefined' && require.main === module)
 
 if (isMain) {
   main().catch((err) => {
-    console.error(err)
+    // Human-readable error output for config validation issues
+    if (
+      err &&
+      (err.name === 'ConfigLoadError' ||
+        err.constructor?.name === 'ConfigLoadError' ||
+        String(err.message).includes('[config]'))
+    ) {
+      console.error(formatConfigLoadError(err))
+      process.exit(1)
+    }
+    console.error(err.message ?? err)
     process.exit(1)
   })
 }

@@ -4,12 +4,12 @@
  * Uses config.connection as the single source of truth with automatic RPC fallback support.
  */
 
-import path from 'node:path'
 import fs from 'node:fs'
+import path from 'node:path'
 import { Connection, Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { config } from '../config/Config.js'
-import { getEtemaroDir } from './constants.js'
+import { credentialsPath } from './constants.js'
 import { log } from './logger.js'
 import { isTransientRpcError, type RpcRetryOptions, withRpcRetry } from './utils.js'
 
@@ -69,8 +69,8 @@ export function getWalletKeypair(): Keypair {
   // New: keystore alias support
   if (!key && config.connection?.wallet) {
     const alias = config.connection.wallet
-    const walletPath = path.join(getEtemaroDir(), '.credentials', 'wallets', `${alias}.json`)
-    
+    const walletPath = credentialsPath(`${alias}.json`)
+
     if (fs.existsSync(walletPath)) {
       try {
         // Enforce strict permissions on POSIX systems
@@ -81,12 +81,12 @@ export function getWalletKeypair(): Keypair {
               fs.chmodSync(walletPath, 0o600)
             } catch (chmodErr) {
               throw new Error(
-                `[wallet] FATAL: Insecure file permissions on ${walletPath} (0${(stats.mode & 0o777).toString(8)}). Must be 0600 (owner read/write only).`
+                `[wallet] FATAL: Insecure file permissions on ${walletPath} (0${(stats.mode & 0o777).toString(8)}). Must be 0600 (owner read/write only).`,
               )
             }
           }
         }
-        
+
         const walletData = JSON.parse(fs.readFileSync(walletPath, 'utf8'))
         // Support both Base58 strings and Solana CLI JSON arrays
         if (Array.isArray(walletData)) {
@@ -143,7 +143,19 @@ export async function withRpcFailover<T>(
 ): Promise<T> {
   const primaryConn = getConnection(false)
   if (!hasFallbackRpc()) {
-    return withRpcRetry(() => fn(primaryConn), options)
+    try {
+      return await withRpcRetry(() => fn(primaryConn), options)
+    } catch (err) {
+      if (isTransientRpcError(err)) {
+        const errMessage = err instanceof Error ? err.message : String(err)
+        const label = options.label ? ` [${options.label}]` : ''
+        log(
+          'rpc_warn',
+          `Primary RPC failed${label} (${errMessage.slice(0, 100)}) — no fallback RPC configured (set connection.rpcUrl2 in user-config.json or RPC_URL_2 in .env to enable failover)`,
+        )
+      }
+      throw err
+    }
   }
 
   try {

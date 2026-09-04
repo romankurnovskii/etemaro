@@ -308,7 +308,7 @@ interface ComputePositionsResult {
   wallet: string
   total_positions: number
   positions: BuiltPosition[]
-  source: string
+  source: 'rpc' | 'meteora_api'
 }
 
 export async function computePositions(walletAddress: string): Promise<ComputePositionsResult> {

@@ -11,6 +11,7 @@
 
 import fs from 'node:fs'
 import {
+  DEFAULT_AGENT_ID,
   DEFAULT_LLM_BASE_URL,
   MIN_SAFE_BINS_BELOW,
   setMinSafeBinsBelowOverride,
@@ -22,12 +23,18 @@ import type { AppConfig } from '../shared/types.js'
 import { numericConfig, resolveEnvString } from '../shared/utils.js'
 import { isHelpOrInfoCommand, loadAndValidateConfig } from './ConfigValidator.js'
 import { DEFAULT_USER_CONFIG } from './defaultUserConfig.js'
+import { formatConfigLoadError } from './formatConfigLoadError.js'
 import type { ValidatedUserConfig } from './schema.js'
 
 export class ConfigLoadError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
+  public configPath?: string
+  public issues?: any[]
+
+  constructor(message: string, options?: ErrorOptions & { configPath?: string; issues?: any[] }) {
     super(message, options)
     this.name = 'ConfigLoadError'
+    if (options?.configPath) this.configPath = options.configPath
+    if (options?.issues) this.issues = options.issues
   }
 }
 
@@ -42,10 +49,22 @@ function buildConfig(): AppConfig {
       }
     } else {
       const explicitConfig = process.env.USER_CONFIG_PATH?.trim()
-      const message = explicitConfig
+      const resolvedConfigPath = err?.configPath ?? (explicitConfig ? explicitConfig : USER_CONFIG_PATH)
+      const baseMessage = explicitConfig
         ? `[config] Fatal: Failed to load explicit configuration from USER_CONFIG_PATH="${explicitConfig}": ${err.message}`
         : `[config] Fatal: Failed to load configuration: ${err.message}`
-      throw new ConfigLoadError(message, { cause: err })
+      const formatted = formatConfigLoadError(err, resolvedConfigPath)
+      const message = `${baseMessage}\n${formatted}`
+      const configError = new ConfigLoadError(message, {
+        cause: err,
+        configPath: resolvedConfigPath,
+        issues: err?.issues ?? err?.cause?.issues ?? [],
+      })
+      if (!process.env.VITEST && process.env.NODE_ENV !== 'test') {
+        console.error(formatted)
+        process.exit(1)
+      }
+      throw configError
     }
   }
 
@@ -71,9 +90,9 @@ function buildConfig(): AppConfig {
   // The shape of u now closely matches AppConfig since Zod validates the nested structure.
   return {
     _version: u._version ?? 3,
-    agentId: u.agentId ?? null,
+    agentId: u.agentId && u.agentId.length > 0 ? u.agentId : DEFAULT_AGENT_ID,
     connection: {
-      rpcUrl: u.connection?.rpcUrl,
+      rpcUrl: u.connection?.rpcUrl ?? '',
       wallet: u.connection?.wallet,
       walletPrivateKey: u.connection?.walletPrivateKey,
       heliusApiKey: u.connection?.heliusApiKey ?? null,
@@ -104,8 +123,6 @@ function buildConfig(): AppConfig {
       timeframe: u.screening.timeframe,
       category: u.screening.category,
       minTokenFeesSol: u.screening.minTokenFeesSol,
-      useDiscordSignals: u.screening.useDiscordSignals,
-      discordSignalMode: u.screening.discordSignalMode,
       avoidPvpSymbols: u.screening.avoidPvpSymbols,
       blockPvpSymbols: u.screening.blockPvpSymbols,
       maxBotHoldersPct: u.screening.maxBotHoldersPct,
@@ -208,7 +225,7 @@ function buildConfig(): AppConfig {
       },
     },
     pnl: {
-      rpcUrl: u.pnl.rpcUrl,
+      rpcUrl: u.pnl.rpcUrl ?? '',
       source: u.pnl.source,
       pollIntervalSec: u.pnl.pollIntervalSec,
       depositCacheTtlSec: u.pnl.depositCacheTtlSec,
@@ -227,16 +244,16 @@ function buildConfig(): AppConfig {
     },
     gmgn: {
       enabled: u.gmgn.enabled,
-      apiKey: u.gmgn.apiKey as string,
+      apiKey: u.gmgn.apiKey || null,
       baseUrl: u.gmgn.baseUrl as string,
       requestDelayMs: u.gmgn.requestDelayMs,
       maxRetries: u.gmgn.maxRetries,
       feeSource: u.gmgn.feeSource,
     },
     jupiter: {
-      apiKey: u.jupiter.apiKey,
-      referralAccount: u.jupiter.referralAccount,
-      referralFeeBps: u.jupiter.referralFeeBps,
+      apiKey: u.jupiter.apiKey ?? '',
+      referralAccount: u.jupiter.referralAccount ?? '',
+      referralFeeBps: u.jupiter.referralFeeBps ?? 50,
     },
     indicators: {
       enabled: u.chartIndicators.enabled,
@@ -290,10 +307,6 @@ export function reloadScreeningThresholds(): void {
         s.minFeeActiveTvlRatio = resolveField('minFeeActiveTvlRatio', u.minFeeActiveTvlRatio) as number
       if (u.minTokenFeesSol != null) s.minTokenFeesSol = resolveField('minTokenFeesSol', u.minTokenFeesSol) as number
       if (u.maxTop10Pct != null) s.maxTop10Pct = resolveField('maxTop10Pct', u.maxTop10Pct) as number
-      if (u.useDiscordSignals !== undefined)
-        s.useDiscordSignals = resolveField('useDiscordSignals', u.useDiscordSignals) as boolean
-      if (u.discordSignalMode != null)
-        s.discordSignalMode = resolveField('discordSignalMode', u.discordSignalMode) as string
       if (u.excludeHighSupplyConcentration !== undefined)
         s.excludeHighSupplyConcentration = resolveField(
           'excludeHighSupplyConcentration',
