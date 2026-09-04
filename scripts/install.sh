@@ -105,7 +105,7 @@ fi
 echo ""
 echo "Etemaro also has a cross-platform desktop app."
 printf "Install desktop app? [y/N] "
-read -r REPLY
+read -r REPLY </dev/tty
 case "$REPLY" in
     [yY]|[yY][eE][sS])
         install_desktop
