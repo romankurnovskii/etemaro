@@ -205,6 +205,48 @@ export function invalidateBalanceCache(): void {
   _balanceCacheAt = 0
 }
 
+let _solPriceCache: number | null = null
+let _solPriceCacheAt = 0
+
+/**
+ * Fetch current SOL/USD price via Binance public ticker (no API key required).
+ * Falls back to Coinbase if Binance fails. Caches price for 60 seconds.
+ */
+export async function getSolPrice(options?: { force?: boolean }): Promise<number | null> {
+  const force = options?.force ?? false
+  if (!force && _solPriceCache && Date.now() - _solPriceCacheAt < 60_000) {
+    return _solPriceCache
+  }
+  try {
+    // Primary: Binance public ticker (no API key required)
+    const binanceRes = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT')
+    if (binanceRes.ok) {
+      const data = (await binanceRes.json()) as { price: string }
+      const price = Number(data.price)
+      if (Number.isFinite(price) && price > 0) {
+        _solPriceCache = price
+        _solPriceCacheAt = Date.now()
+        return price
+      }
+    }
+    // Fallback: Coinbase public spot price
+    const cbRes = await fetch('https://api.coinbase.com/v2/prices/SOL-USD/spot')
+    if (cbRes.ok) {
+      const cbData = (await cbRes.json()) as { data?: { amount?: string } }
+      const price = Number(cbData?.data?.amount)
+      if (Number.isFinite(price) && price > 0) {
+        _solPriceCache = price
+        _solPriceCacheAt = Date.now()
+        return price
+      }
+    }
+  } catch (err: unknown) {
+    const e = err as { message?: string }
+    log('wallet_warn', `SOL price fetch failed: ${e.message || err}`)
+}
+return _solPriceCache
+}
+
 export type { WalletBalancesResult }
 
 /**
@@ -274,30 +316,34 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
         })
       }
 
-      // Fetch prices from Jupiter Price API v2
-      const prices: Record<string, number> = {}
-      try {
-        const priceUrl = `https://api.jup.ag/price/v2?ids=${mintsToPrice.join(',')}`
-        const jupHeaders: Record<string, string> = {}
-        const jupApiKey = getJupiterApiKey()
-        if (jupApiKey) jupHeaders['x-api-key'] = jupApiKey
-        const pRes = await fetchWithRateLimitRetry(priceUrl, { headers: jupHeaders }, { attempts: 2 })
-        if (pRes.ok) {
-          const pData = (await pRes.json()) as { data?: Record<string, { price?: string }> }
-          if (pData?.data) {
-            for (const [m, pObj] of Object.entries(pData.data)) {
-              const pNum = Number(pObj?.price)
-              if (Number.isFinite(pNum)) prices[m] = pNum
+        // Fetch SOL price via Binance (cached) - fallback if Jupiter doesn't return SOL price
+        const binanceSolPrice = (await getSolPrice()) ?? 0;
+
+        // Fetch token prices via Jupiter (including SOL)
+        const prices: Record<string, number> = {};
+        try {
+          const priceUrl = `https://api.jup.ag/price/v2?ids=${mintsToPrice.join(',')}`;
+          const jupHeaders: Record<string, string> = {};
+          const jupApiKey = getJupiterApiKey();
+          if (jupApiKey) jupHeaders['x-api-key'] = jupApiKey;
+          const pRes = await fetchWithRateLimitRetry(priceUrl, { headers: jupHeaders }, { attempts: 2 });
+          if (pRes.ok) {
+            const pData = (await pRes.json()) as { data?: Record<string, { price?: string }> };
+            if (pData?.data) {
+              for (const [m, pObj] of Object.entries(pData.data)) {
+                const pNum = Number(pObj?.price);
+                if (Number.isFinite(pNum)) prices[m] = pNum;
+              }
             }
           }
+        } catch (pErr: unknown) {
+          const e = pErr as { message?: string };
+          log('wallet_warn', `Jupiter Price API fetch failed: ${e.message || pErr}`);
         }
-      } catch (pErr: unknown) {
-        const e = pErr as { message?: string }
-        log('wallet_warn', `Jupiter Price API fetch failed: ${e.message || pErr}`)
-      }
 
-      const solPrice = prices[SOL_MINT] || 0
-      const solUsd = solBalance * solPrice
+        // Use Jupiter SOL price if available, otherwise fall back to Binance
+        const solPrice = prices[SOL_MINT] ?? binanceSolPrice;
+      const solUsd = solBalance * solPrice;
       const usdcEntry = tokensList.find((t) => t.mint === USDC_MINT)
       const usdcBalance = usdcEntry ? usdcEntry.balance : 0
 
@@ -400,16 +446,25 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
       }
     }
 
-    return {
-      wallet: walletAddress,
-      sol: 0,
-      sol_price: 0,
-      sol_usd: 0,
-      usdc: 0,
-      tokens: [],
-      total_usd: 0,
-      error: 'Failed to fetch balances via Solana RPC or Helius API',
-    }
+    const fallbackResult: WalletBalancesResult = _balanceCache
+      ? {
+          ..._balanceCache,
+          error: 'Failed to refresh balances via Solana RPC or Helius API (using cached values)',
+        }
+      : {
+          wallet: walletAddress,
+          sol: 0,
+          sol_price: 0,
+          sol_usd: 0,
+          usdc: 0,
+          tokens: [],
+          total_usd: 0,
+          error: 'Failed to fetch balances via Solana RPC or Helius API',
+        }
+
+    _balanceCache = fallbackResult
+    _balanceCacheAt = Date.now()
+    return fallbackResult
   }
 
   _balanceInflight = fetchBalances().finally(() => {

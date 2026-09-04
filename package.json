@@ -39,7 +39,6 @@
   },
   "knip": {
     "ignore": [
-      "discord-listener/**",
       "dist/**"
     ]
   },

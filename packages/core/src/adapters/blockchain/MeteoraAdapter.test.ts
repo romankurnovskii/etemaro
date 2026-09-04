@@ -9,6 +9,13 @@ vi.mock('../../shared/logger.js', () => ({
 vi.mock('../../domain/state.js', () => ({
   getTrackedPosition: vi.fn().mockReturnValue({ pool: '11111111111111111111111111111111', pool_name: 'TEST-SOL' }),
   recordClose: vi.fn(),
+  syncOpenPositions: vi.fn(),
+  reconcileTrackedPositions: vi.fn(),
+  minutesOutOfRange: vi.fn().mockReturnValue(0),
+  markInRange: vi.fn(),
+  markOutOfRange: vi.fn(),
+  recordClaim: vi.fn(),
+  trackPosition: vi.fn(),
 }))
 
 vi.mock('@meteora-ag/dlmm', () => {
@@ -54,6 +61,7 @@ vi.mock('../external/AgentMeridianClient.js', () => ({
 
 vi.mock('../PnLAdapter.js', () => ({
   computePositions: vi.fn().mockResolvedValue({ positions: [], total_positions: 0 }),
+  fetchDlmmPnlForPool: vi.fn().mockResolvedValue({}),
 }))
 
 vi.mock('../../config/Config.js', () => ({
@@ -72,7 +80,8 @@ import { config } from '../../config/Config.js'
 import { recordClose } from '../../domain/state.js'
 import { getConnection, resetConnectionState } from '../../shared/connection.js'
 import { agentMeridianJson } from '../external/AgentMeridianClient.js'
-import { closePosition, getWalletPositions } from './MeteoraAdapter.js'
+import { computePositions, fetchDlmmPnlForPool } from '../PnLAdapter.js'
+import { closePosition, getMyPositions, getPositionPnl, getWalletPositions } from './MeteoraAdapter.js'
 
 describe('MeteoraAdapter — closePosition state reconciliation for on-chain closed positions', () => {
   beforeEach(() => {
@@ -303,4 +312,64 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
       }),
     )
   }, 15000)
+})
+
+describe('MeteoraAdapter — PnL source options (meteora_api vs rpc)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    config.pnl.source = 'meteora_api'
+    config.pnl.rpcUrl = 'https://mock.rpc'
+  })
+
+  it('getMyPositions calls computePositions directly when config.pnl.source is "rpc"', async () => {
+    config.pnl.source = 'rpc'
+    vi.mocked(computePositions).mockResolvedValueOnce({
+      wallet: 'test-wallet',
+      positions: [{ position: 'pos_rpc_1', pair: 'SOL-USDC', pnl_usd: 10 } as any],
+      total_positions: 1,
+      source: 'rpc',
+    })
+
+    const res = await getMyPositions({ force: true, silent: true })
+    expect(computePositions).toHaveBeenCalled()
+    expect(res.positions[0]?.position).toBe('pos_rpc_1')
+  })
+
+  it('getMyPositions falls back to RPC when config.pnl.source is "meteora_api" and REST API fails', async () => {
+    config.pnl.source = 'meteora_api'
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('Network offline'))
+    vi.mocked(computePositions).mockResolvedValueOnce({
+      wallet: 'test-wallet',
+      positions: [{ position: 'pos_fallback_1', pair: 'SOL-USDC', pnl_usd: 5 } as any],
+      total_positions: 1,
+      source: 'rpc',
+    })
+
+    try {
+      const res = await getMyPositions({ force: true, silent: true })
+      expect(computePositions).toHaveBeenCalled()
+      expect(res.positions[0]?.position).toBe('pos_fallback_1')
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('getPositionPnl queries Meteora PnL API first under meteora_api source', async () => {
+    config.pnl.source = 'meteora_api'
+    vi.mocked(fetchDlmmPnlForPool).mockResolvedValueOnce({
+      pos_123: {
+        pnlUsd: 12.5,
+        pnlPctChange: 5.0,
+        unrealizedPnl: { balances: 100, unclaimedFeeTokenX: { usd: 1 }, unclaimedFeeTokenY: { usd: 1 } },
+        allTimeFees: { total: { usd: 2 } },
+        feePerTvl24h: 0.1,
+        isOutOfRange: false,
+      } as any,
+    })
+
+    const pnl = await getPositionPnl({ pool_address: 'pool_1', position_address: 'pos_123' })
+    expect(fetchDlmmPnlForPool).toHaveBeenCalledWith('pool_1', expect.any(String))
+    expect(pnl.pnl_usd).toBe(12.5)
+    expect(pnl.pnl_pct).toBe(5)
+  })
 })

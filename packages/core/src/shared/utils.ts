@@ -15,7 +15,18 @@ import { log } from './logger.js'
 
 // ─── Path Utilities ────────────────────────────────────────
 
-export { configPath, dataPath, REPO_ROOT, repoPath, sharedDataPath, strategyLibraryPath } from './constants.js'
+export {
+  configPath,
+  credentialsPath,
+  dataPath,
+  getInstanceId,
+  instanceDataPath,
+  REPO_ROOT,
+  repoPath,
+  sharedConfigPath,
+  sharedDataPath,
+  strategyLibraryPath,
+} from './constants.js'
 
 // ─── Math Utilities ────────────────────────────────────────
 

@@ -1,3 +1,0 @@
-# Nested git: ignore everything, use git add -f for runtime configs
-*
-!.gitignore

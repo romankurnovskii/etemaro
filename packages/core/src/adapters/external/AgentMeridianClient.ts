@@ -12,6 +12,7 @@
  */
 
 import { config } from '../../config/Config.js'
+import { DEFAULT_AGENT_ID } from '../../shared/constants.js'
 import { createTimer, logStructured } from '../../shared/logger.js'
 import { sleep } from '../../utils/time.js'
 
@@ -48,7 +49,7 @@ export function getAgentMeridianHeaders({ json = false } = {}): Record<string, s
 
 export function getAgentIdForRequests(): string {
   // ponytail: local agentId only — no fallback to hiveMind.agentId (separate identity)
-  return config.agentId || 'agent-etemaro-local'
+  return config.agentId || DEFAULT_AGENT_ID
 }
 
 function isRetryableStatus(status: number): boolean {

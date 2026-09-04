@@ -18,7 +18,12 @@ wallets.json
 
 # Configuration files
 config/*.json
+config/*.cjs
+config/*.bak
+config/trader-notes.md
+config/instances/
 !config/templates/*.json
+!config/templates/*.cjs
 
 # Stray Claude Code worktrees
 .claude/worktrees/

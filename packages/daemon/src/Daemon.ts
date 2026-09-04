@@ -52,6 +52,7 @@ import {
   screening,
   setLastBriefingDate,
   setPositionInstruction,
+  sharedConfigPath,
   sharedDataPath,
   strategyLibraryPath,
   TELEGRAM_QUEUE_FILENAME,
@@ -78,6 +79,7 @@ export interface DaemonAdapters {
   }
   wallet: {
     getWalletBalances: () => Promise<any>
+    getSolPrice?: (opts?: { force?: boolean }) => Promise<number | null>
   }
   screening: {
     getTopCandidates: (opts: { limit: number }) => Promise<any>
@@ -406,7 +408,7 @@ export class Daemon {
     log('startup', `Model: ${config.llm.defaultModel}`)
 
     // === Resolved Data Paths & Counts ===
-    const smartWalletsPath = sharedDataPath(SMART_WALLETS_FILENAME)
+    const smartWalletsPath = sharedConfigPath(SMART_WALLETS_FILENAME)
     const smartWalletsInfo = loadJsonFileWithInfo<{ wallets?: unknown[] }>(smartWalletsPath, { wallets: [] })
     const smartWalletsLoaded = smartWalletsInfo.loadedFrom === 'file'
     const smartWalletsCount = smartWalletsInfo.data.wallets?.length || 0
@@ -415,16 +417,15 @@ export class Daemon {
       `${SMART_WALLETS_FILENAME}: ${smartWalletsPath} (${smartWalletsLoaded ? 'found' : 'fallback/created'}, ${smartWalletsCount} wallets)`,
     )
 
-    // Private strategy library
-    const privateLibPath = strategyLibraryPath(STRATEGY_LIB_FILENAME)
+    // Strategy libraries (Chapter 7: global shared knowledge in config/shared/)
+    const privateLibPath = sharedConfigPath(STRATEGY_LIB_FILENAME)
     const privateLibInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(privateLibPath, {
       strategies: {},
     })
     const privateCount = Object.keys(privateLibInfo.data.strategies || {}).length
     const privateLoaded = privateLibInfo.loadedFrom === 'file'
 
-    // Shared strategy library (checks repo data/ first, then strategyLibraryPath fallback)
-    let sharedLibPath = repoPath('data', SHARED_STRATEGY_LIB_FILENAME)
+    let sharedLibPath = sharedConfigPath(SHARED_STRATEGY_LIB_FILENAME)
     let sharedLibInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(sharedLibPath, {
       strategies: {},
     })
@@ -450,7 +451,7 @@ export class Daemon {
       `${SHARED_STRATEGY_LIB_FILENAME}: ${sharedLibPath} (${sharedLoaded ? 'found' : 'defaults'}, ${sharedCount || 10} strategies) [total available: ${totalCount}]`,
     )
 
-    const tokenBlacklistPath = sharedDataPath(TOKEN_BLACKLIST_FILENAME)
+    const tokenBlacklistPath = sharedConfigPath(TOKEN_BLACKLIST_FILENAME)
     const tokenBlacklistInfo = loadJsonFileWithInfo<Record<string, unknown>>(tokenBlacklistPath, {})
     const tokenBlacklistLoaded = tokenBlacklistInfo.loadedFrom === 'file'
     const tokenBlacklistCount = Object.keys(tokenBlacklistInfo.data || {}).length
@@ -459,7 +460,7 @@ export class Daemon {
       `${TOKEN_BLACKLIST_FILENAME}: ${tokenBlacklistPath} (${tokenBlacklistLoaded ? 'found' : 'fallback'}, ${tokenBlacklistCount} items)`,
     )
 
-    const devBlocklistPath = sharedDataPath(DEV_BLOCKLIST_FILENAME)
+    const devBlocklistPath = sharedConfigPath(DEV_BLOCKLIST_FILENAME)
     const devBlocklistInfo = loadJsonFileWithInfo<Record<string, unknown>>(devBlocklistPath, {})
     const devBlocklistLoaded = devBlocklistInfo.loadedFrom === 'file'
     const devBlocklistCount = Object.keys(devBlocklistInfo.data || {}).length
@@ -585,7 +586,7 @@ export class Daemon {
   private buildPrompt(): string {
     const mgmt = this.formatCountdown(this.nextRunIn(this.managementLastRun, config.schedule.managementIntervalMin))
     const scrn = this.formatCountdown(this.nextRunIn(this.screeningLastRun, config.schedule.screeningIntervalMin))
-    return `[manage: ${mgmt} | screen: ${scrn}]\n> `
+    return `etemaro [manage: ${mgmt} | screen: ${scrn}] > `
   }
 
   // ─── Cron Definitions ──────────────────────────────────────────
@@ -658,9 +659,10 @@ Summarize the current portfolio health, total fees earned, and performance of al
     )
 
     // Fast PnL poller — the real-time exit path between management cycles, no LLM.
-    const pnlPollMs = Math.max(1, Number(config.pnl.pollIntervalSec ?? 3)) * 1000
+    const pnlPollMs = Math.max(1, Number(config.pnl.pollIntervalSec ?? 15)) * 1000
     const confirmTicks = Math.max(1, Number(config.pnl.confirmTicks ?? 2))
 
+    // TODO for interval review of shoulduse semaphore
     this.pnlPollInterval = setInterval(async () => {
       if (getTrackedPositions(true).length === 0) return
       if (!this.acquireLock('pnlPoll')) return
@@ -692,9 +694,10 @@ Summarize the current portfolio health, total fees earned, and performance of al
           const { fire } = registerExitSignal(p.position, signal, confirmTicks)
           if (!signal || !fire) continue
 
+          const pollSource = (result as any).source === 'rpc' ? 'Solana RPC' : 'Meteora Datapi'
           log(
             'state',
-            `[PnL poll] ${signal} confirmed (${confirmTicks} ticks): ${p.pair} — ${reason} — closing directly`,
+            `[PnL poll via ${pollSource}] ${signal} confirmed (${confirmTicks} ticks): ${p.pair} — ${reason} — closing directly`,
           )
           // Hold the management lock so the cron cycle can't double-act on this position.
           const wasManagementBusy = this.managementBusy
@@ -747,13 +750,6 @@ Summarize the current portfolio health, total fees earned, and performance of al
             )
           if (!candidates.length) return
 
-          const balance = await this.adapters.wallet.getWalletBalances().catch((err: any) => {
-            log('cron_error', `Opportunity poller failed to fetch wallet balances: ${err?.message || err}`)
-            return null
-          })
-          const minRequired = config.management.deployAmountSol + config.management.gasReserve
-          if (!config.connection.dryRun && (!balance || balance.sol < minRequired)) return
-
           const minScore = config.opportunity.minScore
           const bonus = Number(config.opportunity.smartWalletScoreBonus ?? 0)
           const floor = minScore - bonus
@@ -780,6 +776,21 @@ Summarize the current portfolio health, total fees earned, and performance of al
             }
           }
           if (!trigger) return
+
+          if (!config.connection.dryRun) {
+            const balance = await this.adapters.wallet.getWalletBalances().catch((err: any) => {
+              log('cron_error', `Opportunity poller failed to fetch wallet balances: ${err?.message || err}`)
+              return null
+            })
+            const minRequired = config.management.deployAmountSol + config.management.gasReserve
+            if (!balance || balance.sol < minRequired) {
+              log(
+                'cron',
+                `[Opportunity] ${trigger.c.name} triggered (degen ${trigger.s.toFixed(1)}) but insufficient SOL (${balance?.sol ?? 0} < ${minRequired}) — skipping deploy`,
+              )
+              return
+            }
+          }
 
           const smartTag = trigger.smart.length
             ? ` + smart wallet [${trigger.smart.map((w: any) => w.name || w.address?.slice(0, 4)).join(', ')}] (bar lowered ${minScore}→${floor})`
@@ -811,9 +822,11 @@ Summarize the current portfolio health, total fees earned, and performance of al
   private async getBriefingWithSolPrice(): Promise<string> {
     let solPrice: number | undefined
     try {
-      const wallet = await this.adapters.wallet.getWalletBalances()
-      if (wallet?.sol_price && Number(wallet.sol_price) > 0) {
-        solPrice = Number(wallet.sol_price)
+      if (this.adapters.wallet.getSolPrice) {
+        const p = await this.adapters.wallet.getSolPrice()
+        if (p && p > 0) {
+          solPrice = p
+        }
       }
     } catch {
       // Best-effort: fall back to deriving SOL price inside the briefing adapter
@@ -1169,10 +1182,7 @@ After evaluating, write a brief one-line result per position.
     let liveMessage: any = null
     let screenReport: string | null = null
     try {
-      ;[prePositions, preBalance] = await Promise.all([
-        this.adapters.meteora.getMyPositions({ force: true }),
-        this.adapters.wallet.getWalletBalances(),
-      ])
+      prePositions = await this.adapters.meteora.getMyPositions({ force: true })
       if (prePositions.total_positions >= config.risk.maxPositions) {
         log(
           'cron',
@@ -1189,19 +1199,24 @@ After evaluating, write a brief one-line result per position.
       }
       const minRequired = config.management.deployAmountSol + config.management.gasReserve
       const isDryRun = config.connection.dryRun
-      if (!isDryRun && preBalance.sol < minRequired) {
-        log(
-          'cron',
-          `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired.toFixed(3)} needed for deploy + gas)`,
-        )
-        screenReport = `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired.toFixed(3)} needed for deploy + gas).`
-        this.adapters.domain.appendDecision({
-          type: 'skip',
-          actor: 'SCREENER',
-          summary: 'Screening skipped',
-          reason: `Insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired.toFixed(3)})`,
-        })
-        return screenReport
+      if (!isDryRun) {
+        preBalance = await this.adapters.wallet.getWalletBalances()
+        if (preBalance.sol < minRequired) {
+          log(
+            'cron',
+            `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired.toFixed(3)} needed for deploy + gas)`,
+          )
+          screenReport = `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired.toFixed(3)} needed for deploy + gas).`
+          this.adapters.domain.appendDecision({
+            type: 'skip',
+            actor: 'SCREENER',
+            summary: 'Screening skipped',
+            reason: `Insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired.toFixed(3)})`,
+          })
+          return screenReport
+        }
+      } else {
+        preBalance = { sol: Math.max(config.management.deployAmountSol, 1), tokens: [] }
       }
 
       if (!silent && this.adapters.telegram.isEnabled()) {
@@ -1811,7 +1826,6 @@ IMPORTANT:
       lpAgentRelayEnabled: config.api.meridian.lpAgentRelayEnabled,
       chartIndicatorsEnabled: config.indicators.enabled,
       trailingTakeProfit: config.management.trailingTakeProfit,
-      useDiscordSignals: config.screening.useDiscordSignals,
       blockPvpSymbols: config.screening.blockPvpSymbols,
       strategy: config.strategy.strategyMeteora,
       minBinsBelow: config.strategy.minBinsBelow,
@@ -1910,10 +1924,7 @@ IMPORTANT:
       ]
     } else if (page === 'screen') {
       rows = [
-        [
-          this.toggleButton('useDiscordSignals', 'Discord signals'),
-          this.toggleButton('blockPvpSymbols', 'PVP hard block'),
-        ],
+        [this.toggleButton('blockPvpSymbols', 'PVP hard block')],
         [
           this.settingButton('Strategy: spot', 'cfg:set:strategy:spot'),
           this.settingButton('Strategy: bid_ask', 'cfg:set:strategy:bid_ask'),
@@ -2049,7 +2060,6 @@ IMPORTANT:
       key === 'requireAllIntervals'
         ? 'indicators'
         : [
-              'useDiscordSignals',
               'blockPvpSymbols',
               'strategy',
               'minBinsBelow',
@@ -2899,6 +2909,8 @@ Commands:
   /thresholds    Show current screening thresholds + performance stats
   /evolve        Manually trigger threshold evolution from performance data
   /stop          Shut down
+
+Interactive REPL is active. Type a command or question at the prompt below and press Enter:
 `)
 
     rl.prompt()

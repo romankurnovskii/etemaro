@@ -9,13 +9,24 @@
  *
  * @dependencies vitest
  */
+import { afterEach, describe, expect, it } from 'vitest'
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
-import { configPath, dataPath, getDataDir, REPO_ROOT, sharedDataPath, strategyLibraryPath } from './constants.js'
+import {
+  configPath,
+  credentialsPath,
+  dataPath,
+  getDataDir,
+  getInstanceId,
+  instanceDataPath,
+  REPO_ROOT,
+  sharedConfigPath,
+  sharedDataPath,
+  strategyLibraryPath,
+} from './constants.js'
 
-const ENV_KEYS = ['USER_CONFIG_PATH', 'ETEMARO_DATA_DIR', 'DATA_DIR'] as const
+const ENV_KEYS = ['USER_CONFIG_PATH', 'ETEMARO_DATA_DIR', 'DATA_DIR', 'ETEMARO_INSTANCE_ID', 'INSTANCE_ID'] as const
 
 function snapshotEnv(): Record<string, string | undefined> {
   const snap: Record<string, string | undefined> = {}
@@ -55,12 +66,19 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     expect(configPath('user-config.json')).toBe(path.resolve(REPO_ROOT, 'config/relative-custom.json'))
   })
 
-  it('dataPath resolves standard filenames when using default config', () => {
+  it('dataPath isolates into data/instances/agent-default when using default config', () => {
     envSnap = snapshotEnv()
     delete process.env.USER_CONFIG_PATH
     delete process.env.ETEMARO_DATA_DIR
     delete process.env.DATA_DIR
     expect(getDataDir()).toBe(path.join(REPO_ROOT, 'data'))
+    expect(dataPath('state.json')).toBe(path.join(REPO_ROOT, 'data', 'instances', 'agent-default', 'state.json'))
+    expect(dataPath('logs')).toBe(path.join(REPO_ROOT, 'data', 'instances', 'agent-default', 'logs'))
+  })
+
+  it('dataPath resolves flat filenames when explicitly pointing to root user-config.json', () => {
+    envSnap = snapshotEnv()
+    process.env.USER_CONFIG_PATH = 'config/user-config.json'
     expect(dataPath('state.json')).toBe(path.join(REPO_ROOT, 'data', 'state.json'))
     expect(dataPath('logs')).toBe(path.join(REPO_ROOT, 'data', 'logs'))
   })
@@ -82,8 +100,12 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     process.env.DATA_DIR = '/tmp/data-dir-alias'
     process.env.ETEMARO_DATA_DIR = '/tmp/etemaro-data-preferred'
     expect(getDataDir()).toBe(path.resolve('/tmp/etemaro-data-preferred'))
-    expect(dataPath('state.json')).toBe(path.resolve('/tmp/etemaro-data-preferred', 'state.json'))
-    expect(dataPath('logs', 'agent.log')).toBe(path.resolve('/tmp/etemaro-data-preferred', 'logs', 'agent.log'))
+    expect(dataPath('state.json')).toBe(
+      path.resolve('/tmp/etemaro-data-preferred', 'instances', 'agent-default', 'state.json'),
+    )
+    expect(dataPath('logs', 'agent.log')).toBe(
+      path.resolve('/tmp/etemaro-data-preferred', 'instances', 'agent-default', 'logs', 'agent.log'),
+    )
   })
 
   it('getDataDir falls back to DATA_DIR when ETEMARO_DATA_DIR is unset', () => {
@@ -156,5 +178,62 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     if (home) {
       expect(getEtemaroDir()).toBe(path.join(home, '.config', 'etemaro'))
     }
+  })
+
+  it('getInstanceId detects instance name from env and config path', () => {
+    envSnap = snapshotEnv()
+    delete process.env.ETEMARO_INSTANCE_ID
+    delete process.env.INSTANCE_ID
+    delete process.env.USER_CONFIG_PATH
+
+    // Default instance config is agent-default (Chapter 7)
+    expect(getInstanceId()).toBe('agent-default')
+
+    // Explicit flat non-instance config returns ''
+    process.env.USER_CONFIG_PATH = 'config/user-config.json'
+    expect(getInstanceId()).toBe('')
+
+    process.env.ETEMARO_INSTANCE_ID = 'agent-sol-1'
+    expect(getInstanceId()).toBe('agent-sol-1')
+    delete process.env.ETEMARO_INSTANCE_ID
+
+    process.env.USER_CONFIG_PATH = 'config/instances/agent-usdc-2.json'
+    expect(getInstanceId()).toBe('agent-usdc-2')
+  })
+
+  it('dataPath isolates state into data/instances/<id>/ when running an instance', () => {
+    envSnap = snapshotEnv()
+    delete process.env.ETEMARO_DATA_DIR
+    delete process.env.DATA_DIR
+    process.env.USER_CONFIG_PATH = 'config/instances/agent-sol-1.json'
+
+    expect(dataPath('state.json')).toBe(path.join(REPO_ROOT, 'data', 'instances', 'agent-sol-1', 'state.json'))
+    expect(dataPath('lessons.json')).toBe(path.join(REPO_ROOT, 'data', 'instances', 'agent-sol-1', 'lessons.json'))
+    expect(dataPath('decision-log.json')).toBe(
+      path.join(REPO_ROOT, 'data', 'instances', 'agent-sol-1', 'decision-log.json'),
+    )
+    expect(dataPath('logs')).toBe(path.join(REPO_ROOT, 'data', 'instances', 'agent-sol-1', 'logs'))
+  })
+
+  it('instanceDataPath returns path in data/instances/<id>/', () => {
+    expect(instanceDataPath('agent-test', 'state.json')).toBe(
+      path.join(REPO_ROOT, 'data', 'instances', 'agent-test', 'state.json'),
+    )
+  })
+
+  it('sharedConfigPath resolves knowledge files in config/shared/', () => {
+    expect(sharedConfigPath('strategy-library.json')).toBe(
+      path.join(REPO_ROOT, 'config', 'shared', 'strategy-library.json'),
+    )
+    expect(sharedConfigPath('smart-wallets.json')).toBe(path.join(REPO_ROOT, 'config', 'shared', 'smart-wallets.json'))
+  })
+
+  it('credentialsPath resolves repo .credentials/wallets/', () => {
+    expect(credentialsPath('main-scalp.json')).toBe(path.join(REPO_ROOT, '.credentials', 'wallets', 'main-scalp.json'))
+  })
+
+  it('configPath finds configs in config/instances/ if present', () => {
+    delete process.env.USER_CONFIG_PATH
+    expect(configPath('agent-default.json')).toBe(path.join(REPO_ROOT, 'config', 'instances', 'agent-default.json'))
   })
 })
