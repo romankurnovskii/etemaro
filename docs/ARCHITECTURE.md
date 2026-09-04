@@ -175,12 +175,7 @@ The wallet architecture separates public config metadata from the raw private ke
 - Import existing private key (Base58 / file)
 - Select existing wallet alias
 
-### Env-to-Keystore Migration
 
-On startup, if `WALLET_PRIVATE_KEY` exists but no keystore, the CLI prompts to migrate:
-1. Writes key to `.credentials/wallets/default.json` (`0600`)
-2. Verifies the parsed public key matches the original
-3. Only after verification, purges `process.env.WALLET_PRIVATE_KEY`
 
 ## RPC & API Efficiency Architecture
 

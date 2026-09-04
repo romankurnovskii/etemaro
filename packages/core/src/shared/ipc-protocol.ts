@@ -84,6 +84,8 @@ export interface IpcLogEntry {
   agentId: string
   /** ISO timestamp string. */
   ts: string
+  /** Optional correlation ID for tracing operations across events. */
+  correlationId?: string
   /** Optional structured metadata. */
   metadata?: Record<string, unknown>
 }

@@ -193,7 +193,7 @@ In `config/user-config.json` and template:
 - **`confirmTicks` (Default: 2)**: Number of consecutive polling ticks that must confirm an exit signal (stop-loss, trailing take-profit, out-of-range) before triggering a close transaction. Prevents false exits caused by single-block liquidity wicks. Total exit detection latency = `pollIntervalSec × confirmTicks`.
 
 ### 4.4 Centralized RPC & Wallet Connection Manager (`packages/core/src/shared/connection.ts`)
-Instead of reading `process.env.RPC_URL` or `process.env.WALLET_PRIVATE_KEY` in multiple ad-hoc places, `packages/core/src/shared/connection.ts` serves as the single source of truth:
+Instead of reading `process.env.RPC_URL` in multiple ad-hoc places, `packages/core/src/shared/connection.ts` serves as the single source of truth:
 - Reads credentials from `config.connection` (with env var fallback).
 - Automatically initializes and manages primary `getConnection(false)` and fallback `getConnection(true)` connection instances based on `config.connection.rpcUrl` and `config.connection.rpcUrl2`.
 - Provides `getWalletKeypair()` and `getWalletAddress()` consistently.

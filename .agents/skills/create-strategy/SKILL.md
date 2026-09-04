@@ -218,7 +218,7 @@ Provide the CLI command to activate it.
 ### Block C — Verification checklist
 
 ```
-✅ Env vars assumed set: WALLET_PRIVATE_KEY, LLM_API_KEY, LLM_MODEL, RPC_URL
+✅ Env vars assumed set: LLM_API_KEY, LLM_MODEL, RPC_URL
 ✅ dryRun: true  ← test first before going live
 ✅ Smart wallets: <populated / not needed>
 ✅ Active strategy ID: <id>
