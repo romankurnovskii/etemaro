@@ -8,7 +8,6 @@ import path from 'node:path'
 import dotenv from 'dotenv'
 
 export interface SetupStatus {
-  wallet: boolean
   llm: boolean
   jupiter: boolean
   readyForDryRun: boolean
@@ -23,7 +22,6 @@ export interface SkeletonResult {
 }
 
 const ENV_TEMPLATE = `# etemaro — first-run environment
-WALLET_PRIVATE_KEY=""
 LLM_API_KEY=""
 LLM_BASE_URL="https://openrouter.ai/api/v1"
 LLM_MODEL="anthropic/claude-3.5-sonnet"
@@ -44,15 +42,13 @@ function present(value: string | undefined): boolean {
 }
 
 export function assessSetup(env: NodeJS.Dict<string>): SetupStatus {
-  const wallet = present(env.WALLET_PRIVATE_KEY)
   const llm = present(env.LLM_API_KEY)
   const jupiter = present(env.JUPITER_API_KEY)
   return {
-    wallet,
     llm,
     jupiter,
-    readyForDryRun: wallet && llm,
-    readyForLive: wallet && llm && jupiter,
+    readyForDryRun: llm,
+    readyForLive: llm && jupiter,
   }
 }
 
@@ -63,10 +59,9 @@ export function formatInitMessage(opts: { directory: string; firstRun: boolean; 
   const lines = [
     heading,
     '',
-    firstRun ? 'Dry-run is on by default. No live trades yet.' : 'Checking wallet and LLM credentials.',
+    firstRun ? 'Dry-run is on by default. No live trades yet.' : 'Checking LLM credentials.',
     `Runtime: ${directory}`,
     '',
-    `  [${mark(status.wallet)}] Wallet   WALLET_PRIVATE_KEY`,
     `  [${mark(status.llm)}] LLM      LLM_API_KEY`,
     `  [${mark(status.jupiter)}] Jupiter  JUPITER_API_KEY  (live swaps only)`,
     '',
@@ -169,10 +164,6 @@ export async function maybePromptSecrets(opts: {
 }): Promise<Record<string, string>> {
   if (!opts.interactive) return {}
   const updates: Record<string, string> = {}
-  if (!opts.status.wallet) {
-    const wallet = (await opts.ask('Wallet private key (base58). Paste, or Enter to skip: ')).trim()
-    if (wallet) updates.WALLET_PRIVATE_KEY = wallet
-  }
   if (!opts.status.llm) {
     const llm = (await opts.ask('LLM API key (OpenRouter / OpenAI). Paste, or Enter to skip: ')).trim()
     if (llm) updates.LLM_API_KEY = llm

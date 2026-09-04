@@ -271,7 +271,6 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
 
   it('validates DEFAULT_USER_CONFIG against UserConfigSchema with mock env', () => {
     const mockEnv = {
-      WALLET_PRIVATE_KEY: 'test-key',
       HELIUS_API_KEY: 'test-helius',
       LLM_BASE_URL: 'https://openrouter.ai/api/v1',
       LLM_API_KEY: 'test-llm',
@@ -297,7 +296,6 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
 
   it('rejects unknown top-level keys (strict schema)', () => {
     const mockEnv = {
-      WALLET_PRIVATE_KEY: 'test-key',
       HELIUS_API_KEY: 'test-helius',
       LLM_BASE_URL: 'https://openrouter.ai/api/v1',
       LLM_API_KEY: 'test-llm',
@@ -329,7 +327,6 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
 
   it('rejects unknown nested keys inside a section (strict schema)', () => {
     const mockEnv = {
-      WALLET_PRIVATE_KEY: 'test-key',
       HELIUS_API_KEY: 'test-helius',
       LLM_BASE_URL: 'https://openrouter.ai/api/v1',
       LLM_API_KEY: 'test-llm',

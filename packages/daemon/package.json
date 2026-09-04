@@ -1,6 +1,6 @@
 {
   "name": "@etemaro/daemon",
-  "version": "3.5.0",
+  "version": "3.7.0",
   "type": "module",
   "main": "src/Daemon.ts",
   "types": "src/Daemon.ts",
