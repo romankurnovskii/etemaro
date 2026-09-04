@@ -3,6 +3,15 @@ set -e
 
 # Etemaro CLI + Desktop installer
 
+ETEMARO_TAP="romankurnovskii/awesome-brew"
+
+ensure_tap() {
+    if ! brew tap | grep -q "^${ETEMARO_TAP}$"; then
+        echo "Adding Homebrew tap ${ETEMARO_TAP}..."
+        brew tap "${ETEMARO_TAP}"
+    fi
+}
+
 install_via_npm() {
     if command -v npm >/dev/null 2>&1; then
         echo "Installing Etemaro CLI via npm..."
@@ -19,22 +28,17 @@ install_desktop() {
     case "$OS_NAME" in
         darwin)
             if command -v brew >/dev/null 2>&1; then
-                echo "Checking for etemaro desktop cask..."
-                if brew info --cask etemaro >/dev/null 2>&1; then
-                    echo "Installing via Homebrew Cask..."
-                    brew install --cask etemaro
-                else
-                    echo "No official cask yet. Download from GitHub releases:"
-                    echo "  https://github.com/romankurnovskii/etemaro-desktop/releases/latest"
-                fi
+                echo "Installing Etemaro desktop via Homebrew Cask..."
+                ensure_tap
+                brew install --cask "${ETEMARO_TAP}/etemaro"
             else
                 echo "Homebrew not found. Download from GitHub releases:"
-                echo "  https://github.com/romankurnovskii/etemaro-desktop/releases/latest"
+                echo "  https://github.com/romankurnovskii/etemaro/releases/latest"
             fi
             ;;
         linux)
             echo "Download Linux build (AppImage/.deb) from GitHub releases:"
-            echo "  https://github.com/romankurnovskii/etemaro-desktop/releases/latest"
+            echo "  https://github.com/romankurnovskii/etemaro/releases/latest"
             ;;
         *)
             echo "Desktop app not available for $OS_NAME yet."
@@ -89,14 +93,9 @@ echo "Found latest release: $LATEST_RELEASE"
 
 # --- CLI Install ---
 if [ "$OS_NAME" = "darwin" ] && command -v brew >/dev/null 2>&1; then
-    echo "Homebrew detected. Checking for etemaro formula..."
-    if brew info --formula etemaro >/dev/null 2>&1; then
-        echo "Installing Etemaro CLI via Homebrew..."
-        brew install etemaro
-    else
-        echo "No official Homebrew formula found. Falling back to npm..."
-        install_via_npm
-    fi
+    echo "Homebrew detected. Installing Etemaro CLI via Homebrew..."
+    ensure_tap
+    brew install "${ETEMARO_TAP}/etemaro"
 else
     install_via_npm
 fi
@@ -104,16 +103,21 @@ fi
 # --- Desktop App Install (interactive) ---
 echo ""
 echo "Etemaro also has a cross-platform desktop app."
-printf "Install desktop app? [y/N] "
-read -r REPLY </dev/tty
-case "$REPLY" in
-    [yY]|[yY][eE][sS])
-        install_desktop
-        ;;
-    *)
-        echo "Skipping desktop app."
-        ;;
-esac
+if [ -t 0 ]; then
+    printf "Install desktop app? [y/N] "
+    read -r REPLY
+    case "$REPLY" in
+        [yY]|[yY][eE][sS])
+            install_desktop
+            ;;
+        *)
+            echo "Skipping desktop app."
+            ;;
+    esac
+else
+    echo "Non-interactive shell detected; skipping desktop app."
+    echo "Install it later with: brew install --cask ${ETEMARO_TAP}/etemaro"
+fi
 
 echo ""
 echo "Done! Next steps:"

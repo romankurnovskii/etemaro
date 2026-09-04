@@ -32,12 +32,28 @@ import {
 } from './firstSetup.js'
 
 // ESM/CJS portable __filename/__dirname
-const __filename: string =
-  typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:')
-    ? fileURLToPath(import.meta.url)
-    : path.join(process.cwd(), 'dist', 'Cli.cjs')
-const __dirname = path.dirname(__filename)
-const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'))
+// In CJS builds `__filename`/`__dirname` are real module globals, so prefer them;
+// fall back to fileURLToPath for native ESM execution.
+declare const __filename: string
+declare const __dirname: string
+let currentFilePath: string
+if (typeof __filename === 'string' && __filename.length > 0) {
+  currentFilePath = __filename
+} else if (typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:')) {
+  currentFilePath = fileURLToPath(import.meta.url)
+} else {
+  currentFilePath = path.join(process.cwd(), 'dist', 'Cli.cjs')
+}
+const currentFileDir = path.dirname(currentFilePath)
+// Resolve our own package.json relative to the CLI's actual location, not cwd
+let pkgVersion = 'unknown'
+try {
+  pkgVersion = JSON.parse(
+    fs.readFileSync(path.join(currentFileDir, '..', 'package.json'), 'utf8'),
+  ).version
+} catch {
+  // ignore: fall back to 'unknown'
+}
 
 // Type-only imports to help tsc
 type CoreExports = any
@@ -1187,7 +1203,7 @@ async function main() {
   const argv = process.argv.slice(2)
 
   if (argv.includes('--version')) {
-    process.stdout.write(`${pkg.version}\n`)
+    process.stdout.write(`${pkgVersion}\n`)
     return
   }
 
