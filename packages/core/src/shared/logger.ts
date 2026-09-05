@@ -205,7 +205,8 @@ function getStructuredLogPath(): string {
 export function log(level: string, message: string): void {
   const ts = new Date().toISOString()
   const agentId = getAgentIdForRequests()
-  const dryTag = getDryRun() ? ' [DRY RUN]' : ''
+  // Keystore and wallet administration actions are live disk writes, not dry-run simulations
+  const dryTag = getDryRun() && level !== 'wallet' ? ' [DRY RUN]' : ''
   const redacted = redactSensitive(message)
   const line = `[${ts}] [${level}] [${agentId}]${dryTag} ${redacted}\n`
   try {
