@@ -73,15 +73,6 @@ async function promptSecret(promptText: string): Promise<string> {
   })
 }
 
-function _loadJsonFile<T>(filePath: string, fallback: T): T {
-  try {
-    if (!fs.existsSync(filePath)) return fallback
-    return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T
-  } catch {
-    return fallback
-  }
-}
-
 import {
   assessSetup,
   formatInitMessage,
@@ -130,7 +121,6 @@ let _USER_CONFIG_PATH: CoreExports['USER_CONFIG_PATH'] = null as any
 let _DEFAULT_ENTRY_SOURCE: CoreExports['DEFAULT_ENTRY_SOURCE'] = null as any
 let _SMART_WALLETS_FILENAME: CoreExports['SMART_WALLETS_FILENAME'] = null as any
 let LESSONS_FILENAME: CoreExports['LESSONS_FILENAME'] = null as any
-let _WALLETS_KEYPAIR_FILENAME: CoreExports['WALLETS_KEYPAIR_FILENAME'] = null as any
 let _REPO_ROOT: CoreExports['REPO_ROOT'] = null as any
 let _DEFAULT_ACTIVE_STRATEGY_ID: CoreExports['DEFAULT_ACTIVE_STRATEGY_ID'] = null as any
 let _DEFAULT_STRATEGY_TYPE: CoreExports['DEFAULT_STRATEGY_TYPE'] = null as any
@@ -170,7 +160,6 @@ export async function loadCore(): Promise<void> {
   _DEFAULT_ENTRY_SOURCE = coreMod.DEFAULT_ENTRY_SOURCE
   _SMART_WALLETS_FILENAME = coreMod.SMART_WALLETS_FILENAME
   LESSONS_FILENAME = coreMod.LESSONS_FILENAME
-  _WALLETS_KEYPAIR_FILENAME = coreMod.WALLETS_KEYPAIR_FILENAME
   _REPO_ROOT = coreMod.REPO_ROOT
   _DEFAULT_ACTIVE_STRATEGY_ID = coreMod.DEFAULT_ACTIVE_STRATEGY_ID
   _DEFAULT_STRATEGY_TYPE = coreMod.DEFAULT_STRATEGY_TYPE
@@ -784,11 +773,9 @@ export class Cli {
   }
 
   private handleGenerateWallet(flags: Record<string, any>): void {
-    const configDir = path.join(this.etemaroDir, 'config')
     const alias = flags.name || flags.label || 'default'
     const result = wallet.generateNewWallet({
       label: alias,
-      configDir,
     })
     out({
       success: true,
@@ -796,7 +783,7 @@ export class Cli {
       privateKey: result.privateKey,
       createdAt: result.createdAt,
       label: result.label,
-      savedTo: path.join(this.etemaroDir, '.credentials', 'wallets', `${alias}.json`),
+      savedTo: result.savedTo ?? path.join(this.etemaroDir, '.credentials', 'wallets', `${alias}.json`),
       message: `New Solana wallet generated and saved as "${alias}"`,
     })
   }
