@@ -5,11 +5,10 @@
  */
 
 import fs from 'node:fs'
-import path from 'node:path'
 import { Connection, Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { config } from '../config/Config.js'
-import { configPath, credentialsPath } from './constants.js'
+import { credentialsPath } from './constants.js'
 import { log } from './logger.js'
 import { isTransientRpcError, type RpcRetryOptions, withRpcRetry } from './utils.js'
 
@@ -75,33 +74,6 @@ export function getWalletKeypair(): Keypair {
 
   const walletPath = credentialsPath(`${alias}.json`)
   if (!fs.existsSync(walletPath)) {
-    // Fallback: check config/wallets.json for alias and auto-migrate to keystore
-    const walletsJsonPath = configPath('wallets.json')
-    if (fs.existsSync(walletsJsonPath)) {
-      try {
-        const store = JSON.parse(fs.readFileSync(walletsJsonPath, 'utf8'))
-        const found = store.wallets?.find((w: any) => w.label === alias)
-        if (found?.privateKey) {
-          const credDir = path.dirname(walletPath)
-          if (!fs.existsSync(credDir)) {
-            fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
-          }
-          fs.writeFileSync(walletPath, JSON.stringify(found.privateKey), { mode: 0o600 })
-          if (process.platform !== 'win32') {
-            try {
-              fs.chmodSync(walletPath, 0o600)
-            } catch {
-              /* ignore */
-            }
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  if (!fs.existsSync(walletPath)) {
     throw new Error(
       `Wallet keystore not found for alias "${alias}" at ${walletPath}. Import or generate a wallet first (e.g. etemaro wallet import --name ${alias}).`,
     )
@@ -124,23 +96,31 @@ export function getWalletKeypair(): Keypair {
   let key: string | null = null
   try {
     const walletData = JSON.parse(fs.readFileSync(walletPath, 'utf8'))
-    // Support both Base58 strings and Solana CLI JSON arrays
-    if (Array.isArray(walletData)) {
-      key = bs58.encode(Uint8Array.from(walletData))
-    } else if (typeof walletData === 'string') {
-      key = walletData
-    } else if (walletData.privateKey) {
-      key = walletData.privateKey
+    if (typeof walletData !== 'object' || walletData === null || Array.isArray(walletData)) {
+      throw new Error(
+        `Invalid keystore format: must be a JSON object with "publicKey" and "privateKey" (bare string or array format is not supported).`,
+      )
     }
-  } catch (err) {
-    throw new Error(`Failed to parse wallet keystore file at ${walletPath}: ${err}`)
+    if (typeof walletData.privateKey !== 'string' || walletData.privateKey.trim().length === 0) {
+      throw new Error(
+        `Missing mandatory "privateKey" in wallet keystore file at ${walletPath}. Expected format: { "publicKey": "...", "privateKey": "..." }`,
+      )
+    }
+    key = walletData.privateKey.trim()
+  } catch (err: any) {
+    throw new Error(`Failed to parse wallet keystore file at ${walletPath}: ${err?.message || err}`)
   }
 
   if (!key) {
     throw new Error(`Wallet keystore file at ${walletPath} does not contain a valid private key.`)
   }
 
-  _walletKeypair = Keypair.fromSecretKey(bs58.decode(key))
+  try {
+    _walletKeypair = Keypair.fromSecretKey(bs58.decode(key))
+  } catch (err: any) {
+    throw new Error(`Invalid secret key in wallet keystore at ${walletPath}: ${err?.message || err}`)
+  }
+
   _walletAlias = alias
   return _walletKeypair
 }

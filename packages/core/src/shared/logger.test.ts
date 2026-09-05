@@ -51,6 +51,16 @@ describe('logger', () => {
     expect(output).toContain('[DRY RUN]')
     expect(output).toContain('Test message dry run')
   })
+
+  it('does not inject [DRY RUN] tag for wallet administrative logs even when dryRun is true', () => {
+    setDryRun(true)
+    log('wallet', 'Imported wallet abc as default')
+    expect(stdoutSpy).toHaveBeenCalled()
+    const output = stdoutSpy.mock.calls[0][0] as string
+    expect(output).toContain('[wallet]')
+    expect(output).not.toContain('[DRY RUN]')
+    expect(output).toContain('Imported wallet abc as default')
+  })
 })
 
 describe('redactSensitive', () => {
