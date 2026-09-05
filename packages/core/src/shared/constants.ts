@@ -35,10 +35,10 @@ function findRepoRoot(startDir: string): string {
 }
 
 const currentFileDir =
-  typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:')
-    ? path.dirname(fileURLToPath(import.meta.url))
-    : typeof __dirname !== 'undefined'
-      ? __dirname
+  typeof __dirname !== 'undefined' && __dirname.length > 0
+    ? __dirname
+    : typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:')
+      ? path.dirname(fileURLToPath(import.meta.url))
       : process.cwd()
 
 /** Absolute path to the repository root (the pnpm workspace root). */

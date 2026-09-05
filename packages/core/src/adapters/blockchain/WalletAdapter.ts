@@ -80,7 +80,11 @@ export function importWallet(opts: { label: string; privateKey?: string; filePat
     if (!fs.existsSync(credDir)) {
       fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
     }
-    fs.writeFileSync(credFile, JSON.stringify(key), { mode: 0o600 })
+    const payload = {
+      publicKey: wallet.publicKey,
+      privateKey: key,
+    }
+    fs.writeFileSync(credFile, JSON.stringify(payload, null, 2), { mode: 0o600 })
     if (process.platform !== 'win32') {
       try {
         fs.chmodSync(credFile, 0o600)
@@ -130,7 +134,11 @@ export function generateNewWallet(opts?: { label?: string; configDir?: string })
       if (!fs.existsSync(credDir)) {
         fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
       }
-      fs.writeFileSync(credFile, JSON.stringify(privateKey), { mode: 0o600 })
+      const payload = {
+        publicKey: wallet.publicKey,
+        privateKey: privateKey,
+      }
+      fs.writeFileSync(credFile, JSON.stringify(payload, null, 2), { mode: 0o600 })
       if (process.platform !== 'win32') {
         try {
           fs.chmodSync(credFile, 0o600)
