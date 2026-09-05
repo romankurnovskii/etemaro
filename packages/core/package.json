@@ -18,7 +18,7 @@
     "jsonrepair": "^3.15.0",
     "node-cron": "^4.6.0",
     "openai": "^7.8.0",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/bn.js": "^5.2.0",
