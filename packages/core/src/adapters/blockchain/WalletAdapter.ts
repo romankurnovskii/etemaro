@@ -17,10 +17,10 @@ import { Keypair, PublicKey, VersionedTransaction } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { config } from '../../config/Config.js'
 import { getConnection, getWalletKeypair, withRpcFailover } from '../../shared/connection.js'
-import { configPath, credentialsPath } from '../../shared/constants.js'
+import { credentialsPath } from '../../shared/constants.js'
 import { createTimer, log, logStructured } from '../../shared/logger.js'
 import type { WalletBalancesResult } from '../../shared/types.js'
-import { loadJsonFile, saveJsonFile, withRpcRetry } from '../../shared/utils.js'
+import { withRpcRetry } from '../../shared/utils.js'
 import { sleep } from '../../utils/time.js'
 import { binanceProvider, coinbaseProvider, priceProvider } from '../external/PriceProvider.js'
 
@@ -31,14 +31,6 @@ export interface GeneratedWallet {
   label?: string
 }
 
-export interface WalletsStore {
-  wallets: GeneratedWallet[]
-}
-
-/**
- * Generates a fresh Solana keypair, stores it in wallets.json under the config directory,
- * and returns the public key and base58 private key.
- */
 /**
  * Import a wallet from a Base58 private key and store it with a label.
  * If a file path is provided, reads a Solana CLI keypair JSON array.
@@ -66,12 +58,6 @@ export function importWallet(opts: { label: string; privateKey?: string; filePat
     createdAt: new Date().toISOString(),
     label: opts.label,
   }
-  // Persist to wallets store
-  const targetFile = configPath('wallets.json')
-  const existing = loadJsonFile<WalletsStore>(targetFile, { wallets: [] })
-  existing.wallets = existing.wallets || []
-  existing.wallets.push(wallet)
-  saveJsonFile(targetFile, existing)
 
   // Persist to secure individual keystore file
   try {
@@ -101,54 +87,42 @@ export function importWallet(opts: { label: string; privateKey?: string; filePat
 }
 
 /**
- * Generates a fresh Solana keypair, stores it in wallets.json under the config directory,
+ * Generates a fresh Solana keypair, stores it in an individual keystore under .credentials/wallets,
  * and returns the public key and base58 private key.
  */
 export function generateNewWallet(opts?: { label?: string; configDir?: string }): GeneratedWallet {
   const kp = Keypair.generate()
   const publicKey = kp.publicKey.toBase58()
   const privateKey = bs58.encode(kp.secretKey)
+  const label = opts?.label || 'Generated Keypair'
   const wallet: GeneratedWallet = {
     publicKey,
     privateKey,
     createdAt: new Date().toISOString(),
-    label: opts?.label || 'Generated Keypair',
+    label,
   }
 
   try {
-    const targetFile = opts?.configDir ? path.join(opts.configDir, 'wallets.json') : configPath('wallets.json')
-    const existing = loadJsonFile<WalletsStore>(targetFile, { wallets: [] })
-    existing.wallets = existing.wallets || []
-    existing.wallets.push(wallet)
-    saveJsonFile(targetFile, existing)
-    log('wallet', `Generated and stored new wallet ${publicKey} to ${targetFile}`)
-  } catch (err: unknown) {
-    const e = err as { message?: string }
-    log('wallet', `Warning: Failed to persist generated wallet to wallets.json: ${e.message || err}`)
-  }
-
-  if (wallet.label) {
-    try {
-      const credFile = credentialsPath(`${wallet.label}.json`)
-      const credDir = path.dirname(credFile)
-      if (!fs.existsSync(credDir)) {
-        fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
-      }
-      const payload = {
-        publicKey: wallet.publicKey,
-        privateKey: privateKey,
-      }
-      fs.writeFileSync(credFile, JSON.stringify(payload, null, 2), { mode: 0o600 })
-      if (process.platform !== 'win32') {
-        try {
-          fs.chmodSync(credFile, 0o600)
-        } catch {
-          /* ignore */
-        }
-      }
-    } catch (err: any) {
-      log('wallet', `Warning: Failed to persist individual keystore file: ${err?.message || err}`)
+    const credFile = opts?.configDir ? path.join(opts.configDir, `${label}.json`) : credentialsPath(`${label}.json`)
+    const credDir = path.dirname(credFile)
+    if (!fs.existsSync(credDir)) {
+      fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
     }
+    const payload = {
+      publicKey: wallet.publicKey,
+      privateKey,
+    }
+    fs.writeFileSync(credFile, JSON.stringify(payload, null, 2), { mode: 0o600 })
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(credFile, 0o600)
+      } catch {
+        /* ignore */
+      }
+    }
+    log('wallet', `Generated and stored new wallet ${publicKey} to ${credFile}`)
+  } catch (err: any) {
+    log('wallet', `Warning: Failed to persist individual keystore file: ${err?.message || err}`)
   }
 
   return wallet
