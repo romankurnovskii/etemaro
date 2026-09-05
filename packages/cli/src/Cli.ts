@@ -195,7 +195,7 @@ export interface CliAdapters {
   wallet: {
     getWalletBalances: () => Promise<any>
     swapToken: (opts: any) => Promise<any>
-    generateNewWallet: (opts?: { label?: string; configDir?: string }) => GeneratedWallet
+    generateNewWallet: (opts?: { label?: string; credentialsDir?: string }) => GeneratedWallet
     importWallet: (opts: { label: string; privateKey?: string; filePath?: string }) => GeneratedWallet
   }
   screening: {
