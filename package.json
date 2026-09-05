@@ -51,20 +51,20 @@
     "dotenv": "^17.4.2",
     "jsonrepair": "^3.15.0",
     "node-cron": "^3.0.3",
-    "openai": "^7.8.0",
+    "openai": "^7.10.0",
     "pm2": "^7.0.4",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "engines": {
     "node": ">=22.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.10",
+    "@biomejs/biome": "^2.5.12",
     "@types/bn.js": "^5.2.0",
-    "@types/node": "^26.3.0",
+    "@types/node": "^26.4.1",
     "@types/node-cron": "^3.0.11",
     "husky": "^9.1.7",
-    "tsx": "^4.23.12",
+    "tsx": "^4.23.13",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   },
