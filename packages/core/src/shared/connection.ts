@@ -86,7 +86,12 @@ export function getWalletKeypair(): Keypair {
           if (!fs.existsSync(credDir)) {
             fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
           }
-          fs.writeFileSync(walletPath, JSON.stringify(found.privateKey), { mode: 0o600 })
+          const pubKey = found.publicKey || Keypair.fromSecretKey(bs58.decode(found.privateKey)).publicKey.toBase58()
+          const payload = {
+            publicKey: pubKey,
+            privateKey: found.privateKey,
+          }
+          fs.writeFileSync(walletPath, JSON.stringify(payload, null, 2), { mode: 0o600 })
           if (process.platform !== 'win32') {
             try {
               fs.chmodSync(walletPath, 0o600)
@@ -124,16 +129,19 @@ export function getWalletKeypair(): Keypair {
   let key: string | null = null
   try {
     const walletData = JSON.parse(fs.readFileSync(walletPath, 'utf8'))
-    // Support both Base58 strings and Solana CLI JSON arrays
-    if (Array.isArray(walletData)) {
-      key = bs58.encode(Uint8Array.from(walletData))
-    } else if (typeof walletData === 'string') {
-      key = walletData
-    } else if (walletData.privateKey) {
-      key = walletData.privateKey
+    if (typeof walletData !== 'object' || walletData === null || Array.isArray(walletData)) {
+      throw new Error(
+        `Invalid keystore format. Keystore must be a JSON object: { "publicKey": "...", "privateKey": "..." } (string-only or array format is not supported).`,
+      )
     }
-  } catch (err) {
-    throw new Error(`Failed to parse wallet keystore file at ${walletPath}: ${err}`)
+    if (typeof walletData.privateKey !== 'string' || walletData.privateKey.trim().length === 0) {
+      throw new Error(
+        `Missing mandatory "privateKey" in wallet keystore file at ${walletPath}. Expected format: { "publicKey": "...", "privateKey": "..." }`,
+      )
+    }
+    key = walletData.privateKey.trim()
+  } catch (err: any) {
+    throw new Error(`Failed to parse wallet keystore file at ${walletPath}: ${err?.message || err}`)
   }
 
   if (!key) {
