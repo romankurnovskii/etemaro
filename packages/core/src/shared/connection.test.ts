@@ -15,7 +15,7 @@ import {
   resetConnectionState,
   withRpcFailover,
 } from './connection.js'
-import { credentialsPath } from './constants.js'
+import { configPath, credentialsPath } from './constants.js'
 
 describe('connection module', () => {
   const originalEnv = { ...process.env }
@@ -137,7 +137,7 @@ describe('connection module', () => {
       }
     })
 
-    it('rejects bare string-only format in keystore file', () => {
+    it('auto-migrates bare string-only format in keystore file to { publicKey, privateKey }', () => {
       const kp = Keypair.generate()
       const alias = 'test-string-wallet'
       const keyfilePath = credentialsPath(`${alias}.json`)
@@ -150,13 +150,19 @@ describe('connection module', () => {
           wallet: alias,
         }
 
-        expect(() => getWalletKeypair()).toThrow(/bare string or array format is not supported/)
+        const resolved = getWalletKeypair()
+        expect(resolved.publicKey.toString()).toBe(kp.publicKey.toString())
+
+        // Verify in-place auto-migration on disk
+        const migrated = JSON.parse(fs.readFileSync(keyfilePath, 'utf8'))
+        expect(migrated.publicKey).toBe(kp.publicKey.toBase58())
+        expect(migrated.privateKey).toBe(bs58.encode(kp.secretKey))
       } finally {
         if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
       }
     })
 
-    it('rejects array format in keystore file', () => {
+    it('auto-migrates array format in keystore file to { publicKey, privateKey }', () => {
       const kp = Keypair.generate()
       const alias = 'test-array-wallet'
       const keyfilePath = credentialsPath(`${alias}.json`)
@@ -169,9 +175,71 @@ describe('connection module', () => {
           wallet: alias,
         }
 
-        expect(() => getWalletKeypair()).toThrow(/bare string or array format is not supported/)
+        const resolved = getWalletKeypair()
+        expect(resolved.publicKey.toString()).toBe(kp.publicKey.toString())
+
+        // Verify in-place auto-migration on disk
+        const migrated = JSON.parse(fs.readFileSync(keyfilePath, 'utf8'))
+        expect(migrated.publicKey).toBe(kp.publicKey.toBase58())
+        expect(migrated.privateKey).toBe(bs58.encode(kp.secretKey))
       } finally {
         if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
+      }
+    })
+
+    it('auto-migrates keystore missing publicKey to include publicKey', () => {
+      const kp = Keypair.generate()
+      const alias = 'test-nopubkey-wallet'
+      const keyfilePath = credentialsPath(`${alias}.json`)
+      fs.mkdirSync(path.dirname(keyfilePath), { recursive: true })
+      fs.writeFileSync(keyfilePath, JSON.stringify({ privateKey: bs58.encode(kp.secretKey) }), { mode: 0o600 })
+
+      try {
+        config.connection = {
+          ...config.connection,
+          wallet: alias,
+        }
+
+        const resolved = getWalletKeypair()
+        expect(resolved.publicKey.toString()).toBe(kp.publicKey.toString())
+
+        const migrated = JSON.parse(fs.readFileSync(keyfilePath, 'utf8'))
+        expect(migrated.publicKey).toBe(kp.publicKey.toBase58())
+        expect(migrated.privateKey).toBe(bs58.encode(kp.secretKey))
+      } finally {
+        if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
+      }
+    })
+
+    it('auto-migrates from config/wallets.json if keystore does not exist', () => {
+      const kp = Keypair.generate()
+      const alias = 'test-fallback-wallet'
+      const keyfilePath = credentialsPath(`${alias}.json`)
+      const walletsJsonPath = configPath('wallets.json')
+      fs.mkdirSync(path.dirname(walletsJsonPath), { recursive: true })
+      fs.writeFileSync(
+        walletsJsonPath,
+        JSON.stringify({
+          wallets: [{ label: alias, privateKey: bs58.encode(kp.secretKey) }],
+        }),
+      )
+
+      try {
+        config.connection = {
+          ...config.connection,
+          wallet: alias,
+        }
+
+        const resolved = getWalletKeypair()
+        expect(resolved.publicKey.toString()).toBe(kp.publicKey.toString())
+
+        expect(fs.existsSync(keyfilePath)).toBe(true)
+        const migrated = JSON.parse(fs.readFileSync(keyfilePath, 'utf8'))
+        expect(migrated.publicKey).toBe(kp.publicKey.toBase58())
+        expect(migrated.privateKey).toBe(bs58.encode(kp.secretKey))
+      } finally {
+        if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
+        if (fs.existsSync(walletsJsonPath)) fs.unlinkSync(walletsJsonPath)
       }
     })
 
@@ -189,6 +257,24 @@ describe('connection module', () => {
         }
 
         expect(() => getWalletKeypair()).toThrow(/Missing mandatory "privateKey"/)
+      } finally {
+        if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
+      }
+    })
+
+    it('rejects invalid non-object format (e.g. number/boolean) in keystore file', () => {
+      const alias = 'test-invalid-primitive-wallet'
+      const keyfilePath = credentialsPath(`${alias}.json`)
+      fs.mkdirSync(path.dirname(keyfilePath), { recursive: true })
+      fs.writeFileSync(keyfilePath, JSON.stringify(12345), { mode: 0o600 })
+
+      try {
+        config.connection = {
+          ...config.connection,
+          wallet: alias,
+        }
+
+        expect(() => getWalletKeypair()).toThrow(/Invalid keystore format/)
       } finally {
         if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
       }
