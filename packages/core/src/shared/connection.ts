@@ -127,19 +127,29 @@ export function getWalletKeypair(): Keypair {
   }
 
   let key: string | null = null
+  let needsMigration = false
   try {
     const walletData = JSON.parse(fs.readFileSync(walletPath, 'utf8'))
-    if (typeof walletData !== 'object' || walletData === null || Array.isArray(walletData)) {
+    if (Array.isArray(walletData)) {
+      // Legacy Solana CLI byte array [1, 2, ...]
+      key = bs58.encode(Uint8Array.from(walletData))
+      needsMigration = true
+    } else if (typeof walletData === 'string') {
+      // Legacy bare Base58 string
+      key = walletData.trim()
+      needsMigration = true
+    } else if (typeof walletData === 'object' && walletData !== null) {
+      if (typeof walletData.privateKey !== 'string' || walletData.privateKey.trim().length === 0) {
+        throw new Error(
+          `Missing mandatory "privateKey" in wallet keystore file at ${walletPath}. Expected format: { "publicKey": "...", "privateKey": "..." }`,
+        )
+      }
+      key = walletData.privateKey.trim()
+    } else {
       throw new Error(
-        `Invalid keystore format. Keystore must be a JSON object: { "publicKey": "...", "privateKey": "..." } (string-only or array format is not supported).`,
+        `Invalid keystore format. Keystore must be a JSON object: { "publicKey": "...", "privateKey": "..." }`,
       )
     }
-    if (typeof walletData.privateKey !== 'string' || walletData.privateKey.trim().length === 0) {
-      throw new Error(
-        `Missing mandatory "privateKey" in wallet keystore file at ${walletPath}. Expected format: { "publicKey": "...", "privateKey": "..." }`,
-      )
-    }
-    key = walletData.privateKey.trim()
   } catch (err: any) {
     throw new Error(`Failed to parse wallet keystore file at ${walletPath}: ${err?.message || err}`)
   }
@@ -148,7 +158,32 @@ export function getWalletKeypair(): Keypair {
     throw new Error(`Wallet keystore file at ${walletPath} does not contain a valid private key.`)
   }
 
-  _walletKeypair = Keypair.fromSecretKey(bs58.decode(key))
+  try {
+    _walletKeypair = Keypair.fromSecretKey(bs58.decode(key))
+  } catch (err: any) {
+    throw new Error(`Invalid secret key in wallet keystore at ${walletPath}: ${err?.message || err}`)
+  }
+
+  // Auto-migrate legacy format in-place to { publicKey, privateKey }
+  if (needsMigration) {
+    try {
+      const payload = {
+        publicKey: _walletKeypair.publicKey.toBase58(),
+        privateKey: key,
+      }
+      fs.writeFileSync(walletPath, JSON.stringify(payload, null, 2), { mode: 0o600 })
+      if (process.platform !== 'win32') {
+        try {
+          fs.chmodSync(walletPath, 0o600)
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch {
+      /* ignore migration rewrite errors if filesystem is read-only */
+    }
+  }
+
   _walletAlias = alias
   return _walletKeypair
 }
