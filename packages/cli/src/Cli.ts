@@ -73,7 +73,7 @@ async function promptSecret(promptText: string): Promise<string> {
   })
 }
 
-function loadJsonFile<T>(filePath: string, fallback: T): T {
+function _loadJsonFile<T>(filePath: string, fallback: T): T {
   try {
     if (!fs.existsSync(filePath)) return fallback
     return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T
@@ -844,23 +844,16 @@ export class Cli {
             const fullPath = path.join(dir, f)
             try {
               const raw = JSON.parse(fs.readFileSync(fullPath, 'utf8'))
-              let key: string | null = null
               let pubKey: string | undefined
-              if (Array.isArray(raw)) {
-                key = bs58.encode(Uint8Array.from(raw))
-              } else if (typeof raw === 'string' && raw.trim().length > 0) {
-                key = raw.trim()
-              } else if (typeof raw === 'object' && raw !== null) {
+              if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
                 if (typeof raw.publicKey === 'string' && raw.publicKey.trim().length > 0) {
                   pubKey = raw.publicKey.trim()
-                }
-                if (typeof raw.privateKey === 'string' && raw.privateKey.trim().length > 0) {
-                  key = raw.privateKey.trim()
+                } else if (typeof raw.privateKey === 'string' && raw.privateKey.trim().length > 0) {
+                  pubKey = Keypair.fromSecretKey(bs58.decode(raw.privateKey.trim())).publicKey.toBase58()
                 }
               }
-              const pk = pubKey || (key ? Keypair.fromSecretKey(bs58.decode(key)).publicKey.toBase58() : undefined)
               if (!walletsMap.has(alias)) {
-                walletsMap.set(alias, { alias, publicKey: pk, path: fullPath })
+                walletsMap.set(alias, { alias, publicKey: pubKey, path: fullPath })
               }
             } catch {
               if (!walletsMap.has(alias)) {
@@ -871,15 +864,6 @@ export class Cli {
         } catch {
           /* ignore */
         }
-      }
-    }
-
-    const walletJsonPath = path.join(this.etemaroDir, 'config', 'wallets.json')
-    const existing = loadJsonFile<{ wallets: GeneratedWallet[] }>(walletJsonPath, { wallets: [] })
-    for (const w of existing.wallets || []) {
-      const alias = w.label || 'unnamed'
-      if (!walletsMap.has(alias)) {
-        walletsMap.set(alias, { alias, publicKey: w.publicKey, path: walletJsonPath })
       }
     }
 
@@ -910,7 +894,7 @@ export class Cli {
       return
     }
 
-    // Check secure keystore first (.credentials/wallets/<alias>.json)
+    // Check secure keystore (.credentials/wallets/<alias>.json)
     let foundPub: string | undefined
     let foundPriv: string | undefined
 
@@ -923,19 +907,10 @@ export class Cli {
       if (fs.existsSync(credFile)) {
         try {
           const raw = JSON.parse(fs.readFileSync(credFile, 'utf8'))
-          if (Array.isArray(raw)) {
-            const priv = bs58.encode(Uint8Array.from(raw))
-            foundPriv = priv
-            foundPub = Keypair.fromSecretKey(bs58.decode(priv)).publicKey.toBase58()
-            break
-          } else if (typeof raw === 'string' && raw.trim().length > 0) {
-            const priv = raw.trim()
-            foundPriv = priv
-            foundPub = Keypair.fromSecretKey(bs58.decode(priv)).publicKey.toBase58()
-            break
-          } else if (
+          if (
             typeof raw === 'object' &&
             raw !== null &&
+            !Array.isArray(raw) &&
             typeof raw.privateKey === 'string' &&
             raw.privateKey.trim().length > 0
           ) {
@@ -950,16 +925,6 @@ export class Cli {
         } catch {
           /* ignore */
         }
-      }
-    }
-
-    if (!foundPriv) {
-      const walletPath = path.join(this.etemaroDir, 'config', 'wallets.json')
-      const existing = loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
-      const found = existing.wallets?.find((w) => w.label === alias)
-      if (found) {
-        foundPub = found.publicKey
-        foundPriv = found.privateKey
       }
     }
 
@@ -1308,15 +1273,45 @@ export class Cli {
             break
           }
           case '4': {
-            const walletPath = path.join(this.etemaroDir, 'config', 'wallets.json')
-            const existing = loadJsonFile<{ wallets: GeneratedWallet[] }>(walletPath, { wallets: [] })
-            if (existing.wallets?.length) {
+            const credDirs = [
+              path.join(getEtemaroDir(), '.credentials', 'wallets'),
+              path.join(_REPO_ROOT, 'config', '.credentials', 'wallets'),
+            ]
+            const availableWallets: Array<{ label: string; publicKey?: string }> = []
+            const seen = new Set<string>()
+            for (const dir of credDirs) {
+              if (fs.existsSync(dir)) {
+                try {
+                  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'))
+                  for (const f of files) {
+                    const label = path.basename(f, '.json')
+                    if (seen.has(label)) continue
+                    seen.add(label)
+                    let pubKey: string | undefined
+                    try {
+                      const raw = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'))
+                      if (typeof raw === 'object' && raw !== null && typeof raw.publicKey === 'string') {
+                        pubKey = raw.publicKey
+                      }
+                    } catch {
+                      /* ignore */
+                    }
+                    availableWallets.push({ label, publicKey: pubKey })
+                  }
+                } catch {
+                  /* ignore */
+                }
+              }
+            }
+            if (availableWallets.length) {
               console.log('Available wallets:')
-              existing.wallets.forEach((w, i) => void console.log(`  ${i + 1}. ${w.label} (${w.publicKey})`))
+              availableWallets.forEach(
+                (w, i) => void console.log(`  ${i + 1}. ${w.label}${w.publicKey ? ` (${w.publicKey})` : ''}`),
+              )
               const choice = await rl.question('Enter number: ')
               const idx = parseInt(choice, 10) - 1
-              if (idx >= 0 && idx < existing.wallets.length) {
-                const selected = existing.wallets[idx]!
+              if (idx >= 0 && idx < availableWallets.length) {
+                const selected = availableWallets[idx]!
                 const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
                 if (!configObj.connection) configObj.connection = {}
                 configObj.connection.wallet = selected.label
