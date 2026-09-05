@@ -70,7 +70,7 @@ describe('WalletAdapter', () => {
   describe('generateNewWallet', () => {
     it('generates a valid Solana keypair and saves it to individual keystore', () => {
       const result = generateNewWallet({
-        configDir: tempDir,
+        credentialsDir: tempDir,
         label: 'Test Generated Wallet',
       })
 
@@ -89,6 +89,7 @@ describe('WalletAdapter', () => {
 
       // Verify keystore file was created and populated
       const targetFile = path.join(tempDir, 'Test Generated Wallet.json')
+      expect(result.savedTo).toBe(targetFile)
       expect(fs.existsSync(targetFile)).toBe(true)
 
       const payload = JSON.parse(fs.readFileSync(targetFile, 'utf8'))
@@ -97,8 +98,8 @@ describe('WalletAdapter', () => {
     })
 
     it('creates separate keystore files for multiple generated wallets', () => {
-      const w1 = generateNewWallet({ configDir: tempDir, label: 'Wallet 1' })
-      const w2 = generateNewWallet({ configDir: tempDir, label: 'Wallet 2' })
+      const w1 = generateNewWallet({ credentialsDir: tempDir, label: 'Wallet 1' })
+      const w2 = generateNewWallet({ credentialsDir: tempDir, label: 'Wallet 2' })
 
       expect(w1.publicKey).not.toBe(w2.publicKey)
       expect(w1.privateKey).not.toBe(w2.privateKey)

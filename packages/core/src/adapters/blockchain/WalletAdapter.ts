@@ -29,6 +29,7 @@ export interface GeneratedWallet {
   privateKey: string
   createdAt: string
   label?: string
+  savedTo?: string
 }
 
 /**
@@ -52,16 +53,17 @@ export function importWallet(opts: { label: string; privateKey?: string; filePat
     throw new Error('No private key provided for import')
   }
   const kp = Keypair.fromSecretKey(bs58.decode(key))
+  const credFile = credentialsPath(`${opts.label}.json`)
   const wallet: GeneratedWallet = {
     publicKey: kp.publicKey.toBase58(),
     privateKey: key,
     createdAt: new Date().toISOString(),
     label: opts.label,
+    savedTo: credFile,
   }
 
   // Persist to secure individual keystore file
   try {
-    const credFile = credentialsPath(`${opts.label}.json`)
     const credDir = path.dirname(credFile)
     if (!fs.existsSync(credDir)) {
       fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
@@ -88,22 +90,30 @@ export function importWallet(opts: { label: string; privateKey?: string; filePat
 
 /**
  * Generates a fresh Solana keypair, stores it in an individual keystore under .credentials/wallets,
- * and returns the public key and base58 private key.
+ * and returns the public key, base58 private key, and saved location.
  */
-export function generateNewWallet(opts?: { label?: string; configDir?: string }): GeneratedWallet {
+export function generateNewWallet(opts?: {
+  label?: string
+  credentialsDir?: string
+  /** @deprecated use credentialsDir */
+  configDir?: string
+}): GeneratedWallet {
   const kp = Keypair.generate()
   const publicKey = kp.publicKey.toBase58()
   const privateKey = bs58.encode(kp.secretKey)
   const label = opts?.label || 'Generated Keypair'
+  const credFile = opts?.credentialsDir
+    ? path.join(opts.credentialsDir, `${label}.json`)
+    : credentialsPath(`${label}.json`)
   const wallet: GeneratedWallet = {
     publicKey,
     privateKey,
     createdAt: new Date().toISOString(),
     label,
+    savedTo: credFile,
   }
 
   try {
-    const credFile = opts?.configDir ? path.join(opts.configDir, `${label}.json`) : credentialsPath(`${label}.json`)
     const credDir = path.dirname(credFile)
     if (!fs.existsSync(credDir)) {
       fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
