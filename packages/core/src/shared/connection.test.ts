@@ -117,7 +117,11 @@ describe('connection module', () => {
       const alias = 'test-unit-wallet'
       const keyfilePath = credentialsPath(`${alias}.json`)
       fs.mkdirSync(path.dirname(keyfilePath), { recursive: true })
-      fs.writeFileSync(keyfilePath, JSON.stringify(bs58.encode(kp.secretKey)), { mode: 0o600 })
+      const payload = {
+        publicKey: kp.publicKey.toBase58(),
+        privateKey: bs58.encode(kp.secretKey),
+      }
+      fs.writeFileSync(keyfilePath, JSON.stringify(payload), { mode: 0o600 })
 
       try {
         config.connection = {
@@ -128,6 +132,44 @@ describe('connection module', () => {
         const resolved = getWalletKeypair()
         expect(resolved.publicKey.toString()).toBe(kp.publicKey.toString())
         expect(getWalletAddress()).toBe(kp.publicKey.toString())
+      } finally {
+        if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
+      }
+    })
+
+    it('rejects string-only format in keystore file', () => {
+      const kp = Keypair.generate()
+      const alias = 'test-string-wallet'
+      const keyfilePath = credentialsPath(`${alias}.json`)
+      fs.mkdirSync(path.dirname(keyfilePath), { recursive: true })
+      fs.writeFileSync(keyfilePath, JSON.stringify(bs58.encode(kp.secretKey)), { mode: 0o600 })
+
+      try {
+        config.connection = {
+          ...config.connection,
+          wallet: alias,
+        }
+
+        expect(() => getWalletKeypair()).toThrow(/string-only or array format is not supported/)
+      } finally {
+        if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
+      }
+    })
+
+    it('rejects keystore file missing mandatory privateKey', () => {
+      const kp = Keypair.generate()
+      const alias = 'test-nopriv-wallet'
+      const keyfilePath = credentialsPath(`${alias}.json`)
+      fs.mkdirSync(path.dirname(keyfilePath), { recursive: true })
+      fs.writeFileSync(keyfilePath, JSON.stringify({ publicKey: kp.publicKey.toBase58() }), { mode: 0o600 })
+
+      try {
+        config.connection = {
+          ...config.connection,
+          wallet: alias,
+        }
+
+        expect(() => getWalletKeypair()).toThrow(/Missing mandatory "privateKey"/)
       } finally {
         if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
       }
