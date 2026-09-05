@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { dataPath, LESSONS_FILENAME } from '@etemaro/core'
+import { dataPath, LESSONS_FILENAME, wallet } from '@etemaro/core'
 import { describe, expect, it, vi } from 'vitest'
 import { applyCliRuntimeFlags, Cli, formatConfigLoadError, loadCore, resolveGlobalFlagValue } from './Cli.js'
 
@@ -246,5 +246,38 @@ describe('Cli handleStart', () => {
 
     await cli.run(['start', '--headless'])
     expect(mockDaemon.start).toHaveBeenCalledWith({ tty: false })
+  })
+})
+
+describe('Cli handleGenerateWallet', () => {
+  it('calls wallet.generateNewWallet and reports correct savedTo path', async () => {
+    await loadCore()
+    const generateSpy = vi.spyOn(wallet, 'generateNewWallet').mockReturnValue({
+      publicKey: 'mockPubKey123',
+      privateKey: 'mockPrivKey456',
+      createdAt: new Date().toISOString(),
+      label: 'my-wallet',
+      savedTo: '/path/to/.credentials/wallets/my-wallet.json',
+    })
+    const cli = new Cli({} as any)
+    let stdoutOutput = ''
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any)
+    const mockStdout = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: any) => {
+      stdoutOutput += String(chunk)
+      return true
+    })
+
+    try {
+      ;(cli as any).handleGenerateWallet({ name: 'my-wallet' })
+      expect(generateSpy).toHaveBeenCalledWith({ label: 'my-wallet' })
+      const parsed = JSON.parse(stdoutOutput)
+      expect(parsed.success).toBe(true)
+      expect(parsed.savedTo).toBe('/path/to/.credentials/wallets/my-wallet.json')
+      expect(parsed.label).toBe('my-wallet')
+    } finally {
+      generateSpy.mockRestore()
+      mockExit.mockRestore()
+      mockStdout.mockRestore()
+    }
   })
 })

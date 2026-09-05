@@ -11,6 +11,7 @@ export default defineConfig({
   banner: {
     js: '#!/usr/bin/env node',
   },
+  shims: true, // Enable cjs and esm shims. Provides support for import.meta.url when targeting modern ESM builds
   // Bundle internal workspace packages into the standalone distribution
   noExternal: ['@etemaro/core', '@etemaro/daemon'],
 })

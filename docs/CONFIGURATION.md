@@ -275,7 +275,7 @@ The `api` block contains two independent services.
 | ----------------------- | -------------------------------------- | --------------------------------------- |
 | `enabled`             | Enable Meridian API requests.          | `true`                                |
 | `url`                 | Meridian API base URL.                 | `"https://api.agentmeridian.xyz/api"` |
-| `publicApiKey`        | Public API key for Meridian endpoints. | `"env.AGENT_MERIDIAN_PUBLIC_API_KEY"` |
+| `publicApiKey`        | Public API key for Meridian endpoints. | `"env.DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY"` |
 | `lpAgentRelayEnabled` | Enable Meridian relay execution.       | `false`                               |
 
 ##### LPAgent
