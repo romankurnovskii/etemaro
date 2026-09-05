@@ -137,9 +137,9 @@ describe('connection module', () => {
       }
     })
 
-    it('auto-migrates legacy string-only format in keystore file to { publicKey, privateKey }', () => {
+    it('rejects bare string-only format in keystore file', () => {
       const kp = Keypair.generate()
-      const alias = 'test-legacy-string-wallet'
+      const alias = 'test-string-wallet'
       const keyfilePath = credentialsPath(`${alias}.json`)
       fs.mkdirSync(path.dirname(keyfilePath), { recursive: true })
       fs.writeFileSync(keyfilePath, JSON.stringify(bs58.encode(kp.secretKey)), { mode: 0o600 })
@@ -150,23 +150,15 @@ describe('connection module', () => {
           wallet: alias,
         }
 
-        const resolved = getWalletKeypair()
-        expect(resolved.publicKey.toBase58()).toBe(kp.publicKey.toBase58())
-
-        // Verify file was migrated in-place
-        const migrated = JSON.parse(fs.readFileSync(keyfilePath, 'utf8'))
-        expect(migrated).toEqual({
-          publicKey: kp.publicKey.toBase58(),
-          privateKey: bs58.encode(kp.secretKey),
-        })
+        expect(() => getWalletKeypair()).toThrow(/bare string or array format is not supported/)
       } finally {
         if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
       }
     })
 
-    it('auto-migrates legacy array format in keystore file to { publicKey, privateKey }', () => {
+    it('rejects array format in keystore file', () => {
       const kp = Keypair.generate()
-      const alias = 'test-legacy-array-wallet'
+      const alias = 'test-array-wallet'
       const keyfilePath = credentialsPath(`${alias}.json`)
       fs.mkdirSync(path.dirname(keyfilePath), { recursive: true })
       fs.writeFileSync(keyfilePath, JSON.stringify(Array.from(kp.secretKey)), { mode: 0o600 })
@@ -177,15 +169,7 @@ describe('connection module', () => {
           wallet: alias,
         }
 
-        const resolved = getWalletKeypair()
-        expect(resolved.publicKey.toBase58()).toBe(kp.publicKey.toBase58())
-
-        // Verify file was migrated in-place
-        const migrated = JSON.parse(fs.readFileSync(keyfilePath, 'utf8'))
-        expect(migrated).toEqual({
-          publicKey: kp.publicKey.toBase58(),
-          privateKey: bs58.encode(kp.secretKey),
-        })
+        expect(() => getWalletKeypair()).toThrow(/bare string or array format is not supported/)
       } finally {
         if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
       }

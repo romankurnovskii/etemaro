@@ -18,7 +18,6 @@ import {
   invalidateBalanceCache,
   setCachedMintDecimals,
   swapToken,
-  type WalletsStore,
 } from './WalletAdapter.js'
 
 describe('WalletAdapter', () => {
@@ -69,7 +68,7 @@ describe('WalletAdapter', () => {
   })
 
   describe('generateNewWallet', () => {
-    it('generates a valid Solana keypair and saves it to wallets.json', () => {
+    it('generates a valid Solana keypair and saves it to individual keystore', () => {
       const result = generateNewWallet({
         configDir: tempDir,
         label: 'Test Generated Wallet',
@@ -88,29 +87,31 @@ describe('WalletAdapter', () => {
       const decodedSecret = bs58.decode(result.privateKey)
       expect(decodedSecret.length).toBe(64)
 
-      // Verify wallets.json was created and populated
-      const targetFile = path.join(tempDir, 'wallets.json')
+      // Verify keystore file was created and populated
+      const targetFile = path.join(tempDir, 'Test Generated Wallet.json')
       expect(fs.existsSync(targetFile)).toBe(true)
 
-      const store: WalletsStore = JSON.parse(fs.readFileSync(targetFile, 'utf8'))
-      expect(store.wallets).toHaveLength(1)
-      expect(store.wallets[0]?.publicKey).toBe(result.publicKey)
-      expect(store.wallets[0]?.privateKey).toBe(result.privateKey)
-      expect(store.wallets[0]?.label).toBe('Test Generated Wallet')
+      const payload = JSON.parse(fs.readFileSync(targetFile, 'utf8'))
+      expect(payload.publicKey).toBe(result.publicKey)
+      expect(payload.privateKey).toBe(result.privateKey)
     })
 
-    it('appends multiple generated wallets without overwriting existing entries', () => {
+    it('creates separate keystore files for multiple generated wallets', () => {
       const w1 = generateNewWallet({ configDir: tempDir, label: 'Wallet 1' })
       const w2 = generateNewWallet({ configDir: tempDir, label: 'Wallet 2' })
 
       expect(w1.publicKey).not.toBe(w2.publicKey)
       expect(w1.privateKey).not.toBe(w2.privateKey)
 
-      const targetFile = path.join(tempDir, 'wallets.json')
-      const store: WalletsStore = JSON.parse(fs.readFileSync(targetFile, 'utf8'))
-      expect(store.wallets).toHaveLength(2)
-      expect(store.wallets[0]?.publicKey).toBe(w1.publicKey)
-      expect(store.wallets[1]?.publicKey).toBe(w2.publicKey)
+      const f1 = path.join(tempDir, 'Wallet 1.json')
+      const f2 = path.join(tempDir, 'Wallet 2.json')
+      expect(fs.existsSync(f1)).toBe(true)
+      expect(fs.existsSync(f2)).toBe(true)
+
+      const p1 = JSON.parse(fs.readFileSync(f1, 'utf8'))
+      const p2 = JSON.parse(fs.readFileSync(f2, 'utf8'))
+      expect(p1.publicKey).toBe(w1.publicKey)
+      expect(p2.publicKey).toBe(w2.publicKey)
     })
   })
 

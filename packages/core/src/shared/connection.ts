@@ -5,11 +5,10 @@
  */
 
 import fs from 'node:fs'
-import path from 'node:path'
 import { Connection, Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { config } from '../config/Config.js'
-import { configPath, credentialsPath } from './constants.js'
+import { credentialsPath } from './constants.js'
 import { log } from './logger.js'
 import { isTransientRpcError, type RpcRetryOptions, withRpcRetry } from './utils.js'
 
@@ -75,38 +74,6 @@ export function getWalletKeypair(): Keypair {
 
   const walletPath = credentialsPath(`${alias}.json`)
   if (!fs.existsSync(walletPath)) {
-    // Fallback: check config/wallets.json for alias and auto-migrate to keystore
-    const walletsJsonPath = configPath('wallets.json')
-    if (fs.existsSync(walletsJsonPath)) {
-      try {
-        const store = JSON.parse(fs.readFileSync(walletsJsonPath, 'utf8'))
-        const found = store.wallets?.find((w: any) => w.label === alias)
-        if (found?.privateKey) {
-          const credDir = path.dirname(walletPath)
-          if (!fs.existsSync(credDir)) {
-            fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
-          }
-          const pubKey = found.publicKey || Keypair.fromSecretKey(bs58.decode(found.privateKey)).publicKey.toBase58()
-          const payload = {
-            publicKey: pubKey,
-            privateKey: found.privateKey,
-          }
-          fs.writeFileSync(walletPath, JSON.stringify(payload, null, 2), { mode: 0o600 })
-          if (process.platform !== 'win32') {
-            try {
-              fs.chmodSync(walletPath, 0o600)
-            } catch {
-              /* ignore */
-            }
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  if (!fs.existsSync(walletPath)) {
     throw new Error(
       `Wallet keystore not found for alias "${alias}" at ${walletPath}. Import or generate a wallet first (e.g. etemaro wallet import --name ${alias}).`,
     )
@@ -127,29 +94,19 @@ export function getWalletKeypair(): Keypair {
   }
 
   let key: string | null = null
-  let needsMigration = false
   try {
     const walletData = JSON.parse(fs.readFileSync(walletPath, 'utf8'))
-    if (Array.isArray(walletData)) {
-      // Legacy Solana CLI byte array [1, 2, ...]
-      key = bs58.encode(Uint8Array.from(walletData))
-      needsMigration = true
-    } else if (typeof walletData === 'string') {
-      // Legacy bare Base58 string
-      key = walletData.trim()
-      needsMigration = true
-    } else if (typeof walletData === 'object' && walletData !== null) {
-      if (typeof walletData.privateKey !== 'string' || walletData.privateKey.trim().length === 0) {
-        throw new Error(
-          `Missing mandatory "privateKey" in wallet keystore file at ${walletPath}. Expected format: { "publicKey": "...", "privateKey": "..." }`,
-        )
-      }
-      key = walletData.privateKey.trim()
-    } else {
+    if (typeof walletData !== 'object' || walletData === null || Array.isArray(walletData)) {
       throw new Error(
-        `Invalid keystore format. Keystore must be a JSON object: { "publicKey": "...", "privateKey": "..." }`,
+        `Invalid keystore format: must be a JSON object with "publicKey" and "privateKey" (bare string or array format is not supported).`,
       )
     }
+    if (typeof walletData.privateKey !== 'string' || walletData.privateKey.trim().length === 0) {
+      throw new Error(
+        `Missing mandatory "privateKey" in wallet keystore file at ${walletPath}. Expected format: { "publicKey": "...", "privateKey": "..." }`,
+      )
+    }
+    key = walletData.privateKey.trim()
   } catch (err: any) {
     throw new Error(`Failed to parse wallet keystore file at ${walletPath}: ${err?.message || err}`)
   }
@@ -162,26 +119,6 @@ export function getWalletKeypair(): Keypair {
     _walletKeypair = Keypair.fromSecretKey(bs58.decode(key))
   } catch (err: any) {
     throw new Error(`Invalid secret key in wallet keystore at ${walletPath}: ${err?.message || err}`)
-  }
-
-  // Auto-migrate legacy format in-place to { publicKey, privateKey }
-  if (needsMigration) {
-    try {
-      const payload = {
-        publicKey: _walletKeypair.publicKey.toBase58(),
-        privateKey: key,
-      }
-      fs.writeFileSync(walletPath, JSON.stringify(payload, null, 2), { mode: 0o600 })
-      if (process.platform !== 'win32') {
-        try {
-          fs.chmodSync(walletPath, 0o600)
-        } catch {
-          /* ignore */
-        }
-      }
-    } catch {
-      /* ignore migration rewrite errors if filesystem is read-only */
-    }
   }
 
   _walletAlias = alias
