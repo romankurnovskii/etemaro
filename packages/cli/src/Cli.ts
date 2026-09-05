@@ -25,20 +25,12 @@ import bs58 from 'bs58'
 
 /**
  * Prompt for a sensitive secret (such as a private key) without echoing input to terminal stdout.
+ * Works consistently across both TTY and non-TTY / piped inputs.
  */
 async function promptSecret(promptText: string): Promise<string> {
-  if (!process.stdin.isTTY) {
-    const rl = readline.createInterface({ input: stdinStream, output: stdoutStream })
-    try {
-      const answer = await rl.question(promptText)
-      return answer.trim()
-    } finally {
-      rl.close()
-    }
-  }
-
   return new Promise((resolve) => {
     let muted = false
+    let resolved = false
     const mutableStdout = new Writable({
       write(chunk, encoding, callback) {
         if (!muted) {
@@ -48,20 +40,35 @@ async function promptSecret(promptText: string): Promise<string> {
       },
     })
 
+    const isTTY = Boolean((stdinStream as any).isTTY)
     const rl = nodeReadline.createInterface({
       input: stdinStream,
       output: mutableStdout,
-      terminal: true,
+      terminal: isTTY,
     })
 
     stdoutStream.write(promptText)
     muted = true
 
     rl.question('', (answer) => {
+      if (resolved) return
+      resolved = true
       muted = false
-      stdoutStream.write('\n')
+      if (isTTY) {
+        stdoutStream.write('\n')
+      }
       rl.close()
       resolve(answer.trim())
+    })
+
+    rl.on('close', () => {
+      if (resolved) return
+      resolved = true
+      muted = false
+      if (isTTY) {
+        stdoutStream.write('\n')
+      }
+      resolve('')
     })
   })
 }
@@ -141,9 +148,6 @@ let hivemind: CoreExports['hivemind'] = null as any
 let tools: CoreExports['tools'] = null as any
 let defaultUserConfigStr: CoreExports['defaultUserConfigStr'] = null as any
 let DEFAULT_STRATEGIES: CoreExports['DEFAULT_STRATEGIES'] = null as any
-// Used to disable the global logger's [DRY RUN] tag during real keystore operations
-// (e.g. wallet import/generate), where core's default config otherwise sets dryRun: true.
-let _setDryRun: CoreExports['setDryRun'] = null as any
 
 // Lazily populated Daemon constructor
 let DaemonCtor: DaemonExports['Daemon'] = null as any
@@ -184,7 +188,6 @@ export async function loadCore(): Promise<void> {
   tools = coreMod.tools
   defaultUserConfigStr = coreMod.defaultUserConfigStr
   DEFAULT_STRATEGIES = coreMod.DEFAULT_STRATEGIES
-  _setDryRun = coreMod.setDryRun
   // Assign Daemon constructor
   DaemonCtor = daemonMod.Daemon
 }
@@ -781,8 +784,6 @@ export class Cli {
   }
 
   private handleGenerateWallet(flags: Record<string, any>): void {
-    // Administrative keystore operations are live disk writes, not dry-run simulations
-    _setDryRun?.(false)
     const configDir = path.join(this.etemaroDir, 'config')
     const alias = flags.name || flags.label || 'default'
     const result = wallet.generateNewWallet({
@@ -811,8 +812,6 @@ export class Cli {
       privateKey = await promptSecret('Enter Base58 private key: ')
     }
 
-    // Administrative keystore operations are live disk writes, not dry-run simulations
-    _setDryRun?.(false)
     const result = wallet.importWallet({
       label: alias,
       privateKey,
@@ -847,7 +846,11 @@ export class Cli {
               const raw = JSON.parse(fs.readFileSync(fullPath, 'utf8'))
               let key: string | null = null
               let pubKey: string | undefined
-              if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+              if (Array.isArray(raw)) {
+                key = bs58.encode(Uint8Array.from(raw))
+              } else if (typeof raw === 'string' && raw.trim().length > 0) {
+                key = raw.trim()
+              } else if (typeof raw === 'object' && raw !== null) {
                 if (typeof raw.publicKey === 'string' && raw.publicKey.trim().length > 0) {
                   pubKey = raw.publicKey.trim()
                 }
@@ -920,7 +923,17 @@ export class Cli {
       if (fs.existsSync(credFile)) {
         try {
           const raw = JSON.parse(fs.readFileSync(credFile, 'utf8'))
-          if (
+          if (Array.isArray(raw)) {
+            const priv = bs58.encode(Uint8Array.from(raw))
+            foundPriv = priv
+            foundPub = Keypair.fromSecretKey(bs58.decode(priv)).publicKey.toBase58()
+            break
+          } else if (typeof raw === 'string' && raw.trim().length > 0) {
+            const priv = raw.trim()
+            foundPriv = priv
+            foundPub = Keypair.fromSecretKey(bs58.decode(priv)).publicKey.toBase58()
+            break
+          } else if (
             typeof raw === 'object' &&
             raw !== null &&
             typeof raw.privateKey === 'string' &&
@@ -1271,9 +1284,10 @@ export class Cli {
           }
           case '2': {
             const label = (await rl.question('Enter wallet alias: ')) || 'default'
+            // Close the outer readline interface before promptSecret so it stops listening
+            // and does not compete with promptSecret on stdin, which would echo keystrokes to terminal.
+            rl.close()
             const key = await promptSecret('Enter Base58 private key: ')
-            // Administrative keystore operations are live disk writes, not dry-run simulations
-            _setDryRun?.(false)
             const result = this.adapters.wallet.importWallet({ label, privateKey: key })
             console.log(`Imported wallet ${result.publicKey} as "${label}"`)
             const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
