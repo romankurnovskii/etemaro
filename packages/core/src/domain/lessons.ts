@@ -10,7 +10,6 @@
  * @sideEffects Reads and writes `data/lessons.json` and pushes events to HiveMind
  */
 
-import fs from 'node:fs'
 import {
   dataPath,
   MAX_CHANGE_PER_STEP,
@@ -393,20 +392,12 @@ export function evolveThresholds(perfData: PerformanceRecord[], cfg: AppConfig):
   if (Object.keys(changes).length === 0) return { changes: {}, rationale: {} }
 
   // ── Persist changes to user-config.json ───────────────────────
-  let userConfig: Record<string, unknown> = {}
-  if (fs.existsSync(USER_CONFIG_PATH)) {
-    try {
-      userConfig = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'))
-    } catch {
-      /* ignore */
-    }
-  }
-
+  const userConfig = loadJsonFile<Record<string, unknown>>(USER_CONFIG_PATH, {})
   Object.assign(userConfig, changes)
   userConfig._lastEvolved = new Date().toISOString()
   userConfig._positionsAtEvolution = perfData.length
 
-  fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(userConfig, null, 2))
+  saveJsonFile(USER_CONFIG_PATH, userConfig)
 
   // Apply to live config object immediately
   const s = cfg.screening
