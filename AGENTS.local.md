@@ -2,8 +2,6 @@
 
 Every agent working in this repo **must** read this file first and keep the Memory Bank in sync on every change.
 
-**There is exactly one persistence system in this repo: `./.memory-bank/`.** There is no separate `docs/` tree, no `README.md`-as-doc-index, and no `.dev/` scratch directory. If you find yourself wondering "where does this go," the answer is always somewhere under `./.memory-bank/` — see Section 3 for the file reference table.
-
 ---
 
 ## 0. Mandatory Bootstrap (Every Session, Before Anything Else)
@@ -49,8 +47,8 @@ Before modifying Solana or Meteora integration logic, read `./.memory-bank/syste
 | ---------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
 | No new files without reuse analysis      | Search codebase, reference files that cannot be extended, provide exhaustive justification | Before creating: "Analyzed X, Y, Z. Cannot extend because [technical reason]" |
 | No rewrites when refactoring is possible | Prefer incremental improvements, justify why refactoring won't work                        | "Refactoring X impossible because [specific limitation]"                      |
-| No generic advice                        | Cite `file:line`, show concrete integration points, include migration strategies           | Every suggestion includes a `file:line` citation                              |
-| No ignoring existing architecture        | Load patterns before changes, extend existing services/components, consolidate duplicates  | "Extends existing pattern at `file:line`"                                     |
+| No generic advice                        | Cite`file:line`, show concrete integration points, include migration strategies          | Every suggestion includes a`file:line` citation                             |
+| No ignoring existing architecture        | Load patterns before changes, extend existing services/components, consolidate duplicates  | "Extends existing pattern at`file:line`"                                    |
 
 ### Reuse Validation Checklist (before creating any file)
 
@@ -65,7 +63,7 @@ Before modifying Solana or Meteora integration logic, read `./.memory-bank/syste
 
 ### Non-Negotiables
 
-- **Approval Gates**: No _code_ file changes applied without explicit user approval (see Section 6 for what does and doesn't need a separate approval).
+- **Approval Gates**: No *code* file changes applied without explicit user approval (see Section 6 for what does and doesn't need a separate approval).
 - **Citations**: Always `file:line` for code, `file.md#Section` for Memory Bank.
 - **Sandbox First**: All edits in branch/temp clone, never main.
 - **MCP Preferred**: Use MCP servers for memory, repo ops, QA over brute-force context, when available.
@@ -144,8 +142,8 @@ Compaction can happen at any time — automatically, via `/compact`, or via plat
 
 ### File Reference Table
 
-| File                | Purpose               | Load When                 | Update When                           |
-| ------------------- | --------------------- | ------------------------- | ------------------------------------- |
+| File                  | Purpose               | Load When                 | Update When                           |
+| --------------------- | --------------------- | ------------------------- | ------------------------------------- |
 | `toc.md`            | Index/navigation      | After adding files        | After new files/tasks                 |
 | `projectbrief.md`   | Core requirements     | Complex tasks             | Major pivots                          |
 | `productContext.md` | User goals, market    | Complex tasks             | Quarterly/strategy shifts             |
@@ -186,17 +184,14 @@ PLAN [approve] → BUILD → DIFF → QA [pass] → APPROVAL [approve] → APPLY
 ## Plan: [Task Name]
 
 **Analyzed**:
-
 - `path/file.ext:50-100` - Current implementation of X
 - `./.memory-bank/systemPatterns.md#Pattern` - Established pattern for Y
 
 **Reuse Strategy**:
-
 - Extend `file.ext` - Add method for [functionality]
 - Cannot reuse [component] because: [specific technical reason]
 
 **Steps**:
-
 1. [Action] - extends pattern at `file:line`
 2. [Action] - adds tests mirroring `test.ext`
 
@@ -282,10 +277,9 @@ Substate: `RUNNING`.
 
 **Review Gates**: ✅ Tests pass | ✅ Security reviewed | ✅ Linter clean
 
-**On approval, the following happen automatically with no further gate**: changes are applied (APPLY) and the Memory Bank is updated — task doc, monthly README, and any new patterns/decisions (DOCS). This message _is_ the notice for both.
+**On approval, the following happen automatically with no further gate**: changes are applied (APPLY) and the Memory Bank is updated — task doc, monthly README, and any new patterns/decisions (DOCS). This message *is* the notice for both.
 
 **Please review. Reply with**:
-
 - "approved" / "looks good" / "ship it" → APPLY, then DOCS
 - "change X" / "fix Y" → back to BUILD
 - "revert" → discard all changes
@@ -300,7 +294,6 @@ Substate: `RUNNING`.
 
 ```markdown
 ## Changes Applied
-
 ✅ All changes applied to sandbox branch
 ✅ 3 files modified
 ✅ Quick verification passed
@@ -327,29 +320,23 @@ On failure: report the error, roll back, diagnose, return to BUILD.
 # YYMMDD_task-name
 
 ## Objective
-
 [What was accomplished]
 
 ## Outcome
-
 - ✅ Tests: 145 passing (+10 new)
 - ✅ Coverage: 87.3% (+2.1%)
 - ✅ Build: Successful
 
 ## Files Modified
-
 - `file1.ext` - Added [functionality]
 
 ## Patterns Applied
-
 - `systemPatterns.md#Pattern`
 
 ## Integration Points
-
 - `component.ext:45` via new method
 
 ## Architectural Decisions
-
 - Decision: [X] — Rationale: [Y] per `decisions.md#...`
 ```
 
@@ -359,7 +346,6 @@ On failure: report the error, roll back, diagnose, return to BUILD.
 ## Tasks Completed
 
 ### 2025-10-25: [Task Name]
-
 - Implemented [brief description]
 - Files: `file1.ext`, `file2.ext`
 - See: [251025_task-name.md](./251025_task-name.md)
@@ -378,23 +364,19 @@ On failure: report the error, roll back, diagnose, return to BUILD.
 ## Task: [Clear, specific objective]
 
 ### Context
-
 - **Repository**: [path or monorepo location]
 - **Related Work**: [prior tasks, MB entries]
 - **Constraints**: [arch rules, security, performance]
 
 ### Expected Outcomes
-
 - **Acceptance Criteria**: [specific, testable criteria]
 - **Definition of Done**: [when truly complete]
 
 ### Historical Reference
-
 - **Prior Tasks**: [links to `tasks/YYYY-MM/DDMMDD_*.md`]
 - **Arch Decisions**: [links to `decisions.md` entries]
 
 ### Architectural Constraints
-
 - **Must Follow**: [specific patterns from MB]
 - **Must Not**: [anti-patterns, approaches to avoid]
 ```
@@ -425,13 +407,11 @@ On failure: report the error, roll back, diagnose, return to BUILD.
 
 ```markdown
 ## STALL DETECTED
-
 ⚠️ Two identical diffs - unable to progress
 
 **Diagnosis**: Cause: [reason] | Attempted: [what was tried] | Blocker: [what prevents progress]
 
 **Recommendations**:
-
 1. More Context: Load [specific MB files/codebase areas]
 2. Alternative: [different technical strategy]
 3. Agent Swap: Switch to [specialized agent] for subtask
@@ -517,11 +497,11 @@ Stuck? → Cycles ≥3?
 
 ### Common Issues
 
-| Issue                | Symptoms                                                               | Resolution                                                                                 |
-| -------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Issue                      | Symptoms                                                               | Resolution                                                                                    |
+| -------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | **Loop**             | Same diff repeatedly, QA fails repeatedly, no progress after 3+ cycles | Check budgets → load more MB → clarify requirements → agent swap                           |
 | **Context Exceeded** | Token limit approaching, forgetting earlier info                       | State is already persisted (Section 2) → rotate context → break into subtasks → agent swap |
-| **CI ≠ Local**       | QA passes, CI fails                                                    | Compare environments → verify dependency versions → check state cleanup                    |
+| **CI ≠ Local**      | QA passes, CI fails                                                    | Compare environments → verify dependency versions → check state cleanup                     |
 | **Security Fail**    | Checklist incomplete, sensitive data exposed                           | Never bypass → return to BUILD → fix → re-test                                             |
 
 ### Recovery Procedures
@@ -553,7 +533,5 @@ Iterations on failure: `BUILD ← DIFF ← QA ← APPROVAL`. Major changes: retu
 7. Every completed task gets a task doc and a monthly README update — no exceptions, no separate approval.
 
 ---
-
-**Each session starts fresh. `./.memory-bank/` is the only persistent memory — there is no other doc tree and no scratch directory. Maintain it with precision.**
 
 **Mission**: Build software respecting existing architecture, following established patterns, improving incrementally. Reuse over creation. Quality over speed. Approval over assumption.
