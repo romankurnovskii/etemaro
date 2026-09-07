@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import { config } from '../../config/Config.js'
 import { USER_CONFIG_PATH } from '../../shared/constants.js'
 import { log } from '../../shared/logger.js'
+import { loadJsonFile, saveJsonFile } from '../../shared/utils.js'
 import { sleep } from '../../utils/time.js'
 import { notify } from './NotificationSink.js'
 
@@ -62,20 +63,18 @@ function loadChatId(): void {
 
 function saveChatId(id: string): void {
   try {
-    if (typeof fs?.existsSync !== 'function' || typeof fs?.writeFileSync !== 'function') return
+    if (typeof fs?.writeFileSync !== 'function') return
     if (config.connection) {
       config.connection.telegramChatId = id
     }
-    const cfg: Record<string, unknown> = fs.existsSync(USER_CONFIG_PATH)
-      ? JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'))
-      : {}
+    const cfg = loadJsonFile<Record<string, unknown>>(USER_CONFIG_PATH, {})
     const connection =
       cfg.connection && typeof cfg.connection === 'object' && !Array.isArray(cfg.connection)
         ? (cfg.connection as Record<string, unknown>)
         : {}
     connection.telegramChatId = id
     cfg.connection = connection
-    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(cfg, null, 2))
+    saveJsonFile(USER_CONFIG_PATH, cfg)
   } catch (e: any) {
     log('telegram_error', `Failed to persist chatId: ${e.message}`)
   }
