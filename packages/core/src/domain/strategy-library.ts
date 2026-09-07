@@ -9,7 +9,6 @@
  *
  */
 
-import fs from 'node:fs'
 import { config } from '../config/Config.js'
 import { configPath, getDataDir, repoPath, strategyLibraryPath } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
@@ -64,9 +63,7 @@ export class StrategyLibraryManager {
 
     if (Object.keys(sharedDb.strategies).length === 0) {
       const localSharedFile = strategyLibraryPath('strategy-library.shared.json')
-      if (fs.existsSync(localSharedFile)) {
-        sharedDb = loadJsonFile<StrategyLibraryData>(localSharedFile, { strategies: {} })
-      }
+      sharedDb = loadJsonFile<StrategyLibraryData>(localSharedFile, { strategies: {} })
     }
 
     if (Object.keys(sharedDb.strategies).length === 0) {
@@ -250,14 +247,10 @@ export function setActiveStrategy({ id }: { id: string }): Record<string, unknow
 
   const userConfigPath = configPath('user-config.json')
   try {
-    if (fs.existsSync(userConfigPath)) {
-      const raw = JSON.parse(fs.readFileSync(userConfigPath, 'utf8'))
-      if (!raw.strategy) raw.strategy = {}
-      raw.strategy.activeStrategyId = id
-      fs.writeFileSync(userConfigPath, `${JSON.stringify(raw, null, 2)}\n`)
-    } else {
-      throw new Error(`user-config.json not found at ${userConfigPath}`)
-    }
+    const raw = loadJsonFile<{ strategy?: { activeStrategyId?: string } }>(userConfigPath, {})
+    if (!raw.strategy) raw.strategy = {}
+    raw.strategy.activeStrategyId = id
+    saveJsonFile(userConfigPath, raw)
   } catch (err) {
     const errorMsg = `Failed to update user config: ${err}`
     log('strategy', errorMsg)
@@ -304,12 +297,10 @@ export function removeStrategy({ id }: { id: string }): Record<string, unknown> 
       // Clear the active strategy pointer if no strategies exist at all
       const userConfigPath = configPath('user-config.json')
       try {
-        if (fs.existsSync(userConfigPath)) {
-          const raw = JSON.parse(fs.readFileSync(userConfigPath, 'utf8'))
-          if (!raw.strategy) raw.strategy = {}
-          raw.strategy.activeStrategyId = null
-          fs.writeFileSync(userConfigPath, `${JSON.stringify(raw, null, 2)}\n`)
-        }
+        const raw = loadJsonFile<{ strategy?: { activeStrategyId?: string | null } }>(userConfigPath, {})
+        if (!raw.strategy) raw.strategy = {}
+        raw.strategy.activeStrategyId = null
+        saveJsonFile(userConfigPath, raw)
       } catch (err) {
         log('strategy', `Failed to update user config during removal: ${err}`)
       }

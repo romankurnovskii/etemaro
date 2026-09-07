@@ -14,7 +14,6 @@
  */
 
 import { execSync, spawn } from 'node:child_process'
-import fs from 'node:fs'
 
 // ─── Shared imports ────────────────────────────────────────────
 import { config } from '../config/Config.js'
@@ -57,7 +56,7 @@ import { getMinSafeBinsBelow, REPO_ROOT, USER_CONFIG_PATH } from '../shared/cons
 import { log, logAction, logStructured } from '../shared/logger.js'
 import { Mutex } from '../shared/mutex.js'
 import type { AgentRole } from '../shared/types.js'
-import { normalizeTimeframe, scaleScreeningToTimeframe } from '../shared/utils.js'
+import { loadJsonFile, normalizeTimeframe, saveJsonFile, scaleScreeningToTimeframe } from '../shared/utils.js'
 import { sleep } from '../utils/time.js'
 import {
   claimFees,
@@ -711,14 +710,7 @@ const toolMap: Record<string, ToolFn> = {
       return { success: false, unknown, reason }
     }
 
-    let userConfig: Record<string, unknown> = {}
-    if (fs.existsSync(USER_CONFIG_PATH)) {
-      try {
-        userConfig = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'))
-      } catch (error: any) {
-        return { success: false, error: `Invalid user-config.json: ${error.message}`, reason }
-      }
-    }
+    const userConfig = loadJsonFile<Record<string, unknown>>(USER_CONFIG_PATH, {}, { critical: true })
 
     // Auto-scale fee/volume when timeframe changes (unless user set them explicitly in same call).
     if (applied.timeframe != null && applied.minFeeActiveTvlRatio == null && applied.minVolume == null) {
@@ -788,7 +780,7 @@ const toolMap: Record<string, ToolFn> = {
       }
     }
     userConfig._lastAgentTune = new Date().toISOString()
-    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(userConfig, null, 2))
+    saveJsonFile(USER_CONFIG_PATH, userConfig)
 
     // Restart cron jobs if intervals changed
     const intervalChanged =
