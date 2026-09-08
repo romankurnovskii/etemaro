@@ -904,6 +904,7 @@ export async function swapBaseToSolWithRetry(
   label: string,
   minUsd: number = 0.05,
   poolAddress?: string | null,
+  position?: string | null,
 ): Promise<{
   swapped: boolean
   result: Record<string, unknown> | null
@@ -1007,6 +1008,7 @@ export async function swapBaseToSolWithRetry(
     amount: lastToken?.balance ?? 0,
     usd: tokenUsd,
     pool_address: poolAddress || null,
+    position: position || null,
     error: lastErr || `Failed after ${attempts} attempts`,
   }).catch((err: any) => {
     log('state_error', `Failed to enqueue pending liquidation: ${err?.message || err}`)
@@ -1079,9 +1081,13 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
   const skips = new Set([SOL_MINT_1, SOL_MINT_2, USDC_MINT, ...skipMints])
 
   // Reconcile wallet balances with persistent liquidation queue
+  const priceMap: Record<string, number> = {}
   for (const t of balances.tokens as any[]) {
     const symbolUpper = (t.symbol || '').toUpperCase()
     const isSolOrUsdc = symbolUpper === 'SOL' || symbolUpper === 'WSOL' || symbolUpper === 'USDC'
+    if (t.mint && typeof t.usd === 'number' && typeof t.balance === 'number' && t.balance > 0) {
+      priceMap[t.mint] = t.usd / t.balance
+    }
     if (skips.has(t.mint) || isSolOrUsdc || (t.balance ?? 0) <= 0) continue
 
     const existing = getPendingLiquidation(t.mint)
@@ -1092,6 +1098,15 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
         amount: t.balance,
         usd: t.usd,
       }).catch(() => {})
+    }
+  }
+
+  if (Object.keys(priceMap).length > 0) {
+    try {
+      const { updatePendingTradesMarkToMarket } = await import('../domain/lessons.js')
+      updatePendingTradesMarkToMarket(priceMap)
+    } catch {
+      // ignore
     }
   }
 
@@ -1460,13 +1475,6 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
             log('telegram_warn', `Failed to send close error notification: ${err?.message || err}`)
           })
         } else {
-          notifyClose({
-            pair: (result as any).pool_name || (args.position_address as string)?.slice(0, 8),
-            pnlUsd: (result as any).pnl_usd ?? 0,
-            pnlPct: (result as any).pnl_pct ?? 0,
-          }).catch((err: any) => {
-            log('telegram_warn', `Failed to send close notification: ${err?.message || err}`)
-          })
           // Note low-yield closes in pool memory so screener avoids redeploying
           if ((args.reason as string) && (args.reason as string).toLowerCase().includes('yield')) {
             const poolAddr = (result as any).pool || args.pool_address
@@ -1476,22 +1484,39 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
                 note: `Closed: low yield (fee/TVL below threshold) at ${new Date().toISOString().slice(0, 10)}`,
               })
           }
+
+          const baseMint = (result as any).base_mint
+          const hasBaseToken = baseMint && baseMint !== 'So11111111111111111111111111111111111111112'
+          const posAddr = (args.position_address as string) || (result as any).position
+
           // Auto-swap base token back to SOL unless user said to hold (retried).
-          if (!args.skip_swap && (result as any).base_mint) {
+          if (!args.skip_swap && hasBaseToken) {
             const poolAddress = (result as any).pool || (args.pool_address as string)
             const { swapped, result: swapResult } = await swapBaseToSolWithRetry(
-              (result as any).base_mint,
+              baseMint,
               'after close',
               0.05,
               poolAddress,
+              posAddr,
             )
             if (swapped) {
               ;(result as any).auto_swapped = true
               ;(result as any).auto_swap_note =
-                `Base token already auto-swapped back to SOL (${(result as any).base_mint.slice(0, 8)} → SOL). Do NOT call swap_token again.`
+                `Base token already auto-swapped back to SOL (${baseMint.slice(0, 8)} → SOL). Do NOT call swap_token again.`
               if ((swapResult as any)?.amount_out) (result as any).sol_received = (swapResult as any).amount_out
             }
           }
+
+          const isPending = hasBaseToken && !(result as any).auto_swapped
+          notifyClose({
+            pair: (result as any).pool_name || (args.position_address as string)?.slice(0, 8),
+            pnlUsd: (result as any).pnl_usd ?? 0,
+            pnlPct: (result as any).pnl_pct ?? 0,
+            status: isPending ? 'closed_pending_swap' : 'realized',
+            solReceived: (result as any).sol_received,
+          }).catch((err: any) => {
+            log('telegram_warn', `Failed to send close notification: ${err?.message || err}`)
+          })
         }
       } else if (name === 'claim_fees') {
         const isSuccess = (result as any)?.success !== false && !(result as any)?.error && !(result as any)?.blocked
