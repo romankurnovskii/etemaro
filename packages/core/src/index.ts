@@ -28,4 +28,5 @@ export * from './shared/logger.js'
 export * from './shared/mutex.js'
 export * from './shared/types.js'
 export * from './shared/utils.js'
+export * from './utils/time.js'
 export { briefing, desktop, domain, hivemind, meteora, price, screening, study, telegram, token, toolExecutor, wallet }

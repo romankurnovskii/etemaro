@@ -474,7 +474,6 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
           {
             path: ['llm', 'defaultModel'],
             message: 'Environment variable LLM_MODEL is not set',
-            params: { envVar: 'LLM_MODEL', ref: 'env.LLM_MODEL' },
           },
         ],
       }
@@ -485,6 +484,43 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
       expect(output).toContain('LLM_MODEL=<value>')
       expect(output).toContain('OR update the value directly in your configuration file:')
       expect(output).toContain('/Users/r/test/user-config.json')
+    })
+  })
+
+  describe('computeDeployAmount', () => {
+    it('returns standard deploy floor when wallet has sufficient balance', async () => {
+      const { computeDeployAmount, config } = await import('./Config.js')
+      const floor = config.management.deployAmountSol
+      const reserve = config.management.gasReserve
+
+      // With wallet having enough for reserve + floor, should return at least floor
+      const result = computeDeployAmount(floor + reserve + 0.01)
+      expect(result).toBeGreaterThanOrEqual(floor)
+    })
+
+    it('scales down to minViableDeploy when wallet balance is near threshold and minViableDeploy provided', async () => {
+      const { computeDeployAmount, config } = await import('./Config.js')
+      const floor = config.management.deployAmountSol
+      const reserve = config.management.gasReserve
+      const minViable = Math.max(0.05, floor * 0.8)
+
+      // Wallet has less than reserve + floor, but enough for reserve + minViable
+      const walletSol = reserve + minViable + 0.001
+      const withoutAdaptive = computeDeployAmount(walletSol)
+      const withAdaptive = computeDeployAmount(walletSol, minViable)
+
+      expect(withoutAdaptive).toBe(floor)
+      expect(withAdaptive).toBe(parseFloat(minViable.toFixed(2)))
+    })
+
+    it('does not scale below minViableDeploy if wallet is near threshold', async () => {
+      const { computeDeployAmount, config } = await import('./Config.js')
+      const floor = config.management.deployAmountSol
+      const reserve = config.management.gasReserve
+      const minViable = Math.max(0.05, floor * 0.8)
+
+      const result = computeDeployAmount(reserve + minViable, minViable)
+      expect(result).toBe(parseFloat(minViable.toFixed(2)))
     })
   })
 })
