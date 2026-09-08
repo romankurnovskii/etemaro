@@ -21,6 +21,7 @@ export interface EnqueueLiquidationOpts {
   amount: number
   usd?: number | null
   pool_address?: string | null
+  position?: string | null
   error?: string
 }
 
@@ -63,6 +64,7 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
         amount: opts.amount > 0 ? opts.amount : existing.amount,
         usd: opts.usd !== undefined ? opts.usd : existing.usd,
         pool_address: opts.pool_address || existing.pool_address,
+        position: opts.position || existing.position || null,
         last_attempt_at: now,
         status: 'pending',
         last_error: opts.error || existing.last_error,
@@ -74,6 +76,7 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
         amount: opts.amount,
         usd: opts.usd ?? null,
         pool_address: opts.pool_address || null,
+        position: opts.position || null,
         added_at: now,
         last_attempt_at: now,
         attempts: 0,
@@ -101,11 +104,13 @@ export async function markLiquidationSuccess(
   mint: string,
   opts: { tx?: string; amountOutSol?: number } = {},
 ): Promise<boolean> {
-  return withStateLock(() => {
+  let position: string | null = null
+  const success = await withStateLock(() => {
     const state = loadState()
     const item = state.pendingLiquidations?.[mint]
     if (!item) return false
 
+    position = item.position || null
     item.status = 'liquidated'
     item.last_attempt_at = new Date().toISOString()
     item.last_error = null
@@ -117,6 +122,21 @@ export async function markLiquidationSuccess(
     )
     return true
   })
+
+  if (success) {
+    try {
+      const { settleTradeLiquidation } = await import('./lessons.js')
+      await settleTradeLiquidation(mint, {
+        amountOutSol: opts.amountOutSol || 0,
+        tx: opts.tx,
+        position: position || undefined,
+      })
+    } catch (e: any) {
+      log('state_warn', `Failed to settle trade liquidation in lessons for ${mint}: ${e?.message || e}`)
+    }
+  }
+
+  return success
 }
 
 /**
@@ -131,26 +151,31 @@ export async function markLiquidationAttempt(
     abandonWindowHours?: number
   } = {},
 ): Promise<{ status: 'pending' | 'abandoned'; attempts: number }> {
-  return withStateLock(() => {
+  let abandonedPosition: string | null = null
+  let lastError: string | null = null
+
+  const result = await withStateLock(() => {
     const state = loadState()
     const item = state.pendingLiquidations?.[mint]
     const maxAttempts = opts.maxAttempts ?? 10
     const abandonWindowHours = opts.abandonWindowHours ?? 2
 
     if (!item) {
-      return { status: 'abandoned', attempts: 0 }
+      return { status: 'abandoned' as const, attempts: 0 }
     }
 
     const now = new Date()
     item.attempts = (item.attempts || 0) + 1
     item.last_attempt_at = now.toISOString()
     item.last_error = opts.error || 'Liquidation attempt failed'
+    lastError = item.last_error
 
     const addedMs = item.added_at ? new Date(item.added_at).getTime() : now.getTime()
     const ageHours = (now.getTime() - addedMs) / (1000 * 60 * 60)
 
     if (item.attempts >= maxAttempts || ageHours >= abandonWindowHours) {
       item.status = 'abandoned'
+      abandonedPosition = item.position || null
       log(
         'state_warn',
         `Liquidation abandoned for ${item.symbol || mint.slice(0, 8)} after ${item.attempts} attempts (${ageHours.toFixed(1)}h). Token marked dead/rugged to halt RPC quote spam.`,
@@ -160,6 +185,20 @@ export async function markLiquidationAttempt(
     saveState(state)
     return { status: item.status as 'pending' | 'abandoned', attempts: item.attempts }
   })
+
+  if (result.status === 'abandoned') {
+    try {
+      const { abandonTradeLiquidation } = await import('./lessons.js')
+      await abandonTradeLiquidation(mint, {
+        reason: lastError || 'Liquidation attempts exhausted',
+        position: abandonedPosition || undefined,
+      })
+    } catch (e: any) {
+      log('state_warn', `Failed to record abandoned liquidation loss for ${mint}: ${e?.message || e}`)
+    }
+  }
+
+  return result
 }
 
 /**
