@@ -186,6 +186,12 @@ export const UserConfigSchema = z
         trailingDropPct: envNumber,
         pnlSanityMaxDiffPct: envNumber,
         solMode: envBoolean,
+        sweeperEnabled: envBoolean.optional().default(true),
+        sweeperIntervalMin: envNumber.optional().default(15),
+        sweeperMinUsd: envNumber.optional().default(0.02),
+        sweeperAlertUsd: envNumber.optional().default(1.0),
+        sweeperMaxAttempts: envNumber.optional().default(10),
+        sweeperAbandonWindowHours: envNumber.optional().default(2),
       })
       .strict(),
     strategy: z

@@ -163,6 +163,12 @@ function buildConfig(): AppConfig {
       trailingDropPct: u.management.trailingDropPct,
       pnlSanityMaxDiffPct: u.management.pnlSanityMaxDiffPct,
       solMode: u.management.solMode,
+      sweeperEnabled: u.management.sweeperEnabled ?? true,
+      sweeperIntervalMin: u.management.sweeperIntervalMin ?? 15,
+      sweeperMinUsd: u.management.sweeperMinUsd ?? 0.02,
+      sweeperAlertUsd: u.management.sweeperAlertUsd ?? 1.0,
+      sweeperMaxAttempts: u.management.sweeperMaxAttempts ?? 10,
+      sweeperAbandonWindowHours: u.management.sweeperAbandonWindowHours ?? 2,
     },
     strategy: {
       activeStrategyId: u.strategy.activeStrategyId,

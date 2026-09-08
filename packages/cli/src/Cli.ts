@@ -569,6 +569,11 @@ export class Cli {
         return this.handleClose(flags)
       case 'swap':
         return this.handleSwap(flags)
+      case 'sweep':
+      case 'swap-all':
+        return this.handleSweep(flags)
+      case 'liquidations':
+        return this.handleLiquidations(flags)
       case 'screen':
         return this.handleScreen(flags)
       case 'manage':
@@ -1108,6 +1113,23 @@ export class Cli {
     out(
       await this.adapters.toolExecutor.executeTool('swap_all_tokens_to_sol', {
         skipMints,
+      }),
+    )
+  }
+
+  private async handleSweep(flags: Record<string, any>): Promise<void> {
+    const skipMints = typeof flags.skip === 'string' ? flags.skip.split(',') : []
+    out(
+      await this.adapters.toolExecutor.executeTool('sweep_unsold_tokens', {
+        skipMints,
+      }),
+    )
+  }
+
+  private async handleLiquidations(flags: Record<string, any>): Promise<void> {
+    out(
+      await this.adapters.toolExecutor.executeTool('get_pending_liquidations', {
+        status: flags.status,
       }),
     )
   }
