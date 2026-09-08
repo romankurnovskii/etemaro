@@ -247,11 +247,16 @@ export interface Lesson {
 
 export type LessonOutcome = 'good' | 'bad' | 'poor' | 'neutral' | 'manual' | 'evolution' | 'failed' | 'worked'
 
+export type PerformanceStatus = 'realized' | 'closed_pending_swap' | 'abandoned_loss'
+
 export interface PerformanceRecord {
   position: string
   pool: string
   pool_name: string
   base_mint?: string
+  /** Trade settlement status: realized (cash SOL received), closed_pending_swap, or abandoned_loss */
+  status?: PerformanceStatus
+  settled_at?: string
   strategy: string
   bin_range: number | BinRange
   bin_step: number
@@ -268,6 +273,18 @@ export interface PerformanceRecord {
   close_reason: string
   deployed_at?: string
   signal_snapshot?: SignalSnapshot
+  /** Actual net SOL returned to the wallet (including post-close swap) */
+  cash_realized_sol?: number
+  /** USD valuation of cash SOL returned to the wallet */
+  cash_realized_usd?: number
+  /** Marked-to-market USD value of unswapped base tokens awaiting liquidation */
+  unrealized_residual_usd?: number
+  /** Number of unsold base tokens awaiting liquidation */
+  unrealized_tokens_amount?: number
+  /** Base token mint awaiting liquidation */
+  liquidation_mint?: string
+  /** Transaction hash of successful liquidation swap */
+  liquidation_tx?: string
   /** Price-only PnL in USD (final_value_usd - initial_value_usd), excluding fees */
   price_pnl_usd?: number
   /** Percentage price-only PnL */
@@ -690,6 +707,7 @@ export interface PendingLiquidation {
   amount: number
   usd?: number | null
   pool_address?: string | null
+  position?: string | null
   added_at: string
   last_attempt_at: string | null
   attempts: number

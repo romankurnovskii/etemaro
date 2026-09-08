@@ -1976,11 +1976,19 @@ export async function closePosition({ position_address, reason }: { position_add
             log('meteora_warn', `Failed to fetch pool exit metrics for ${poolAddress}: ${err?.message || err}`)
           }
 
+          const isBaseNonSol = closeBaseMint && closeBaseMint !== 'So11111111111111111111111111111111111111112'
+          const closeStatus = isBaseNonSol ? 'closed_pending_swap' : 'realized'
+
           await recordPerformance({
             position: position_address,
             pool: poolAddress,
             pool_name: tracked.pool_name || poolMeta.name || poolAddress.slice(0, 8),
             base_mint: closeBaseMint,
+            status: closeStatus,
+            liquidation_mint: isBaseNonSol ? closeBaseMint : undefined,
+            unrealized_residual_usd: isBaseNonSol ? finalValueUsd : 0,
+            cash_realized_sol: isBaseNonSol ? 0 : tracked.amount_sol,
+            cash_realized_usd: isBaseNonSol ? 0 : finalValueUsd,
             strategy: tracked.strategy,
             bin_range: tracked.bin_range,
             bin_step: tracked.bin_step || null,
@@ -2269,11 +2277,19 @@ export async function closePosition({ position_address, reason }: { position_add
         log('meteora_warn', `Failed to fetch pool exit metrics for ${poolAddress}: ${err?.message || err}`)
       }
 
+      const isBaseNonSol = closeBaseMint && closeBaseMint !== 'So11111111111111111111111111111111111111112'
+      const closeStatus = isBaseNonSol ? 'closed_pending_swap' : 'realized'
+
       await recordPerformance({
         position: position_address,
         pool: poolAddress,
         pool_name: tracked.pool_name || poolMeta.name || poolAddress.slice(0, 8),
         base_mint: closeBaseMint,
+        status: closeStatus,
+        liquidation_mint: isBaseNonSol ? closeBaseMint : undefined,
+        unrealized_residual_usd: isBaseNonSol ? finalValueUsd : 0,
+        cash_realized_sol: isBaseNonSol ? 0 : tracked.amount_sol,
+        cash_realized_usd: isBaseNonSol ? 0 : finalValueUsd,
         strategy: tracked.strategy,
         bin_range: tracked.bin_range,
         bin_step: tracked.bin_step || null,
