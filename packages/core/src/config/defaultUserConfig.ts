@@ -90,6 +90,12 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
     trailingDropPct: 1.5,
     pnlSanityMaxDiffPct: 5,
     solMode: false,
+    sweeperEnabled: true,
+    sweeperIntervalMin: 15,
+    sweeperMinUsd: 0.02,
+    sweeperAlertUsd: 1.0,
+    sweeperMaxAttempts: 10,
+    sweeperAbandonWindowHours: 2,
   },
 
   strategy: {

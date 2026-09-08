@@ -3,6 +3,7 @@
 export * from './decision-log.js'
 export * from './dev-blocklist.js'
 export * from './lessons.js'
+export * from './liquidation-queue.js'
 export * from './pool-memory.js'
 export * from './pool-metrics.js'
 export * from './signal-tracker.js'

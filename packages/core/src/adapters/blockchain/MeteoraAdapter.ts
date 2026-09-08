@@ -2413,3 +2413,110 @@ async function lookupPoolForPosition(position_address: string, walletAddress: st
 
 // Need to import getWalletBalances for deploy fallback
 import { getWalletBalances } from './WalletAdapter.js'
+
+export interface SwapDirectDlmmArgs {
+  pool_address: string
+  input_mint: string
+  amount: number
+  slippageBps?: number
+}
+
+export interface SwapDirectDlmmResult {
+  success: boolean
+  tx?: string
+  dry_run?: boolean
+  amount_in?: number
+  amount_out?: number
+  error?: string
+}
+
+/**
+ * Fallback swap directly against an originating Meteora DLMM pool when Jupiter
+ * aggregator has no route or returns quote errors.
+ */
+export async function swapDirectDlmm({
+  pool_address,
+  input_mint,
+  amount,
+  slippageBps = 300,
+}: SwapDirectDlmmArgs): Promise<SwapDirectDlmmResult> {
+  try {
+    const wallet = getWallet()
+    const pool = await getPool(pool_address)
+    const tokenXMintStr = pool.lbPair.tokenXMint.toString()
+    const tokenYMintStr = pool.lbPair.tokenYMint.toString()
+
+    const swapForY = input_mint === tokenXMintStr
+    if (!swapForY && input_mint !== tokenYMintStr) {
+      return {
+        success: false,
+        error: `Input mint ${input_mint} does not belong to DLMM pool ${pool_address} (X: ${tokenXMintStr}, Y: ${tokenYMintStr})`,
+      }
+    }
+
+    const inToken = swapForY ? pool.tokenX : pool.tokenY
+    const outToken = swapForY ? pool.tokenY : pool.tokenX
+    const inDecimals = inToken.mint?.decimals ?? 9
+    const outDecimals = outToken.mint?.decimals ?? 9
+
+    const inAmountRaw = Math.floor(amount * 10 ** inDecimals)
+    if (inAmountRaw <= 0) {
+      return { success: false, error: 'Swap amount too small' }
+    }
+    const inAmountBN = new BN(inAmountRaw.toString())
+    const allowedSlippageBN = new BN(slippageBps)
+
+    const binArrays = await pool.getBinArrayForSwap(swapForY)
+    if (!binArrays || binArrays.length === 0) {
+      return { success: false, error: 'No active bin arrays available for swap on DLMM pool' }
+    }
+
+    const swapQuote = await pool.swapQuote(inAmountBN, swapForY, allowedSlippageBN, binArrays)
+    if (!swapQuote?.minOutAmount) {
+      return { success: false, error: 'Failed to compute swap quote on DLMM pool' }
+    }
+
+    const amountOutEst = Number(swapQuote.outAmount.toString()) / 10 ** outDecimals
+
+    if (config.connection.dryRun) {
+      log(
+        'swap',
+        `[DRY RUN] Direct DLMM swap: ${amount} of ${input_mint.slice(0, 8)} → ${amountOutEst.toFixed(4)} SOL on pool ${pool_address.slice(0, 8)}`,
+      )
+      return {
+        success: true,
+        dry_run: true,
+        tx: 'dry_run_direct_dlmm_tx',
+        amount_in: amount,
+        amount_out: amountOutEst,
+      }
+    }
+
+    const swapTx = await pool.swap({
+      inToken: inToken.publicKey,
+      outToken: outToken.publicKey,
+      inAmount: inAmountBN,
+      minOutAmount: swapQuote.minOutAmount,
+      lbPair: pool.pubkey,
+      user: wallet.publicKey,
+      binArraysPubkey: swapQuote.binArraysPubkey,
+    })
+
+    const txHash = await sendAndConfirmTransaction(getConnection(), swapTx, [wallet])
+    log(
+      'swap',
+      `Direct DLMM swap SUCCESS: ${amount} ${input_mint.slice(0, 8)} → ~${amountOutEst.toFixed(4)} SOL [tx: ${txHash}]`,
+    )
+
+    return {
+      success: true,
+      tx: txHash,
+      amount_in: amount,
+      amount_out: amountOutEst,
+    }
+  } catch (err: any) {
+    const error = err?.message || String(err)
+    log('swap_warn', `Direct DLMM swap failed on pool ${pool_address}: ${error}`)
+    return { success: false, error }
+  }
+}

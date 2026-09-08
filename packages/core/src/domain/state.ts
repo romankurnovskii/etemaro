@@ -12,10 +12,17 @@
 
 import { dataPath, MAX_INSTRUCTION_LENGTH, MAX_RECENT_EVENTS, SYNC_GRACE_MS } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
-import type { BinRange, ExitResult, PositionRecord, StateEvent, StateSummary } from '../shared/types.js'
+import type {
+  BinRange,
+  ExitResult,
+  PendingLiquidation,
+  PositionRecord,
+  StateEvent,
+  StateSummary,
+} from '../shared/types.js'
 import { loadJsonFile, sanitizeStoredText, saveJsonFile } from '../shared/utils.js'
 
-export type { PositionRecord } from '../shared/types.js'
+export type { PendingLiquidation, PositionRecord } from '../shared/types.js'
 
 import { Mutex } from '../shared/mutex.js'
 import type { AppConfig } from '../shared/types.js'
@@ -46,27 +53,37 @@ export function __setStateFilePath(path: string): void {
   STATE_FILE = path
 }
 
-interface StateData {
+export interface StateData {
   positions: Record<string, PositionRecord>
   recentEvents?: StateEvent[]
   lastUpdated: string | null
   _lastBriefingDate?: string
   _consecutiveSwapFailures?: number
+  pendingLiquidations?: Record<string, PendingLiquidation>
 }
 
-function load(): StateData {
-  return loadJsonFile<StateData>(
+export function loadState(): StateData {
+  const data = loadJsonFile<StateData>(
     STATE_FILE,
     {
       positions: {},
       recentEvents: [],
       lastUpdated: null,
+      pendingLiquidations: {},
     },
     { label: 'state', critical: true },
   )
+  if (!data.pendingLiquidations) {
+    data.pendingLiquidations = {}
+  }
+  return data
 }
 
-function save(state: StateData): void {
+function load(): StateData {
+  return loadState()
+}
+
+export function saveState(state: StateData): void {
   try {
     state.lastUpdated = new Date().toISOString()
     saveJsonFile(STATE_FILE, state)
@@ -75,6 +92,10 @@ function save(state: StateData): void {
     log('state_error', `Failed to write state.json: ${message}`)
     throw err
   }
+}
+
+function save(state: StateData): void {
+  saveState(state)
 }
 
 // ─── Position Registry ─────────────────────────────────────────
