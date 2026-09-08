@@ -707,6 +707,36 @@ export async function notifySwapError({
   await sendPlain(`⚠️ Auto-swap failed: ${inputSymbol} → ${outputSymbol}\n${body}`)
 }
 
+export async function notifyLiquidationAlert({
+  symbol,
+  mint,
+  amount,
+  usd,
+  reason,
+  attempts,
+}: {
+  symbol?: string
+  mint: string
+  amount: number
+  usd?: number | null
+  reason?: string
+  attempts?: number
+}): Promise<void> {
+  if (hasActiveLiveMessage()) return
+  const tokenLabel = symbol || mint.slice(0, 8)
+  const usdLabel = usd != null ? ` (~$${usd.toFixed(2)})` : ''
+  const attemptsLabel = attempts ? ` after ${attempts} attempts` : ''
+  const title = `🚨 Stranded Token Alert: ${tokenLabel}${usdLabel}`
+  const body =
+    `Base token left unliquidated in wallet${attemptsLabel}.\n` +
+    `Mint: ${mint}\n` +
+    `Amount: ${amount}\n` +
+    `Reason: ${reason || 'Liquidation failed across all routes'}\n` +
+    'Manual intervention recommended before liquidity drains.'
+  notify('liquidation_alert', '🚨', title, body)
+  await sendPlain(`${title}\n${body}`)
+}
+
 interface NotifyOutOfRangeArgs {
   pair: string
   minutesOOR: number

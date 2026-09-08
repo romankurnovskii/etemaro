@@ -30,6 +30,14 @@ import {
   removeLessonsByKeyword,
   unpinLesson,
 } from '../domain/lessons.js'
+import {
+  enqueuePendingLiquidation,
+  getPendingLiquidation,
+  getPendingLiquidations,
+  markLiquidationAttempt,
+  markLiquidationSuccess,
+  pruneSettledLiquidations,
+} from '../domain/liquidation-queue.js'
 import { addPoolNote, getPoolMemory } from '../domain/pool-memory.js'
 import {
   addSmartWallet,
@@ -67,6 +75,7 @@ import {
   getPositionPnl,
   getWalletPositions,
   searchPools,
+  swapDirectDlmm,
 } from './blockchain/MeteoraAdapter.js'
 // ─── Adapter imports ───────────────────────────────────────────
 import { discoverPools, getPoolDetail, getTopCandidates } from './blockchain/ScreeningAdapter.js'
@@ -76,6 +85,7 @@ import { getWalletBalances, swapToken } from './blockchain/WalletAdapter.js'
 import {
   notifyClose,
   notifyDeploy,
+  notifyLiquidationAlert,
   notifySwap,
   notifySwapError,
   notifyTransactionError,
@@ -502,6 +512,14 @@ const toolMap: Record<string, ToolFn> = {
     const skipMints = (args.skipMints as string[]) || (args.skip_mints as string[]) || []
     return swapAllTokensToSolUnlocked(Array.isArray(skipMints) ? skipMints : [])
   }) as ToolFn,
+  sweep_unsold_tokens: ((args: Record<string, unknown> = {}) => {
+    const skipMints = (args.skipMints as string[]) || (args.skip_mints as string[]) || []
+    return sweepUnsoldTokensUnlocked({ skipMints: Array.isArray(skipMints) ? skipMints : [] })
+  }) as ToolFn,
+  get_pending_liquidations: ((args: Record<string, unknown> = {}) => {
+    const status = args.status as any
+    return { liquidations: getPendingLiquidations(status) }
+  }) as ToolFn,
   swap_token: swapToken as unknown as ToolFn,
   get_top_lpers: studyTopLPers as unknown as ToolFn,
   study_top_lpers: studyTopLPers as unknown as ToolFn,
@@ -864,6 +882,7 @@ export const WRITE_TOOLS = new Set([
   'close_all_positions',
   'swap_token',
   'swap_all_tokens_to_sol',
+  'sweep_unsold_tokens',
 ])
 export const PROTECTED_TOOLS = new Set([...WRITE_TOOLS, 'self_update'])
 
@@ -884,6 +903,7 @@ export async function swapBaseToSolWithRetry(
   baseMint: string,
   label: string,
   minUsd: number = 0.05,
+  poolAddress?: string | null,
 ): Promise<{
   swapped: boolean
   result: Record<string, unknown> | null
@@ -912,15 +932,42 @@ export async function swapBaseToSolWithRetry(
         'executor',
         `Auto-swapping ${label} ${token.symbol || baseMint.slice(0, 8)}${usdDisplay} back to SOL (attempt ${attempt}/${attempts})`,
       )
-      const swapResult = await swapToken({ input_mint: baseMint, output_mint: 'SOL', amount: token.balance })
-      const sr = swapResult as any
-      const ok = swapResult && sr.success !== false && !sr.error && (sr.tx || sr.amount_out)
+      let swapResult = await swapToken({ input_mint: baseMint, output_mint: 'SOL', amount: token.balance })
+      let sr = swapResult as any
+      let ok = swapResult && sr.success !== false && !sr.error && (sr.tx || sr.amount_out)
+
+      // Fallback: if Jupiter aggregator has no route or fails, attempt direct DLMM pool swap if pool address is known
+      if (!ok && poolAddress) {
+        log(
+          'executor',
+          `Jupiter swap failed for ${token.symbol || baseMint.slice(0, 8)} (${sr?.error || 'no route'}); attempting direct DLMM pool swap fallback on ${poolAddress.slice(0, 8)}`,
+        )
+        const dlmmRes = await swapDirectDlmm({
+          pool_address: poolAddress,
+          input_mint: baseMint,
+          amount: token.balance,
+        })
+        if (dlmmRes?.success && (dlmmRes.tx || dlmmRes.amount_out)) {
+          swapResult = dlmmRes as any
+          sr = dlmmRes as any
+          ok = true
+        } else if (dlmmRes?.error) {
+          lastErr = `DLMM direct swap failed: ${dlmmRes.error} (Jupiter: ${sr?.error || 'no route'})`
+        }
+      }
+
       if (ok) {
         recordSwapSuccess()
         const solReceived =
           sr.amount_out != null ? (typeof sr.amount_out === 'number' ? sr.amount_out : parseFloat(sr.amount_out)) : null
         const usdValue =
           token.usd ?? (solReceived != null && balances.sol_price ? solReceived * balances.sol_price : null)
+
+        await markLiquidationSuccess(baseMint, {
+          tx: sr.tx,
+          amountOutSol: solReceived != null ? solReceived : undefined,
+        }).catch(() => {})
+
         notifySwap({
           inputSymbol: token.symbol || baseMint.slice(0, 8),
           outputSymbol: 'SOL',
@@ -937,7 +984,7 @@ export async function swapBaseToSolWithRetry(
           token: token as unknown as Record<string, unknown>,
         }
       }
-      lastErr = sr?.error || sr?.reason || 'swap returned no tx'
+      if (!lastErr) lastErr = sr?.error || sr?.reason || 'swap returned no tx'
     } catch (e: any) {
       lastErr = e.message
     }
@@ -950,14 +997,197 @@ export async function swapBaseToSolWithRetry(
   )
   recordSwapFailure({ maxFailedSwapsBeforeHalt, haltOnSwapFailure })
   const symbol = lastToken?.symbol || baseMint.slice(0, 8)
-  notifySwapError({
-    inputSymbol: symbol,
-    outputSymbol: 'SOL',
-    reason: lastErr || `Failed after ${attempts} attempts`,
+  const tokenUsd = lastToken?.usd ?? null
+  const alertThreshold = config.management.sweeperAlertUsd ?? 1.0
+
+  // Register in persistent liquidation queue
+  await enqueuePendingLiquidation({
+    mint: baseMint,
+    symbol,
+    amount: lastToken?.balance ?? 0,
+    usd: tokenUsd,
+    pool_address: poolAddress || null,
+    error: lastErr || `Failed after ${attempts} attempts`,
   }).catch((err: any) => {
-    log('telegram_warn', `Failed to send swap error notification: ${err?.message || err}`)
+    log('state_error', `Failed to enqueue pending liquidation: ${err?.message || err}`)
   })
+
+  // Trigger high-priority alert if token value exceeds alert threshold
+  if (typeof tokenUsd === 'number' && tokenUsd >= alertThreshold) {
+    notifyLiquidationAlert({
+      symbol,
+      mint: baseMint,
+      amount: lastToken?.balance ?? 0,
+      usd: tokenUsd,
+      reason: lastErr || `Failed after ${attempts} attempts`,
+      attempts,
+    }).catch((err: any) => {
+      log('telegram_warn', `Failed to send liquidation alert notification: ${err?.message || err}`)
+    })
+  } else {
+    notifySwapError({
+      inputSymbol: symbol,
+      outputSymbol: 'SOL',
+      reason: lastErr || `Failed after ${attempts} attempts`,
+    }).catch((err: any) => {
+      log('telegram_warn', `Failed to send swap error notification: ${err?.message || err}`)
+    })
+  }
+
   return { swapped: false, result: null, token: null }
+}
+
+/**
+ * Sweep and reconcile all unsold base tokens in the wallet back to SOL.
+ * Combines active wallet holdings with the persistent liquidation backlog.
+ */
+export async function sweepUnsoldTokens(opts: { skipMints?: string[]; dryRun?: boolean } = [] as any): Promise<{
+  total: number
+  successful: number
+  failed: number
+  abandoned: number
+  skipped: number
+  results: any[]
+}> {
+  return withWriteToolsLock(() => sweepUnsoldTokensUnlocked(opts))
+}
+
+export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dryRun?: boolean } = [] as any): Promise<{
+  total: number
+  successful: number
+  failed: number
+  abandoned: number
+  skipped: number
+  results: any[]
+}> {
+  let skipMints: string[] = []
+  if (Array.isArray(opts)) {
+    skipMints = opts
+  } else if (opts && typeof opts === 'object') {
+    const raw = (opts as any).skipMints || (opts as any).skip_mints
+    if (Array.isArray(raw)) skipMints = raw
+  }
+
+  const balances = await getWalletBalances()
+  if (!balances?.tokens) {
+    return { total: 0, successful: 0, failed: 0, abandoned: 0, skipped: 0, results: [] }
+  }
+
+  const SOL_MINT_1 = 'So11111111111111111111111111111111111111111'
+  const SOL_MINT_2 = 'So11111111111111111111111111111111111111112'
+  const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+  const skips = new Set([SOL_MINT_1, SOL_MINT_2, USDC_MINT, ...skipMints])
+
+  // Reconcile wallet balances with persistent liquidation queue
+  for (const t of balances.tokens as any[]) {
+    const symbolUpper = (t.symbol || '').toUpperCase()
+    const isSolOrUsdc = symbolUpper === 'SOL' || symbolUpper === 'WSOL' || symbolUpper === 'USDC'
+    if (skips.has(t.mint) || isSolOrUsdc || (t.balance ?? 0) <= 0) continue
+
+    const existing = getPendingLiquidation(t.mint)
+    if (!existing || existing.status === 'liquidated') {
+      await enqueuePendingLiquidation({
+        mint: t.mint,
+        symbol: t.symbol,
+        amount: t.balance,
+        usd: t.usd,
+      }).catch(() => {})
+    }
+  }
+
+  const pendingItems = getPendingLiquidations('pending')
+  let total = 0
+  let skipped = 0
+  let successful = 0
+  let failed = 0
+  let abandoned = 0
+  const results: any[] = []
+
+  const interSwapDelayMs = Math.max(0, Number(config.management.autoSwapInterSwapDelayMs ?? 1500))
+  const minUsd = Math.max(0, Number(config.management.sweeperMinUsd ?? 0.02))
+  const maxAttempts = Math.max(1, Number(config.management.sweeperMaxAttempts ?? 10))
+  const abandonWindowHours = Math.max(1, Number(config.management.sweeperAbandonWindowHours ?? 2))
+  let swapAttempted = false
+
+  for (const item of pendingItems) {
+    if (skips.has(item.mint)) {
+      skipped++
+      continue
+    }
+
+    total++
+    const currentToken = (balances.tokens as any[])?.find((t: any) => t.mint === item.mint)
+    if (!currentToken || (currentToken.balance ?? 0) <= 0) {
+      await markLiquidationSuccess(item.mint).catch(() => {})
+      skipped++
+      continue
+    }
+
+    const isDust = typeof currentToken.usd === 'number' && currentToken.usd >= 0 && currentToken.usd < minUsd
+    if (isDust) {
+      skipped++
+      results.push({
+        mint: item.mint,
+        symbol: item.symbol,
+        success: false,
+        reason: `skipped dust (< $${minUsd.toFixed(2)})`,
+      })
+      continue
+    }
+
+    // Pace swaps to respect API rate limits
+    if (swapAttempted && interSwapDelayMs > 0) {
+      await sleep(interSwapDelayMs)
+    }
+    swapAttempted = true
+
+    try {
+      const res = await swapBaseToSolWithRetry(item.mint, 'sweeper', minUsd, item.pool_address)
+      if (res.swapped) {
+        successful++
+        results.push({ mint: item.mint, symbol: item.symbol, success: true, result: res.result })
+      } else {
+        const outcome = await markLiquidationAttempt(item.mint, {
+          error: 'sweeper failed to liquidate token',
+          maxAttempts,
+          abandonWindowHours,
+        })
+        if (outcome.status === 'abandoned') {
+          abandoned++
+          results.push({
+            mint: item.mint,
+            symbol: item.symbol,
+            success: false,
+            reason: `abandoned after ${outcome.attempts} attempts`,
+          })
+        } else {
+          failed++
+          results.push({
+            mint: item.mint,
+            symbol: item.symbol,
+            success: false,
+            reason: `liquidation attempt ${outcome.attempts} failed`,
+          })
+        }
+      }
+    } catch (e: any) {
+      failed++
+      results.push({ mint: item.mint, symbol: item.symbol, success: false, reason: e.message })
+    }
+  }
+
+  // Prune older settled entries (settled > 24h ago)
+  await pruneSettledLiquidations(24).catch(() => {})
+
+  logAction({
+    tool: 'sweepUnsoldTokens',
+    args: { skipMints },
+    result: { total, skipped, successful, failed, abandoned },
+    duration_ms: 0,
+    success: failed === 0,
+  })
+
+  return { total, skipped, successful, failed, abandoned, results }
 }
 
 /**
@@ -1248,9 +1478,12 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
           }
           // Auto-swap base token back to SOL unless user said to hold (retried).
           if (!args.skip_swap && (result as any).base_mint) {
+            const poolAddress = (result as any).pool || (args.pool_address as string)
             const { swapped, result: swapResult } = await swapBaseToSolWithRetry(
               (result as any).base_mint,
               'after close',
+              0.05,
+              poolAddress,
             )
             if (swapped) {
               ;(result as any).auto_swapped = true
@@ -1271,7 +1504,8 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
             log('telegram_warn', `Failed to send claim error notification: ${err?.message || err}`)
           })
         } else if (config.management.autoSwapAfterClaim && (result as any).base_mint) {
-          await swapBaseToSolWithRetry((result as any).base_mint, 'after claim')
+          const poolAddress = (result as any).pool || (args.pool_address as string)
+          await swapBaseToSolWithRetry((result as any).base_mint, 'after claim', 0.05, poolAddress)
         }
       }
     }

@@ -282,6 +282,7 @@ export class Daemon {
   private screeningLastTriggered = 0 // Epoch timestamp (ms) of last screening; enforces post-management cooldown
   private pnlPollBusy = false // Guards high-frequency PnL poller ticks to prevent parallel on-chain queries
   private opportunityPollBusy = false // Guards background opportunity/smart-wallet detection polling cycles
+  private sweeperBusy = false // Guards continuous unsold token sweeper reconciliation cycles
   private busy = false // Guards interactive REPL terminal commands and free-form LLM chat sessions
   private shuttingDown = false // Set on SIGINT/SIGTERM or /stop; suppresses new cycles & aborts queue processing
   private draining = false // Single-flight guard ensuring only one loop drains the Telegram queue at a time
@@ -321,7 +322,7 @@ export class Daemon {
    * Synchronous atomic check-and-set lock acquisition for daemon async cycles.
    * Prevents overlapping timer ticks or event-loop delays from entering guarded sections concurrently.
    */
-  private acquireLock(lockName: 'management' | 'screening' | 'pnlPoll' | 'opportunityPoll'): boolean {
+  private acquireLock(lockName: 'management' | 'screening' | 'pnlPoll' | 'opportunityPoll' | 'sweeper'): boolean {
     if (this.shuttingDown) return false
     switch (lockName) {
       case 'management':
@@ -340,13 +341,17 @@ export class Daemon {
         if (this.screeningBusy || this.managementBusy || this.pnlPollBusy || this.opportunityPollBusy) return false
         this.opportunityPollBusy = true
         return true
+      case 'sweeper':
+        if (this.sweeperBusy || this.managementBusy) return false
+        this.sweeperBusy = true
+        return true
     }
   }
 
   /**
    * Synchronous lock release helper.
    */
-  private releaseLock(lockName: 'management' | 'screening' | 'pnlPoll' | 'opportunityPoll'): void {
+  private releaseLock(lockName: 'management' | 'screening' | 'pnlPoll' | 'opportunityPoll' | 'sweeper'): void {
     switch (lockName) {
       case 'management':
         this.managementBusy = false
@@ -359,6 +364,9 @@ export class Daemon {
         break
       case 'opportunityPoll':
         this.opportunityPollBusy = false
+        break
+      case 'sweeper':
+        this.sweeperBusy = false
         break
     }
     this.drainTelegramQueue().catch((err: any) => {
@@ -866,11 +874,38 @@ Summarize the current portfolio health, total fees earned, and performance of al
       }, oppMs)
     }
 
-    this.cronTasks = [mgmtTask, screenTask, healthTask, briefingTask, briefingWatchdog]
+    const sweeperIntervalMin = Math.max(1, Number(config.management.sweeperIntervalMin ?? 15))
+    const sweeperTask = cron.schedule(`*/${sweeperIntervalMin} * * * *`, () => {
+      if (config.management.sweeperEnabled !== false) {
+        this.runSweeperCycle()
+      }
+    })
+
+    this.cronTasks = [mgmtTask, screenTask, healthTask, briefingTask, briefingWatchdog, sweeperTask]
     log(
       'cron',
-      `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m${config.opportunity.enabled ? `, opportunity poll every ${config.opportunity.pollIntervalSec}s` : ''}`,
+      `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m, sweeper every ${sweeperIntervalMin}m${config.opportunity.enabled ? `, opportunity poll every ${config.opportunity.pollIntervalSec}s` : ''}`,
     )
+  }
+
+  async runSweeperCycle(): Promise<any> {
+    if (this.shuttingDown || !this.acquireLock('sweeper')) return null
+    try {
+      log('cron', 'Starting unsold token sweeper cycle')
+      const result = await this.adapters.toolExecutor.executeTool('sweep_unsold_tokens', {})
+      if (result && (result.successful > 0 || result.failed > 0 || result.abandoned > 0)) {
+        log(
+          'cron',
+          `Sweeper cycle complete: ${result.successful} swapped, ${result.failed} failed, ${result.abandoned} abandoned out of ${result.total}`,
+        )
+      }
+      return result
+    } catch (err: any) {
+      log('cron_error', `Sweeper cycle error: ${err?.message || err}`)
+      return null
+    } finally {
+      this.releaseLock('sweeper')
+    }
   }
 
   // ─── Briefing ──────────────────────────────────────────────────

@@ -24,6 +24,7 @@ export type NotificationType =
   | 'close'
   | 'swap'
   | 'swap_error'
+  | 'liquidation_alert'
   | 'oor'
   | 'briefing'
   | 'message'
