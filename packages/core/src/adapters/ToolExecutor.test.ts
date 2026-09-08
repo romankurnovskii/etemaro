@@ -1,5 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../config/Config.js'
+import { __setStateFilePath } from '../domain/state.js'
 import * as MeteoraAdapter from './blockchain/MeteoraAdapter.js'
 import * as WalletAdapter from './blockchain/WalletAdapter.js'
 import { tools } from './ToolDefinitions.js'
@@ -12,6 +16,16 @@ import {
   WRITE_TOOLS,
   writeToolsMutex,
 } from './ToolExecutor.js'
+
+const TMP_STATE = path.join(os.tmpdir(), `etemaro-toolexecutor-test-${process.pid}.json`)
+
+beforeAll(() => {
+  __setStateFilePath(TMP_STATE)
+})
+
+afterAll(() => {
+  if (fs.existsSync(TMP_STATE)) fs.unlinkSync(TMP_STATE)
+})
 
 // Mock the WalletAdapter functions
 vi.mock('./blockchain/WalletAdapter.js', () => ({
@@ -28,6 +42,16 @@ vi.mock('./blockchain/MeteoraAdapter.js', () => ({
   claimFees: vi.fn(),
   closePosition: vi.fn(),
   searchPools: vi.fn(),
+  swapDirectDlmm: vi.fn(),
+}))
+
+vi.mock('./notifications/TelegramAdapter.js', () => ({
+  notifyClose: vi.fn().mockResolvedValue(undefined),
+  notifyDeploy: vi.fn().mockResolvedValue(undefined),
+  notifySwap: vi.fn().mockResolvedValue(undefined),
+  notifySwapError: vi.fn().mockResolvedValue(undefined),
+  notifyTransactionError: vi.fn().mockResolvedValue(undefined),
+  notifyLiquidationAlert: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('./blockchain/ScreeningAdapter.js', () => ({
@@ -398,6 +422,7 @@ describe('ToolExecutor - deploy_position serialization', () => {
         'close_all_positions',
         'swap_token',
         'swap_all_tokens_to_sol',
+        'sweep_unsold_tokens',
       ]),
     )
 
@@ -918,5 +943,117 @@ describe('ToolExecutor - Portfolio & Position Disambiguation', () => {
     expect(result.total_net_worth_usd).toBe(100)
     expect(result.lp_positions_count).toBe(0)
     expect(result.sol).toBe(1)
+  })
+})
+
+describe('ToolExecutor - Unsold Token Lifecycle & Sweeper', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('falls back to swapDirectDlmm when Jupiter aggregator fails and poolAddress is provided', async () => {
+    const baseMint = 'DLMM_FALLBACK_MINT_111111111111111111111'
+    const poolAddress = 'DLMM_POOL_111111111111111111111111111111111'
+
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      sol_price: 150,
+      tokens: [{ mint: baseMint, symbol: 'FALLBACK', balance: 500, usd: 2.5 }],
+    } as any)
+
+    // Jupiter fails with no route
+    vi.mocked(WalletAdapter.swapToken).mockResolvedValue({
+      success: false,
+      error: 'Jupiter 400: No route found',
+    } as any)
+
+    // Direct DLMM pool swap succeeds
+    vi.mocked(MeteoraAdapter.swapDirectDlmm).mockResolvedValue({
+      success: true,
+      tx: 'direct-dlmm-tx-hash',
+      amount_out: 0.016,
+    })
+
+    const res = await swapBaseToSolWithRetry(baseMint, 'test dlmm fallback', 0.05, poolAddress)
+
+    expect(res.swapped).toBe(true)
+    expect(res.result).toMatchObject({ success: true, tx: 'direct-dlmm-tx-hash' })
+    expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(1)
+    expect(MeteoraAdapter.swapDirectDlmm).toHaveBeenCalledWith({
+      pool_address: poolAddress,
+      input_mint: baseMint,
+      amount: 500,
+    })
+  })
+
+  it('enqueues into persistent liquidation queue and triggers notifyLiquidationAlert for high-value tokens', async () => {
+    const baseMint = 'HIGH_VAL_FAIL_MINT_111111111111111111111'
+    const TelegramAdapter = await import('./notifications/TelegramAdapter.js')
+
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      sol_price: 150,
+      tokens: [{ mint: baseMint, symbol: 'HIGHVAL', balance: 1000, usd: 5.0 }],
+    } as any)
+
+    vi.mocked(WalletAdapter.swapToken).mockResolvedValue({
+      success: false,
+      error: 'HTTP 400 Bad Request',
+    } as any)
+
+    const res = await swapBaseToSolWithRetry(baseMint, 'test high value alert', 0.05)
+
+    expect(res.swapped).toBe(false)
+    const { getPendingLiquidation } = await import('../domain/liquidation-queue.js')
+    const queued = getPendingLiquidation(baseMint)
+    expect(queued).not.toBeNull()
+    expect(queued?.symbol).toBe('HIGHVAL')
+    expect(queued?.usd).toBe(5.0)
+
+    expect(TelegramAdapter.notifyLiquidationAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'HIGHVAL',
+        mint: baseMint,
+        usd: 5.0,
+      }),
+    )
+  })
+
+  it('sweep_unsold_tokens tool skips micro-dust (< $0.02) and executes swaps on actionable balances', async () => {
+    const dustMint = 'DUST_TOKEN_MINT_11111111111111111111111111'
+    const actionMint = 'ACTION_TOKEN_MINT_111111111111111111111111'
+
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      sol_price: 150,
+      tokens: [
+        { mint: dustMint, symbol: 'DUST', balance: 10, usd: 0.005 },
+        { mint: actionMint, symbol: 'ACTION', balance: 200, usd: 1.5 },
+      ],
+    } as any)
+
+    vi.mocked(WalletAdapter.swapToken).mockResolvedValue({
+      success: true,
+      tx: 'action-swap-tx',
+      amount_out: '0.01',
+    } as any)
+
+    const result = (await executeTool('sweep_unsold_tokens', {})) as any
+
+    expect(result.successful).toBe(1)
+    expect(result.skipped).toBeGreaterThanOrEqual(1)
+    expect(WalletAdapter.swapToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input_mint: actionMint,
+      }),
+    )
+    expect(WalletAdapter.swapToken).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        input_mint: dustMint,
+      }),
+    )
+  })
+
+  it('get_pending_liquidations tool inspects queue via executeTool', async () => {
+    const res = (await executeTool('get_pending_liquidations', {})) as any
+    expect(res).toHaveProperty('liquidations')
+    expect(Array.isArray(res.liquidations)).toBe(true)
   })
 })

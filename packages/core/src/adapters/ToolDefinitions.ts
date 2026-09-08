@@ -456,9 +456,9 @@ WARNING: This executes a real on-chain transaction.`,
     type: 'function',
     function: {
       name: 'swap_all_tokens_to_sol',
-      description: `Sweep and swap all non-SOL SPL tokens in the wallet back to SOL in a single safe, sequentially paced batch.
+      description: `Sweep and swap all non-SOL SPL tokens in the wallet back to SOL in a single safe, sequentially paced batch (alias for sweep_unsold_tokens).
 Use when multiple leftover tokens or claimed fee tokens have accumulated in the wallet.
-Automatically skips SOL and USDC, and sequentially sells each token via Jupiter with built-in retry and pacing to prevent rate limits.
+Automatically skips SOL and USDC, and sequentially sells each token via Jupiter with DLMM direct pool fallback.
 
 WARNING: This executes real on-chain transactions.`,
       parameters: {
@@ -468,6 +468,48 @@ WARNING: This executes real on-chain transactions.`,
             type: 'array',
             items: { type: 'string' },
             description: 'Optional list of token mint addresses to exclude from swapping',
+          },
+        },
+      },
+    },
+  },
+
+  {
+    type: 'function',
+    function: {
+      name: 'sweep_unsold_tokens',
+      description: `Sweep and liquidate all unsold base tokens in the wallet back to SOL.
+Reconciles active wallet balances against the persistent liquidation backlog in state.json.
+Attempts Jupiter aggregator first, then falls back to direct Meteora DLMM pool swaps if Jupiter has no route.
+Skips micro-dust (< $0.02) and marks persistently illiquid/rugged tokens as abandoned to preserve gas.
+
+WARNING: This executes real on-chain transactions.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          skip_mints: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Optional list of token mint addresses to exclude from sweeping',
+          },
+        },
+      },
+    },
+  },
+
+  {
+    type: 'function',
+    function: {
+      name: 'get_pending_liquidations',
+      description: `Inspect the persistent backlog of unsold tokens awaiting liquidation.
+Returns details for each token including mint, symbol, amount, USD value, liquidation attempts, status (pending, liquidated, abandoned), and last error.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          status: {
+            type: 'string',
+            enum: ['pending', 'liquidated', 'abandoned'],
+            description: 'Optional status filter. Omit to retrieve all tracked liquidations.',
           },
         },
       },

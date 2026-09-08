@@ -676,6 +676,25 @@ export interface ManagementConfig {
   trailingDropPct: number
   pnlSanityMaxDiffPct: number
   solMode: boolean
+  sweeperEnabled?: boolean
+  sweeperIntervalMin?: number
+  sweeperMinUsd?: number
+  sweeperAlertUsd?: number
+  sweeperMaxAttempts?: number
+  sweeperAbandonWindowHours?: number
+}
+
+export interface PendingLiquidation {
+  mint: string
+  symbol?: string
+  amount: number
+  usd?: number | null
+  pool_address?: string | null
+  added_at: string
+  last_attempt_at: string | null
+  attempts: number
+  status: 'pending' | 'liquidated' | 'abandoned'
+  last_error?: string | null
 }
 
 export interface StrategyConfig {

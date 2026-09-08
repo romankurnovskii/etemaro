@@ -115,7 +115,13 @@ export const INTENT_TOOLS: Record<string, Set<string>> = {
   ]),
   close: new Set(['close_position', 'get_my_positions', 'get_position_pnl', 'get_wallet_balance', 'swap_token']),
   claim: new Set(['claim_fees', 'get_my_positions', 'get_position_pnl', 'get_wallet_balance']),
-  swap: new Set(['swap_token', 'get_wallet_balance']),
+  swap: new Set([
+    'swap_token',
+    'swap_all_tokens_to_sol',
+    'sweep_unsold_tokens',
+    'get_pending_liquidations',
+    'get_wallet_balance',
+  ]),
   config: new Set(['update_config']),
   blocklist: new Set([
     'add_to_blacklist',
@@ -126,7 +132,13 @@ export const INTENT_TOOLS: Record<string, Set<string>> = {
     'list_blocked_deployers',
   ]),
   selfupdate: new Set(['self_update']),
-  portfolio: new Set(['get_portfolio_summary', 'get_wallet_balance', 'get_meteora_positions', 'get_my_positions']),
+  portfolio: new Set([
+    'get_portfolio_summary',
+    'get_wallet_balance',
+    'get_meteora_positions',
+    'get_my_positions',
+    'get_pending_liquidations',
+  ]),
   balance: new Set([
     'get_wallet_balance',
     'get_portfolio_summary',
