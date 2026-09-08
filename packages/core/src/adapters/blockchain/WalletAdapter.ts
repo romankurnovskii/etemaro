@@ -206,7 +206,8 @@ function getJupiterReferralParams(): JupiterReferralParams | null {
 export const BALANCE_CACHE_TTL = 30_000
 const SOL_MINT = 'So11111111111111111111111111111111111111112'
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
-const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
+const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') // Token Program
+const _TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb') // Token-2022 Program
 
 const _mintDecimalsCache = new Map<string, number>([
   [SOL_MINT, 9],
