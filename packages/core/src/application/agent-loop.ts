@@ -55,7 +55,9 @@ export const MANAGER_TOOLS = new Set([
   'swap_token',
   'get_position_pnl',
   'get_my_positions',
+  'get_meteora_positions',
   'get_wallet_balance',
+  'get_portfolio_summary',
 ])
 
 export const SCREENER_TOOLS = new Set([
@@ -70,6 +72,8 @@ export const SCREENER_TOOLS = new Set([
   'get_pool_memory',
   'get_wallet_balance',
   'get_my_positions',
+  'get_meteora_positions',
+  'get_portfolio_summary',
 ])
 
 export const GENERAL_INTENT_ONLY_TOOLS = new Set([
@@ -122,11 +126,20 @@ export const INTENT_TOOLS: Record<string, Set<string>> = {
     'list_blocked_deployers',
   ]),
   selfupdate: new Set(['self_update']),
-  balance: new Set(['get_wallet_balance', 'get_my_positions', 'get_wallet_positions']),
+  portfolio: new Set(['get_portfolio_summary', 'get_wallet_balance', 'get_meteora_positions', 'get_my_positions']),
+  balance: new Set([
+    'get_wallet_balance',
+    'get_portfolio_summary',
+    'get_my_positions',
+    'get_meteora_positions',
+    'get_wallet_positions',
+  ]),
   positions: new Set([
+    'get_meteora_positions',
     'get_my_positions',
     'get_position_pnl',
     'get_wallet_balance',
+    'get_portfolio_summary',
     'set_position_note',
     'get_wallet_positions',
   ]),
@@ -189,8 +202,12 @@ export const INTENT_PATTERNS: Array<{ intent: string; re: RegExp }> = [
     re: /\b(blacklist|block|unblock|blocklist|blocked deployer|rugger|block dev|block deployer)\b/i,
   },
   { intent: 'config', re: /\b(config|setting|threshold|update|set |change)\b/i },
+  {
+    intent: 'portfolio',
+    re: /\b(portfolio|net worth|total assets|total capital|all assets|holdings)\b/i,
+  },
   { intent: 'balance', re: /\b(balance|wallet|sol|how much)\b/i },
-  { intent: 'positions', re: /\b(position|portfolio|open|pnl|yield|range)\b/i },
+  { intent: 'positions', re: /\b(position|open|pnl|yield|range)\b/i },
   { intent: 'strategy', re: /\b(strategy|strategies)\b/i },
   { intent: 'screen', re: /\b(screen|candidate|find pool|search|research|token)\b/i },
   { intent: 'memory', re: /\b(memory|pool history|note|remember)\b/i },
