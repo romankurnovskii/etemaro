@@ -337,7 +337,9 @@ function toolLabel(name: string): string {
     swap_all_tokens_to_sol: 'swap all tokens to SOL',
     update_config: 'update config',
     get_my_positions: 'get positions',
+    get_meteora_positions: 'get Meteora positions',
     get_wallet_balance: 'get wallet balance',
+    get_portfolio_summary: 'get portfolio summary',
     check_smart_wallets_on_pool: 'check smart wallets',
     study_top_lpers: 'study top LPers',
     get_top_lpers: 'get top LPers',
@@ -370,9 +372,12 @@ export function summarizeToolResult(name: string, result: any): string {
     case 'discover_pools':
       return formatCandidateScanSummary(result)
     case 'get_my_positions':
+    case 'get_meteora_positions':
       return `${result.total_positions ?? result.positions?.length ?? 0} positions`
     case 'get_wallet_balance':
-      return `${result.sol ?? '?'} SOL`
+      return `${result.sol ?? '?'} SOL ($${result.total_usd ?? 0})`
+    case 'get_portfolio_summary':
+      return `$${result.total_net_worth_usd ?? 0} total`
     case 'study_top_lpers':
     case 'get_top_lpers':
       return `${result.lpers?.length ?? 0} LPers`

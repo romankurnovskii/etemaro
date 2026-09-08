@@ -150,8 +150,30 @@ export interface WalletBalancesResult {
     symbol: string
     balance: number
     usd: number | null
+    program?: 'spl-token' | 'token-2022'
   }>
   total_usd: number
+  error?: string
+}
+
+export interface PortfolioSummaryResult {
+  wallet: string | null
+  sol: number
+  sol_price: number
+  sol_usd: number
+  spot_tokens_usd: number
+  spot_tokens: Array<{
+    mint: string
+    symbol: string
+    balance: number
+    usd: number | null
+    program?: 'spl-token' | 'token-2022'
+  }>
+  lp_positions_count: number
+  lp_positions_usd: number
+  lp_unclaimed_fees_usd: number
+  lp_positions: OnChainPosition[]
+  total_net_worth_usd: number
   error?: string
 }
 

@@ -18,6 +18,8 @@ import {
   invalidateBalanceCache,
   setCachedMintDecimals,
   swapToken,
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
 } from './WalletAdapter.js'
 
 describe('WalletAdapter', () => {
@@ -209,6 +211,213 @@ describe('WalletAdapter', () => {
       expect(res.wallet).toBe(testKeypair.publicKey.toString())
       expect(res.sol).toBe(2.0)
       expect(res.total_usd).toBe(200.0)
+    })
+
+    it('queries both standard SPL Token and Token-2022 programs concurrently and discovers Token-2022 accounts', async () => {
+      const getParsedTokenAccountsSpy = vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner')
+      getParsedTokenAccountsSpy.mockImplementation(async (_owner, filter: any) => {
+        if (filter.programId.equals(TOKEN_PROGRAM_ID)) {
+          return {
+            value: [
+              {
+                account: {
+                  data: {
+                    parsed: {
+                      info: {
+                        mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+                        tokenAmount: { uiAmount: 10.5, decimals: 6 },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          } as any
+        }
+        if (filter.programId.equals(TOKEN_2022_PROGRAM_ID)) {
+          return {
+            value: [
+              {
+                account: {
+                  data: {
+                    parsed: {
+                      info: {
+                        mint: 'Token2022MintAddress111111111111111111111111',
+                        tokenAmount: { uiAmount: 1397.91, decimals: 9 },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          } as any
+        }
+        return { value: [] } as any
+      })
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        if (String(url).includes('jup.ag/price/v2')) {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            json: async () => ({
+              data: {
+                So11111111111111111111111111111111111111112: { price: '150.0' },
+                EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { price: '1.0' },
+                Token2022MintAddress111111111111111111111111: { price: '0.02' },
+              },
+            }),
+          } as any
+        }
+        return { ok: false, status: 404, headers: new Headers() } as any
+      })
+
+      const balances = await getWalletBalances({ force: true })
+      expect(getParsedTokenAccountsSpy).toHaveBeenCalledTimes(2)
+      const token2022Item = balances.tokens.find((t) => t.mint === 'Token2022MintAddress111111111111111111111111')
+      expect(token2022Item).toBeDefined()
+      expect(token2022Item?.balance).toBe(1397.91)
+      expect(token2022Item?.usd).toBe(27.96)
+      expect(token2022Item?.program).toBe('token-2022')
+    })
+
+    it('aggregates multiple token accounts for the same mint across programs', async () => {
+      const getParsedTokenAccountsSpy = vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner')
+      getParsedTokenAccountsSpy.mockImplementation(async (_owner, filter: any) => {
+        if (filter.programId.equals(TOKEN_PROGRAM_ID)) {
+          return {
+            value: [
+              {
+                account: {
+                  data: {
+                    parsed: {
+                      info: {
+                        mint: 'DUAL_MINT_1111111111111111111111111111111111',
+                        tokenAmount: { uiAmount: 50, decimals: 6 },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          } as any
+        }
+        if (filter.programId.equals(TOKEN_2022_PROGRAM_ID)) {
+          return {
+            value: [
+              {
+                account: {
+                  data: {
+                    parsed: {
+                      info: {
+                        mint: 'DUAL_MINT_1111111111111111111111111111111111',
+                        tokenAmount: { uiAmount: 25, decimals: 6 },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          } as any
+        }
+        return { value: [] } as any
+      })
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        if (String(url).includes('jup.ag/price/v2')) {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            json: async () => ({
+              data: {
+                So11111111111111111111111111111111111111112: { price: '150.0' },
+                DUAL_MINT_1111111111111111111111111111111111: { price: '2.0' },
+              },
+            }),
+          } as any
+        }
+        return { ok: false, status: 404, headers: new Headers() } as any
+      })
+
+      const balances = await getWalletBalances({ force: true })
+      const item = balances.tokens.find((t) => t.mint === 'DUAL_MINT_1111111111111111111111111111111111')
+      expect(item).toBeDefined()
+      expect(item?.balance).toBe(75) // 50 + 25 aggregated
+      expect(item?.usd).toBe(150)
+    })
+
+    it('enriches unpriced tokens with Helius balances API when heliusApiKey is present', async () => {
+      config.connection = {
+        ...config.connection,
+        heliusApiKey: 'enrich-helius-key',
+      }
+      const unpricedMint = 'UNPRICED_MEME_TOKEN_MINT_11111111111111111111'
+      const getParsedTokenAccountsSpy = vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner')
+      getParsedTokenAccountsSpy.mockImplementation(async (_owner, filter: any) => {
+        if (filter.programId.equals(TOKEN_PROGRAM_ID)) {
+          return {
+            value: [
+              {
+                account: {
+                  data: {
+                    parsed: {
+                      info: {
+                        mint: unpricedMint,
+                        tokenAmount: { uiAmount: 1000, decimals: 6 },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          } as any
+        }
+        return { value: [] } as any
+      })
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        const urlStr = String(url)
+        if (urlStr.includes('jup.ag/price/v2')) {
+          // Jupiter returns no price for this unpriced meme token
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            json: async () => ({
+              data: {
+                So11111111111111111111111111111111111111112: { price: '150.0' },
+              },
+            }),
+          } as any
+        }
+        if (urlStr.includes('api.helius.xyz')) {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            json: async () => ({
+              balances: [
+                {
+                  mint: unpricedMint,
+                  symbol: 'MEME',
+                  balance: 1000,
+                  pricePerToken: 0.05,
+                  usdValue: 50.0,
+                },
+              ],
+            }),
+          } as any
+        }
+        return { ok: false, status: 404, headers: new Headers() } as any
+      })
+
+      const balances = await getWalletBalances({ force: true })
+      const memeToken = balances.tokens.find((t) => t.mint === unpricedMint)
+      expect(memeToken).toBeDefined()
+      expect(memeToken?.symbol).toBe('MEME')
+      expect(memeToken?.usd).toBe(50.0)
     })
 
     it('invalidates balance cache when swapToken completes successfully', async () => {
