@@ -206,8 +206,8 @@ function getJupiterReferralParams(): JupiterReferralParams | null {
 export const BALANCE_CACHE_TTL = 30_000
 const SOL_MINT = 'So11111111111111111111111111111111111111112'
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
-const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') // Token Program
-const _TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb') // Token-2022 Program
+export const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') // Token Program
+export const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb') // Token-2022 Program
 
 const _mintDecimalsCache = new Map<string, number>([
   [SOL_MINT, 9],
@@ -270,9 +270,9 @@ export async function getSolPrice(options?: { force?: boolean }): Promise<number
 export type { WalletBalancesResult }
 
 /**
- * Get current wallet balances: SOL, USDC, and all SPL tokens.
- * Primary method: standard on-chain Solana RPC + free Jupiter Price API v2 (0 Helius credit cost).
- * Optional fallback: Helius Enhanced API if on-chain RPC fails.
+ * Get current wallet balances: SOL, USDC, and all SPL & Token-2022 tokens.
+ * Primary method: standard on-chain Solana dual RPC scan + free Jupiter Price API v2 (0 Helius credit cost).
+ * Optional fallback / enrichment: Helius Enhanced API if on-chain RPC fails or unpriced tokens exist.
  * Caches results in memory for 30 seconds unless force=true is passed.
  */
 export async function getWalletBalances(options?: { force?: boolean }): Promise<WalletBalancesResult> {
@@ -306,35 +306,73 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
   const fetchBalances = async (): Promise<WalletBalancesResult> => {
     // ─── 1. Primary Method: Standard Solana RPC + composite price provider ─
     try {
-      const solLamports = await withRpcFailover((conn) => conn.getBalance(walletPubkey), { label: 'getBalance' })
+      const [solLamports, tokenAccounts, token2022Accounts] = await Promise.all([
+        withRpcFailover((conn) => conn.getBalance(walletPubkey), { label: 'getBalance' }),
+        withRpcFailover((conn) => conn.getParsedTokenAccountsByOwner(walletPubkey, { programId: TOKEN_PROGRAM_ID }), {
+          label: 'getParsedTokenAccountsByOwner(Token)',
+        }),
+        withRpcFailover(
+          (conn) => conn.getParsedTokenAccountsByOwner(walletPubkey, { programId: TOKEN_2022_PROGRAM_ID }),
+          { label: 'getParsedTokenAccountsByOwner(Token-2022)' },
+        ).catch((err: unknown) => {
+          const e = err as { message?: string }
+          log('wallet_warn', `Token-2022 scan failed (${e.message || err}); continuing with standard tokens`)
+          return { value: [] }
+        }),
+      ])
       const solBalance = (solLamports || 0) / 1e9
 
-      const tokenAccounts = await withRpcFailover(
-        (conn) => conn.getParsedTokenAccountsByOwner(walletPubkey, { programId: TOKEN_PROGRAM_ID }),
-        { label: 'getParsedTokenAccountsByOwner' },
-      )
-
-      const tokensList: Array<{ mint: string; symbol: string; balance: number; usd: number | null }> = []
+      const tokensMap = new Map<
+        string,
+        {
+          mint: string
+          symbol: string
+          balance: number
+          usd: number | null
+          program: 'spl-token' | 'token-2022'
+        }
+      >()
       const mintsToPrice: string[] = [SOL_MINT, USDC_MINT]
 
-      for (const item of tokenAccounts.value || []) {
-        const info = item.account?.data?.parsed?.info
-        if (!info) continue
-        const mint = info.mint
-        const decimals = info.tokenAmount?.decimals
-        if (typeof decimals === 'number') {
-          _mintDecimalsCache.set(mint, decimals)
+      const processAccounts = (
+        accounts: Array<{ account?: { data?: { parsed?: { info?: any } } } }>,
+        program: 'spl-token' | 'token-2022',
+      ) => {
+        for (const item of accounts) {
+          const info = item.account?.data?.parsed?.info
+          if (!info) continue
+          const mint = info.mint
+          if (!mint || typeof mint !== 'string') continue
+          const decimals = info.tokenAmount?.decimals
+          if (typeof decimals === 'number') {
+            _mintDecimalsCache.set(mint, decimals)
+          }
+          const uiAmount = info.tokenAmount?.uiAmount ?? 0
+          if (uiAmount <= 0) continue
+
+          if (!mintsToPrice.includes(mint)) {
+            mintsToPrice.push(mint)
+          }
+
+          const existing = tokensMap.get(mint)
+          if (existing) {
+            existing.balance += uiAmount
+          } else {
+            tokensMap.set(mint, {
+              mint,
+              symbol: mint === USDC_MINT ? 'USDC' : mint.slice(0, 8),
+              balance: uiAmount,
+              usd: null,
+              program,
+            })
+          }
         }
-        const uiAmount = info.tokenAmount?.uiAmount ?? 0
-        if (uiAmount <= 0) continue
-        if (!mintsToPrice.includes(mint)) mintsToPrice.push(mint)
-        tokensList.push({
-          mint,
-          symbol: mint === USDC_MINT ? 'USDC' : mint.slice(0, 8),
-          balance: uiAmount,
-          usd: null,
-        })
       }
+
+      processAccounts(tokenAccounts.value || [], 'spl-token')
+      processAccounts(token2022Accounts.value || [], 'token-2022')
+
+      const tokensList = Array.from(tokensMap.values())
 
       // Fetch SOL price via Binance/Coinbase (cached) — fallback if composite doesn't return SOL
       const binanceSolPrice = (await getSolPrice()) ?? 0
@@ -361,6 +399,50 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
         }
         if (t.usd) tokenUsdSum += t.usd
       }
+
+      // Optional enrichment: if heliusApiKey is configured and there are tokens with missing price or symbol
+      let HELIUS_API_KEY = config.connection?.heliusApiKey
+      if (HELIUS_API_KEY) {
+        HELIUS_API_KEY = HELIUS_API_KEY.trim().replace(/^api-key=/i, '')
+      }
+      const hasUnpricedTokens = tokensList.some((t) => t.usd === null)
+      if (HELIUS_API_KEY && hasUnpricedTokens) {
+        try {
+          const url = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_API_KEY}`
+          const res = await fetch(url)
+          if (res.ok) {
+            const data = (await res.json()) as {
+              balances?: Array<{
+                mint: string
+                symbol?: string
+                balance: number
+                pricePerToken?: number
+                usdValue?: number
+              }>
+            }
+            const heliusBalances = data.balances || []
+            const heliusMap = new Map(heliusBalances.map((b) => [b.mint, b]))
+            tokenUsdSum = 0
+            for (const t of tokensList) {
+              const h = heliusMap.get(t.mint)
+              if (t.usd === null && h) {
+                if (h.usdValue != null) {
+                  t.usd = Math.round(h.usdValue * 100) / 100
+                } else if (h.pricePerToken != null) {
+                  t.usd = Math.round(t.balance * h.pricePerToken * 100) / 100
+                }
+              }
+              if ((!t.symbol || t.symbol === t.mint.slice(0, 8)) && h?.symbol) {
+                t.symbol = h.symbol
+              }
+              if (t.usd) tokenUsdSum += t.usd
+            }
+          }
+        } catch (enrichErr: unknown) {
+          log('wallet_warn', `Helius token enrichment failed: ${(enrichErr as Error)?.message || enrichErr}`)
+        }
+      }
+
       const totalUsd = Math.round((solUsd + tokenUsdSum) * 100) / 100
 
       const result: WalletBalancesResult = {

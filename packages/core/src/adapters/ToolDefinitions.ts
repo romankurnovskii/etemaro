@@ -248,8 +248,36 @@ Returns current feePerTvl24h which indicates the current APY of the pool.`,
   {
     type: 'function',
     function: {
+      name: 'get_meteora_positions',
+      description: `List all open Meteora DLMM LP positions for the agent wallet.
+Strictly inspects active Meteora LP liquidity positions, deployed range (min/max bin IDs), uncollected fees, and in-range status.
+This does NOT show spot tokens sitting in the wallet.
+
+Returns positions grouped by pool, each with:
+- position address
+- pool address and token pair
+- bin range (min/max bin IDs)
+- whether currently in range
+- unclaimed fees (in USD)
+- total deposited value vs current value
+- time since last rebalance
+
+Use this at the start of every management cycle or when inspecting LP positions.`,
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+
+  {
+    type: 'function',
+    function: {
       name: 'get_my_positions',
-      description: `List all open DLMM positions for the agent wallet.
+      description: `List all open Meteora DLMM LP positions for the agent wallet (alias for get_meteora_positions).
+Strictly inspects active Meteora LP liquidity positions, deployed range, and uncollected fees.
+This does NOT show spot tokens sitting in the wallet (use get_wallet_balance for wallet tokens).
+
 Returns positions grouped by pool, each with:
 - position address
 - pool address and token pair
@@ -355,14 +383,37 @@ position address, pool, bin range, in-range status, unclaimed fees, PnL, age.`,
     type: 'function',
     function: {
       name: 'get_wallet_balance',
-      description: `Get current wallet balances for SOL, USDC, and all other token holdings.
+      description: `Get current spot wallet balances for SOL, USDC, standard SPL tokens, and Token-2022 tokens held directly in the wallet.
+Use this to check real token balances and cash held directly in the wallet.
+This does NOT show Meteora LP positions (use get_meteora_positions for LP bins).
+
 Returns:
 - SOL balance (native)
 - USDC balance
-- Other SPL token balances with USD values
-- Total portfolio value in USD
+- Token balances (SPL & Token-2022) with USD values and program standard
+- Total spot holdings value in USD
 
-Use to check available capital before deploying positions.`,
+Use to check available capital before deploying positions or executing swaps.`,
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+
+  {
+    type: 'function',
+    function: {
+      name: 'get_portfolio_summary',
+      description: `Get unified portfolio summary combining spot wallet holdings and active Meteora DLMM LP positions.
+Delivers total net worth and capital allocation breakdown across:
+- Liquid SOL (cash & gas) with USD valuation
+- Spot token balances (SPL & Token-2022) with individual USD valuations
+- Active Meteora LP positions (deposited capital, active bins, in-range status)
+- Uncollected LP fees ($ USD)
+- Total Net Equity ($ USD)
+
+Use when asked for "portfolio", "net worth", "total assets", "total capital", or "all holdings".`,
       parameters: {
         type: 'object',
         properties: {},

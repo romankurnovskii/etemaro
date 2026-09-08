@@ -6,6 +6,7 @@ import { tools } from './ToolDefinitions.js'
 import {
   closeAllPositions,
   executeTool,
+  getPortfolioSummary,
   swapAllTokensToSol,
   swapBaseToSolWithRetry,
   WRITE_TOOLS,
@@ -831,5 +832,91 @@ describe('ToolExecutor - close_position auto-swap', () => {
     expect(result.success).toBe(true)
     expect(result.auto_swapped).toBeUndefined()
     expect(WalletAdapter.swapToken).not.toHaveBeenCalled()
+  })
+})
+
+describe('ToolExecutor - Portfolio & Position Disambiguation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('getPortfolioSummary computes unified net worth combining spot balances and LP positions', async () => {
+    const mockBalances = {
+      wallet: 'TestWallet111111111111111111111111111111111',
+      sol: 2.5,
+      sol_price: 150,
+      sol_usd: 375,
+      usdc: 50,
+      tokens: [
+        { mint: 'USDC_MINT', symbol: 'USDC', balance: 50, usd: 50, program: 'spl-token' },
+        { mint: 'TOKEN2022_MINT', symbol: 'OTC', balance: 1000, usd: 25, program: 'token-2022' },
+      ],
+      total_usd: 450, // 375 + 50 + 25
+    }
+
+    const mockPositions = {
+      wallet: 'TestWallet111111111111111111111111111111111',
+      total_positions: 1,
+      positions: [
+        {
+          position: 'PosAddress111111111111111111111111111111111',
+          pool: 'PoolAddress111111111111111111111111111111111',
+          in_range: true,
+          pnl_pct: 3.5,
+          unclaimed_fees_usd: 12.5,
+          total_value_usd: 200,
+        },
+      ],
+    }
+
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue(mockBalances as any)
+    vi.mocked(MeteoraAdapter.getMyPositions).mockResolvedValue(mockPositions as any)
+
+    const summary = await getPortfolioSummary()
+
+    expect(summary.wallet).toBe('TestWallet111111111111111111111111111111111')
+    expect(summary.sol).toBe(2.5)
+    expect(summary.sol_usd).toBe(375)
+    expect(summary.spot_tokens_usd).toBe(75) // 50 + 25
+    expect(summary.spot_tokens).toHaveLength(2)
+    expect(summary.lp_positions_count).toBe(1)
+    expect(summary.lp_positions_usd).toBe(200)
+    expect(summary.lp_unclaimed_fees_usd).toBe(12.5)
+    // total net worth = 450 (spot) + 200 (LP capital) + 12.5 (fees) = 662.5
+    expect(summary.total_net_worth_usd).toBe(662.5)
+  })
+
+  it('executes get_meteora_positions via executeTool and delegates to getMyPositions', async () => {
+    vi.mocked(MeteoraAdapter.getMyPositions).mockResolvedValue({
+      total_positions: 0,
+      positions: [],
+    } as any)
+
+    const result = await executeTool('get_meteora_positions', {})
+
+    expect(MeteoraAdapter.getMyPositions).toHaveBeenCalledTimes(1)
+    expect(result).toEqual({ total_positions: 0, positions: [] })
+  })
+
+  it('executes get_portfolio_summary via executeTool', async () => {
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      wallet: 'W1',
+      sol: 1,
+      sol_price: 100,
+      sol_usd: 100,
+      usdc: 0,
+      tokens: [],
+      total_usd: 100,
+    } as any)
+    vi.mocked(MeteoraAdapter.getMyPositions).mockResolvedValue({
+      total_positions: 0,
+      positions: [],
+    } as any)
+
+    const result = (await executeTool('get_portfolio_summary', {})) as any
+
+    expect(result.total_net_worth_usd).toBe(100)
+    expect(result.lp_positions_count).toBe(0)
+    expect(result.sol).toBe(1)
   })
 })

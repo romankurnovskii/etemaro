@@ -55,7 +55,7 @@ import { addToBlacklist, listBlacklist, removeFromBlacklist } from '../domain/to
 import { getMinSafeBinsBelow, REPO_ROOT, USER_CONFIG_PATH } from '../shared/constants.js'
 import { log, logAction, logStructured } from '../shared/logger.js'
 import { Mutex } from '../shared/mutex.js'
-import type { AgentRole } from '../shared/types.js'
+import type { AgentRole, PortfolioSummaryResult } from '../shared/types.js'
 import { loadJsonFile, normalizeTimeframe, saveJsonFile, scaleScreeningToTimeframe } from '../shared/utils.js'
 import { sleep } from '../utils/time.js'
 import {
@@ -424,6 +424,50 @@ function normalizeConfigValue(key: string, value: unknown): unknown {
   return coerceFiniteNumber(value, key)
 }
 
+/**
+ * Unified portfolio summary combining spot wallet token holdings (SOL, SPL, Token-2022)
+ * and active Meteora DLMM LP positions.
+ */
+export async function getPortfolioSummary(options?: { force?: boolean }): Promise<PortfolioSummaryResult> {
+  const [walletBalances, myPositions] = await Promise.all([
+    getWalletBalances(options),
+    getMyPositions(options ? { force: options.force, silent: true } : { silent: true }),
+  ])
+
+  let lpPositionsUsd = 0
+  let lpUnclaimedFeesUsd = 0
+  for (const pos of myPositions.positions || []) {
+    const val = pos.total_value_usd ?? pos.value_usd ?? 0
+    lpPositionsUsd += val
+    lpUnclaimedFeesUsd += pos.unclaimed_fees_usd ?? 0
+  }
+  lpPositionsUsd = Math.round(lpPositionsUsd * 100) / 100
+  lpUnclaimedFeesUsd = Math.round(lpUnclaimedFeesUsd * 100) / 100
+
+  let spotTokensUsd = 0
+  for (const t of walletBalances.tokens || []) {
+    spotTokensUsd += t.usd ?? 0
+  }
+  spotTokensUsd = Math.round(spotTokensUsd * 100) / 100
+
+  const totalNetWorthUsd = Math.round((walletBalances.total_usd + lpPositionsUsd + lpUnclaimedFeesUsd) * 100) / 100
+
+  return {
+    wallet: walletBalances.wallet,
+    sol: walletBalances.sol,
+    sol_price: walletBalances.sol_price,
+    sol_usd: walletBalances.sol_usd,
+    spot_tokens_usd: spotTokensUsd,
+    spot_tokens: walletBalances.tokens,
+    lp_positions_count: myPositions.total_positions ?? myPositions.positions?.length ?? 0,
+    lp_positions_usd: lpPositionsUsd,
+    lp_unclaimed_fees_usd: lpUnclaimedFeesUsd,
+    lp_positions: myPositions.positions || [],
+    total_net_worth_usd: totalNetWorthUsd,
+    error: walletBalances.error || myPositions.error,
+  }
+}
+
 // ─── Tool map ──────────────────────────────────────────────────
 
 type ToolFn = (args: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>
@@ -436,6 +480,7 @@ const toolMap: Record<string, ToolFn> = {
   get_active_bin: getActiveBin as unknown as ToolFn,
   deploy_position: deployPosition as unknown as ToolFn,
   get_my_positions: getMyPositions as unknown as ToolFn,
+  get_meteora_positions: getMyPositions as unknown as ToolFn,
   get_wallet_positions: getWalletPositions as unknown as ToolFn,
   search_pools: searchPools as unknown as ToolFn,
   get_token_info: getTokenInfo as unknown as ToolFn,
@@ -452,6 +497,7 @@ const toolMap: Record<string, ToolFn> = {
     return closeAllPositionsUnlocked(skipSwap)
   }) as ToolFn,
   get_wallet_balance: getWalletBalances as unknown as ToolFn,
+  get_portfolio_summary: getPortfolioSummary as unknown as ToolFn,
   swap_all_tokens_to_sol: ((args: Record<string, unknown> = {}) => {
     const skipMints = (args.skipMints as string[]) || (args.skip_mints as string[]) || []
     return swapAllTokensToSolUnlocked(Array.isArray(skipMints) ? skipMints : [])

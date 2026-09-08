@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { agentLoop } from '../application/agent-loop.js'
+import { agentLoop, INTENT_PATTERNS, INTENT_TOOLS, MANAGER_TOOLS, SCREENER_TOOLS } from '../application/agent-loop.js'
 
 const mockOpenAICreate = vi.fn()
 
@@ -439,5 +439,32 @@ STEPS:
         reason: expect.stringContaining('already attempted this session'),
       }),
     )
+  })
+})
+
+describe('agent-loop — portfolio intent routing & tools', () => {
+  it('recognizes portfolio and net worth intent patterns', () => {
+    const portfolioPattern = INTENT_PATTERNS.find((p) => p.intent === 'portfolio')
+    expect(portfolioPattern).toBeDefined()
+    expect(portfolioPattern?.re.test('what is my portfolio summary?')).toBe(true)
+    expect(portfolioPattern?.re.test('show total net worth')).toBe(true)
+    expect(portfolioPattern?.re.test('what are all assets in wallet?')).toBe(true)
+    expect(portfolioPattern?.re.test('check my holdings')).toBe(true)
+  })
+
+  it('includes get_portfolio_summary in MANAGER_TOOLS and SCREENER_TOOLS', () => {
+    expect(MANAGER_TOOLS.has('get_portfolio_summary')).toBe(true)
+    expect(MANAGER_TOOLS.has('get_meteora_positions')).toBe(true)
+    expect(SCREENER_TOOLS.has('get_portfolio_summary')).toBe(true)
+    expect(SCREENER_TOOLS.has('get_meteora_positions')).toBe(true)
+  })
+
+  it('provides comprehensive tool set under portfolio intent', () => {
+    const tools = INTENT_TOOLS.portfolio
+    expect(tools).toBeDefined()
+    expect(tools?.has('get_portfolio_summary')).toBe(true)
+    expect(tools?.has('get_wallet_balance')).toBe(true)
+    expect(tools?.has('get_meteora_positions')).toBe(true)
+    expect(tools?.has('get_my_positions')).toBe(true)
   })
 })
