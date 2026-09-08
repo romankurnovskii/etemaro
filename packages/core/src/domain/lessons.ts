@@ -64,7 +64,9 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
     perf.final_value_usd > 0 &&
     perf.final_value_usd <= perf.amount_sol * 2
 
-  if (suspiciousUnitMix) {
+  const status = perf.status || 'realized'
+
+  if (suspiciousUnitMix && status === 'realized') {
     log(
       'lessons_warn',
       `Skipped suspicious performance record for ${perf.pool_name || perf.pool}: initial=${perf.initial_value_usd}, final=${perf.final_value_usd}, amount_sol=${perf.amount_sol}`,
@@ -81,7 +83,11 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
 
   const closeReasonText = String(perf.close_reason || '').toLowerCase()
   const suspiciousAbsurdClosedPnl =
-    Number.isFinite(pnl_pct) && perf.initial_value_usd >= 20 && pnl_pct <= -90 && !closeReasonText.includes('stop loss')
+    status === 'realized' &&
+    Number.isFinite(pnl_pct) &&
+    perf.initial_value_usd >= 20 &&
+    pnl_pct <= -90 &&
+    !closeReasonText.includes('stop loss')
 
   if (suspiciousAbsurdClosedPnl) {
     log(
@@ -92,8 +98,16 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
   }
 
   const signalSnapshot = buildSignalSnapshot(perf as unknown as Record<string, unknown>)
-  const entry = {
+  const entry: PerformanceRecord = {
     ...perf,
+    status,
+    cash_realized_sol:
+      perf.cash_realized_sol !== undefined ? perf.cash_realized_sol : status === 'realized' ? perf.amount_sol : 0,
+    cash_realized_usd:
+      perf.cash_realized_usd !== undefined ? perf.cash_realized_usd : status === 'realized' ? perf.final_value_usd : 0,
+    unrealized_residual_usd: perf.unrealized_residual_usd ?? 0,
+    unrealized_tokens_amount: perf.unrealized_tokens_amount ?? 0,
+    liquidation_mint: perf.liquidation_mint || perf.base_mint,
     signal_snapshot: signalSnapshot as SignalSnapshot | null as unknown as SignalSnapshot | undefined,
     price_pnl_usd: Math.round(price_pnl_usd * 100) / 100,
     price_pnl_pct: Math.round(price_pnl_pct * 100) / 100,
@@ -104,17 +118,20 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
     recorded_at: new Date().toISOString(),
   }
 
-  data.performance.push(entry as PerformanceRecord)
+  data.performance.push(entry)
 
-  // Derive and store a lesson
-  const lesson = derivLesson(entry as PerformanceRecord & { recorded_at?: string })
-  if (lesson) {
-    if (lesson.rule) {
-      const sanitized = sanitizeLessonText(lesson.rule)
-      if (sanitized) lesson.rule = sanitized
+  // Derive and store a lesson only if settled (never derive positive lessons for pending unliquidated trades)
+  let lesson: Lesson | null = null
+  if (entry.status !== 'closed_pending_swap') {
+    lesson = derivLesson(entry as PerformanceRecord & { recorded_at?: string })
+    if (lesson) {
+      if (lesson.rule) {
+        const sanitized = sanitizeLessonText(lesson.rule)
+        if (sanitized) lesson.rule = sanitized
+      }
+      data.lessons.push(lesson)
+      log('lessons', `New lesson: ${lesson.rule}`)
     }
-    data.lessons.push(lesson)
-    log('lessons', `New lesson: ${lesson.rule}`)
   }
 
   save(data)
@@ -122,8 +139,8 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
     void pushHiveLesson(lesson)
   }
 
-  // Update pool-level memory
-  if (perf.pool) {
+  // Update pool-level memory only for settled trades
+  if (perf.pool && entry.status !== 'closed_pending_swap') {
     const { recordPoolDeploy } = await import('./pool-memory.js')
     recordPoolDeploy(perf.pool, {
       pool_name: perf.pool_name,
@@ -184,6 +201,8 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
  * Only generates a lesson if the outcome was clearly good or bad.
  */
 function derivLesson(perf: PerformanceRecord & { recorded_at?: string }): Lesson | null {
+  if (perf.status === 'closed_pending_swap') return null
+
   const tags: string[] = []
   const feeYieldPct = perf.initial_value_usd > 0 ? ((perf.fees_earned_usd || 0) / perf.initial_value_usd) * 100 : 0
 
@@ -664,6 +683,259 @@ interface GetPerformanceHistoryOpts {
 }
 
 /**
+ * Settle a pending trade liquidation with actual SOL cash received from swap.
+ * Finalizes the trade to 'realized', zeroes unliquidated residual, and derives lesson.
+ */
+export interface SettleTradeLiquidationOpts {
+  amountOutSol: number
+  solPrice?: number
+  tx?: string
+  position?: string
+}
+
+export async function settleTradeLiquidation(mint: string, opts: SettleTradeLiquidationOpts): Promise<boolean> {
+  const data = load()
+  let targetIndex = -1
+  if (opts.position) {
+    targetIndex = data.performance.findIndex((p) => p.position === opts.position && p.status === 'closed_pending_swap')
+  }
+  if (targetIndex === -1) {
+    for (let i = data.performance.length - 1; i >= 0; i--) {
+      const p = data.performance[i]
+      if (p && p.status === 'closed_pending_swap' && (p.liquidation_mint === mint || p.base_mint === mint)) {
+        targetIndex = i
+        break
+      }
+    }
+  }
+
+  if (targetIndex === -1) return false
+
+  const rec = data.performance[targetIndex]
+  if (!rec) return false
+  const now = new Date().toISOString()
+
+  const additionalSol = opts.amountOutSol || 0
+  const solPrice =
+    opts.solPrice || (rec.amount_sol > 0 && rec.initial_value_usd > 0 ? rec.initial_value_usd / rec.amount_sol : 150)
+  const newCashSol = (rec.cash_realized_sol || 0) + additionalSol
+  const additionalUsd = additionalSol * solPrice
+  const newCashUsd = Math.round(((rec.cash_realized_usd || 0) + additionalUsd) * 100) / 100
+
+  rec.cash_realized_sol = Math.round(newCashSol * 10000) / 10000
+  rec.cash_realized_usd = newCashUsd
+  rec.unrealized_residual_usd = 0
+  rec.unrealized_tokens_amount = 0
+  rec.final_value_usd = newCashUsd
+  rec.status = 'realized'
+  rec.settled_at = now
+  if (opts.tx) rec.liquidation_tx = opts.tx
+
+  const price_pnl_usd = rec.final_value_usd - rec.initial_value_usd
+  const price_pnl_pct = rec.initial_value_usd > 0 ? (price_pnl_usd / rec.initial_value_usd) * 100 : 0
+  const net_pnl_usd = price_pnl_usd + (rec.fees_earned_usd || 0)
+  const pnl_usd = net_pnl_usd
+  const pnl_pct = rec.initial_value_usd > 0 ? (pnl_usd / rec.initial_value_usd) * 100 : 0
+
+  rec.price_pnl_usd = Math.round(price_pnl_usd * 100) / 100
+  rec.price_pnl_pct = Math.round(price_pnl_pct * 100) / 100
+  rec.net_pnl_usd = Math.round(net_pnl_usd * 100) / 100
+  rec.pnl_usd = Math.round(pnl_usd * 100) / 100
+  rec.pnl_pct = Math.round(pnl_pct * 100) / 100
+
+  const lesson = derivLesson(rec as PerformanceRecord & { recorded_at?: string })
+  if (lesson) {
+    if (lesson.rule) {
+      const sanitized = sanitizeLessonText(lesson.rule)
+      if (sanitized) lesson.rule = sanitized
+    }
+    data.lessons.push(lesson)
+    log('lessons', `Settled trade lesson: ${lesson.rule}`)
+    void pushHiveLesson(lesson)
+  }
+
+  save(data)
+
+  if (rec.pool) {
+    try {
+      const { recordPoolDeploy } = await import('./pool-memory.js')
+      recordPoolDeploy(rec.pool, {
+        pool_name: rec.pool_name,
+        base_mint: rec.base_mint,
+        deployed_at: rec.deployed_at,
+        closed_at: now,
+        price_pnl_usd: rec.price_pnl_usd,
+        price_pnl_pct: rec.price_pnl_pct,
+        net_pnl_usd: rec.net_pnl_usd,
+        pnl_pct: rec.pnl_pct,
+        pnl_usd: rec.pnl_usd,
+        range_efficiency: rec.range_efficiency,
+        minutes_held: rec.minutes_held,
+        fees_earned_usd: rec.fees_earned_usd,
+        fees_earned_sol: rec.fees_earned_sol,
+        fee_earned_pct: rec.initial_value_usd > 0 ? ((rec.fees_earned_usd || 0) / rec.initial_value_usd) * 100 : null,
+        close_reason: rec.close_reason,
+        strategy: rec.strategy,
+        volatility: rec.volatility,
+        entry_mcap: rec.entry_mcap,
+        entry_tvl: rec.entry_tvl,
+        entry_volume: rec.entry_volume,
+        exit_mcap: rec.exit_mcap,
+        exit_tvl: rec.exit_tvl,
+        exit_volume: rec.exit_volume,
+      })
+    } catch {
+      // ignore
+    }
+  }
+
+  return true
+}
+
+/**
+ * Recognize an unliquidated token as abandoned / dead / rugged.
+ * Writes down unrealized residual to 0, recognizes full capital loss, and derives failure lesson.
+ */
+export interface AbandonTradeLiquidationOpts {
+  reason?: string
+  position?: string
+}
+
+export async function abandonTradeLiquidation(mint: string, opts: AbandonTradeLiquidationOpts = {}): Promise<boolean> {
+  const data = load()
+  let targetIndex = -1
+  if (opts.position) {
+    targetIndex = data.performance.findIndex((p) => p.position === opts.position && p.status === 'closed_pending_swap')
+  }
+  if (targetIndex === -1) {
+    for (let i = data.performance.length - 1; i >= 0; i--) {
+      const p = data.performance[i]
+      if (p && p.status === 'closed_pending_swap' && (p.liquidation_mint === mint || p.base_mint === mint)) {
+        targetIndex = i
+        break
+      }
+    }
+  }
+
+  if (targetIndex === -1) return false
+
+  const rec = data.performance[targetIndex]
+  if (!rec) return false
+  const now = new Date().toISOString()
+
+  rec.status = 'abandoned_loss'
+  rec.settled_at = now
+  rec.unrealized_residual_usd = 0
+  rec.unrealized_tokens_amount = 0
+  rec.final_value_usd = rec.cash_realized_usd || 0
+
+  const price_pnl_usd = rec.final_value_usd - rec.initial_value_usd
+  const price_pnl_pct = rec.initial_value_usd > 0 ? (price_pnl_usd / rec.initial_value_usd) * 100 : 0
+  const net_pnl_usd = price_pnl_usd + (rec.fees_earned_usd || 0)
+  const pnl_usd = net_pnl_usd
+  const pnl_pct = rec.initial_value_usd > 0 ? (pnl_usd / rec.initial_value_usd) * 100 : 0
+
+  rec.price_pnl_usd = Math.round(price_pnl_usd * 100) / 100
+  rec.price_pnl_pct = Math.round(price_pnl_pct * 100) / 100
+  rec.net_pnl_usd = Math.round(net_pnl_usd * 100) / 100
+  rec.pnl_usd = Math.round(pnl_usd * 100) / 100
+  rec.pnl_pct = Math.round(pnl_pct * 100) / 100
+
+  const tokenLabel = rec.pool_name?.split(/[-/]/)[0] || mint.slice(0, 8)
+  const reasonText = opts.reason || 'Unsold tokens abandoned / unsellable'
+  const lessonRule = `EXECUTION FAILURE / CAPITAL LOSS: Unsold ${tokenLabel} (${mint.slice(0, 8)}) could not be liquidated (${reasonText}). Realized loss: -$${Math.abs(pnl_usd).toFixed(2)} (${pnl_pct.toFixed(1)}%). Strategy: ${rec.strategy}.`
+
+  const lesson: Lesson = {
+    id: Date.now(),
+    rule: lessonRule,
+    tags: ['execution_failure', 'liquidation_failure', 'capital_loss', rec.strategy],
+    outcome: 'bad',
+    sourceType: 'performance',
+    confidence: 0.95,
+    context: `${rec.pool_name}, strategy=${rec.strategy}, liquidation_failed`,
+    pnl_pct: rec.pnl_pct,
+    fees_earned_usd: rec.fees_earned_usd,
+    initial_value_usd: rec.initial_value_usd,
+    range_efficiency: rec.range_efficiency,
+    close_reason: `abandoned_liquidation: ${reasonText}`,
+    pool: rec.pool,
+    created_at: now,
+  }
+
+  data.lessons.push(lesson)
+  log('lessons_warn', `Recognized abandoned liquidation loss: ${lessonRule}`)
+  save(data)
+  void pushHiveLesson(lesson)
+
+  if (rec.pool) {
+    try {
+      const { recordPoolDeploy } = await import('./pool-memory.js')
+      recordPoolDeploy(rec.pool, {
+        pool_name: rec.pool_name,
+        base_mint: rec.base_mint,
+        deployed_at: rec.deployed_at,
+        closed_at: now,
+        price_pnl_usd: rec.price_pnl_usd,
+        price_pnl_pct: rec.price_pnl_pct,
+        net_pnl_usd: rec.net_pnl_usd,
+        pnl_pct: rec.pnl_pct,
+        pnl_usd: rec.pnl_usd,
+        range_efficiency: rec.range_efficiency,
+        minutes_held: rec.minutes_held,
+        fees_earned_usd: rec.fees_earned_usd,
+        fees_earned_sol: rec.fees_earned_sol,
+        fee_earned_pct: rec.initial_value_usd > 0 ? ((rec.fees_earned_usd || 0) / rec.initial_value_usd) * 100 : null,
+        close_reason: `abandoned_liquidation: ${reasonText}`,
+        strategy: rec.strategy,
+        volatility: rec.volatility,
+      })
+    } catch {
+      // ignore
+    }
+  }
+
+  return true
+}
+
+/**
+ * Continuously mark unswapped token inventory to market spot prices.
+ */
+export function updatePendingTradesMarkToMarket(priceMap: Record<string, number>): number {
+  const data = load()
+  let updated = 0
+
+  for (const rec of data.performance) {
+    if (rec.status !== 'closed_pending_swap') continue
+    const mint = rec.liquidation_mint || rec.base_mint
+    if (!mint) continue
+
+    const price = priceMap[mint]
+    if (typeof price === 'number' && Number.isFinite(price) && price >= 0) {
+      const amount = rec.unrealized_tokens_amount || 0
+      const newResidual = Math.round(amount * price * 100) / 100
+      rec.unrealized_residual_usd = newResidual
+      const newFinal = Math.round(((rec.cash_realized_usd || 0) + newResidual) * 100) / 100
+      rec.final_value_usd = newFinal
+      const price_pnl_usd = rec.final_value_usd - rec.initial_value_usd
+      const price_pnl_pct = rec.initial_value_usd > 0 ? (price_pnl_usd / rec.initial_value_usd) * 100 : 0
+      const net_pnl_usd = price_pnl_usd + (rec.fees_earned_usd || 0)
+      rec.price_pnl_usd = Math.round(price_pnl_usd * 100) / 100
+      rec.price_pnl_pct = Math.round(price_pnl_pct * 100) / 100
+      rec.net_pnl_usd = Math.round(net_pnl_usd * 100) / 100
+      rec.pnl_usd = rec.net_pnl_usd
+      rec.pnl_pct = Math.round((rec.net_pnl_usd / (rec.initial_value_usd || 1)) * 10000) / 100
+      updated++
+    }
+  }
+
+  if (updated > 0) {
+    save(data)
+    log('lessons', `Marked ${updated} pending trade(s) to market`)
+  }
+  return updated
+}
+
+/**
  * Get individual performance records filtered by time window.
  * Tool handler: get_performance_history
  */
@@ -685,6 +957,10 @@ export function getPerformanceHistory({
       pool_name: r.pool_name,
       pool: r.pool,
       strategy: r.strategy,
+      status: r.status || 'realized',
+      cash_realized_sol: r.cash_realized_sol,
+      cash_realized_usd: r.cash_realized_usd,
+      unrealized_residual_usd: r.unrealized_residual_usd ?? 0,
       price_pnl_usd:
         r.price_pnl_usd ??
         (r.pnl_usd != null && r.fees_earned_usd != null
@@ -707,7 +983,8 @@ export function getPerformanceHistory({
     0,
   )
   const totalFees = filtered.reduce((s, r) => s + (r.fees_earned_usd ?? 0), 0)
-  const wins = filtered.filter((r) => (r.pnl_pct ?? 0) >= 0).length
+  const settled = filtered.filter((r) => r.status !== 'closed_pending_swap')
+  const wins = settled.filter((r) => (r.pnl_pct ?? 0) >= 0).length
 
   return {
     hours,
@@ -715,7 +992,7 @@ export function getPerformanceHistory({
     total_pnl_usd: Math.round(totalPnl * 100) / 100,
     total_price_pnl_usd: Math.round(totalPricePnl * 100) / 100,
     total_fees_earned_usd: Math.round(totalFees * 100) / 100,
-    win_rate_pct: filtered.length > 0 ? Math.round((wins / filtered.length) * 100) : null,
+    win_rate_pct: settled.length > 0 ? Math.round((wins / settled.length) * 100) : null,
     positions: filtered,
   }
 }
@@ -729,23 +1006,44 @@ export function getPerformanceSummary(): Record<string, unknown> | null {
 
   if (p.length === 0) return null
 
+  const realizedRecords = p.filter((x) => x.status !== 'closed_pending_swap')
+  const pendingRecords = p.filter((x) => x.status === 'closed_pending_swap')
+
   const totalPnl = p.reduce((s, x) => s + (x.net_pnl_usd ?? x.pnl_usd ?? 0), 0)
   const totalPricePnl = p.reduce((s, x) => s + (x.price_pnl_usd ?? (x.pnl_usd ?? 0) - (x.fees_earned_usd ?? 0)), 0)
   const totalFees = p.reduce((s, x) => s + (x.fees_earned_usd ?? 0), 0)
   const avgPnlPct = p.reduce((s, x) => s + (x.pnl_pct ?? 0), 0) / p.length
   const avgPricePnlPct = p.reduce((s, x) => s + (x.price_pnl_pct ?? 0), 0) / p.length
   const avgRangeEfficiency = p.reduce((s, x) => s + (x.range_efficiency ?? 0), 0) / p.length
-  const wins = p.filter((x) => (x.pnl_pct ?? 0) >= 0).length
+
+  const realizedWins = realizedRecords.filter((x) => (x.pnl_pct ?? 0) >= 0).length
+
+  const cashRealizedPnlUsd = p.reduce((s, x) => {
+    const cash =
+      x.cash_realized_usd !== undefined
+        ? x.cash_realized_usd
+        : x.status !== 'closed_pending_swap'
+          ? x.final_value_usd || 0
+          : 0
+    return s + (cash - (x.initial_value_usd || 0) + (x.fees_earned_usd || 0))
+  }, 0)
+
+  const unrealizedResidualUsd = pendingRecords.reduce((s, x) => s + (x.unrealized_residual_usd ?? 0), 0)
 
   return {
     total_positions_closed: p.length,
+    pending_swaps_count: pendingRecords.length,
+    realized_positions_count: realizedRecords.length,
     total_pnl_usd: Math.round(totalPnl * 100) / 100,
+    cash_realized_pnl_usd: Math.round(cashRealizedPnlUsd * 100) / 100,
+    unrealized_residual_usd: Math.round(unrealizedResidualUsd * 100) / 100,
     total_price_pnl_usd: Math.round(totalPricePnl * 100) / 100,
     total_fees_earned_usd: Math.round(totalFees * 100) / 100,
     avg_pnl_pct: Math.round(avgPnlPct * 100) / 100,
     avg_price_pnl_pct: Math.round(avgPricePnlPct * 100) / 100,
     avg_range_efficiency_pct: Math.round(avgRangeEfficiency * 10) / 10,
-    win_rate_pct: Math.round((wins / p.length) * 100),
+    win_rate_pct: realizedRecords.length > 0 ? Math.round((realizedWins / realizedRecords.length) * 100) : 0,
+    realized_win_rate_pct: realizedRecords.length > 0 ? Math.round((realizedWins / realizedRecords.length) * 100) : 0,
     total_lessons: data.lessons.length,
   }
 }

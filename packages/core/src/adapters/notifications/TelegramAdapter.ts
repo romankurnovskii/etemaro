@@ -654,12 +654,20 @@ interface NotifyCloseArgs {
   pair: string
   pnlUsd: number
   pnlPct: number
+  status?: 'realized' | 'closed_pending_swap' | 'abandoned_loss'
+  solReceived?: number
 }
 
-export async function notifyClose({ pair, pnlUsd, pnlPct }: NotifyCloseArgs): Promise<void> {
+export async function notifyClose({ pair, pnlUsd, pnlPct, status, solReceived }: NotifyCloseArgs): Promise<void> {
   if (hasActiveLiveMessage()) return
   const sign = pnlUsd >= 0 ? '+' : ''
-  const body = `PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)`
+  let body: string
+  if (status === 'closed_pending_swap') {
+    body = `PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}% paper)\n⏳ Base tokens awaiting liquidation to SOL`
+  } else {
+    const solText = solReceived ? `\nCash: ${solReceived.toFixed(4)} SOL` : ''
+    body = `PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)${solText}`
+  }
   notify('close', '🔒', `Closed ${pair}`, body)
   await sendPlain(`🔒 Closed ${pair}\n${body}`)
 }

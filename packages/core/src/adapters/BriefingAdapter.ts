@@ -106,9 +106,13 @@ export async function generateBriefing(options?: GenerateBriefingOptions): Promi
     `📉 Price PnL: ${totalPricePnLUsd >= 0 ? '+' : ''}$${totalPricePnLUsd.toFixed(2)}${fmtSol(totalPricePnLUsd)}`,
     `💎 Fees Earned: $${totalFeesUsd.toFixed(2)}${fmtSol(totalFeesUsd)}`,
     `💰 Net PnL: ${totalNetPnLUsd >= 0 ? '+' : ''}$${totalNetPnLUsd.toFixed(2)}${fmtSol(totalNetPnLUsd)}`,
-    perfLast24h.length > 0
-      ? `📈 Win Rate (24h): ${Math.round((perfLast24h.filter((p) => (p.pnl_pct ?? 0) >= 0).length / perfLast24h.length) * 100)}%`
-      : '📈 Win Rate (24h): N/A',
+    (() => {
+      const settled24h = perfLast24h.filter((p) => p.status !== 'closed_pending_swap')
+      const wins24h = settled24h.filter((p) => (p.pnl_pct ?? 0) >= 0).length
+      return settled24h.length > 0
+        ? `📈 Win Rate (24h): ${Math.round((wins24h / settled24h.length) * 100)}%`
+        : '📈 Win Rate (24h): N/A'
+    })(),
     '',
     'Lessons Learned:',
     lessonsLast24h.length > 0
@@ -118,7 +122,11 @@ export async function generateBriefing(options?: GenerateBriefingOptions): Promi
     'Current Portfolio:',
     `📂 Open Positions: ${openPositions.length}`,
     perfSummary
-      ? `📊 All-time PnL: $${allTimePnlUsd.toFixed(2)}${fmtSol(allTimePnlUsd)} | ${perfSummary.win_rate_pct as number}% win | avg ${(perfSummary.avg_pnl_pct as number) >= 0 ? '+' : ''}${(perfSummary.avg_pnl_pct as number).toFixed(2)}%`
+      ? `📊 All-time PnL: $${allTimePnlUsd.toFixed(2)}${fmtSol(allTimePnlUsd)} | ${perfSummary.win_rate_pct as number}% win | avg ${(perfSummary.avg_pnl_pct as number) >= 0 ? '+' : ''}${(perfSummary.avg_pnl_pct as number).toFixed(2)}%${
+          (perfSummary.pending_swaps_count as number) > 0
+            ? `\n⏳ Pending Liquidations: ${perfSummary.pending_swaps_count} (~$${((perfSummary.unrealized_residual_usd as number) || 0).toFixed(2)})`
+            : ''
+        }`
       : '',
     '────────────────',
   ]
