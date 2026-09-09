@@ -84,12 +84,9 @@ export function formatNumber(n: number | null | undefined): string {
   return String(Math.round(n))
 }
 
-export function resolveEnvString(val: string): string | null {
-  if (!val.startsWith('env.')) return val
-  const envVar = val.slice(4)
-  const resolved = typeof process !== 'undefined' ? process.env?.[envVar] : undefined
-  return resolved !== undefined && resolved.trim() !== '' ? resolved.trim() : null
-}
+import { resolveEnvString } from '../config/schema.js'
+
+export { resolveEnvString }
 
 /**
  * Recursively resolves any string value starting with "env.VAR_NAME"

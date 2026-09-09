@@ -1,6 +1,12 @@
 import { z } from 'zod'
 import { DEFAULT_PNL_SOURCE } from '../shared/constants.js'
-import { resolveEnvString } from '../shared/utils.js'
+
+export function resolveEnvString(val: string): string | null {
+  if (!val.startsWith('env.')) return val
+  const envVar = val.slice(4)
+  const resolved = typeof process !== 'undefined' ? process.env?.[envVar] : undefined
+  return resolved !== undefined && resolved.trim() !== '' ? resolved.trim() : null
+}
 
 // Helper to handle process.env references for strings
 const envString = z.string().transform((val, ctx) => {
@@ -95,6 +101,9 @@ export const UserConfigSchema = z
     name: z.string().optional(),
     description: z.string().optional(),
     agentId: envStringNullable.optional(),
+    _lastEvolved: z.string().optional(),
+    _positionsAtEvolution: z.number().optional(),
+    _lastAgentTune: z.string().optional(),
     connection: z
       .object({
         description: z.string().optional(),

@@ -16,12 +16,16 @@ vi.mock('../shared/constants.js', async (importOriginal) => {
   }
 })
 
-import { getPerformanceHistory, getPerformanceSummary, recordPerformance } from './lessons.js'
+import { DEFAULT_USER_CONFIG } from '../config/defaultUserConfig.js'
+import { UserConfigSchema } from '../config/schema.js'
+import type { AppConfig, PerformanceRecord } from '../shared/types.js'
+import { evolveThresholds, getPerformanceHistory, getPerformanceSummary, recordPerformance } from './lessons.js'
 
 type MockedConstants = typeof import('../shared/constants.js') & { __testDataDir: string }
 const constants = (await import('../shared/constants.js')) as MockedConstants
 const tmpDir = constants.__testDataDir
 const lessonsFile = path.join(tmpDir, 'lessons.json')
+const configFile = path.join(tmpDir, 'user-config.json')
 
 describe('lessons domain — Price PnL vs Net PnL disambiguation', () => {
   beforeEach(() => {
@@ -130,5 +134,164 @@ describe('lessons domain — Price PnL vs Net PnL disambiguation', () => {
     expect(pos.price_pnl_usd).toBe(10)
     expect(pos.net_pnl_usd).toBe(15)
     expect(pos.pnl_usd).toBe(15)
+  })
+})
+
+describe('evolveThresholds — config persistence & schema validity', () => {
+  beforeEach(() => {
+    fs.mkdirSync(tmpDir, { recursive: true })
+    fs.writeFileSync(lessonsFile, JSON.stringify({ lessons: [], performance: [] }))
+    fs.writeFileSync(configFile, JSON.stringify(DEFAULT_USER_CONFIG, null, 2))
+  })
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('writes evolved thresholds to screening object, cleans up legacy root keys, and passes UserConfigSchema', () => {
+    // Seed config with legacy corrupted root keys
+    const initialConfig = JSON.parse(JSON.stringify(DEFAULT_USER_CONFIG))
+    initialConfig.minFeeActiveTvlRatio = 0.01 // legacy corrupted root key
+    initialConfig.minOrganic = 50 // legacy corrupted root key
+    fs.writeFileSync(configFile, JSON.stringify(initialConfig, null, 2))
+
+    const mockAppConfig = {
+      screening: {
+        minFeeActiveTvlRatio: 0.02,
+        minOrganic: 60,
+      },
+    } as unknown as AppConfig
+
+    // Create 5 performance records: 2 winners with high fee_tvl_ratio & organic, 3 losers with low fee_tvl & organic
+    const perfData: PerformanceRecord[] = [
+      {
+        position: 'p1',
+        pool: 'pool1',
+        pool_name: 'WIN1-SOL',
+        strategy: 'classic',
+        bin_range: 20,
+        bin_step: 10,
+        volatility: 0.2,
+        fee_tvl_ratio: 0.15,
+        organic_score: 85,
+        amount_sol: 1.0,
+        initial_value_usd: 100,
+        final_value_usd: 120,
+        fees_earned_usd: 10,
+        pnl_usd: 20,
+        pnl_pct: 10,
+        minutes_in_range: 60,
+        minutes_held: 60,
+        close_reason: 'take profit',
+        settled_at: new Date().toISOString(),
+      },
+      {
+        position: 'p2',
+        pool: 'pool2',
+        pool_name: 'WIN2-SOL',
+        strategy: 'classic',
+        bin_range: 20,
+        bin_step: 10,
+        volatility: 0.2,
+        fee_tvl_ratio: 0.2,
+        organic_score: 90,
+        amount_sol: 1.0,
+        initial_value_usd: 100,
+        final_value_usd: 130,
+        fees_earned_usd: 15,
+        pnl_usd: 30,
+        pnl_pct: 15,
+        minutes_in_range: 60,
+        minutes_held: 60,
+        close_reason: 'take profit',
+        settled_at: new Date().toISOString(),
+      },
+      {
+        position: 'p3',
+        pool: 'pool3',
+        pool_name: 'LOSE1-SOL',
+        strategy: 'classic',
+        bin_range: 20,
+        bin_step: 10,
+        volatility: 0.2,
+        fee_tvl_ratio: 0.01,
+        organic_score: 40,
+        amount_sol: 1.0,
+        initial_value_usd: 100,
+        final_value_usd: 80,
+        fees_earned_usd: 1,
+        pnl_usd: -20,
+        pnl_pct: -10,
+        minutes_in_range: 60,
+        minutes_held: 60,
+        close_reason: 'stop loss',
+        settled_at: new Date().toISOString(),
+      },
+      {
+        position: 'p4',
+        pool: 'pool4',
+        pool_name: 'LOSE2-SOL',
+        strategy: 'classic',
+        bin_range: 20,
+        bin_step: 10,
+        volatility: 0.2,
+        fee_tvl_ratio: 0.02,
+        organic_score: 45,
+        amount_sol: 1.0,
+        initial_value_usd: 100,
+        final_value_usd: 85,
+        fees_earned_usd: 2,
+        pnl_usd: -15,
+        pnl_pct: -8,
+        minutes_in_range: 60,
+        minutes_held: 60,
+        close_reason: 'stop loss',
+        settled_at: new Date().toISOString(),
+      },
+      {
+        position: 'p5',
+        pool: 'pool5',
+        pool_name: 'LOSE3-SOL',
+        strategy: 'classic',
+        bin_range: 20,
+        bin_step: 10,
+        volatility: 0.2,
+        fee_tvl_ratio: 0.01,
+        organic_score: 42,
+        amount_sol: 1.0,
+        initial_value_usd: 100,
+        final_value_usd: 75,
+        fees_earned_usd: 1,
+        pnl_usd: -25,
+        pnl_pct: -12,
+        minutes_in_range: 60,
+        minutes_held: 60,
+        close_reason: 'stop loss',
+        settled_at: new Date().toISOString(),
+      },
+    ]
+
+    const result = evolveThresholds(perfData, mockAppConfig, configFile)
+    expect(result).not.toBeNull()
+    expect(result?.changes).toBeDefined()
+    expect(Object.keys(result?.changes ?? {}).length).toBeGreaterThan(0)
+
+    // Read the persisted config from disk
+    const savedConfig = JSON.parse(fs.readFileSync(configFile, 'utf-8'))
+
+    // 1. Root level MUST NOT have screening fields
+    expect(savedConfig.minFeeActiveTvlRatio).toBeUndefined()
+    expect(savedConfig.minOrganic).toBeUndefined()
+
+    // 2. Screening object MUST have the evolved value
+    expect(savedConfig.screening.minFeeActiveTvlRatio).toBe(result?.changes.minFeeActiveTvlRatio)
+
+    // 3. Root metadata fields MUST be present
+    expect(typeof savedConfig._lastEvolved).toBe('string')
+    expect(savedConfig._positionsAtEvolution).toBe(5)
+
+    // 4. Saved config MUST pass strict UserConfigSchema validation
+    const parseResult = UserConfigSchema.safeParse(savedConfig)
+    expect(parseResult.success).toBe(true)
   })
 })
