@@ -820,4 +820,160 @@ describe('Telegram Queue Persistence & Safety Guards (#237 / #244)', () => {
     expect(loadJsonFile<any[]>(queuePath, ['not_empty'])).toEqual([])
     exitSpy.mockRestore()
   })
+
+  describe('Capital Starvation Prevention & Adaptive Sizing', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+      adapters = createMockAdapters()
+      daemon = new Daemon(adapters)
+    })
+
+    afterEach(async () => {
+      const { config } = await import('@etemaro/core')
+      config.connection.dryRun = true
+    })
+
+    it('allows screening when SOL is near threshold but above adaptive minimum', async () => {
+      const { config } = await import('@etemaro/core')
+      config.connection.dryRun = false
+
+      adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ positions: [], total_positions: 0 })
+      adapters.wallet.getWalletBalances = vi.fn().mockResolvedValue({
+        sol: 0.19,
+        tokens: [],
+      })
+      adapters.screening.getTopCandidates = vi.fn().mockResolvedValue({ candidates: [] })
+
+      const res = await daemon.runScreeningCycle({ silent: true })
+      expect(res).not.toBeNull()
+      expect(adapters.screening.getTopCandidates).toHaveBeenCalled()
+    })
+
+    it('triggers auto-sweep when SOL is below threshold and wallet has swappable tokens', async () => {
+      const { config } = await import('@etemaro/core')
+      config.connection.dryRun = false
+
+      adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ positions: [], total_positions: 0 })
+      adapters.wallet.getWalletBalances = vi
+        .fn()
+        .mockResolvedValueOnce({
+          sol: 0.12,
+          tokens: [{ mint: 'mint_abc', symbol: 'DUST', balance: 100, usd: 5 }],
+        })
+        .mockResolvedValueOnce({
+          sol: 0.22,
+          tokens: [],
+        })
+      adapters.screening.getTopCandidates = vi.fn().mockResolvedValue({ candidates: [] })
+
+      const res = await daemon.runScreeningCycle({ silent: true })
+      expect(res).not.toBeNull()
+      expect(adapters.toolExecutor.executeTool).toHaveBeenCalledWith('swap_all_tokens_to_sol', {})
+      expect(adapters.wallet.getWalletBalances).toHaveBeenCalledTimes(2)
+    })
+
+    it('alerts and suppresses screening when SOL is genuinely starved after auto-sweep failure', async () => {
+      const { config } = await import('@etemaro/core')
+      config.connection.dryRun = false
+
+      adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ positions: [], total_positions: 0 })
+      adapters.wallet.getWalletBalances = vi.fn().mockResolvedValue({
+        sol: 0.12,
+        tokens: [{ mint: 'mint_abc', symbol: 'DUST', balance: 100, usd: 5 }],
+      })
+      adapters.telegram.isEnabled = vi.fn().mockReturnValue(true)
+      adapters.toolExecutor.executeTool = vi.fn().mockRejectedValue(new Error('swap failed'))
+
+      const res = await daemon.runScreeningCycle({ silent: true })
+      expect(res).toContain('insufficient SOL')
+      expect(adapters.telegram.sendMessage).toHaveBeenCalledWith(expect.stringContaining('Trading paused'))
+      expect((daemon as any).screeningStarvedUntil).toBeGreaterThan(Date.now())
+    })
+
+    it('suppresses subsequent screening cycles during starvation cooldown', async () => {
+      const { config } = await import('@etemaro/core')
+      config.connection.dryRun = false
+
+      ;(daemon as any).screeningStarvedUntil = Date.now() + 10 * 60 * 1000
+      adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ positions: [], total_positions: 0 })
+
+      const res = await daemon.runScreeningCycle({ silent: true })
+      expect(res).toBeNull()
+      expect(adapters.screening.getTopCandidates).not.toHaveBeenCalled()
+    })
+
+    it('skips auto-sweep when no swappable tokens are available', async () => {
+      const { config } = await import('@etemaro/core')
+      config.connection.dryRun = false
+
+      adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ positions: [], total_positions: 0 })
+      adapters.wallet.getWalletBalances = vi.fn().mockResolvedValue({
+        sol: 0.12,
+        tokens: [
+          { mint: 'So11111111111111111111111111111111111111111', symbol: 'SOL', balance: 0, usd: 0 },
+          { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', symbol: 'USDC', balance: 0, usd: 0 },
+        ],
+      })
+
+      const res = await daemon.runScreeningCycle({ silent: true })
+      expect(res).toContain('insufficient SOL')
+      expect(adapters.toolExecutor.executeTool).not.toHaveBeenCalled()
+    })
+
+    it('allows manual screening (silent: false) to bypass starvation cooldown and clears cooldown on sufficient balance', async () => {
+      const { config } = await import('@etemaro/core')
+      config.connection.dryRun = false
+
+      ;(daemon as any).screeningStarvedUntil = Date.now() + 10 * 60 * 1000
+      adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ positions: [], total_positions: 0 })
+      adapters.wallet.getWalletBalances = vi.fn().mockResolvedValue({
+        sol: 0.25,
+        tokens: [],
+      })
+      adapters.screening.getTopCandidates = vi.fn().mockResolvedValue({ candidates: [] })
+
+      const res = await daemon.runScreeningCycle({ silent: false })
+      expect(res).not.toBeNull()
+      expect(adapters.screening.getTopCandidates).toHaveBeenCalled()
+      expect((daemon as any).screeningStarvedUntil).toBe(0)
+    })
+
+    it('passes adaptive deploy amount to smart wallet screening when balance is near threshold', async () => {
+      const { config } = await import('@etemaro/core')
+      config.connection.dryRun = false
+      const origSource = config.screening.entrySource
+      config.screening.entrySource = 'smart_wallets'
+
+      adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ positions: [], total_positions: 0 })
+      adapters.wallet.getWalletBalances = vi.fn().mockResolvedValue({
+        sol: 0.19,
+        tokens: [],
+      })
+      const smartSpy = vi.spyOn(daemon, 'runSmartWalletScreening').mockResolvedValue('OK')
+
+      try {
+        await daemon.runScreeningCycle({ silent: true })
+        expect(smartSpy).toHaveBeenCalled()
+        const callArgs = smartSpy.mock.calls[0]?.[0] as any
+        expect(callArgs?.deployAmount).toBeLessThan(config.management.deployAmountSol)
+      } finally {
+        config.screening.entrySource = origSource
+      }
+    })
+
+    it('skips auto-sweep when token has 0 USD value (treated as dust)', async () => {
+      const { config } = await import('@etemaro/core')
+      config.connection.dryRun = false
+
+      adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ positions: [], total_positions: 0 })
+      adapters.wallet.getWalletBalances = vi.fn().mockResolvedValue({
+        sol: 0.12,
+        tokens: [{ mint: 'dead_token_mint', symbol: 'SCAM', balance: 1000, usd: 0 }],
+      })
+
+      const res = await daemon.runScreeningCycle({ silent: true })
+      expect(res).toContain('insufficient SOL')
+      expect(adapters.toolExecutor.executeTool).not.toHaveBeenCalled()
+    })
+  })
 })

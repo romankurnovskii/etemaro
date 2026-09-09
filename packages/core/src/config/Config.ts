@@ -282,14 +282,15 @@ setDryRun(config.connection.dryRun ?? false)
 // Initialize the minSafeBinsBelow override from config
 setMinSafeBinsBelowOverride(config.strategy.minSafeBinsBelow)
 
-export function computeDeployAmount(walletSol: number): number {
+export function computeDeployAmount(walletSol: number, minViableDeploy?: number): number {
   const reserve = config.management.gasReserve
   const pct = config.management.positionSizePct
   const floor = config.management.deployAmountSol
   const ceil = config.risk.maxDeployAmount
   const deployable = Math.max(0, walletSol - reserve)
   const dynamic = deployable * pct
-  const result = Math.min(ceil, Math.max(floor, dynamic))
+  const effectiveFloor = minViableDeploy !== undefined && deployable < floor ? Math.min(floor, minViableDeploy) : floor
+  const result = Math.min(ceil, Math.max(effectiveFloor, dynamic))
   return parseFloat(result.toFixed(2))
 }
 
