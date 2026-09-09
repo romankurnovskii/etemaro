@@ -154,4 +154,46 @@ describe('Liquidation Queue Domain', () => {
 
     expect(getPendingLiquidation('MintE')).toBeNull()
   })
+
+  it('persists last_error_code and custom status in enqueuePendingLiquidation', async () => {
+    const item = await enqueuePendingLiquidation({
+      mint: 'MintF',
+      symbol: 'DEAD',
+      amount: 50,
+      usd: 0.1,
+      errorCode: 'TOKEN_NOT_TRADABLE',
+      status: 'abandoned',
+    })
+
+    expect(item.status).toBe('abandoned')
+    expect(item.last_error_code).toBe('TOKEN_NOT_TRADABLE')
+
+    const fetched = getPendingLiquidation('MintF')
+    expect(fetched?.status).toBe('abandoned')
+    expect(fetched?.last_error_code).toBe('TOKEN_NOT_TRADABLE')
+  })
+
+  it('immediately abandons token when abandonImmediately is passed to markLiquidationAttempt', async () => {
+    await enqueuePendingLiquidation({
+      mint: 'MintG',
+      symbol: 'RUG',
+      amount: 100,
+      usd: 1.0,
+    })
+
+    const outcome = await markLiquidationAttempt('MintG', {
+      error: 'Unroutable token',
+      errorCode: 'NO_ROUTES_FOUND',
+      abandonImmediately: true,
+      maxAttempts: 10,
+    })
+
+    expect(outcome.status).toBe('abandoned')
+    expect(outcome.attempts).toBe(1)
+
+    const item = getPendingLiquidation('MintG')
+    expect(item?.status).toBe('abandoned')
+    expect(item?.last_error_code).toBe('NO_ROUTES_FOUND')
+    expect(item?.last_error).toBe('Unroutable token')
+  })
 })

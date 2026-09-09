@@ -19,7 +19,7 @@ import { config } from '../../config/Config.js'
 import { getConnection, getWalletKeypair, withRpcFailover } from '../../shared/connection.js'
 import { credentialsPath } from '../../shared/constants.js'
 import { createTimer, log, logStructured } from '../../shared/logger.js'
-import type { WalletBalancesResult } from '../../shared/types.js'
+import type { SwapErrorCategory, WalletBalancesResult } from '../../shared/types.js'
 import { withRpcRetry } from '../../shared/utils.js'
 import { sleep } from '../../utils/time.js'
 import { binanceProvider, coinbaseProvider, priceProvider } from '../external/PriceProvider.js'
@@ -572,19 +572,101 @@ export function normalizeMint(mint: string): string {
   return mint
 }
 
-interface SwapTokenArgs {
+/**
+ * Classify a raw Jupiter error code or message into an internal error category.
+ */
+export function classifyJupiterError(rawCodeOrMessage?: string | null): SwapErrorCategory {
+  if (!rawCodeOrMessage) return 'unknown'
+  const str = String(rawCodeOrMessage).trim()
+  const upper = str.toUpperCase()
+
+  // 1. Permanent no-liquidity / dead / unroutable tokens -> liquidity.unavailable
+  if (
+    upper === 'TOKEN_NOT_TRADABLE' ||
+    upper === 'NO_ROUTES_FOUND' ||
+    upper === 'COULD_NOT_FIND_ANY_ROUTE' ||
+    upper === 'MARKET_NOT_FOUND' ||
+    upper.includes('TOKEN_NOT_TRADABLE') ||
+    upper.includes('NO_ROUTES_FOUND') ||
+    upper.includes('COULD_NOT_FIND_ANY_ROUTE') ||
+    upper.includes('MARKET_NOT_FOUND') ||
+    upper.includes('FAILED TO GET QUOTES') ||
+    upper.includes('NOT TRADABLE') ||
+    upper.includes('NO ROUTES FOUND')
+  ) {
+    return 'liquidity.unavailable'
+  }
+
+  // 2. Partial liquidity (route cannot process full amount) -> liquidity.partial
+  if (
+    upper === 'ROUTE_PLAN_DOES_NOT_CONSUME_ALL_THE_AMOUNT' ||
+    upper.includes('ROUTE_PLAN_DOES_NOT_CONSUME_ALL_THE_AMOUNT') ||
+    upper.includes('DOES NOT CONSUME ALL THE AMOUNT')
+  ) {
+    return 'liquidity.partial'
+  }
+
+  // 3. Slippage tolerance exceeded on-chain or off-chain -> slippage.exceeded
+  if (
+    upper === 'SLIPPAGETOLERANCEEXCEEDED' ||
+    upper === 'EXACTOUTAMOUNTNOTMATCHED' ||
+    upper === '6001' ||
+    upper.includes('SLIPPAGETOLERANCEEXCEEDED') ||
+    upper.includes('EXACTOUTAMOUNTNOTMATCHED') ||
+    upper.includes('SLIPPAGE TOLERANCE EXCEEDED') ||
+    upper.includes('CUSTOM:6001') ||
+    upper.includes('CODE=6001')
+  ) {
+    return 'slippage.exceeded'
+  }
+
+  // 4. Balance / lamports insufficient -> balance.insufficient
+  if (
+    upper === 'INSUFFICIENTFUNDS' ||
+    upper === '0X1' ||
+    upper.includes('INSUFFICIENTFUNDS') ||
+    upper.includes('INSUFFICIENT FUNDS') ||
+    upper.includes('INSUFFICIENT LAMPORTS')
+  ) {
+    return 'balance.insufficient'
+  }
+
+  return 'unknown'
+}
+
+export class JupiterSwapError extends Error {
+  errorCode: string | null
+  errorCategory: SwapErrorCategory
+  requestId: string | null
+
+  constructor(
+    message: string,
+    errorCode: string | null = null,
+    errorCategory: SwapErrorCategory = 'unknown',
+    requestId: string | null = null,
+  ) {
+    super(message)
+    this.name = 'JupiterSwapError'
+    this.errorCode = errorCode
+    this.errorCategory = errorCategory
+    this.requestId = requestId
+  }
+}
+
+export interface SwapTokenArgs {
   input_mint: string
   output_mint: string
   amount: number
+  slippageBps?: number
 }
 
-interface SwapDryRunResult {
+export interface SwapDryRunResult {
   dry_run: true
   would_swap: SwapTokenArgs
   message: string
 }
 
-interface SwapSuccessResult {
+export interface SwapSuccessResult {
   success: true
   tx: string
   input_mint: string
@@ -597,21 +679,24 @@ interface SwapSuccessResult {
   fee_mint: string | null
 }
 
-interface SwapErrorResult {
+export interface SwapErrorResult {
   success: false
   error: string
+  error_code?: string | null
+  error_category?: SwapErrorCategory
+  request_id?: string | null
 }
 
-type SwapResult = SwapDryRunResult | SwapSuccessResult | SwapErrorResult
+export type SwapResult = SwapDryRunResult | SwapSuccessResult | SwapErrorResult
 
-export async function swapToken({ input_mint, output_mint, amount }: SwapTokenArgs): Promise<SwapResult> {
+export async function swapToken({ input_mint, output_mint, amount, slippageBps }: SwapTokenArgs): Promise<SwapResult> {
   input_mint = normalizeMint(input_mint)
   output_mint = normalizeMint(output_mint)
 
   if (config.connection.dryRun) {
     return {
       dry_run: true,
-      would_swap: { input_mint, output_mint, amount },
+      would_swap: { input_mint, output_mint, amount, ...(slippageBps != null ? { slippageBps } : {}) },
       message: 'DRY RUN — no transaction sent',
     }
   }
@@ -622,7 +707,7 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
     logStructured({
       category: 'swap_start',
       message: `Swap initiated: ${amount} ${input_mint} → ${output_mint}`,
-      metadata: { input_mint, output_mint, amount },
+      metadata: { input_mint, output_mint, amount, slippageBps },
     })
     const wallet = getWalletKeypair()
     const connection = getConnection()
@@ -654,6 +739,9 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
       amount: amountStr,
       taker: wallet.publicKey.toString(),
     })
+    if (slippageBps != null && !Number.isNaN(slippageBps)) {
+      search.set('slippageBps', String(slippageBps))
+    }
     const referralParams = getJupiterReferralParams()
     if (referralParams) {
       search.set('referralAccount', referralParams.referralAccount)
@@ -675,6 +763,23 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
     })
     if (!orderRes.ok) {
       const body = await orderRes.text()
+      let parsed: {
+        errorCode?: string
+        errorMessage?: string
+        error?: string
+        message?: string
+        requestId?: string
+      } | null = null
+      try {
+        parsed = JSON.parse(body)
+      } catch {
+        // body wasn't valid JSON
+      }
+
+      const rawCode = parsed?.errorCode || parsed?.error || null
+      const errorCategory = classifyJupiterError(rawCode || parsed?.errorMessage || parsed?.message || body)
+      const jupiterRequestId = parsed?.requestId || null
+
       logStructured({
         category: 'api_error',
         message: `Jupiter order failed: HTTP ${orderRes.status}`,
@@ -682,23 +787,40 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
           api: 'jup.ag/swap/v2/order',
           status: orderRes.status,
           statusText: orderRes.statusText,
-          rateLimitReset: orderRes.headers.get('x-ratelimit-reset'),
+          rateLimitReset: orderRes.headers?.get ? orderRes.headers.get('x-ratelimit-reset') : null,
           bodySnippet: body.slice(0, 200),
+          errorCode: rawCode,
+          errorCategory,
+          jupiterRequestId,
         },
       })
-      throw new Error(`Swap V2 order failed: ${orderRes.status} ${body}`)
+      throw new JupiterSwapError(
+        `Swap V2 order failed: ${orderRes.status} ${body}`,
+        rawCode,
+        errorCategory,
+        jupiterRequestId,
+      )
     }
 
     const order = (await orderRes.json()) as {
       errorCode?: string
       errorMessage?: string
+      error?: string
+      message?: string
       transaction?: string
       requestId?: string
       feeBps?: number
       feeMint?: string
     }
-    if (order.errorCode || order.errorMessage) {
-      throw new Error(`Swap V2 order error: ${order.errorMessage || order.errorCode}`)
+    if (order.errorCode || order.errorMessage || order.error) {
+      const rawCode = order.errorCode || order.error || null
+      const errorCategory = classifyJupiterError(rawCode || order.errorMessage || order.message)
+      throw new JupiterSwapError(
+        `Swap V2 order error: ${order.errorMessage || order.error || order.errorCode}`,
+        rawCode,
+        errorCategory,
+        order.requestId || null,
+      )
     }
 
     const { transaction: unsignedTx, requestId } = order
@@ -721,7 +843,19 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
       body: JSON.stringify({ signedTransaction: signedTx, requestId }),
     })
     if (!execRes.ok) {
-      throw new Error(`Swap V2 execute failed: ${execRes.status} ${await execRes.text()}`)
+      const body = await execRes.text()
+      let parsed: any = null
+      try {
+        parsed = JSON.parse(body)
+      } catch {}
+      const rawCode = parsed?.errorCode || parsed?.error || null
+      const errorCategory = classifyJupiterError(rawCode || parsed?.errorMessage || body)
+      throw new JupiterSwapError(
+        `Swap V2 execute failed: ${execRes.status} ${body}`,
+        rawCode,
+        errorCategory,
+        parsed?.requestId || requestId || null,
+      )
     }
 
     const result = (await execRes.json()) as {
@@ -732,7 +866,13 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
       outputAmountResult?: number
     }
     if (result.status === 'Failed') {
-      throw new Error(`Swap failed on-chain: code=${result.code}`)
+      const errorCategory = classifyJupiterError(result.code)
+      throw new JupiterSwapError(
+        `Swap failed on-chain: code=${result.code}`,
+        result.code || null,
+        errorCategory,
+        requestId || null,
+      )
     }
 
     log('swap', `SUCCESS tx: ${result.signature}`)
@@ -770,6 +910,11 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
     }
   } catch (error: unknown) {
     const e = error as { message?: string }
+    const jupiterError = error instanceof JupiterSwapError ? error : null
+    const errorCode = jupiterError?.errorCode ?? null
+    const errorCategory = jupiterError?.errorCategory ?? classifyJupiterError(e.message || String(error))
+    const jupiterRequestId = jupiterError?.requestId ?? null
+
     log('swap_error', e.message || String(error))
     logStructured({
       category: 'swap_error',
@@ -779,9 +924,18 @@ export async function swapToken({ input_mint, output_mint, amount }: SwapTokenAr
         output_mint,
         amount,
         error: e.message || String(error),
+        errorCode,
+        errorCategory,
+        jupiterRequestId,
         duration_ms: swapTimer?.stop?.() ?? 0,
       },
     })
-    return { success: false, error: e.message || String(error) }
+    return {
+      success: false,
+      error: e.message || String(error),
+      error_code: errorCode,
+      error_category: errorCategory,
+      request_id: jupiterRequestId,
+    }
   }
 }

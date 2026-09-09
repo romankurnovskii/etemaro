@@ -23,6 +23,8 @@ export interface EnqueueLiquidationOpts {
   pool_address?: string | null
   position?: string | null
   error?: string
+  errorCode?: string | null
+  status?: 'pending' | 'liquidated' | 'abandoned'
 }
 
 /**
@@ -66,8 +68,9 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
         pool_address: opts.pool_address || existing.pool_address,
         position: opts.position || existing.position || null,
         last_attempt_at: now,
-        status: 'pending',
-        last_error: opts.error || existing.last_error,
+        status: opts.status || 'pending',
+        last_error: opts.error !== undefined ? opts.error : existing.last_error,
+        last_error_code: opts.errorCode !== undefined ? opts.errorCode : existing.last_error_code,
       }
     } else {
       record = {
@@ -80,8 +83,9 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
         added_at: now,
         last_attempt_at: now,
         attempts: 0,
-        status: 'pending',
+        status: opts.status || 'pending',
         last_error: opts.error || null,
+        last_error_code: opts.errorCode ?? null,
       }
     }
 
@@ -90,7 +94,7 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
 
     log(
       'state',
-      `Enqueued pending liquidation: ${record.symbol || record.mint.slice(0, 8)} (${record.amount} units${record.usd ? `, ~$${record.usd.toFixed(2)}` : ''}) [status: pending]`,
+      `Enqueued pending liquidation: ${record.symbol || record.mint.slice(0, 8)} (${record.amount} units${record.usd ? `, ~$${record.usd.toFixed(2)}` : ''}) [status: ${record.status}]`,
     )
 
     return record
@@ -147,8 +151,10 @@ export async function markLiquidationAttempt(
   mint: string,
   opts: {
     error?: string
+    errorCode?: string | null
     maxAttempts?: number
     abandonWindowHours?: number
+    abandonImmediately?: boolean
   } = {},
 ): Promise<{ status: 'pending' | 'abandoned'; attempts: number }> {
   let abandonedPosition: string | null = null
@@ -168,17 +174,20 @@ export async function markLiquidationAttempt(
     item.attempts = (item.attempts || 0) + 1
     item.last_attempt_at = now.toISOString()
     item.last_error = opts.error || 'Liquidation attempt failed'
+    if (opts.errorCode !== undefined) {
+      item.last_error_code = opts.errorCode
+    }
     lastError = item.last_error
 
     const addedMs = item.added_at ? new Date(item.added_at).getTime() : now.getTime()
     const ageHours = (now.getTime() - addedMs) / (1000 * 60 * 60)
 
-    if (item.attempts >= maxAttempts || ageHours >= abandonWindowHours) {
+    if (opts.abandonImmediately || item.attempts >= maxAttempts || ageHours >= abandonWindowHours) {
       item.status = 'abandoned'
       abandonedPosition = item.position || null
       log(
         'state_warn',
-        `Liquidation abandoned for ${item.symbol || mint.slice(0, 8)} after ${item.attempts} attempts (${ageHours.toFixed(1)}h). Token marked dead/rugged to halt RPC quote spam.`,
+        `Liquidation abandoned for ${item.symbol || mint.slice(0, 8)} ${opts.abandonImmediately ? 'immediately (unroutable/dead token)' : `after ${item.attempts} attempts (${ageHours.toFixed(1)}h)`}. Token marked dead/rugged to halt RPC quote spam.`,
       )
     }
 
