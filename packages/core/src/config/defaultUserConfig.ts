@@ -143,16 +143,6 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
     minSamples: 10,
   },
 
-  hiveMind: {
-    description:
-      'Collective learning layer. Pulls shared lessons and presets from a remote HiveMind backend; pushes local lessons back.',
-    enabled: true,
-    url: 'https://api.agentmeridian.xyz',
-    apiKey: 'env.DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY',
-    agentId: '',
-    pullMode: 'auto',
-  },
-
   api: {
     description:
       'External API integrations. Enable only the services needed for research, position lookup, or relay execution.',
@@ -169,6 +159,15 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
       enabled: false,
       url: 'https://api.lpagent.io/open-api/v1',
       apiKey: 'env.LPAGENT_API_KEY',
+    },
+    hiveMind: {
+      description:
+        'Collective learning layer. Pulls shared lessons and presets from a remote HiveMind backend; pushes local lessons back.',
+      enabled: true,
+      url: 'https://api.agentmeridian.xyz',
+      apiKey: 'env.DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY',
+      agentId: '',
+      pullMode: 'auto',
     },
   },
 

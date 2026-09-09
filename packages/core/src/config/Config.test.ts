@@ -84,11 +84,14 @@ describe('hiveMind agentId support', () => {
         return JSON.stringify({
           ...baseConfig,
           agentId: 'local-top-level-agent',
-          hiveMind: {
-            ...baseConfig.hiveMind,
-            agentId: 'nested-hive-agent',
-            url: 'https://hive.example.com',
-            apiKey: 'hive-key',
+          api: {
+            ...baseConfig.api,
+            hiveMind: {
+              ...baseConfig.api.hiveMind,
+              agentId: 'nested-hive-agent',
+              url: 'https://hive.example.com',
+              apiKey: 'hive-key',
+            },
           },
         })
       }
@@ -114,7 +117,7 @@ describe('hiveMind agentId support', () => {
   it('exposes hiveMind.agentId from nested config when top-level agentId is present', async () => {
     const { config: testConfig } = await import('./Config.js')
     expect(testConfig.agentId).toBe('local-top-level-agent')
-    expect(testConfig.hiveMind.agentId).toBe('nested-hive-agent')
+    expect(testConfig.api.hiveMind.agentId).toBe('nested-hive-agent')
   })
 
   it('falls back to agent-default agentId when top-level agentId is null or empty', async () => {
@@ -124,11 +127,14 @@ describe('hiveMind agentId support', () => {
         return JSON.stringify({
           ...baseConfig,
           agentId: null,
-          hiveMind: {
-            ...baseConfig.hiveMind,
-            agentId: 'hive-only-agent',
-            url: 'https://hive.example.com',
-            apiKey: 'hive-key',
+          api: {
+            ...baseConfig.api,
+            hiveMind: {
+              ...baseConfig.api.hiveMind,
+              agentId: 'hive-only-agent',
+              url: 'https://hive.example.com',
+              apiKey: 'hive-key',
+            },
           },
         })
       }
@@ -137,7 +143,7 @@ describe('hiveMind agentId support', () => {
 
     const { config: testConfig } = await import('./Config.js')
     expect(testConfig.agentId).toBe('agent-default')
-    expect(testConfig.hiveMind.agentId).toBe('hive-only-agent')
+    expect(testConfig.api.hiveMind.agentId).toBe('hive-only-agent')
   })
 })
 

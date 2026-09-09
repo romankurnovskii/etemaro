@@ -2262,7 +2262,7 @@ IMPORTANT:
       `Yield floor: ${config.management.minFeePerTvl24h}% | min age ${config.management.minAgeBeforeYieldCheck}m`,
       `Screening: ${config.screening.category} / ${config.screening.timeframe} | TVL ${config.screening.minTvl}-${config.screening.maxTvl}`,
       `Intervals: manage ${config.schedule.managementIntervalMin}m | screen ${config.schedule.screeningIntervalMin}m`,
-      `HiveMind: ${this.adapters.hivemind.isHiveMindEnabled() ? 'enabled' : 'disabled'}${config.hiveMind.agentId ? ` | ${config.hiveMind.agentId}` : ''}`,
+      `HiveMind: ${this.adapters.hivemind.isHiveMindEnabled() ? 'enabled' : 'disabled'}${config.api.hiveMind.agentId ? ` | ${config.api.hiveMind.agentId}` : ''}`,
     ].join('\n')
   }
 
@@ -2597,7 +2597,7 @@ IMPORTANT:
           [
             'HiveMind: enabled',
             `Agent ID: ${agentId}`,
-            `URL: ${config.hiveMind.url}`,
+            `URL: ${config.api.hiveMind.url}`,
             `Pull mode: ${pullMode}`,
             `Register: ${registerResult ? 'ok' : 'warn'}`,
             `Shared lessons: ${Array.isArray(lessons) ? lessons.length : pullMode === 'manual' ? 'manual' : 0}`,

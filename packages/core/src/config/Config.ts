@@ -82,6 +82,7 @@ function buildConfig(): AppConfig {
       ...loaded.api,
       meridian: { ...defaultFallback.api?.meridian, ...loaded.api?.meridian },
       lpAgent: { ...defaultFallback.api?.lpAgent, ...loaded.api?.lpAgent },
+      hiveMind: { ...defaultFallback.api?.hiveMind, ...loaded.api?.hiveMind },
     },
     llm: { ...defaultFallback.llm, ...loaded.llm },
     chartIndicators: { ...defaultFallback.chartIndicators, ...loaded.chartIndicators },
@@ -209,13 +210,6 @@ function buildConfig(): AppConfig {
       minSamples: u.darwin.minSamples,
     },
     tokens: { ...TOKEN_MINTS },
-    hiveMind: {
-      enabled: u.hiveMind.enabled,
-      url: u.hiveMind.url ?? null,
-      apiKey: u.hiveMind.apiKey ?? null,
-      agentId: u.hiveMind.agentId ?? null,
-      pullMode: u.hiveMind.pullMode,
-    },
     api: {
       meridian: {
         enabled: u.api.meridian?.enabled ?? true,
@@ -227,6 +221,13 @@ function buildConfig(): AppConfig {
         enabled: u.api.lpAgent?.enabled ?? false,
         url: u.api.lpAgent?.url ?? null,
         apiKey: u.api.lpAgent?.apiKey ?? null,
+      },
+      hiveMind: {
+        enabled: u.api.hiveMind?.enabled ?? true,
+        url: u.api.hiveMind?.url ?? null,
+        apiKey: u.api.hiveMind?.apiKey ?? null,
+        agentId: u.api.hiveMind?.agentId ?? null,
+        pullMode: u.api.hiveMind?.pullMode ?? 'auto',
       },
     },
     pnl: {

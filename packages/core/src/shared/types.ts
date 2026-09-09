@@ -625,7 +625,6 @@ export interface AppConfig {
   llm: LlmConfig
   darwin: DarwinConfig
   tokens: TokenMints
-  hiveMind: HiveMindConfig
   api: ApiConfig
   pnl: PnlConfig
   opportunity: OpportunityConfig
@@ -787,6 +786,13 @@ export interface ApiConfig {
     enabled: boolean
     url: string | null
     apiKey: string | null
+  }
+  hiveMind: {
+    enabled: boolean
+    url: string | null
+    apiKey: string | null
+    agentId: string | null
+    pullMode: string
   }
 }
 

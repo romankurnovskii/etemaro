@@ -317,16 +317,6 @@ export const UserConfigSchema = z
         minSamples: envNumber,
       })
       .strict(),
-    hiveMind: z
-      .object({
-        description: z.string().optional(),
-        enabled: envBoolean.default(true),
-        url: envStringNullable.optional(),
-        apiKey: envStringNullable.optional(),
-        agentId: envStringNullable.optional(),
-        pullMode: envString,
-      })
-      .strict(),
     api: z
       .object({
         description: z.string().optional(),
@@ -346,6 +336,17 @@ export const UserConfigSchema = z
             enabled: envBoolean.default(false),
             url: envStringNullable.optional(),
             apiKey: envStringNullable.optional(),
+          })
+          .strict()
+          .optional(),
+        hiveMind: z
+          .object({
+            description: z.string().optional(),
+            enabled: envBoolean.default(true),
+            url: envStringNullable.optional(),
+            apiKey: envStringNullable.optional(),
+            agentId: envStringNullable.optional(),
+            pullMode: envString,
           })
           .strict()
           .optional(),
