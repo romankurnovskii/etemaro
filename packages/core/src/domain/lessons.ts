@@ -331,7 +331,11 @@ interface EvolutionResult {
  * Analyze closed position performance and evolve screening thresholds.
  * Writes changes to user-config.json and returns a summary.
  */
-export function evolveThresholds(perfData: PerformanceRecord[], cfg: AppConfig): EvolutionResult | null {
+export function evolveThresholds(
+  perfData: PerformanceRecord[],
+  cfg: AppConfig,
+  targetConfigPath: string = USER_CONFIG_PATH,
+): EvolutionResult | null {
   if (!perfData || perfData.length < MIN_EVOLVE_POSITIONS) return null
 
   const winners = perfData.filter((p) => p.pnl_pct! > 0)
@@ -411,12 +415,18 @@ export function evolveThresholds(perfData: PerformanceRecord[], cfg: AppConfig):
   if (Object.keys(changes).length === 0) return { changes: {}, rationale: {} }
 
   // ── Persist changes to user-config.json ───────────────────────
-  const userConfig = loadJsonFile<Record<string, unknown>>(USER_CONFIG_PATH, {})
-  Object.assign(userConfig, changes)
+  const userConfig = loadJsonFile<Record<string, unknown>>(targetConfigPath, {})
+  if (!userConfig.screening || typeof userConfig.screening !== 'object' || Array.isArray(userConfig.screening)) {
+    userConfig.screening = {}
+  }
+  Object.assign(userConfig.screening as Record<string, unknown>, changes)
+  // Clean up legacy root-level keys if present from previous versions
+  delete (userConfig as Record<string, unknown>).minFeeActiveTvlRatio
+  delete (userConfig as Record<string, unknown>).minOrganic
   userConfig._lastEvolved = new Date().toISOString()
   userConfig._positionsAtEvolution = perfData.length
 
-  saveJsonFile(USER_CONFIG_PATH, userConfig)
+  saveJsonFile(targetConfigPath, userConfig)
 
   // Apply to live config object immediately
   const s = cfg.screening
