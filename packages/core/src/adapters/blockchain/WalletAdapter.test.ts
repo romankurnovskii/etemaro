@@ -11,6 +11,7 @@ const { resetConnectionState, setWalletKeypair } = connectionModule
 
 import {
   BALANCE_CACHE_TTL,
+  classifyJupiterError,
   clearMintDecimalsCache,
   generateNewWallet,
   getCachedMintDecimals,
@@ -765,6 +766,151 @@ describe('WalletAdapter', () => {
 
         // 0 RPC network calls for decimals because both were in cache!
         expect(getParsedAccountInfoSpy).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('Jupiter swap error normalization and classification (Issue #271)', () => {
+      it('classifies Jupiter error codes and messages into expected categories', () => {
+        // liquidity.unavailable
+        expect(classifyJupiterError('TOKEN_NOT_TRADABLE')).toBe('liquidity.unavailable')
+        expect(classifyJupiterError('NO_ROUTES_FOUND')).toBe('liquidity.unavailable')
+        expect(classifyJupiterError('COULD_NOT_FIND_ANY_ROUTE')).toBe('liquidity.unavailable')
+        expect(classifyJupiterError('MARKET_NOT_FOUND')).toBe('liquidity.unavailable')
+        expect(classifyJupiterError('Failed to get quotes')).toBe('liquidity.unavailable')
+        expect(classifyJupiterError('Swap V2 order failed: 400 {"error":"Failed to get quotes"}')).toBe(
+          'liquidity.unavailable',
+        )
+
+        // liquidity.partial
+        expect(classifyJupiterError('ROUTE_PLAN_DOES_NOT_CONSUME_ALL_THE_AMOUNT')).toBe('liquidity.partial')
+        expect(classifyJupiterError('The route plan does not consume all the amount')).toBe('liquidity.partial')
+
+        // slippage.exceeded
+        expect(classifyJupiterError('SlippageToleranceExceeded')).toBe('slippage.exceeded')
+        expect(classifyJupiterError('ExactOutAmountNotMatched')).toBe('slippage.exceeded')
+        expect(classifyJupiterError('6001')).toBe('slippage.exceeded')
+        expect(classifyJupiterError('Program failed: Custom:6001')).toBe('slippage.exceeded')
+
+        // balance.insufficient
+        expect(classifyJupiterError('InsufficientFunds')).toBe('balance.insufficient')
+        expect(classifyJupiterError('0x1')).toBe('balance.insufficient')
+        expect(classifyJupiterError('insufficient lamports for transfer')).toBe('balance.insufficient')
+
+        // unknown
+        expect(classifyJupiterError('SomeRandomNetworkError')).toBe('unknown')
+        expect(classifyJupiterError(null)).toBe('unknown')
+        expect(classifyJupiterError(undefined)).toBe('unknown')
+      })
+
+      it('parses structured errorCode and requestId on HTTP 400 order failure', async () => {
+        process.env.JUPITER_API_KEY = 'test-jup-key'
+        config.jupiter.apiKey = 'test-jup-key'
+        config.connection.dryRun = false
+
+        const testMint = Keypair.generate().publicKey.toBase58()
+        setCachedMintDecimals(testMint, 6)
+
+        vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+          statusText: 'Bad Request',
+          headers: new Headers(),
+          text: async () =>
+            JSON.stringify({
+              requestId: 'req-dead-akira-1',
+              errorCode: 'TOKEN_NOT_TRADABLE',
+              errorMessage: 'Token is not tradable',
+            }),
+        } as any)
+
+        const res = await swapToken({
+          input_mint: testMint,
+          output_mint: 'So11111111111111111111111111111111111111112',
+          amount: 100,
+        })
+
+        expect('success' in res && res.success).toBe(false)
+        if ('success' in res && !res.success) {
+          expect(res.error_code).toBe('TOKEN_NOT_TRADABLE')
+          expect(res.error_category).toBe('liquidity.unavailable')
+          expect(res.request_id).toBe('req-dead-akira-1')
+        }
+      })
+
+      it('parses error message when body only contains error property', async () => {
+        process.env.JUPITER_API_KEY = 'test-jup-key'
+        config.jupiter.apiKey = 'test-jup-key'
+        config.connection.dryRun = false
+
+        const testMint = Keypair.generate().publicKey.toBase58()
+        setCachedMintDecimals(testMint, 6)
+
+        vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+          statusText: 'Bad Request',
+          headers: new Headers(),
+          text: async () =>
+            JSON.stringify({
+              requestId: 'req-dead-og-2',
+              error: 'Failed to get quotes',
+            }),
+        } as any)
+
+        const res = await swapToken({
+          input_mint: testMint,
+          output_mint: 'So11111111111111111111111111111111111111112',
+          amount: 50,
+        })
+
+        expect('success' in res && res.success).toBe(false)
+        if ('success' in res && !res.success) {
+          expect(res.error_code).toBe('Failed to get quotes')
+          expect(res.error_category).toBe('liquidity.unavailable')
+          expect(res.request_id).toBe('req-dead-og-2')
+        }
+      })
+
+      it('supports slippageBps parameter and appends it to order URL', async () => {
+        process.env.JUPITER_API_KEY = 'test-jup-key'
+        config.jupiter.apiKey = 'test-jup-key'
+        config.connection.dryRun = false
+
+        const testMint = Keypair.generate().publicKey.toBase58()
+        setCachedMintDecimals(testMint, 6)
+
+        let capturedUrl: string | null = null
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+          const urlStr = String(url)
+          if (urlStr.includes('jup.ag/swap/v2/order')) {
+            capturedUrl = urlStr
+            return {
+              ok: false,
+              status: 400,
+              statusText: 'Bad Request',
+              headers: new Headers(),
+              text: async () =>
+                JSON.stringify({
+                  errorCode: 'ROUTE_PLAN_DOES_NOT_CONSUME_ALL_THE_AMOUNT',
+                }),
+            } as any
+          }
+          return { ok: true, json: async () => ({}) } as any
+        })
+
+        const res = await swapToken({
+          input_mint: testMint,
+          output_mint: 'So11111111111111111111111111111111111111112',
+          amount: 10,
+          slippageBps: 250,
+        })
+
+        expect('success' in res && res.success).toBe(false)
+        expect(capturedUrl).toContain('slippageBps=250')
+        if ('success' in res && !res.success) {
+          expect(res.error_code).toBe('ROUTE_PLAN_DOES_NOT_CONSUME_ALL_THE_AMOUNT')
+          expect(res.error_category).toBe('liquidity.partial')
+        }
       })
     })
   })
