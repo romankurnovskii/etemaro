@@ -467,4 +467,35 @@ describe('agent-loop — portfolio intent routing & tools', () => {
     expect(tools?.has('get_meteora_positions')).toBe(true)
     expect(tools?.has('get_my_positions')).toBe(true)
   })
+
+  // Regression: issue #265 — portfolio-only query must include get_position_pnl
+  it('includes get_position_pnl in portfolio intent tools (issue #265)', () => {
+    const tools = INTENT_TOOLS.portfolio
+    expect(tools?.has('get_position_pnl')).toBe(true)
+  })
+
+  // Regression: issue #265 — set_position_note is a write tool and must NOT be in portfolio intent
+  it('excludes set_position_note from portfolio intent tools (issue #265)', () => {
+    const tools = INTENT_TOOLS.portfolio
+    expect(tools?.has('set_position_note')).toBe(false)
+  })
+
+  // Regression: issue #265 — union of portfolio + positions intents still works
+  it('portfolio+positions union query includes get_position_pnl via intent union', () => {
+    // "check my portfolio PnL" hits both portfolio (via "portfolio") and positions (via "pnl")
+    const goal = 'check my portfolio PnL'
+    const portfolioPattern = INTENT_PATTERNS.find((p) => p.intent === 'portfolio')
+    const positionsPattern = INTENT_PATTERNS.find((p) => p.intent === 'positions')
+    expect(portfolioPattern?.re.test(goal)).toBe(true)
+    expect(positionsPattern?.re.test(goal)).toBe(true)
+    // Both intents matched — union includes get_position_pnl from positions set
+    const matched = new Set<string>()
+    for (const { intent, re } of INTENT_PATTERNS) {
+      if (re.test(goal)) {
+        const tools = INTENT_TOOLS[intent]
+        if (tools) for (const t of tools) matched.add(t)
+      }
+    }
+    expect(matched.has('get_position_pnl')).toBe(true)
+  })
 })

@@ -137,6 +137,7 @@ export const INTENT_TOOLS: Record<string, Set<string>> = {
     'get_wallet_balance',
     'get_meteora_positions',
     'get_my_positions',
+    'get_position_pnl',
     'get_pending_liquidations',
   ]),
   balance: new Set([
