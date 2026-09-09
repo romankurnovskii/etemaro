@@ -703,10 +703,10 @@ const toolMap: Record<string, ToolFn> = {
       maxBinsBelow: ['strategy', 'maxBinsBelow'],
       defaultBinsBelow: ['strategy', 'defaultBinsBelow'],
       // hivemind
-      hiveMindUrl: ['hiveMind', 'url'],
-      hiveMindApiKey: ['hiveMind', 'apiKey'],
-      hiveMindAgentId: ['hiveMind', 'agentId'],
-      hiveMindPullMode: ['hiveMind', 'pullMode'],
+      hiveMindUrl: ['api', 'hiveMind', 'url'],
+      hiveMindApiKey: ['api', 'hiveMind', 'apiKey'],
+      hiveMindAgentId: ['api', 'hiveMind', 'agentId'],
+      hiveMindPullMode: ['api', 'hiveMind', 'pullMode'],
       // Etemaro API / relay
       publicApiKey: ['api', 'meridian', 'publicApiKey', ['api', 'meridian', 'publicApiKey']],
       agentMeridianApiUrl: ['api', 'meridian', 'url', ['api', 'meridian', 'url']],

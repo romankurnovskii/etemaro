@@ -126,15 +126,15 @@ function writeCache(nextCache: HiveMindCache): void {
 }
 
 function getBaseUrl(): string {
-  return sanitizeStoredText(config.hiveMind?.url || '', 500) || ''
+  return sanitizeStoredText(config.api.hiveMind?.url || '', 500) || ''
 }
 
 function getApiKey(): string {
-  return sanitizeStoredText(config.hiveMind?.apiKey || '', 300) || ''
+  return sanitizeStoredText(config.api.hiveMind?.apiKey || '', 300) || ''
 }
 
 function getPullMode(): string {
-  const mode = sanitizeStoredText(config.hiveMind?.pullMode || 'auto', 20) || 'auto'
+  const mode = sanitizeStoredText(config.api.hiveMind?.pullMode || 'auto', 20) || 'auto'
   return mode === 'manual' ? 'manual' : 'auto'
 }
 
@@ -143,30 +143,42 @@ export function getHiveMindPullMode(): string {
 }
 
 export function isHiveMindEnabled(): boolean {
-  return !!(config.hiveMind?.enabled && getBaseUrl() && getApiKey())
+  return !!(config.api.hiveMind?.enabled && getBaseUrl() && getApiKey())
 }
 
 export function ensureAgentId(): string {
   const userConfig = readUserConfig()
-  const existingId = (userConfig.hiveMind as Record<string, unknown> | undefined)?.agentId as string | null
+  const apiSection = userConfig.api as Record<string, unknown> | undefined
+  const existingId = apiSection?.hiveMind
+    ? ((apiSection.hiveMind as Record<string, unknown>).agentId as string | null)
+    : null
   if (existingId) {
-    config.hiveMind.agentId = existingId
+    config.api.hiveMind.agentId = existingId
     return existingId
   }
 
   const agentId = `agt_${safeRandomBytesHex(12)}`
-  if (!userConfig.hiveMind || typeof userConfig.hiveMind !== 'object') {
-    userConfig.hiveMind = {}
+  if (!apiSection || typeof apiSection !== 'object') {
+    userConfig.api = {}
   }
-  ;(userConfig.hiveMind as Record<string, unknown>).agentId = agentId
+  if (
+    !(userConfig.api as Record<string, unknown>).hiveMind ||
+    typeof (userConfig.api as Record<string, unknown>).hiveMind !== 'object'
+  ) {
+    ;(userConfig.api as Record<string, unknown>).hiveMind = {}
+  }
+  ;(userConfig.api as Record<string, unknown>).hiveMind = {
+    ...((userConfig.api as Record<string, unknown>).hiveMind as Record<string, unknown>),
+    agentId,
+  }
   writeUserConfig(userConfig)
-  config.hiveMind.agentId = agentId
+  config.api.hiveMind.agentId = agentId
   log('hivemind', `Generated agentId ${agentId}`)
   return agentId
 }
 
 function getAgentId(): string {
-  return config.hiveMind?.agentId || ensureAgentId()
+  return config.api.hiveMind?.agentId || ensureAgentId()
 }
 
 function buildUrl(pathname: string, query: Record<string, unknown> = {}): string {
