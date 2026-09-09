@@ -701,6 +701,13 @@ export interface ManagementConfig {
   sweeperAbandonWindowHours?: number
 }
 
+export type SwapErrorCategory =
+  | 'liquidity.unavailable'
+  | 'liquidity.partial'
+  | 'slippage.exceeded'
+  | 'balance.insufficient'
+  | 'unknown'
+
 export interface PendingLiquidation {
   mint: string
   symbol?: string
@@ -713,6 +720,7 @@ export interface PendingLiquidation {
   attempts: number
   status: 'pending' | 'liquidated' | 'abandoned'
   last_error?: string | null
+  last_error_code?: string | null
 }
 
 export interface StrategyConfig {

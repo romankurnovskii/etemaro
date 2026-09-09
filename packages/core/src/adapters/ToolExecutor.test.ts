@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../config/Config.js'
+import { getPendingLiquidation } from '../domain/liquidation-queue.js'
 import { __setStateFilePath } from '../domain/state.js'
 import * as MeteoraAdapter from './blockchain/MeteoraAdapter.js'
 import * as WalletAdapter from './blockchain/WalletAdapter.js'
@@ -13,6 +14,7 @@ import {
   getPortfolioSummary,
   swapAllTokensToSol,
   swapBaseToSolWithRetry,
+  sweepUnsoldTokens,
   WRITE_TOOLS,
   writeToolsMutex,
 } from './ToolExecutor.js'
@@ -322,6 +324,128 @@ describe('ToolExecutor - swapBaseToSolWithRetry', () => {
     expect(res.swapped).toBe(false)
     expect(res.result).toBeNull()
     expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(3)
+  })
+
+  it('abandons immediately without further retries when swapToken returns liquidity.unavailable (TOKEN_NOT_TRADABLE)', async () => {
+    const baseMint = 'DEAD_TOKEN_MINT_1111111111111111111111'
+    const mockBalances = {
+      tokens: [{ mint: baseMint, symbol: 'DEAD', balance: 500, usd: 1.5 }],
+    }
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue(mockBalances as any)
+    vi.mocked(WalletAdapter.swapToken).mockResolvedValue({
+      success: false,
+      error: 'Token is not tradable',
+      error_code: 'TOKEN_NOT_TRADABLE',
+      error_category: 'liquidity.unavailable',
+      request_id: 'req-dead-1',
+    } as any)
+
+    const res = await swapBaseToSolWithRetry(baseMint, 'test dead token')
+
+    expect(res.swapped).toBe(false)
+    expect(res.abandonImmediately).toBe(true)
+    expect(res.errorCode).toBe('TOKEN_NOT_TRADABLE')
+    expect(res.errorCategory).toBe('liquidity.unavailable')
+    // Crucial: abandons on attempt 1, does NOT waste 3 attempts!
+    expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(1)
+
+    const queued = getPendingLiquidation(baseMint)
+    expect(queued).not.toBeNull()
+    expect(queued?.status).toBe('abandoned')
+    expect(queued?.last_error_code).toBe('TOKEN_NOT_TRADABLE')
+  })
+
+  it('retries with reduced amount (50%) when swapToken returns liquidity.partial', async () => {
+    const baseMint = 'PARTIAL_MINT_1111111111111111111111111'
+    const mockBalances = {
+      tokens: [{ mint: baseMint, symbol: 'PARTIAL', balance: 500, usd: 2.0 }],
+    }
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue(mockBalances as any)
+    vi.mocked(WalletAdapter.swapToken)
+      .mockResolvedValueOnce({
+        success: false,
+        error: 'Route plan does not consume all amount',
+        error_code: 'ROUTE_PLAN_DOES_NOT_CONSUME_ALL_THE_AMOUNT',
+        error_category: 'liquidity.partial',
+      } as any)
+      .mockResolvedValueOnce({
+        success: true,
+        tx: 'tx-partial-success',
+        amount_out: '0.01',
+      } as any)
+
+    const res = await swapBaseToSolWithRetry(baseMint, 'test partial retry')
+
+    expect(res.swapped).toBe(true)
+    expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(2)
+    // 1st attempt: full balance (500)
+    expect(WalletAdapter.swapToken).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        amount: 500,
+      }),
+    )
+    // 2nd attempt: reduced balance by 50% (250)
+    expect(WalletAdapter.swapToken).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        amount: 250,
+      }),
+    )
+  })
+
+  it('retries with increased slippage when swapToken returns slippage.exceeded', async () => {
+    const baseMint = 'SLIPPAGE_MINT_111111111111111111111111'
+    const mockBalances = {
+      tokens: [{ mint: baseMint, symbol: 'SLIPPAGE', balance: 300, usd: 1.0 }],
+    }
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue(mockBalances as any)
+    vi.mocked(WalletAdapter.swapToken)
+      .mockResolvedValueOnce({
+        success: false,
+        error: 'SlippageToleranceExceeded',
+        error_code: 'SlippageToleranceExceeded',
+        error_category: 'slippage.exceeded',
+      } as any)
+      .mockResolvedValueOnce({
+        success: true,
+        tx: 'tx-slippage-success',
+        amount_out: '0.008',
+      } as any)
+
+    const res = await swapBaseToSolWithRetry(baseMint, 'test slippage retry')
+
+    expect(res.swapped).toBe(true)
+    expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(2)
+    // 2nd attempt: increased slippage (200 bps)
+    expect(WalletAdapter.swapToken).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        slippageBps: 200,
+      }),
+    )
+  })
+
+  it('sweepUnsoldTokens immediately abandons token on liquidity.unavailable failure', async () => {
+    const deadMint = 'DEAD_SWEEPER_MINT_11111111111111111111'
+    const mockBalances = {
+      tokens: [{ mint: deadMint, symbol: 'DEADSWEEP', balance: 1000, usd: 5.0 }],
+    }
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue(mockBalances as any)
+    vi.mocked(WalletAdapter.swapToken).mockResolvedValue({
+      success: false,
+      error: 'Failed to get quotes',
+      error_code: 'Failed to get quotes',
+      error_category: 'liquidity.unavailable',
+    } as any)
+
+    const sweepResult = await sweepUnsoldTokens()
+
+    expect(sweepResult.abandoned).toBe(1)
+    expect(sweepResult.failed).toBe(0)
+    const item = getPendingLiquidation(deadMint)
+    expect(item?.status).toBe('abandoned')
+    expect(item?.last_error_code).toBe('Failed to get quotes')
   })
 })
 
