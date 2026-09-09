@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../config/Config.js', () => ({
   config: {
-    hiveMind: {
-      enabled: true,
-      url: 'https://test-hivemind.api',
-      apiKey: 'test-key',
-      agentId: 'agt_test123',
+    api: {
+      hiveMind: {
+        enabled: true,
+        url: 'https://test-hivemind.api',
+        apiKey: 'test-key',
+        agentId: 'agt_test123',
+      },
     },
   },
 }))
