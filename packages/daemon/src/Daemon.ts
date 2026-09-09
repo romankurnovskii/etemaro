@@ -55,6 +55,7 @@ import {
   setPositionInstruction,
   sharedConfigPath,
   sharedDataPath,
+  sleep,
   strategyLibraryPath,
   TELEGRAM_QUEUE_FILENAME,
   TOKEN_BLACKLIST_FILENAME,
@@ -296,6 +297,7 @@ export class Daemon {
   // Cycle timers
   private managementLastRun: number | null = null
   private screeningLastRun: number | null = null
+  private screeningStarvedUntil = 0 // Epoch timestamp (ms); suppresses screening during capital-starvation cooldown
 
   // Telegram queue
   private telegramQueue: any[] = []
@@ -793,6 +795,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
         if (!this.acquireLock('opportunityPoll')) return
         try {
           if (Date.now() - this.screeningLastTriggered < oppCooldownMs) return
+          if (this.screeningStarvedUntil > Date.now()) return
           const positions = await this.adapters.meteora.getMyPositions({ silent: true }).catch((err: any) => {
             log('cron_error', `Opportunity poller failed to fetch positions: ${err?.message || err}`)
             return null
@@ -846,7 +849,12 @@ Summarize the current portfolio health, total fees earned, and performance of al
               log('cron_error', `Opportunity poller failed to fetch wallet balances: ${err?.message || err}`)
               return null
             })
-            const minRequired = config.management.deployAmountSol + config.management.gasReserve
+            const deployFloor = config.management.deployAmountSol
+            const gasReserve = config.management.gasReserve
+            const minViableDeploy = Math.max(0.05, deployFloor * 0.8)
+            const needsAdaptive = (balance?.sol ?? 0) < deployFloor + gasReserve
+            const adaptiveDeploy = computeDeployAmount(balance?.sol ?? 0, needsAdaptive ? minViableDeploy : undefined)
+            const minRequired = gasReserve + adaptiveDeploy
             if (!balance || balance.sol < minRequired) {
               log(
                 'cron',
@@ -1271,6 +1279,10 @@ After evaluating, write a brief one-line result per position.
       log('cron', 'Screening skipped — previous cycle still running')
       return null
     }
+    if (this.screeningStarvedUntil > Date.now() && silent) {
+      log('cron', 'Screening suppressed — capital starvation cooldown active')
+      return null
+    }
     this.screeningLastTriggered = Date.now()
 
     let prePositions: any, preBalance: any
@@ -1292,26 +1304,69 @@ After evaluating, write a brief one-line result per position.
         })
         return screenReport
       }
-      const minRequired = config.management.deployAmountSol + config.management.gasReserve
+      const deployFloor = config.management.deployAmountSol
+      const gasReserve = config.management.gasReserve
+      const minViableDeploy = Math.max(0.05, deployFloor * 0.8)
       const isDryRun = config.connection.dryRun
+      let adaptiveDeploy = deployFloor
       if (!isDryRun) {
         preBalance = await this.adapters.wallet.getWalletBalances()
+        const needsAdaptive = preBalance.sol < deployFloor + gasReserve
+        adaptiveDeploy = computeDeployAmount(preBalance.sol, needsAdaptive ? minViableDeploy : undefined)
+        const minRequired = gasReserve + adaptiveDeploy
+
         if (preBalance.sol < minRequired) {
-          log(
-            'cron',
-            `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired.toFixed(3)} needed for deploy + gas)`,
-          )
-          screenReport = `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired.toFixed(3)} needed for deploy + gas).`
-          this.adapters.domain.appendDecision({
-            type: 'skip',
-            actor: 'SCREENER',
-            summary: 'Screening skipped',
-            reason: `Insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired.toFixed(3)})`,
+          const hasSwappableTokens = (preBalance.tokens || []).some((t: any) => {
+            const hasBalance = (t.balance ?? 0) > 0
+            const isSolOrUsdc =
+              t.mint === 'So11111111111111111111111111111111111111111' ||
+              t.mint === 'So11111111111111111111111111111111111111112' ||
+              t.mint === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+            const isDust = typeof t.usd === 'number' && t.usd >= 0 && t.usd < 0.02
+            return hasBalance && !isSolOrUsdc && !isDust
           })
-          return screenReport
+
+          if (hasSwappableTokens) {
+            log(
+              'cron',
+              `SOL ${preBalance.sol.toFixed(3)} below adaptive min ${minRequired.toFixed(3)} — attempting auto-sweep`,
+            )
+            try {
+              await this.adapters.toolExecutor.executeTool('swap_all_tokens_to_sol', {})
+              await sleep(5000)
+              preBalance = await this.adapters.wallet.getWalletBalances()
+              const recheckAdaptive = computeDeployAmount(
+                preBalance.sol,
+                preBalance.sol < deployFloor + gasReserve ? minViableDeploy : undefined,
+              )
+              const recheckMin = gasReserve + recheckAdaptive
+
+              if (preBalance.sol >= recheckMin) {
+                log('cron', `Auto-sweep succeeded — SOL balance: ${preBalance.sol.toFixed(3)}`)
+                adaptiveDeploy = recheckAdaptive
+                this.screeningStarvedUntil = 0
+              } else {
+                this.handleScreeningStarvation(preBalance, gasReserve, minViableDeploy)
+                screenReport = `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${recheckMin.toFixed(3)}) after auto-sweep.`
+                return screenReport
+              }
+            } catch (e: any) {
+              log('cron_error', `Auto-sweep failed: ${e.message}`)
+              this.handleScreeningStarvation(preBalance, gasReserve, minViableDeploy)
+              screenReport = `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired.toFixed(3)}); auto-sweep failed.`
+              return screenReport
+            }
+          } else {
+            this.handleScreeningStarvation(preBalance, gasReserve, minViableDeploy)
+            screenReport = `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired.toFixed(3)}).`
+            return screenReport
+          }
+        } else {
+          this.screeningStarvedUntil = 0
         }
       } else {
         preBalance = { sol: Math.max(config.management.deployAmountSol, 1), tokens: [] }
+        adaptiveDeploy = computeDeployAmount(preBalance.sol)
       }
 
       if (!silent && this.adapters.telegram.isEnabled()) {
@@ -1323,7 +1378,7 @@ After evaluating, write a brief one-line result per position.
         try {
           screenReport = await this.runSmartWalletScreening({
             liveMessage,
-            deployAmount: computeDeployAmount(preBalance.sol),
+            deployAmount: adaptiveDeploy,
           })
         } catch (e: any) {
           log('cron_error', `Smart wallet screening failed: ${e.message}`)
@@ -1334,7 +1389,7 @@ After evaluating, write a brief one-line result per position.
 
       log('cron', `Starting screening cycle [model: ${config.llm.screeningModel}]`)
       const currentBalance = preBalance
-      const deployAmount = computeDeployAmount(currentBalance.sol)
+      const deployAmount = adaptiveDeploy
       log('cron', `Computed deploy amount: ${deployAmount} SOL (wallet: ${currentBalance.sol} SOL)`)
 
       const activeStrategy = this.adapters.domain.getActiveStrategy()
@@ -1663,6 +1718,31 @@ IMPORTANT:
       }
     }
     return screenReport
+  }
+
+  private handleScreeningStarvation(preBalance: any, gasReserve: number, minViableDeploy: number): void {
+    const minThreshold = gasReserve + minViableDeploy
+    this.screeningStarvedUntil = Date.now() + 15 * 60 * 1000
+
+    log(
+      'cron',
+      `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minThreshold.toFixed(3)}) after auto-sweep attempt`,
+    )
+
+    const alertMsg = `Trading paused: wallet balance (${preBalance.sol.toFixed(4)} SOL) below minimum threshold (${minThreshold.toFixed(3)} SOL). Deposit SOL or approve token liquidation to resume.`
+
+    if (this.adapters.telegram.isEnabled()) {
+      this.adapters.telegram.sendMessage(alertMsg).catch((err: any) => {
+        log('telegram_error', `Failed to send starvation alert: ${err?.message || err}`)
+      })
+    }
+
+    this.adapters.domain.appendDecision({
+      type: 'skip',
+      actor: 'SCREENER',
+      summary: 'Screening skipped — capital starvation',
+      reason: `Insufficient SOL (${preBalance.sol.toFixed(3)} < ${minThreshold.toFixed(3)}) after auto-sweep attempt`,
+    })
   }
 
   // ─── Deterministic Screen (for /screen command) ────────────────
