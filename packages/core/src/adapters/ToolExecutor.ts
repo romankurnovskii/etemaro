@@ -63,7 +63,7 @@ import { addToBlacklist, listBlacklist, removeFromBlacklist } from '../domain/to
 import { getMinSafeBinsBelow, REPO_ROOT, USER_CONFIG_PATH } from '../shared/constants.js'
 import { log, logAction, logStructured } from '../shared/logger.js'
 import { Mutex } from '../shared/mutex.js'
-import type { AgentRole, PortfolioSummaryResult } from '../shared/types.js'
+import type { AgentRole, PortfolioSummaryResult, SwapErrorCategory } from '../shared/types.js'
 import { loadJsonFile, normalizeTimeframe, saveJsonFile, scaleScreeningToTimeframe } from '../shared/utils.js'
 import { sleep } from '../utils/time.js'
 import {
@@ -909,13 +909,22 @@ export async function swapBaseToSolWithRetry(
   swapped: boolean
   result: Record<string, unknown> | null
   token: Record<string, unknown> | null
+  errorCode?: string | null
+  errorCategory?: SwapErrorCategory | null
+  abandonImmediately?: boolean
 }> {
   const attempts = Math.max(1, Number(config.management.autoSwapRetryAttempts ?? 3))
   const delayMs = Math.max(0, Number(config.management.autoSwapRetryDelayMs ?? 3000))
   const haltOnSwapFailure = config.management.haltOnSwapFailure ?? true
   const maxFailedSwapsBeforeHalt = config.management.maxFailedSwapsBeforeHalt ?? 5
   let lastErr: string | null = null
+  let lastErrorCode: string | null = null
+  let lastErrorCategory: SwapErrorCategory | null = null
   let lastToken: any = null
+  let amountMultiplier = 1.0
+  let currentSlippageBps: number | undefined
+  let abandonImmediately = false
+
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const balances = await getWalletBalances()
@@ -928,12 +937,19 @@ export async function swapBaseToSolWithRetry(
         return { swapped: attempt > 1, result: null, token: null }
       }
       lastToken = token
+      const amountToSwap = Math.max(0, token.balance * amountMultiplier)
       const usdDisplay = typeof token.usd === 'number' ? ` ($${token.usd.toFixed(2)})` : ''
+      const attemptDetails = `${amountMultiplier < 1 ? `, amount: ${amountToSwap}` : ''}${currentSlippageBps ? `, slippage: ${currentSlippageBps}bps` : ''}`
       log(
         'executor',
-        `Auto-swapping ${label} ${token.symbol || baseMint.slice(0, 8)}${usdDisplay} back to SOL (attempt ${attempt}/${attempts})`,
+        `Auto-swapping ${label} ${token.symbol || baseMint.slice(0, 8)}${usdDisplay} back to SOL (attempt ${attempt}/${attempts}${attemptDetails})`,
       )
-      let swapResult = await swapToken({ input_mint: baseMint, output_mint: 'SOL', amount: token.balance })
+      let swapResult = await swapToken({
+        input_mint: baseMint,
+        output_mint: 'SOL',
+        amount: amountToSwap,
+        slippageBps: currentSlippageBps,
+      })
       let sr = swapResult as any
       let ok = swapResult && sr.success !== false && !sr.error && (sr.tx || sr.amount_out)
 
@@ -946,7 +962,7 @@ export async function swapBaseToSolWithRetry(
         const dlmmRes = await swapDirectDlmm({
           pool_address: poolAddress,
           input_mint: baseMint,
-          amount: token.balance,
+          amount: amountToSwap,
         })
         if (dlmmRes?.success && (dlmmRes.tx || dlmmRes.amount_out)) {
           swapResult = dlmmRes as any
@@ -985,12 +1001,39 @@ export async function swapBaseToSolWithRetry(
           token: token as unknown as Record<string, unknown>,
         }
       }
-      if (!lastErr) lastErr = sr?.error || sr?.reason || 'swap returned no tx'
+
+      lastErr = sr?.error || sr?.reason || lastErr || 'swap returned no tx'
+      lastErrorCode = sr?.error_code || null
+      lastErrorCategory = sr?.error_category || null
+
+      // Differentiated error handling based on Jupiter error category
+      if (lastErrorCategory === 'liquidity.unavailable') {
+        abandonImmediately = true
+        log(
+          'executor_warn',
+          `Auto-swap ${label} permanently illiquid for ${token.symbol || baseMint.slice(0, 8)} (${lastErrorCode || lastErr}): abandoning immediately without further retries`,
+        )
+        break
+      } else if (lastErrorCategory === 'liquidity.partial') {
+        // Route cannot process full amount: reduce amount for next attempt
+        amountMultiplier = Math.max(0.1, amountMultiplier * 0.5)
+        log(
+          'executor_warn',
+          `Auto-swap ${label} partial liquidity route for ${token.symbol || baseMint.slice(0, 8)}: retrying with reduced amount (${(amountMultiplier * 100).toFixed(0)}%)`,
+        )
+      } else if (lastErrorCategory === 'slippage.exceeded') {
+        // Slippage tolerance exceeded: increase slippage for next attempt (up to 1000 bps)
+        currentSlippageBps = Math.min(1000, (currentSlippageBps ?? 100) * 2)
+        log(
+          'executor_warn',
+          `Auto-swap ${label} slippage exceeded for ${token.symbol || baseMint.slice(0, 8)}: retrying with slippage ${currentSlippageBps} bps`,
+        )
+      }
     } catch (e: any) {
       lastErr = e.message
     }
     log('executor_warn', `Auto-swap ${label} attempt ${attempt}/${attempts} failed: ${lastErr}`)
-    if (attempt < attempts) await sleep(delayMs)
+    if (attempt < attempts && !abandonImmediately) await sleep(delayMs)
   }
   log(
     'executor_warn',
@@ -1010,6 +1053,8 @@ export async function swapBaseToSolWithRetry(
     pool_address: poolAddress || null,
     position: position || null,
     error: lastErr || `Failed after ${attempts} attempts`,
+    errorCode: lastErrorCode || lastErrorCategory || null,
+    status: abandonImmediately ? 'abandoned' : 'pending',
   }).catch((err: any) => {
     log('state_error', `Failed to enqueue pending liquidation: ${err?.message || err}`)
   })
@@ -1036,7 +1081,14 @@ export async function swapBaseToSolWithRetry(
     })
   }
 
-  return { swapped: false, result: null, token: null }
+  return {
+    swapped: false,
+    result: null,
+    token: null,
+    errorCode: lastErrorCode || lastErrorCategory || null,
+    errorCategory: lastErrorCategory,
+    abandonImmediately,
+  }
 }
 
 /**
@@ -1162,10 +1214,13 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
         successful++
         results.push({ mint: item.mint, symbol: item.symbol, success: true, result: res.result })
       } else {
+        const shouldAbandon = res.abandonImmediately || res.errorCategory === 'liquidity.unavailable'
         const outcome = await markLiquidationAttempt(item.mint, {
           error: 'sweeper failed to liquidate token',
+          errorCode: res.errorCode || res.errorCategory || null,
           maxAttempts,
           abandonWindowHours,
+          abandonImmediately: shouldAbandon,
         })
         if (outcome.status === 'abandoned') {
           abandoned++
@@ -1173,7 +1228,9 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
             mint: item.mint,
             symbol: item.symbol,
             success: false,
-            reason: `abandoned after ${outcome.attempts} attempts`,
+            reason: shouldAbandon
+              ? `abandoned immediately (${res.errorCode || 'liquidity unavailable'})`
+              : `abandoned after ${outcome.attempts} attempts`,
           })
         } else {
           failed++
