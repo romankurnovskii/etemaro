@@ -24,7 +24,6 @@ export {
   REPO_ROOT,
   repoPath,
   sharedConfigPath,
-  sharedDataPath,
   strategyLibraryPath,
 } from './constants.js'
 

@@ -40,7 +40,7 @@ Ask as a single, concise message — don't split into separate turns unless the 
 
 ## Phase 2: Review Strategy Library
 
-Read `data/strategy-library.json` now. It contains the canonical list of LP strategy presets:
+Read `config/shared/strategy-library.json` now. It contains the canonical list of LP strategy presets:
 
 | ID                    | Name                           | LP Shape | Best For                                  |
 | --------------------- | ------------------------------ | -------- | ----------------------------------------- |
@@ -81,7 +81,7 @@ Ask (if not already answered in Phase 1):
 > letting the agent enter pools it would otherwise skip."
 
 - **Yes** → set `opportunityPollEnabled: true`, `opportunitySmartWalletBonus: 20` (or higher).
-  Remind the user to populate `data/smart-wallets.json` via:
+  Remind the user to populate `config/shared/smart-wallets.json` via:
   ```
   Telegram: add smart wallet <address> name=<label> category=alpha type=lp
   ```
@@ -158,7 +158,7 @@ Adjust based on token type:
 
 #### `strategy-library.json` entry (if new or customized strategy)
 
-If the user wants a new or customized strategy, generate a new entry for `data/strategy-library.json`:
+If the user wants a new or customized strategy, generate a new entry for `config/shared/strategy-library.json`:
 
 ```json
 {
@@ -212,7 +212,7 @@ Tell the user they can run the bot with this config using:
 
 ### Block B — Strategy library entry (if new/customized)
 
-Show the full JSON entry to append into `data/strategy-library.json` → `strategies` object.
+Show the full JSON entry to append into `config/shared/strategy-library.json` → `strategies` object.
 Provide the CLI command to activate it.
 
 ### Block C — Verification checklist
@@ -234,7 +234,7 @@ Provide the CLI command to activate it.
 | --------------------------------------------- | --------------------------------------------------- |
 | All config fields + types                     | `docs/CONFIGURATION.md`                             |
 | Field defaults                                | `config/templates/user-config.example.json`         |
-| Existing strategy presets                     | `data/strategy-library.json`                        |
+| Existing strategy presets                     | `config/shared/strategy-library.json`               |
 | Smart wallet tracking setup                   | `docs/QA.md` → Smart Wallets section                |
 | Architecture (how strategy is used at deploy) | `docs/ARCHITECTURE.md` → Strategy Library section   |
 | CLI strategy commands                         | `docs/USAGE_GUIDE.md` → Strategy management section |

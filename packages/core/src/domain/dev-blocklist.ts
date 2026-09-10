@@ -9,12 +9,12 @@
  * @sideEffects Reads and writes `data/dev-blocklist.json`
  */
 
-import { sharedDataPath } from '../shared/constants.js'
+import { sharedConfigPath } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
 import type { BlockedDev } from '../shared/types.js'
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
 
-const BLOCKLIST_FILE = sharedDataPath('dev-blocklist.json')
+const BLOCKLIST_FILE = sharedConfigPath('dev-blocklist.json')
 
 type DevBlocklistDb = Record<string, BlockedDev>
 

@@ -5,12 +5,12 @@
 
 import fs from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { sharedDataPath } from '../shared/constants.js'
+import { sharedConfigPath } from '../shared/constants.js'
 import { addSmartWallet, listSmartWallets, removeSmartWallet } from './smart-wallets.js'
 
 describe('smart-wallets domain module', () => {
   const originalConfigPath = process.env.USER_CONFIG_PATH
-  const testWalletPath = sharedDataPath('smart-wallets.json')
+  const testWalletPath = sharedConfigPath('smart-wallets.json')
   let backupContent: string | null = null
 
   beforeEach(() => {
@@ -33,7 +33,7 @@ describe('smart-wallets domain module', () => {
     }
   })
 
-  it('reads from sharedDataPath without agent suffix even when USER_CONFIG_PATH is set', () => {
+  it('reads from sharedConfigPath without agent suffix even when USER_CONFIG_PATH is set', () => {
     process.env.USER_CONFIG_PATH = '/path/to/config/agt_custom_strategy.json'
 
     // Seed test wallet data in the shared path

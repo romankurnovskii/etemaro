@@ -148,7 +148,6 @@ vi.mock('@etemaro/core', () => ({
   computeDeployAmount: mockComputeDeployAmount,
   getDataDir: mockGetDataDir,
   dataPath: (p: string) => mockDataPath(p),
-  sharedDataPath: (p: string) => path.join('/tmp/test-data', p),
   configPath: (p: string) => path.join('/tmp/test-config', p),
   log: mockLog,
   getTrackedPosition: vi.fn(),

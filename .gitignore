@@ -45,8 +45,7 @@ logs/
 dist/
 .dev/
 data/*
-!data/smart-wallets.example.json
-!data/strategy-library.shared.json
+config/shared/strategy-library.json
 
 .worktrees/
 

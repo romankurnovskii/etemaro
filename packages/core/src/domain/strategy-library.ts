@@ -9,20 +9,18 @@
  *
  */
 
+import fs from 'node:fs'
 import { config } from '../config/Config.js'
-import { configPath, getDataDir, repoPath, strategyLibraryPath } from '../shared/constants.js'
+import { configPath, getDataDir, strategyLibraryPath } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
 import type { Strategy, StrategyLibraryData } from '../shared/types.js'
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
-import { DEFAULT_STRATEGIES } from './defaultStrategies.js'
-
-export { DEFAULT_STRATEGIES } from './defaultStrategies.js'
 
 // ─── Strategy Library Manager ─────────────────────────────────
 const STRATEGY_FILE = strategyLibraryPath('strategy-library.json')
-const SHARED_STRATEGY_FILE = repoPath('data', 'strategy-library.shared.json')
+const SHARED_STRATEGY_FILE = strategyLibraryPath('strategy-library.shared.json')
 
-export type StrategySource = 'shared' | 'private' | 'default'
+export type StrategySource = 'shared' | 'private'
 
 export interface ResolvedStrategyLibrary {
   data: StrategyLibraryData
@@ -32,13 +30,11 @@ export interface ResolvedStrategyLibrary {
 
 interface SharedLibraryInfo {
   data: StrategyLibraryData
-  fromDefaults: boolean
 }
 
 /**
  * Central owner of strategy library path resolution and source handling.
- * Resolves the private (local) and shared (repo-tracked, local shared file,
- * or bundled defaults) strategy libraries, merges them with collision
+ * Resolves the shared and private strategy libraries, merges them with collision
  * detection, and validates the active strategy pointer at agent boot.
  *
  * See https://github.com/romankurnovskii/etemaro/issues/218
@@ -59,17 +55,20 @@ export class StrategyLibraryManager {
   }
 
   private loadSharedWithInfo(): SharedLibraryInfo {
-    let sharedDb = loadJsonFile<StrategyLibraryData>(this.paths.sharedPath, { strategies: {} })
-
-    if (Object.keys(sharedDb.strategies).length === 0) {
-      const localSharedFile = strategyLibraryPath('strategy-library.shared.json')
-      sharedDb = loadJsonFile<StrategyLibraryData>(localSharedFile, { strategies: {} })
+    if (!fs.existsSync(this.paths.sharedPath)) {
+      throw new Error(`Shared strategy library is required at ${this.paths.sharedPath}`)
     }
-
-    if (Object.keys(sharedDb.strategies).length === 0) {
-      return { data: { strategies: { ...DEFAULT_STRATEGIES } }, fromDefaults: true }
+    return {
+      data: loadJsonFile<StrategyLibraryData>(
+        this.paths.sharedPath,
+        { strategies: {} },
+        { label: 'strategy-library.shared', critical: true },
+      ),
     }
-    return { data: sharedDb, fromDefaults: false }
+  }
+
+  loadShared(): StrategyLibraryData {
+    return this.loadSharedWithInfo().data
   }
 
   loadMerged(): ResolvedStrategyLibrary {
@@ -78,12 +77,12 @@ export class StrategyLibraryManager {
 
     const sources: Record<string, StrategySource> = {}
     for (const id of Object.keys(shared.data.strategies)) {
-      sources[id] = shared.fromDefaults ? 'default' : 'shared'
+      sources[id] = 'shared'
     }
 
     const collisions: string[] = []
     for (const id of Object.keys(privateDb.strategies)) {
-      if (sources[id] === 'shared' || sources[id] === 'default') {
+      if (sources[id] === 'shared') {
         collisions.push(id)
         log('strategy', `Warning: private strategy '${id}' collides with a shared strategy id and overrides it.`)
         log(
@@ -270,8 +269,8 @@ export function removeStrategy({ id }: { id: string }): Record<string, unknown> 
   const privateDb = loadPrivate()
 
   if (!privateDb.strategies[id]) {
-    const sharedDb = loadJsonFile<StrategyLibraryData>(strategyLibraryManager.paths.sharedPath, { strategies: {} })
-    if (sharedDb.strategies[id] || DEFAULT_STRATEGIES[id]) {
+    const sharedDb = strategyLibraryManager.loadShared()
+    if (sharedDb.strategies[id]) {
       return { error: `Strategy "${id}" is a shared open-source strategy and cannot be removed locally.` }
     }
     return { error: `Strategy "${id}" not found` }
@@ -280,15 +279,11 @@ export function removeStrategy({ id }: { id: string }): Record<string, unknown> 
   const name = privateDb.strategies[id].name
   delete privateDb.strategies[id]
 
-  const sharedDb = loadJsonFile<StrategyLibraryData>(strategyLibraryManager.paths.sharedPath, { strategies: {} })
-  const hasSharedFallback = !!(sharedDb.strategies[id] || DEFAULT_STRATEGIES[id])
+  const sharedDb = strategyLibraryManager.loadShared()
+  const hasSharedStrategy = !!sharedDb.strategies[id]
 
-  if (config.strategy.activeStrategyId === id && !hasSharedFallback) {
-    const available = new Set([
-      ...Object.keys(privateDb.strategies),
-      ...Object.keys(sharedDb.strategies),
-      ...Object.keys(DEFAULT_STRATEGIES),
-    ])
+  if (config.strategy.activeStrategyId === id && !hasSharedStrategy) {
+    const available = new Set([...Object.keys(privateDb.strategies), ...Object.keys(sharedDb.strategies)])
     available.delete(id)
     const newActive = Array.from(available)[0] || null
     if (newActive) {
@@ -320,7 +315,7 @@ export function getActiveStrategy(): Strategy | null {
   const db = load()
   const activeId = config.strategy.activeStrategyId
   if (!activeId || !db.strategies[activeId]) return null
-  return db.strategies[activeId] ?? null
+  return db.strategies[activeId] || null
 }
 
 /**

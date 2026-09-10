@@ -327,9 +327,9 @@ Etemaro can track known smart wallets (top LPers, whales, KOLs) and use their pr
 
 ### Data file
 
-- Path: `data/smart-wallets.json`
+- Path: `config/shared/smart-wallets.json`
 - **Auto-created** on the first add/remove operation. If the file does not exist, the system silently treats the list as empty (neutral signal).
-- The entire `data/` directory is gitignored, so this file is local-only runtime state. A committed template exists at `data/smart-wallets.example.json`.
+- The live wallet list is local-only runtime state. A committed template exists at `config/shared/smart-wallets.example.json`.
 
 ### Schema
 
@@ -366,7 +366,7 @@ Etemaro can track known smart wallets (top LPers, whales, KOLs) and use their pr
 **Via direct JSON edit**:
 
 ```bash
-# Edit data/smart-wallets.json directly, then save.
+# Edit config/shared/smart-wallets.json directly, then save.
 # The file is loaded lazily on the next screening cycle.
 ```
 

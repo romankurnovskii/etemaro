@@ -4,11 +4,10 @@ import { config } from '../config/Config.js'
 import { getDataDir, strategyLibraryPath } from '../shared/constants.js'
 import * as logger from '../shared/logger.js'
 import type { Strategy } from '../shared/types.js'
-import { DEFAULT_STRATEGIES } from './defaultStrategies.js'
 import { removeStrategy, StrategyLibraryManager, strategyLibraryManager } from './strategy-library.js'
 
 describe('StrategyLibraryManager path resolution', () => {
-  it('resolves private and shared library paths under the data dir without agent suffix', () => {
+  it('resolves both library paths under config/shared', () => {
     expect(strategyLibraryManager).toBeInstanceOf(StrategyLibraryManager)
     expect(strategyLibraryManager.paths.dataDir).toBe(getDataDir())
     expect(strategyLibraryManager.paths.privatePath).toBe(strategyLibraryPath('strategy-library.json'))
@@ -93,19 +92,14 @@ describe('StrategyLibraryManager source handling', () => {
     expect(warned).toBe(true)
   })
 
-  it('falls back to bundled defaults when neither shared file exists', () => {
+  it('fails when the canonical shared file does not exist', () => {
     vi.spyOn(fs, 'existsSync').mockImplementation((pathArg: any) => {
       const p = pathArg.toString()
       if (p.includes('strategy-library.shared.json') || p.includes('strategy-library.json')) return false
       return actualExistsSync(pathArg)
     })
 
-    const merged = strategyLibraryManager.loadMerged()
-    expect(merged.data.strategies).toEqual(DEFAULT_STRATEGIES)
-    for (const id of Object.keys(DEFAULT_STRATEGIES)) {
-      expect(merged.sources[id]).toBe('default')
-    }
-    expect(merged.collisions).toEqual([])
+    expect(() => strategyLibraryManager.loadMerged()).toThrow(/Shared strategy library is required/)
   })
 
   it('savePrivate writes to the private library path', () => {
