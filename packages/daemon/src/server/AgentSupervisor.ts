@@ -9,7 +9,7 @@
  * @dependencies node:child_process, @etemaro/core (REPO_ROOT, defaultUserConfigStr)
  */
 
-import { type ChildProcess, spawn } from 'node:child_process'
+import { type ChildProcess, execSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { defaultUserConfigStr, REPO_ROOT } from '@etemaro/core'
@@ -43,6 +43,19 @@ interface InstanceConfig {
 }
 
 const ID_PATTERN = /^[a-zA-Z0-9._-]+$/
+
+/** Best-effort check that a PID is an Etemaro agent process (guards against PID reuse). */
+function defaultIsAgentProcess(pid: number): boolean {
+  const pattern = /Cli\.(ts|cjs)|Daemon\.(ts|js)|etemaro/
+  try {
+    if (process.platform === 'linux') {
+      return pattern.test(fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8'))
+    }
+    return pattern.test(execSync(`ps -o command= -p ${pid}`, { encoding: 'utf8' }))
+  } catch {
+    return false
+  }
+}
 
 export class AgentSupervisor {
   private readonly repoRoot: string
@@ -118,8 +131,10 @@ export class AgentSupervisor {
       detached: false,
     })
     this.children.set(agentId, child)
+    this.writeRegistry()
     child.on('exit', () => {
       this.children.delete(agentId)
+      this.writeRegistry()
       try {
         fs.closeSync(out)
       } catch {
@@ -147,6 +162,79 @@ export class AgentSupervisor {
     config.strategy = { ...(config.strategy ?? {}), activeStrategyId: target }
     fs.writeFileSync(this.configPathFor(agentId), `${JSON.stringify(config, null, 2)}\n`)
     return this.toManaged(agentId)
+  }
+
+  /** Terminate every tracked agent child. Called on daemon shutdown. */
+  stopAll(): number {
+    let stopped = 0
+    for (const [id, child] of this.children) {
+      if (child.exitCode === null && !child.killed) {
+        try {
+          child.kill('SIGTERM')
+          stopped++
+        } catch {
+          /* ignore */
+        }
+      }
+      this.children.delete(id)
+    }
+    this.clearRegistry()
+    return stopped
+  }
+
+  /** Kill agent children left behind by a previous run (PID file is cleared on clean exit). */
+  reapOrphans(isAgentProcess: (pid: number) => boolean = defaultIsAgentProcess): number {
+    const entries = this.readRegistry()
+    if (!entries.length) return 0
+    let killed = 0
+    for (const entry of entries) {
+      if (!entry.pid || entry.pid === process.pid) continue
+      if (!isAgentProcess(entry.pid)) continue
+      try {
+        process.kill(entry.pid, 'SIGTERM')
+        killed++
+      } catch {
+        /* already gone */
+      }
+    }
+    this.clearRegistry()
+    return killed
+  }
+
+  /** Children spawned by this supervisor process. */
+  runningChildren(): Array<{ id: string; pid: number | null }> {
+    return [...this.children.entries()].map(([id, child]) => ({ id, pid: child.pid ?? null }))
+  }
+
+  private registryFile(): string {
+    return path.join(this.repoRoot, 'data', 'agents.runtime.json')
+  }
+
+  private writeRegistry(): void {
+    try {
+      const entries = this.runningChildren().filter((c) => c.pid)
+      fs.mkdirSync(path.dirname(this.registryFile()), { recursive: true })
+      fs.writeFileSync(this.registryFile(), `${JSON.stringify(entries, null, 2)}\n`)
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  private readRegistry(): Array<{ id: string; pid: number }> {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(this.registryFile(), 'utf8'))
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+
+  private clearRegistry(): void {
+    try {
+      fs.unlinkSync(this.registryFile())
+    } catch {
+      /* ignore */
+    }
   }
 
   /** Whether an agent child process is currently alive. */
