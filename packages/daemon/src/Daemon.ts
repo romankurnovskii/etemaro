@@ -54,9 +54,7 @@ import {
   setLastBriefingDate,
   setPositionInstruction,
   sharedConfigPath,
-  sharedDataPath,
   sleep,
-  strategyLibraryPath,
   TELEGRAM_QUEUE_FILENAME,
   TOKEN_BLACKLIST_FILENAME,
   telegram,
@@ -444,22 +442,15 @@ export class Daemon {
     const privateCount = Object.keys(privateLibInfo.data.strategies || {}).length
     const privateLoaded = privateLibInfo.loadedFrom === 'file'
 
-    let sharedLibPath = sharedConfigPath(SHARED_STRATEGY_LIB_FILENAME)
-    let sharedLibInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(sharedLibPath, {
+    const sharedLibPath = sharedConfigPath(SHARED_STRATEGY_LIB_FILENAME)
+    const sharedLibInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(sharedLibPath, {
       strategies: {},
     })
-    if (sharedLibInfo.loadedFrom !== 'file') {
-      const localShared = strategyLibraryPath(SHARED_STRATEGY_LIB_FILENAME)
-      if (fs.existsSync(localShared)) {
-        sharedLibPath = localShared
-        sharedLibInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(localShared, { strategies: {} })
-      }
-    }
     const sharedCount = Object.keys(sharedLibInfo.data.strategies || {}).length
     const sharedLoaded = sharedLibInfo.loadedFrom === 'file'
 
     const allStrategies = this.adapters.domain.listStrategies ? (this.adapters.domain.listStrategies() as any) : null
-    const totalCount = allStrategies?.count ?? privateCount + (sharedLoaded ? sharedCount : 10)
+    const totalCount = allStrategies?.count ?? privateCount + sharedCount
 
     log(
       'startup',
@@ -467,7 +458,7 @@ export class Daemon {
     )
     log(
       'startup',
-      `${SHARED_STRATEGY_LIB_FILENAME}: ${sharedLibPath} (${sharedLoaded ? 'found' : 'defaults'}, ${sharedCount || 10} strategies) [total available: ${totalCount}]`,
+      `${SHARED_STRATEGY_LIB_FILENAME}: ${sharedLibPath} (${sharedLoaded ? 'found' : 'missing'}, ${sharedCount} strategies) [total available: ${totalCount}]`,
     )
 
     const tokenBlacklistPath = sharedConfigPath(TOKEN_BLACKLIST_FILENAME)
@@ -3029,7 +3020,7 @@ IMPORTANT:
   }
 
   private getTelegramQueuePath(): string {
-    return sharedDataPath(TELEGRAM_QUEUE_FILENAME)
+    return dataPath(TELEGRAM_QUEUE_FILENAME)
   }
 
   private isSafeStartupTelegramCommand(text: string): boolean {

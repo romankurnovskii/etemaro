@@ -10,14 +10,17 @@ The codebase is a pnpm monorepo. Config and runtime data live at the repository 
     user-config.json           # Active user configuration (generated via `pnpm cli init` or core defaults)
     templates/
       ecosystem.config.example.cjs # Multi-agent PM2 configuration template
+    shared/
+      smart-wallets.example.json   # Smart-wallet schema/example
+      smart-wallets.json            # Smart-wallet list
+      strategy-library.json         # Local strategy overlay
+      strategy-library.shared.json  # Shared strategy presets
 data/
   state.json                 # Registry of open/closed positions
   lessons.json               # Historical performance lessons
   pool-memory.json           # Snapshotted pool activity caching
   signal-weights.json        # Darwinian signal adjustments
   decision-log.json          # Decisional records log
-  smart-wallets.json         # KOL wallet tracking list
-  strategy-library.json      # Saved LP strategy profiles
   token-blacklist.json       # Hard-blocked token mints
   telegram_queue.json        # Persisted pending Telegram messages queue
   hivemind-cache.json        # Cached shared HiveMind lessons + presets

@@ -23,7 +23,6 @@ import {
   instanceDataPath,
   REPO_ROOT,
   sharedConfigPath,
-  sharedDataPath,
   strategyLibraryPath,
 } from './constants.js'
 
@@ -134,7 +133,7 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     expect(getDataDir()).toBe(path.resolve(home, '.config/etemaro/data'))
   })
 
-  it('sharedDataPath and strategyLibraryPath do NOT add agent suffix even with a custom USER_CONFIG_PATH', () => {
+  it('shared knowledge paths use config/shared even with a custom USER_CONFIG_PATH', () => {
     envSnap = snapshotEnv()
     delete process.env.ETEMARO_DATA_DIR
     delete process.env.DATA_DIR
@@ -150,14 +149,12 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
       path.join(REPO_ROOT, 'data', '.smart-wallets-snapshot-agt_a717d5fa29c5d09fe188bc16.json'),
     )
 
-    // ...but shared knowledge files must NOT be suffixed, so they resolve across all agents.
-    expect(sharedDataPath('smart-wallets.json')).toBe(path.join(REPO_ROOT, 'data', 'smart-wallets.json'))
-    expect(sharedDataPath('token-blacklist.json')).toBe(path.join(REPO_ROOT, 'data', 'token-blacklist.json'))
-    expect(sharedDataPath('dev-blocklist.json')).toBe(path.join(REPO_ROOT, 'data', 'dev-blocklist.json'))
-    expect(sharedDataPath('strategy-library.json')).toBe(path.join(REPO_ROOT, 'data', 'strategy-library.json'))
-    expect(strategyLibraryPath('strategy-library.json')).toBe(path.join(REPO_ROOT, 'data', 'strategy-library.json'))
+    // Shared knowledge files live in one repo-level directory for every agent.
+    expect(strategyLibraryPath('strategy-library.json')).toBe(
+      path.join(REPO_ROOT, 'config', 'shared', 'strategy-library.json'),
+    )
     expect(strategyLibraryPath('strategy-library.shared.json')).toBe(
-      path.join(REPO_ROOT, 'data', 'strategy-library.shared.json'),
+      path.join(REPO_ROOT, 'config', 'shared', 'strategy-library.shared.json'),
     )
   })
 
@@ -227,6 +224,9 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
       path.join(REPO_ROOT, 'config', 'shared', 'token-blacklist.json'),
     )
     expect(sharedConfigPath('smart-wallets.json')).toBe(path.join(REPO_ROOT, 'config', 'shared', 'smart-wallets.json'))
+    expect(sharedConfigPath('strategy-library.json')).toBe(
+      path.join(REPO_ROOT, 'config', 'shared', 'strategy-library.json'),
+    )
   })
 
   it('credentialsPath resolves user .credentials/wallets/ by default', () => {

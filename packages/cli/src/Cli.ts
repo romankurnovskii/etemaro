@@ -124,6 +124,7 @@ let LESSONS_FILENAME: CoreExports['LESSONS_FILENAME'] = null as any
 let _REPO_ROOT: CoreExports['REPO_ROOT'] = null as any
 let _DEFAULT_ACTIVE_STRATEGY_ID: CoreExports['DEFAULT_ACTIVE_STRATEGY_ID'] = null as any
 let _DEFAULT_STRATEGY_TYPE: CoreExports['DEFAULT_STRATEGY_TYPE'] = null as any
+let _strategyLibraryPath: CoreExports['strategyLibraryPath'] = null as any
 let meteora: CoreExports['meteora'] = null as any
 let wallet: CoreExports['wallet'] = null as any
 let screening: CoreExports['screening'] = null as any
@@ -137,7 +138,6 @@ let briefing: CoreExports['briefing'] = null as any
 let hivemind: CoreExports['hivemind'] = null as any
 let tools: CoreExports['tools'] = null as any
 let defaultUserConfigStr: CoreExports['defaultUserConfigStr'] = null as any
-let DEFAULT_STRATEGIES: CoreExports['DEFAULT_STRATEGIES'] = null as any
 
 // Lazily populated Daemon constructor
 let DaemonCtor: DaemonExports['Daemon'] = null as any
@@ -163,6 +163,7 @@ export async function loadCore(): Promise<void> {
   _REPO_ROOT = coreMod.REPO_ROOT
   _DEFAULT_ACTIVE_STRATEGY_ID = coreMod.DEFAULT_ACTIVE_STRATEGY_ID
   _DEFAULT_STRATEGY_TYPE = coreMod.DEFAULT_STRATEGY_TYPE
+  _strategyLibraryPath = coreMod.strategyLibraryPath
   meteora = coreMod.meteora
   wallet = coreMod.wallet
   screening = coreMod.screening
@@ -176,7 +177,6 @@ export async function loadCore(): Promise<void> {
   hivemind = coreMod.hivemind
   tools = coreMod.tools
   defaultUserConfigStr = coreMod.defaultUserConfigStr
-  DEFAULT_STRATEGIES = coreMod.DEFAULT_STRATEGIES
   // Assign Daemon constructor
   DaemonCtor = daemonMod.Daemon
 }
@@ -617,7 +617,7 @@ export class Cli {
       typeof flags.dir === 'string' && flags.dir.trim().length > 0 ? path.resolve(flags.dir) : this.etemaroDir
     const skeleton = writeRuntimeSkeleton(targetDir, {
       defaultUserConfigStr,
-      defaultStrategies: DEFAULT_STRATEGIES,
+      sharedStrategyJson: fs.readFileSync(_strategyLibraryPath('strategy-library.shared.json'), 'utf8'),
     })
     this.writeSkillMd()
 
