@@ -34,6 +34,26 @@ etemaro init
 
 `etemaro init` is first-time setup (~1 minute). It creates `~/.config/etemaro`, checks for a wallet key and an LLM key, and tells you what is missing. Jupiter is only needed later for live swaps.
 
+### Add a wallet
+
+Wallets live in the keystore at `~/.config/etemaro/.credentials/wallets/<alias>.json` (mode `0600`):
+
+```bash
+etemaro wallet generate --name etemaro-01-100          # brand-new keypair
+etemaro wallet import --name etemaro-01-100 --prompt   # existing Base58 key (hidden prompt)
+```
+
+Then point an agent at the alias: `"wallet": "etemaro-01-100"` in its config (`config/user-config.json` or `config/instances/<id>.json`). Inspect with `etemaro wallet list`.
+
+**From a source clone** (no global `etemaro`), prefix with `npm run cli --` — the `--` is required:
+
+```bash
+npm run cli -- wallet generate --name etemaro-01-100
+npm run cli -- wallet import --name etemaro-01-100 --prompt
+```
+
+Without `--`, npm consumes `--name`/`--prompt` as its own flags and errors with `Unknown cli flag`.
+
 When the checklist is green:
 
 ```bash
