@@ -5,6 +5,7 @@
 # Dependencies
 node_modules/
 .pnpm/
+.pnpm-store/
 tsconfig.tsbuildinfo
 **/tsconfig.tsbuildinfo
 

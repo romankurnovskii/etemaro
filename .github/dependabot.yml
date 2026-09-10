@@ -24,6 +24,12 @@ updates:
       interval: 'weekly'
     versioning-strategy: increase
 
+  - package-ecosystem: 'npm'
+    directory: 'apps/web'
+    schedule:
+      interval: 'weekly'
+    versioning-strategy: increase
+
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
