@@ -122,10 +122,14 @@ export class StrategyLibraryManager {
         `Startup failed: Strategy '${activeId}' specified in config is not found in the strategy library.`,
       )
     }
-    const smartWalletsRequired =
-      config.screening.entrySource === 'smart_wallets' || (config.opportunity?.smartWalletScoreBonus ?? 0) > 0
+    // A wallet list is mandatory only for the smart-wallets entry mode, which deploys
+    // exclusively from tracked wallets. In market mode the smart-wallet signal is an
+    // optional boost, so a missing list degrades gracefully instead of failing boot.
+    const smartWalletsRequired = config.screening.entrySource === 'smart_wallets'
     if (smartWalletsRequired && !activeStrategy.smartWalletListId) {
-      throw new Error(`Startup failed: Strategy '${activeId}' must define smartWalletListId for smart-wallet scoring.`)
+      throw new Error(
+        `Startup failed: Strategy '${activeId}' must define smartWalletListId because screening.entrySource is 'smart_wallets'.`,
+      )
     }
     if (activeStrategy.smartWalletListId) {
       listSmartWallets({ listId: activeStrategy.smartWalletListId })
