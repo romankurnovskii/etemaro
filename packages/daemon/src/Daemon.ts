@@ -571,6 +571,10 @@ export class Daemon {
       readConfig: (configPath: string) => this.agentSupervisor.readConfigFile(configPath),
       writeConfig: (configPath: string, content: unknown) => this.agentSupervisor.writeConfigFile(configPath, content),
     })
+    const reaped = this.agentSupervisor.reapOrphans()
+    if (reaped > 0) {
+      log('startup', `Reaped ${reaped} orphaned agent process(es) left by a previous run.`)
+    }
     try {
       await this.ipcServer.start()
       const bindInfo = ipcConfig.ipcSocketPath
@@ -614,11 +618,7 @@ export class Daemon {
         log('cron_error', `Failed to check missed briefing on startup: ${err?.message || err}`)
       })
       if (config.connection.telegramPolling) {
-        if (config.connection.telegramPolling) {
-          this.adapters.telegram.startPolling((msg: any) => this.telegramHandler(msg))
-        } else {
-          console.log('Telegram polling disabled — notifications only, no inbound commands.')
-        }
+        this.adapters.telegram.startPolling((msg: any) => this.telegramHandler(msg))
       } else {
         log('startup', 'Telegram polling disabled (telegramPolling: false) — notifications only, no inbound commands.')
       }
@@ -647,6 +647,10 @@ export class Daemon {
     this.telegramQueue = []
     this.saveTelegramQueue()
     this.adapters.telegram.stopPolling()
+    const stoppedChildren = this.agentSupervisor.stopAll()
+    if (stoppedChildren > 0) {
+      log('shutdown', `Stopped ${stoppedChildren} console-spawned agent process(es).`)
+    }
     if (this.adapters.desktop) {
       this.adapters.desktop.stopServer()
     }
