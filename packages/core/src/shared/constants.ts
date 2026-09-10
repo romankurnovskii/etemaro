@@ -89,22 +89,29 @@ export function getDataDir(): string {
  * Detect the active instance identifier if running in multi-instance mode.
  * Resolution order:
  * 1. ETEMARO_INSTANCE_ID or INSTANCE_ID
- * 2. If USER_CONFIG_PATH points to config/instances/<name>.json, extract <name>
- * 3. If USER_CONFIG_PATH points to custom config file (e.g. agt_xxx.json), extract clean slug
+ * 2. If USER_CONFIG_PATH env var points to config/instances/<name>.json, extract <name>
+ * 3. If USER_CONFIG_PATH env var points to custom config file (e.g. agt_xxx.json), extract clean slug
+ * 4. If USER_CONFIG_PATH env var points to config/user-config.json (flat), return '' for backward compatibility
+ * 5. Default to DEFAULT_AGENT_ID ('agent-default') for zero-fallback instance isolation (Chapter 7)
  */
 export function getInstanceId(): string {
   const envInstance = process.env.ETEMARO_INSTANCE_ID || process.env.INSTANCE_ID
   if (envInstance?.trim()) {
     return envInstance.trim()
   }
-  const configFilePath = process.env.USER_CONFIG_PATH?.trim() || USER_CONFIG_PATH
-  if (configFilePath) {
-    const norm = configFilePath.replace(/\\/g, '/')
+  // Check process.env.USER_CONFIG_PATH directly (not the USER_CONFIG_PATH constant which is evaluated at import time)
+  const envConfigPath = process.env.USER_CONFIG_PATH?.trim()
+  if (envConfigPath) {
+    const norm = envConfigPath.replace(/\\/g, '/')
     const instanceMatch = norm.match(/(?:^|\/)instances\/([^/]+)\.json$/)
     if (instanceMatch?.[1]) {
       return instanceMatch[1]
     }
-    const base = path.basename(configFilePath, path.extname(configFilePath))
+    // Flat user-config.json explicitly opts out of instance isolation
+    if (norm === 'config/user-config.json' || path.basename(norm) === 'user-config.json') {
+      return ''
+    }
+    const base = path.basename(envConfigPath, path.extname(envConfigPath))
     if (
       base &&
       !['user-config', 'user-config.v2', 'user-config.prod', 'user-config.example'].includes(base.toLowerCase())
@@ -112,7 +119,8 @@ export function getInstanceId(): string {
       return base.replace(/[^a-zA-Z0-9_-]/g, '_')
     }
   }
-  return ''
+  // No env config path set -> zero-fallback to default agent instance
+  return DEFAULT_AGENT_ID
 }
 
 function _getAgentSuffix(): string {
@@ -132,30 +140,38 @@ export function dataPath(...segments: string[]): string {
   const baseDir = getDataDir()
   const instanceId = getInstanceId()
 
-  const activeConfig = (process.env.USER_CONFIG_PATH?.trim() || USER_CONFIG_PATH).replace(/\\/g, '/')
+  // Check process.env.USER_CONFIG_PATH directly (not the USER_CONFIG_PATH constant which is evaluated at import time)
+  const envConfigPath = process.env.USER_CONFIG_PATH?.trim()
+  const activeConfig = (envConfigPath || USER_CONFIG_PATH).replace(/\\/g, '/')
   const isExplicitInstance = Boolean(
     process.env.ETEMARO_INSTANCE_ID ||
       process.env.INSTANCE_ID ||
-      activeConfig.includes('/instances/') ||
-      activeConfig.startsWith('instances/'),
+      (envConfigPath && (activeConfig.includes('/instances/') || activeConfig.startsWith('instances/'))),
+  )
+  // Custom config files (agt_xxx.json) not in instances/ use legacy suffix
+  const isCustomConfig = Boolean(
+    envConfigPath && !activeConfig.includes('/instances/') && instanceId && instanceId !== DEFAULT_AGENT_ID,
   )
 
+  // Chapter 7 zero-fallback: always isolate when using default instance (agent-default)
+  // unless explicitly running with flat user-config.json (instanceId === '')
+  // Custom configs (agt_xxx.json) use legacy suffix for backward compatibility
+  const useInstanceIsolation = isExplicitInstance || instanceId === DEFAULT_AGENT_ID
+
   if (instanceId && segments.length > 0) {
-    const instanceDir = path.join(baseDir, 'instances', instanceId)
-    const targetFile = path.join(instanceDir, ...segments)
-
-    // If running as an instance or instance dir already exists, isolate in data/instances/<id>/
-    if (isExplicitInstance || fs.existsSync(instanceDir) || fs.existsSync(targetFile)) {
-      return targetFile
+    if (useInstanceIsolation) {
+      const instanceDir = path.join(baseDir, 'instances', instanceId)
+      return path.join(instanceDir, ...segments)
     }
-
-    // Otherwise maintain legacy suffixed file compatibility for flat runs
-    const last = segments[segments.length - 1]
-    if (last && (last.endsWith('.json') || last.endsWith('.jsonl'))) {
-      const ext = path.extname(last)
-      const name = path.basename(last, ext)
-      const suffixedFile = `${name}-${instanceId}${ext}`
-      return path.join(baseDir, ...segments.slice(0, -1), suffixedFile)
+    if (isCustomConfig) {
+      // Legacy suffixed file compatibility for custom configs (agt_xxx.json)
+      const last = segments[segments.length - 1]
+      if (last && (last.endsWith('.json') || last.endsWith('.jsonl'))) {
+        const ext = path.extname(last)
+        const name = path.basename(last, ext)
+        const suffixedFile = `${name}-${instanceId}${ext}`
+        return path.join(baseDir, ...segments.slice(0, -1), suffixedFile)
+      }
     }
   }
   return path.join(baseDir, ...segments)
@@ -163,18 +179,11 @@ export function dataPath(...segments: string[]): string {
 
 /**
  * Resolve a path for global shared configuration / knowledge files (Chapter 7: config/shared/...).
- * Checks config/shared/ first, falling back to data/shared/ and data/.
+ * Primary location is config/shared/, falling back to data/shared/ and data/ for backward compatibility.
  */
 export function sharedConfigPath(...segments: string[]): string {
   const inConfigShared = path.join(REPO_ROOT, 'config', 'shared', ...segments)
-  if (fs.existsSync(inConfigShared)) return inConfigShared
-
-  const inDataShared = path.join(getDataDir(), 'shared', ...segments)
-  if (fs.existsSync(inDataShared)) return inDataShared
-
-  const inDataLegacy = path.join(getDataDir(), ...segments)
-  if (fs.existsSync(inDataLegacy)) return inDataLegacy
-
+  // Chapter 7: primary location is config/shared/ (return even if doesn't exist for zero-fallback)
   return inConfigShared
 }
 
@@ -225,10 +234,14 @@ export function configPath(...segments: string[]): string {
       return path.isAbsolute(envPath) ? envPath : path.resolve(REPO_ROOT, envPath)
     }
   }
-  // Check config/instances/<file> if looking for an instance configuration
+  // Chapter 7: check config/instances/<file> first for instance configurations
   if (segments.length === 1) {
     const inInstances = path.join(REPO_ROOT, 'config', 'instances', segments[0]!)
     if (fs.existsSync(inInstances)) return inInstances
+    // Default to instances/ for agent-default.json (zero-fallback model)
+    if (segments[0] === 'agent-default.json') {
+      return inInstances
+    }
   }
   return path.join(REPO_ROOT, 'config', ...segments)
 }

@@ -106,6 +106,7 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
  */
 export async function markLiquidationSuccess(
   mint: string,
+  /** @param opts.amountOutSol — Amount received in SOL (human-readable, NOT lamports). */
   opts: { tx?: string; amountOutSol?: number } = {},
 ): Promise<boolean> {
   let position: string | null = null

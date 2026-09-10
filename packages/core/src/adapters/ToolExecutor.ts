@@ -975,8 +975,12 @@ export async function swapBaseToSolWithRetry(
 
       if (ok) {
         recordSwapSuccess()
+        // Jupiter V2 /execute returns outputAmountResult in lamports; divide by 1e9 for SOL.
+        // amount_in is also in lamports if used elsewhere.
         const solReceived =
-          sr.amount_out != null ? (typeof sr.amount_out === 'number' ? sr.amount_out : parseFloat(sr.amount_out)) : null
+          sr.amount_out != null
+            ? (typeof sr.amount_out === 'number' ? sr.amount_out : parseFloat(sr.amount_out)) / 1e9
+            : null
         const usdValue =
           token.usd ?? (solReceived != null && balances.sol_price ? solReceived * balances.sol_price : null)
 
