@@ -81,7 +81,7 @@ Ask (if not already answered in Phase 1):
 > letting the agent enter pools it would otherwise skip."
 
 - **Yes** → set `opportunityPollEnabled: true`, `opportunitySmartWalletBonus: 20` (or higher).
-  Remind the user to populate `config/shared/smart-wallets.json` via:
+  Set `smartWalletListId` on the strategy and remind the user to populate that named list in `config/shared/smart-wallets.json` via:
   ```
   Telegram: add smart wallet <address> name=<label> category=alpha type=lp
   ```

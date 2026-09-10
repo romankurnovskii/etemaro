@@ -328,22 +328,27 @@ Etemaro can track known smart wallets (top LPers, whales, KOLs) and use their pr
 ### Data file
 
 - Path: `config/shared/smart-wallets.json`
-- **Auto-created** on the first add/remove operation. If the file does not exist, the system silently treats the list as empty (neutral signal).
+- Each strategy selects one list using `strategy.smartWalletListId`; the selected list must exist.
+- The file and selected list must exist before a smart-wallet-enabled strategy starts. Missing files or list IDs fail explicitly; no other list is used.
 - The live wallet list is local-only runtime state. A committed template exists at `config/shared/smart-wallets.example.json`.
 
 ### Schema
 
 ```json
 {
-  "wallets": [
-    {
-      "name": "alpha-1",
-      "address": "7xKp...",
-      "category": "alpha",
-      "type": "lp",
-      "addedAt": "2026-08-08T12:00:00.000Z"
-    }
-  ]
+   "lists": {
+      "copy_trade_lag": {
+         "wallets": [
+            {
+               "name": "alpha-1",
+               "address": "7xKp...",
+               "category": "alpha",
+               "type": "lp",
+               "addedAt": "2026-08-08T12:00:00.000Z"
+            }
+         ]
+      }
+   }
 }
 ```
 
@@ -362,6 +367,8 @@ Etemaro can track known smart wallets (top LPers, whales, KOLs) and use their pr
 - `add smart wallet <address> name=<label> category=alpha type=lp`
 - `remove smart wallet <address>`
 - `list smart wallets`
+
+Wallet commands operate on the active strategy's `smartWalletListId`.
 
 **Via direct JSON edit**:
 
