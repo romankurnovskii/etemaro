@@ -5,6 +5,7 @@
     "includes": [
       "packages/**/*.{ts,tsx,js,jsx,json}",
       "apps/**/*.{ts,tsx,js,jsx,json}",
+      "!apps/desktop",
       "!**/dist",
       "!**/node_modules",
       "!**/.memory-bank"
