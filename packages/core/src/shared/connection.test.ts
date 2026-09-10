@@ -16,6 +16,7 @@ import {
   withRpcFailover,
 } from './connection.js'
 import { credentialsPath } from './constants.js'
+import { writeKeystoreFile } from './keystore.js'
 
 describe('connection module', () => {
   const originalEnv = { ...process.env }
@@ -208,6 +209,54 @@ describe('connection module', () => {
 
         expect(() => getWalletKeypair()).toThrow(/Invalid keystore format/)
       } finally {
+        if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
+      }
+    })
+
+    it('resolves an encrypted keystore when ETEMARO_KEYSTORE_PASSPHRASE is set', () => {
+      const kp = Keypair.generate()
+      const alias = 'test-encrypted-wallet'
+      const keyfilePath = credentialsPath(`${alias}.json`)
+      const previous = process.env.ETEMARO_KEYSTORE_PASSPHRASE
+      process.env.ETEMARO_KEYSTORE_PASSPHRASE = 'test-passphrase'
+      try {
+        fs.mkdirSync(path.dirname(keyfilePath), { recursive: true })
+        writeKeystoreFile(keyfilePath, {
+          publicKey: kp.publicKey.toBase58(),
+          privateKey: bs58.encode(kp.secretKey),
+        })
+        const raw = JSON.parse(fs.readFileSync(keyfilePath, 'utf8'))
+        expect(raw.encrypted).toBe(true)
+
+        config.connection = { ...config.connection, wallet: alias }
+        const resolved = getWalletKeypair()
+        expect(resolved.publicKey.toString()).toBe(kp.publicKey.toString())
+      } finally {
+        if (previous === undefined) delete process.env.ETEMARO_KEYSTORE_PASSPHRASE
+        else process.env.ETEMARO_KEYSTORE_PASSPHRASE = previous
+        if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
+      }
+    })
+
+    it('fails clearly when an encrypted keystore is read without the passphrase', () => {
+      const kp = Keypair.generate()
+      const alias = 'test-encrypted-nopass-wallet'
+      const keyfilePath = credentialsPath(`${alias}.json`)
+      const previous = process.env.ETEMARO_KEYSTORE_PASSPHRASE
+      try {
+        fs.mkdirSync(path.dirname(keyfilePath), { recursive: true })
+        process.env.ETEMARO_KEYSTORE_PASSPHRASE = 'test-passphrase'
+        writeKeystoreFile(keyfilePath, {
+          publicKey: kp.publicKey.toBase58(),
+          privateKey: bs58.encode(kp.secretKey),
+        })
+        delete process.env.ETEMARO_KEYSTORE_PASSPHRASE
+
+        config.connection = { ...config.connection, wallet: alias }
+        expect(() => getWalletKeypair()).toThrow(/ETEMARO_KEYSTORE_PASSPHRASE/)
+      } finally {
+        if (previous === undefined) delete process.env.ETEMARO_KEYSTORE_PASSPHRASE
+        else process.env.ETEMARO_KEYSTORE_PASSPHRASE = previous
         if (fs.existsSync(keyfilePath)) fs.unlinkSync(keyfilePath)
       }
     })
