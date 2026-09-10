@@ -134,10 +134,11 @@ export interface DaemonAdapters {
     validateActiveStrategy: () => void
     getActiveStrategy: () => any
     listStrategies?: () => Record<string, unknown>
+    listSmartWallets: (opts: { listId: string }) => { wallets: any[] }
     recordPositionSnapshot: (pool: string, position: any) => void
     recallForPool: (pool: string) => string | null
     addPoolNote: (pool: string, note: string) => void
-    checkSmartWalletsOnPool: (opts: { pool_address: string }) => Promise<any>
+    checkSmartWalletsOnPool: (opts: { listId: string; pool_address: string }) => Promise<any>
     getTokenNarrative: (opts: { mint: string }) => Promise<any>
     getTokenInfo: (opts: { query: string }) => Promise<any>
     stageSignals: (pool: string, signals: Record<string, unknown>) => void
@@ -273,6 +274,12 @@ function parseConfigValue(raw: string): unknown {
 // ─── Daemon Class ───────────────────────────────────────────────
 
 export class Daemon {
+  private getActiveSmartWalletListId(): string {
+    const listId = this.adapters.domain.getActiveStrategy()?.smartWalletListId
+    if (!listId) throw new Error('Active strategy does not define smartWalletListId')
+    return listId
+  }
+
   private adapters: DaemonAdapters // Dependency injection container for blockchain, messaging, and system adapters
 
   // Race condition guards
@@ -426,12 +433,17 @@ export class Daemon {
 
     // === Resolved Data Paths & Counts ===
     const smartWalletsPath = sharedConfigPath(SMART_WALLETS_FILENAME)
-    const smartWalletsInfo = loadJsonFileWithInfo<{ wallets?: unknown[] }>(smartWalletsPath, { wallets: [] })
+    const smartWalletListId = activeStrategy?.smartWalletListId
+    const smartWalletsInfo = loadJsonFileWithInfo<{
+      lists?: Record<string, { wallets?: unknown[] }>
+    }>(smartWalletsPath, { lists: {} })
     const smartWalletsLoaded = smartWalletsInfo.loadedFrom === 'file'
-    const smartWalletsCount = smartWalletsInfo.data.wallets?.length || 0
+    const smartWalletsCount = smartWalletListId
+      ? smartWalletsInfo.data.lists?.[smartWalletListId]?.wallets?.length || 0
+      : 0
     log(
       'startup',
-      `${SMART_WALLETS_FILENAME}: ${smartWalletsPath} (${smartWalletsLoaded ? 'found' : 'fallback/created'}, ${smartWalletsCount} wallets)`,
+      `${SMART_WALLETS_FILENAME}: ${smartWalletsPath} (${smartWalletsLoaded ? 'found' : 'missing'}, list=${smartWalletListId || 'none'}, ${smartWalletsCount} wallets)`,
     )
 
     // Strategy libraries (Chapter 7: global shared knowledge in config/shared/)
@@ -823,10 +835,15 @@ Summarize the current portfolio health, total fees earned, and performance of al
             if (bonus <= 0) continue
             const smart =
               (
-                await this.adapters.domain.checkSmartWalletsOnPool({ pool_address: c.pool }).catch((err: any) => {
-                  log('screening', `Opportunity poller failed smart wallet check for ${c.pool}: ${err?.message || err}`)
-                  return null
-                })
+                await this.adapters.domain
+                  .checkSmartWalletsOnPool({ listId: this.getActiveSmartWalletListId(), pool_address: c.pool })
+                  .catch((err: any) => {
+                    log(
+                      'screening',
+                      `Opportunity poller failed smart wallet check for ${c.pool}: ${err?.message || err}`,
+                    )
+                    return null
+                  })
               )?.in_pool || []
             if (smart.length > 0) {
               trigger = { c, s, smart }
@@ -1406,7 +1423,10 @@ After evaluating, write a brief one-line result per position.
       for (const pool of candidates) {
         const mint = pool.base?.mint
         const [smartWallets, narrative, tokenInfo] = await Promise.allSettled([
-          this.adapters.domain.checkSmartWalletsOnPool({ pool_address: pool.pool }),
+          this.adapters.domain.checkSmartWalletsOnPool({
+            listId: this.getActiveSmartWalletListId(),
+            pool_address: pool.pool,
+          }),
           mint ? this.adapters.domain.getTokenNarrative({ mint }) : Promise.resolve(null),
           mint ? this.adapters.domain.getTokenInfo({ query: mint }) : Promise.resolve(null),
         ])
@@ -1761,7 +1781,9 @@ IMPORTANT:
     log('cron', '[SmartWallets] Starting smart wallet screening cycle...')
 
     // 1. Load smart wallets
-    const trackedWallets = domain.listSmartWallets().wallets.filter((w: any) => !w.type || w.type === 'lp')
+    const trackedWallets = this.adapters.domain
+      .listSmartWallets({ listId: this.getActiveSmartWalletListId() })
+      .wallets.filter((w: any) => !w.type || w.type === 'lp')
     if (!trackedWallets.length) {
       log('cron', '[SmartWallets] No smart LP wallets tracked. Skipping.')
       return 'No smart LP wallets tracked.'
@@ -1938,7 +1960,10 @@ IMPORTANT:
     if (this.latestCandidates.length === 1) {
       const mint = candidate.base?.mint || candidate.base_mint || null
       const [smartWallets, narrative, tokenInfo] = await Promise.allSettled([
-        this.adapters.domain.checkSmartWalletsOnPool({ pool_address: candidate.pool }),
+        this.adapters.domain.checkSmartWalletsOnPool({
+          listId: this.getActiveSmartWalletListId(),
+          pool_address: candidate.pool,
+        }),
         mint ? this.adapters.domain.getTokenNarrative({ mint }) : Promise.resolve(null),
         mint ? this.adapters.domain.getTokenInfo({ query: mint }) : Promise.resolve(null),
       ])

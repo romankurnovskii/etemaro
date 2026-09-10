@@ -50,7 +50,8 @@ function createMockAdapters(): DaemonAdapters {
     },
     domain: {
       validateActiveStrategy: vi.fn(),
-      getActiveStrategy: vi.fn().mockReturnValue({}),
+      getActiveStrategy: vi.fn().mockReturnValue({ smartWalletListId: 'alpha' }),
+      listSmartWallets: vi.fn().mockReturnValue({ wallets: [] }),
       recordPositionSnapshot: vi.fn(),
       recallForPool: vi.fn().mockReturnValue(null),
       addPoolNote: vi.fn(),

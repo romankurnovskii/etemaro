@@ -191,7 +191,7 @@ vi.mock('@etemaro/core', () => ({
   },
   domain: {
     validateActiveStrategy: vi.fn(),
-    getActiveStrategy: vi.fn().mockReturnValue({}),
+    getActiveStrategy: vi.fn().mockReturnValue({ smartWalletListId: 'alpha' }),
     recordPositionSnapshot: mockRecordPositionSnapshot,
     recallForPool: vi.fn().mockReturnValue(null),
     addPoolNote: vi.fn(),
@@ -259,7 +259,7 @@ function createMockAdapters(): DaemonAdapters {
     },
     domain: {
       validateActiveStrategy: vi.fn(),
-      getActiveStrategy: vi.fn().mockReturnValue({}),
+      getActiveStrategy: vi.fn().mockReturnValue({ smartWalletListId: 'alpha' }),
       recordPositionSnapshot: mockRecordPositionSnapshot,
       recallForPool: vi.fn().mockReturnValue(null),
       addPoolNote: vi.fn(),
