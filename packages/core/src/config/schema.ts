@@ -120,6 +120,8 @@ export const UserConfigSchema = z
         ipcPort: z.number().int().min(1024).max(65535).optional(),
         ipcToken: z.string().min(1).optional(),
         ipcSocketPath: z.string().optional(),
+        /** Bind host for the TCP listener. Defaults to 127.0.0.1 (localhost only). */
+        ipcHost: z.string().optional(),
       })
       .strict()
       .optional(),

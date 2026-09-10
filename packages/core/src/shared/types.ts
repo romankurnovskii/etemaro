@@ -609,6 +609,8 @@ export interface ConnectionConfig {
   ipcPort?: number
   ipcToken?: string
   ipcSocketPath?: string
+  /** Bind host for the TCP listener. Defaults to 127.0.0.1 (localhost only). */
+  ipcHost?: string
 }
 
 export interface AppConfig {
