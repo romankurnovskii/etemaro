@@ -18,6 +18,7 @@ import bs58 from 'bs58'
 import { config } from '../../config/Config.js'
 import { getConnection, getWalletKeypair, withRpcFailover } from '../../shared/connection.js'
 import { credentialsPath } from '../../shared/constants.js'
+import { writeKeystoreFile } from '../../shared/keystore.js'
 import { createTimer, log, logStructured } from '../../shared/logger.js'
 import type { SwapErrorCategory, WalletBalancesResult } from '../../shared/types.js'
 import { withRpcRetry } from '../../shared/utils.js'
@@ -62,26 +63,19 @@ export function importWallet(opts: { label: string; privateKey?: string; filePat
     savedTo: credFile,
   }
 
-  // Persist to secure individual keystore file
+  // Persist to secure individual keystore file (encrypted when a passphrase is set)
   try {
-    const credDir = path.dirname(credFile)
-    if (!fs.existsSync(credDir)) {
-      fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
-    }
-    const payload = {
-      publicKey: wallet.publicKey,
-      privateKey: key,
-    }
-    fs.writeFileSync(credFile, JSON.stringify(payload, null, 2), { mode: 0o600 })
-    if (process.platform !== 'win32') {
-      try {
-        fs.chmodSync(credFile, 0o600)
-      } catch {
-        /* ignore */
-      }
+    const { encrypted } = writeKeystoreFile(credFile, { publicKey: wallet.publicKey, privateKey: key })
+    if (!encrypted) {
+      log(
+        'wallet_warn',
+        'Keystore saved WITHOUT encryption. Set ETEMARO_KEYSTORE_PASSPHRASE to encrypt wallet keys at rest.',
+      )
     }
   } catch (err: any) {
-    log('wallet', `Warning: Failed to persist individual keystore file: ${err?.message || err}`)
+    // Do not silently report success: an unsaved key is unusable and would be
+    // lost once this one-shot CLI process exits.
+    throw new Error(`Failed to persist wallet keystore at ${credFile}: ${err?.message || err}`)
   }
 
   log('wallet', `Imported wallet ${wallet.publicKey} as ${opts.label}`)
@@ -114,25 +108,17 @@ export function generateNewWallet(opts?: {
   }
 
   try {
-    const credDir = path.dirname(credFile)
-    if (!fs.existsSync(credDir)) {
-      fs.mkdirSync(credDir, { recursive: true, mode: 0o700 })
-    }
-    const payload = {
-      publicKey: wallet.publicKey,
-      privateKey,
-    }
-    fs.writeFileSync(credFile, JSON.stringify(payload, null, 2), { mode: 0o600 })
-    if (process.platform !== 'win32') {
-      try {
-        fs.chmodSync(credFile, 0o600)
-      } catch {
-        /* ignore */
-      }
+    const { encrypted } = writeKeystoreFile(credFile, { publicKey, privateKey })
+    if (!encrypted) {
+      log(
+        'wallet_warn',
+        'Keystore saved WITHOUT encryption. Set ETEMARO_KEYSTORE_PASSPHRASE to encrypt wallet keys at rest.',
+      )
     }
     log('wallet', `Generated and stored new wallet ${publicKey} to ${credFile}`)
   } catch (err: any) {
-    log('wallet', `Warning: Failed to persist individual keystore file: ${err?.message || err}`)
+    // Fail loudly — the generated key exists only in memory until persisted.
+    throw new Error(`Failed to persist wallet keystore at ${credFile}: ${err?.message || err}`)
   }
 
   return wallet
