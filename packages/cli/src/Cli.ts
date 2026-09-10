@@ -11,6 +11,7 @@
  * @sideEffects One-shot tool execution and console JSON output
  */
 
+import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { stdin as stdinStream, stdout as stdoutStream } from 'node:process'
@@ -415,9 +416,18 @@ In interactive mode, prompts for Name, optional Description, and Agent ID (auto-
 ### etemaro start [--dry-run]
 Starts the autonomous agent with cron jobs (management + screening).
 
+### etemaro serve [--port <port>] [--open]
+Starts the agent headlessly and serves the browser web UI on the IPC port (default 8765).
+Open the printed http://127.0.0.1:<port>/ URL to view positions, logs, chat, and run any tool.
+
+### etemaro attach [--agent <id>] [--port <port>]
+Opens the interactive terminal dashboard (Ink TUI) that attaches to a running agent.
+
 ## Flags
 --dry-run     Skip all on-chain transactions
 --silent      Suppress Telegram notifications for this run
+--port <port> IPC port for serve/attach (default 8765)
+--open        Open the browser after 'etemaro serve' starts
 --config <path>  Path to user-config.json (alias: -c). Overrides USER_CONFIG_PATH env var.
 --data-dir <path>  Data directory (alias: -d). Overrides ETEMARO_DATA_DIR/DATA_DIR env vars.
 `
@@ -500,6 +510,7 @@ export class Cli {
         yes: { type: 'boolean' },
         version: { type: 'boolean' },
         headless: { type: 'boolean' },
+        open: { type: 'boolean' },
       },
       allowPositionals: true,
       strict: false,
@@ -598,6 +609,9 @@ export class Cli {
         return this.handleInit(flags)
       case 'attach':
         return this.handleAttach(flags)
+      case 'serve':
+      case 'web':
+        return this.handleServe(flags)
       default:
         die(`Unknown command: ${subcommand}. Run 'etemaro help' for usage.`)
     }
@@ -1359,6 +1373,50 @@ export class Cli {
     } else {
       process.stderr.write('[etemaro] Starting autonomous agent (headless)...\n')
       await this.adapters.daemon.start({ tty: false })
+    }
+  }
+
+  /**
+   * Start the agent headlessly and serve the browser web UI on the IPC port.
+   * Unlike `attach`, this does not take over the terminal with the Ink TUI.
+   */
+  private async handleServe(flags: Record<string, any> = {}): Promise<void> {
+    if (!this.adapters.daemon?.start) die('Serve command requires daemon adapter')
+
+    const port = flags.port ? Number(flags.port) : (config.connection?.ipcPort ?? 8765)
+    if (Number.isFinite(port) && port > 0) {
+      config.connection.ipcPort = port
+    }
+    const host = config.connection?.ipcHost ?? '127.0.0.1'
+    const browserHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host
+    const boundPort = config.connection?.ipcPort ?? 8765
+    const url = `http://${browserHost}:${boundPort}/`
+
+    if (!config.connection?.wallet) {
+      process.stderr.write(
+        '[etemaro] No Solana wallet configured — the web UI will show read-only state. Run `etemaro init`.\n',
+      )
+    }
+    process.stderr.write(`[etemaro] Starting agent + web UI at ${url}\n`)
+
+    await this.adapters.daemon.start({ tty: false })
+
+    process.stderr.write(`[etemaro] Web UI ready: ${url}\n`)
+    process.stderr.write('[etemaro] Press Ctrl+C to stop.\n')
+
+    if (flags.open) this.openBrowser(url)
+  }
+
+  /** Best-effort open of the default browser (darwin/linux/win32). */
+  private openBrowser(url: string): void {
+    const isWin = process.platform === 'win32'
+    const command = process.platform === 'darwin' ? 'open' : isWin ? 'cmd' : 'xdg-open'
+    const args = isWin ? ['/c', 'start', '', url] : [url]
+    try {
+      const child = spawn(command, args, { detached: true, stdio: 'ignore' })
+      child.unref()
+    } catch (e: any) {
+      process.stderr.write(`[etemaro] Could not open browser automatically: ${e?.message || e}\n`)
     }
   }
 
