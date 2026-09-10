@@ -100,6 +100,21 @@ describe('WalletAdapter', () => {
       expect(payload.privateKey).toBe(result.privateKey)
     })
 
+    it('encrypts the keystore when ETEMARO_KEYSTORE_PASSPHRASE is set', () => {
+      const previous = process.env.ETEMARO_KEYSTORE_PASSPHRASE
+      process.env.ETEMARO_KEYSTORE_PASSPHRASE = 'test-passphrase'
+      try {
+        const result = generateNewWallet({ credentialsDir: tempDir, label: 'Encrypted Wallet' })
+        const raw = JSON.parse(fs.readFileSync(result.savedTo as string, 'utf8'))
+        expect(raw.encrypted).toBe(true)
+        expect(raw.privateKey).toBeUndefined()
+        expect(typeof raw.ciphertext).toBe('string')
+      } finally {
+        if (previous === undefined) delete process.env.ETEMARO_KEYSTORE_PASSPHRASE
+        else process.env.ETEMARO_KEYSTORE_PASSPHRASE = previous
+      }
+    })
+
     it('creates separate keystore files for multiple generated wallets', () => {
       const w1 = generateNewWallet({ credentialsDir: tempDir, label: 'Wallet 1' })
       const w2 = generateNewWallet({ credentialsDir: tempDir, label: 'Wallet 2' })

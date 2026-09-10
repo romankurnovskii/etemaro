@@ -9,6 +9,13 @@ import { Connection, Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { config } from '../config/Config.js'
 import { credentialsPath } from './constants.js'
+import {
+  isEncryptedKeystore,
+  isKeystoreEncryptionEnabled,
+  readKeystoreObject,
+  type WalletKeystore,
+  writeKeystoreFile,
+} from './keystore.js'
 import { log } from './logger.js'
 import { isTransientRpcError, type RpcRetryOptions, withRpcRetry } from './utils.js'
 
@@ -93,30 +100,28 @@ export function getWalletKeypair(): Keypair {
     }
   }
 
-  let key: string | null = null
+  let wallet: WalletKeystore
+  let wasPlaintext = false
   try {
-    const walletData = JSON.parse(fs.readFileSync(walletPath, 'utf8'))
-    if (typeof walletData !== 'object' || walletData === null || Array.isArray(walletData)) {
-      throw new Error(
-        `Invalid keystore format: must be a JSON object with "publicKey" and "privateKey" (bare string or array format is not supported).`,
-      )
-    }
-    if (typeof walletData.privateKey !== 'string' || walletData.privateKey.trim().length === 0) {
-      throw new Error(
-        `Missing mandatory "privateKey" in wallet keystore file at ${walletPath}. Expected format: { "publicKey": "...", "privateKey": "..." }`,
-      )
-    }
-    key = walletData.privateKey.trim()
+    const raw = JSON.parse(fs.readFileSync(walletPath, 'utf8'))
+    wasPlaintext = !isEncryptedKeystore(raw)
+    wallet = readKeystoreObject(raw)
   } catch (err: any) {
-    throw new Error(`Failed to parse wallet keystore file at ${walletPath}: ${err?.message || err}`)
+    throw new Error(`Failed to load wallet keystore at ${walletPath}: ${err?.message || err}`)
   }
 
-  if (!key) {
-    throw new Error(`Wallet keystore file at ${walletPath} does not contain a valid private key.`)
+  // Transparently upgrade a legacy plaintext keystore once a passphrase is configured.
+  if (wasPlaintext && isKeystoreEncryptionEnabled()) {
+    try {
+      writeKeystoreFile(walletPath, wallet)
+      log('wallet', `Encrypted previously-plaintext keystore for "${alias}".`)
+    } catch (err: any) {
+      log('wallet_warn', `Could not encrypt keystore for "${alias}": ${err?.message || err}`)
+    }
   }
 
   try {
-    _walletKeypair = Keypair.fromSecretKey(bs58.decode(key))
+    _walletKeypair = Keypair.fromSecretKey(bs58.decode(wallet.privateKey))
   } catch (err: any) {
     throw new Error(`Invalid secret key in wallet keystore at ${walletPath}: ${err?.message || err}`)
   }

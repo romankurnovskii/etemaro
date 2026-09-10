@@ -26,6 +26,9 @@ module.exports = {
       env: {
         ...(process.env.WALLET_PRIVATE_KEY ? { WALLET_PRIVATE_KEY: process.env.WALLET_PRIVATE_KEY } : {}),
         ...(process.env.ETEMARO_DATA_DIR ? { ETEMARO_DATA_DIR: process.env.ETEMARO_DATA_DIR } : {}),
+        ...(process.env.ETEMARO_KEYSTORE_PASSPHRASE
+          ? { ETEMARO_KEYSTORE_PASSPHRASE: process.env.ETEMARO_KEYSTORE_PASSPHRASE }
+          : {}),
       },
     },
     /* Example Multi-Agent Setup:
