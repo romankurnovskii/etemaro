@@ -63,6 +63,8 @@ export interface AgentControl {
   start(id: string): unknown
   stop(id: string): unknown
   setStrategy(id: string, strategyId: string): unknown
+  readConfig(configPath: string): unknown
+  writeConfig(configPath: string, content: unknown): unknown
 }
 
 /** Result of an internal tool invocation. */
@@ -402,6 +404,10 @@ export class IpcServer {
   }
 
   private async _handleConfig(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    if (!this.agentControl) {
+      this._sendJson(res, 503, { error: { code: 'NO_AGENT_CONTROL', message: 'Agent control is not available' } })
+      return
+    }
     const configPath = url.searchParams.get('path')
     if (!configPath) {
       this._sendJson(res, 400, { error: { code: 'MISSING_PATH', message: 'path query required' } })
@@ -409,22 +415,17 @@ export class IpcServer {
     }
     try {
       if (req.method === 'GET') {
-        const raw = fs.readFileSync(configPath, 'utf8')
-        const parsed = JSON.parse(raw)
-        this._sendJson(res, 200, { config: parsed })
+        this._sendJson(res, 200, { config: this.agentControl.readConfig(configPath) })
         return
       }
-      if (req.method === 'PUT') {
-        const body = await this._readJsonBody(req)
-        const cfg = body?.config
-        if (cfg === undefined) throw new Error('Missing config in request body')
-        fs.writeFileSync(configPath, `${JSON.stringify(cfg, null, 2)}\n`)
-        this._sendJson(res, 200, { ok: true })
+      const body = await this._readJsonBody(req)
+      if (body?.config === undefined) {
+        this._sendJson(res, 400, { error: { code: 'MISSING_CONFIG', message: 'Missing config in request body' } })
         return
       }
-      this._sendJson(res, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Only GET/PUT supported' } })
+      this._sendJson(res, 200, { ok: true, agent: this.agentControl.writeConfig(configPath, body.config) })
     } catch (e: any) {
-      this._sendJson(res, 500, { error: { code: 'CONFIG_ERROR', message: e?.message || String(e) } })
+      this._sendJson(res, 400, { error: { code: 'CONFIG_ERROR', message: e?.message || String(e) } })
     }
   }
 
