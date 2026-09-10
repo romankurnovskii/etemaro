@@ -139,6 +139,7 @@ let briefing: CoreExports['briefing'] = null as any
 let hivemind: CoreExports['hivemind'] = null as any
 let tools: CoreExports['tools'] = null as any
 let defaultUserConfigStr: CoreExports['defaultUserConfigStr'] = null as any
+let validateConfigFile: CoreExports['validateConfigFile'] = null as any
 
 // Lazily populated Daemon constructor
 let DaemonCtor: DaemonExports['Daemon'] = null as any
@@ -178,6 +179,7 @@ export async function loadCore(): Promise<void> {
   hivemind = coreMod.hivemind
   tools = coreMod.tools
   defaultUserConfigStr = coreMod.defaultUserConfigStr
+  validateConfigFile = (coreMod as any).validateConfigFile
   // Assign Daemon constructor
   DaemonCtor = daemonMod.Daemon
 }
@@ -208,6 +210,9 @@ export interface CliAdapters {
   }
   domain: {
     validateActiveStrategy: () => void
+    // Structural (the core return type is not part of the prebuilt @etemaro/core declarations)
+    validateStrategyFile: (filePath: string, opts?: Record<string, unknown>) => any
+    validateConfigFile: (filePath: string, opts?: Record<string, unknown>) => any
     getActiveStrategy: () => any
     recallForPool: (pool: string) => string | null
     addPoolNote: (pool: string, note: string) => void
@@ -355,6 +360,10 @@ Returns DLMM positions for any wallet address.
 Output: { wallet, positions: [...], total_positions }
 \`\`\`
 
+### etemaro strategy validate <file...> [--json] [--strict]
+Validates strategy JSON (a library or a single strategy object) against the canonical Strategy schema.
+Reports unknown and legacy fields the runtime will ignore, and checks smartWalletListId wiring against the loaded config.
+
 ### etemaro config get
 Returns the full runtime config.
 
@@ -494,6 +503,10 @@ export class Cli {
         'skip-swap': { type: 'boolean' },
         'dry-run': { type: 'boolean' },
         silent: { type: 'boolean' },
+        json: { type: 'boolean' },
+        strict: { type: 'boolean' },
+        active: { type: 'boolean' },
+        'env-optional': { type: 'boolean' },
         limit: { type: 'string' },
         dir: { type: 'string' },
         label: { type: 'string' },
@@ -590,7 +603,9 @@ export class Cli {
       case 'manage':
         return this.handleManage(flags)
       case 'config':
-        return this.handleConfig(argv, sub2)
+        return this.handleConfig(argv, sub2, flags)
+      case 'strategy':
+        return this.handleStrategy(argv, sub2, flags)
       case 'study':
         return this.handleStudy(flags)
       case 'start':
@@ -981,15 +996,17 @@ export class Cli {
     const limit = parseInt(flags.limit || '5', 10)
     const raw = await this.adapters.screening.getTopCandidates({ limit })
     const pools = raw.candidates || raw.pools || []
+    // Smart-wallet enrichment is optional in market mode; only the wallet-list tools require it.
     const smartWalletListId = this.adapters.domain.getActiveStrategy()?.smartWalletListId
-    if (!smartWalletListId) die('Active strategy does not define smartWalletListId')
 
     const enriched = []
     for (const pool of pools) {
       const mint = pool.base?.mint
       const [activeBin, smartWallets, tokenInfo, holders, narrative] = await Promise.allSettled([
         this.adapters.meteora.getActiveBin({ pool_address: pool.pool }),
-        this.adapters.domain.checkSmartWalletsOnPool({ listId: smartWalletListId, pool_address: pool.pool }),
+        smartWalletListId
+          ? this.adapters.domain.checkSmartWalletsOnPool({ listId: smartWalletListId, pool_address: pool.pool })
+          : Promise.resolve(null),
         mint ? this.adapters.domain.getTokenInfo({ query: mint }) : Promise.resolve(null),
         mint ? this.adapters.domain.getTokenHolders({ mint, limit: 20, smartWalletListId }) : Promise.resolve(null),
         mint ? this.adapters.domain.getTokenNarrative({ mint }) : Promise.resolve(null),
@@ -1175,7 +1192,110 @@ export class Cli {
     out({ done: true, report: report || 'No action taken' })
   }
 
-  private async handleConfig(argv: string[], sub2: string | undefined): Promise<void> {
+  private async handleStrategy(argv: string[], sub2: string | undefined, flags: Record<string, any>): Promise<void> {
+    if (sub2 !== 'validate') die('Usage: etemaro strategy validate <file...> [--json] [--strict] [--active]')
+    const files = argv.filter((a) => !a.startsWith('-')).slice(2)
+    if (files.length === 0) die('Usage: etemaro strategy validate <file...> [--json] [--strict] [--active]')
+
+    const smartWalletsPath = _strategyLibraryPath('smart-wallets.json')
+    let knownSmartWalletListIds: string[] | null = null
+    if (fs.existsSync(smartWalletsPath)) {
+      try {
+        const sw = JSON.parse(fs.readFileSync(smartWalletsPath, 'utf8')) as { lists?: Record<string, unknown> }
+        knownSmartWalletListIds = Object.keys(sw.lists ?? {})
+      } catch {
+        knownSmartWalletListIds = null
+      }
+    }
+
+    const active = this.readActiveConfigSnapshot()
+    const opts: Record<string, unknown> = {
+      strict: flags.strict === true,
+      activeStrategyId: active.activeStrategyId ?? null,
+      requireSmartWalletListId: flags.active === true && active.entrySource === 'smart_wallets',
+      warnMissingSmartWalletListIdForBonus:
+        flags.active === true && active.entrySource !== 'smart_wallets' && (active.smartWalletScoreBonus ?? 0) > 0,
+      knownSmartWalletListIds,
+    }
+    const reports = files.map((f) => this.adapters.domain.validateStrategyFile(f, opts))
+    this.renderValidationReports(reports, flags.json === true)
+    process.exit(reports.every((r) => r.ok) ? 0 : 1)
+  }
+
+  /** Best-effort raw read of the active config; works even when the config is invalid. */
+  private readActiveConfigSnapshot(): {
+    activeStrategyId?: string | null
+    entrySource?: string
+    smartWalletScoreBonus?: number
+  } {
+    try {
+      const configPath = _USER_CONFIG_PATH
+      if (!configPath || !fs.existsSync(configPath)) return {}
+      const raw = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
+        strategy?: { activeStrategyId?: string | null }
+        screening?: { entrySource?: string }
+        opportunity?: { smartWalletScoreBonus?: number }
+      }
+      return {
+        activeStrategyId: raw.strategy?.activeStrategyId ?? null,
+        entrySource: raw.screening?.entrySource,
+        smartWalletScoreBonus: raw.opportunity?.smartWalletScoreBonus,
+      }
+    } catch {
+      return {}
+    }
+  }
+
+  /** Render one or more validation reports in the shared comprehensive format. */
+  private renderValidationReports(reports: any[], json: boolean): void {
+    const ok = reports.every((r) => r.ok)
+    if (json) {
+      process.stdout.write(`${JSON.stringify({ ok, reports }, null, 2)}\n`)
+      return
+    }
+    for (const r of reports) {
+      process.stdout.write(`File: ${r.file}\n`)
+      for (const e of r.entries) {
+        process.stdout.write(`  Validation: ${e.id}\n`)
+        process.stdout.write(`  Status:     ${e.status}\n`)
+        const section = (title: string, lines: string[]) => {
+          if (!lines?.length) return
+          process.stdout.write(`  ${title}:\n`)
+          for (const line of lines) process.stdout.write(`    - ${line}\n`)
+        }
+        section('Errors', e.errors)
+        section('Warnings', e.warnings)
+        section('Notes', e.infos)
+        if (e.unknownFields?.length) {
+          process.stdout.write(`  Unknown (unused) fields: ${e.unknownFields.join(', ')}\n`)
+        }
+        const usageKeys = Object.keys(e.usage ?? {})
+        if (usageKeys.length) {
+          process.stdout.write('  Field usage:\n')
+          for (const k of usageKeys) process.stdout.write(`    ${k.padEnd(20)} ${e.usage[k]}\n`)
+        }
+        process.stdout.write('\n')
+      }
+    }
+    const valid = reports.reduce((n, r) => n + r.totals.valid, 0)
+    const invalid = reports.reduce((n, r) => n + r.totals.invalid, 0)
+    process.stdout.write(`Totals: ${valid} valid, ${invalid} invalid\n`)
+  }
+
+  private async handleConfig(argv: string[], sub2: string | undefined, flags: Record<string, any>): Promise<void> {
+    if (sub2 === 'validate') {
+      const explicit = argv.filter((a) => !a.startsWith('-')).slice(2)[0]
+      const file = explicit ? path.resolve(explicit) : _USER_CONFIG_PATH
+      if (!file || !fs.existsSync(file)) {
+        const note = `No config file to validate at ${file || '(unset)'}`
+        if (flags.json === true) process.stdout.write(`${JSON.stringify({ ok: true, reports: [], note }, null, 2)}\n`)
+        else process.stdout.write(`${note}\n`)
+        process.exit(0)
+      }
+      const report = this.adapters.domain.validateConfigFile(file, { envOptional: flags['env-optional'] === true })
+      this.renderValidationReports([report], flags.json === true)
+      process.exit(report.ok ? 0 : 1)
+    }
     if (sub2 === 'get' || !sub2) {
       out(config)
     } else if (sub2 === 'set') {
@@ -1646,6 +1766,10 @@ async function main() {
   if (configPathArg) process.env.USER_CONFIG_PATH = path.resolve(configPathArg)
   if (dataDirArg) process.env.ETEMARO_DATA_DIR = path.resolve(dataDirArg)
 
+  // Validation commands must be able to report on a broken/invalid config, so let
+  // core fall back to defaults instead of exiting during import.
+  if (argv.includes('validate')) process.env.ETEMARO_SKIP_ENV_VALIDATION = '1'
+
   loadRuntimeDotenv(defaultEtemaroHome())
   await loadCore()
 
@@ -1701,6 +1825,7 @@ async function main() {
     toolExecutor,
     domain: {
       ...domain,
+      validateConfigFile,
       addPoolNote: (pool: string, note: string) => domain.addPoolNote({ pool_address: pool, note }),
       getTokenNarrative: token.getTokenNarrative,
       getTokenInfo: token.getTokenInfo,
