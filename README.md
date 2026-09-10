@@ -43,6 +43,8 @@ etemaro wallet generate --name etemaro-01-100          # brand-new keypair
 etemaro wallet import --name etemaro-01-100 --prompt   # existing Base58 key (hidden prompt)
 ```
 
+No flags needed: just run `etemaro wallet import` and it walks you through alias → keypair JSON file or Base58 private key → import.
+
 Then point an agent at the alias: `"wallet": "etemaro-01-100"` in its config (`config/user-config.json` or `config/instances/<id>.json`). Inspect with `etemaro wallet list`.
 
 **From a source clone** (no global `etemaro`), prefix with `npm run cli --` — the `--` is required:
