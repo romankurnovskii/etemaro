@@ -34,9 +34,9 @@ This creates `~/.config/etemaro` and runs the **interactive onboarding wizard**:
 4. **Risk & Allocation** — max positions, max SOL per position
 5. **(Optional) Telegram Alerts** — bot token
 
-> **Wallet keystore** (recommended): The wizard creates wallets in `~/.config/etemaro/.credentials/wallets/<alias>.json` with `0600` permissions. No private keys in `.env` or process environment.
+> **Wallet keystore** (recommended): The wizard creates wallets in `~/.config/etemaro/.credentials/wallets/<alias>.json` with `0600` permissions. No private keys in `.env` or process environment. Set `ETEMARO_KEYSTORE_PASSPHRASE` to encrypt keys at rest (AES-256-GCM); without it, keys are stored as plaintext `0600` and a warning is logged.
 
-On a terminal it will prompt. On a server without a TTY, run `etemaro wallet generate --name main-scalp` first, then add `"wallet": "main-scalp"` to your config.
+On a terminal it will prompt. On a server without a TTY, run `etemaro wallet generate --name main-scalp` first, then add `"wallet": "main-scalp"` to your config. Manage wallets with `etemaro wallet list` and `etemaro wallet remove --name <alias> --yes`; retrieve a key with `etemaro wallet export --name <alias>` (interactive TTY only).
 
 Jupiter, Telegram, and strategy JSON are **not** part of first setup. Add `JUPITER_API_KEY` only when you go live.
 

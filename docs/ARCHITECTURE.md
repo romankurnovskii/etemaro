@@ -129,12 +129,12 @@ When `config.connection.dryRun` is `true` (resolved at config boundary, not via 
 4. **Key Segregation / Keystore Architecture** (recommended):
    - Private keys are **never** stored in the general `config` dictionary that LLM agents or decision loggers read.
    - Keys are loaded in memory only by `WalletAdapter` / `SolanaAdapter`, and only referenced by alias: `"wallet": "main-scalp"`.
-   - Files are stored in a dedicated, secure directory (`~/.config/etemaro/.credentials/wallets/`) with Unix file permissions locked to owner-only (`chmod 0600`).
+   - Files are stored in a dedicated, secure directory (`~/.config/etemaro/.credentials/wallets/`) with Unix file permissions locked to owner-only (`chmod 0600`). Private keys are additionally encrypted at rest (AES-256-GCM, scrypt-derived key) when `ETEMARO_KEYSTORE_PASSPHRASE` is set; otherwise they are stored as plaintext `0600`.
 
 5. **Zero `process.env` in Business Logic**:
    - `applyUserConfigToEnv()` was removed. The `config` object is the single source of truth.
    - Downstream adapters (TelegramAdapter, WalletAdapter, GmgnClient) read directly from `config` only — no `process.env` fallbacks.
-   - The only remaining `process.env` reads are infrastructure-tier (`USER_CONFIG_PATH`, `ETEMARO_DATA_DIR`, `HOME`, PM2 `pm_id`).
+   - The only remaining `process.env` reads are infrastructure-tier (`USER_CONFIG_PATH`, `ETEMARO_DATA_DIR`, `ETEMARO_KEYSTORE_PASSPHRASE`, `HOME`, PM2 `pm_id`).
 
 6. **Test Isolation**: Test suites that modify `process.env` or invoke config reloads must snapshot `process.env` in `beforeEach` and restore it in `afterEach` to prevent test pollution.
 
@@ -151,7 +151,7 @@ The wallet architecture separates public config metadata from the raw private ke
 │                                  #   "connection": { "wallet": "main-scalp" }
 └── .credentials/                 # SECURE — gitignored, chmod 700
     └── wallets/
-        └── main-scalp.json       # PRIVATE — keypair (Base58 or Solana CLI array), chmod 0600
+        └── main-scalp.json       # PRIVATE — encrypted keypair (AES-256-GCM) or legacy plaintext, chmod 0600
 ```
 
 ### Resolution Flow
@@ -159,17 +159,36 @@ The wallet architecture separates public config metadata from the raw private ke
 1. `connection.ts:getWalletKeypair()` reads `config.connection.wallet` (alias).
 2. Loads `~/.config/etemaro/.credentials/wallets/<alias>.json` (or `config/.credentials/wallets/<alias>.json` for repo-local configs).
 3. Enforces `chmod 0600` on POSIX systems (auto-tightens; FATAL if it cannot).
-4. Supports Base58 secret strings and standard Solana CLI 64-byte JSON arrays.
+4. Reads the encrypted envelope (when `ETEMARO_KEYSTORE_PASSPHRASE` is set) and legacy plaintext `{ "publicKey", "privateKey" }`; a plaintext file is migrated to encrypted on first read.
 
 ### CLI Wallet Commands
 
 | Command | Description |
 |--------|-------------|
-| `etemaro wallet generate --name <alias>` | Generate fresh keypair, save to keystore, `0600` |
-| `etemaro wallet import --name <alias> --file <path>` | Import from Solana CLI keypair JSON |
-| `etemaro wallet import --name <alias> --prompt` | Import Base58 key interactively (no shell history) |
-| `etemaro wallet list` | List wallet aliases + public keys (never private) |
-| `etemaro wallet export --name <alias>` | Print private key on explicit request |
+| `etemaro wallet generate --name <alias> [--show-private-key]` | Generate a fresh keypair and save it to the keystore. Encrypted (AES-256-GCM) when `ETEMARO_KEYSTORE_PASSPHRASE` is set, else plaintext `0600`. The private key is only printed with `--show-private-key`. |
+| `etemaro wallet import --name <alias> --prompt` | Import a Base58 key interactively (no shell history) |
+| `etemaro wallet import --name <alias> --file <path>` | Import from a Solana CLI keypair JSON |
+| `etemaro wallet import --name <alias> --private-key <key>` | Import inline; the key may persist in shell history/process listings (a warning is emitted) |
+| `etemaro wallet list` | List aliases, public keys, and encryption status — never private keys |
+| `etemaro wallet export --name <alias>` | Decrypt and print the private key (interactive TTY confirmation required) |
+| `etemaro wallet remove --name <alias> --yes` | Delete a wallet from the keystore. Requires `--yes` when stdout is not a TTY, otherwise prompts for `YES`. |
+
+### Keystore Encryption
+
+Wallet private keys are encrypted at rest with **AES-256-GCM** (key derived via **scrypt**) when
+`ETEMARO_KEYSTORE_PASSPHRASE` is set.
+
+- **Passphrase set** — new keys are written encrypted, and existing plaintext keystores are
+  migrated to encrypted on first read. The passphrase is then **required** to load those wallets
+  (daemon boot and `wallet export`); a missing or wrong passphrase fails with a clear error.
+- **Passphrase not set** — keys are stored as **plaintext** `{ "publicKey", "privateKey" }` at
+  mode `0600` and a `wallet_warn` line is logged on generate/import. Everything still works;
+  encryption is optional, not required.
+- **Lost passphrase** — encrypted wallets cannot be recovered. Back the passphrase up.
+
+`etemaro wallet list` and `etemaro wallet remove` never decrypt, so they work with or without the
+passphrase. Put the passphrase wherever the process reads its environment
+(`~/.config/etemaro/.env` or the PM2 ecosystem env).
 
 ### First-Run Onboarding
 
