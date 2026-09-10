@@ -210,10 +210,10 @@ export interface CliAdapters {
     getActiveStrategy: () => any
     recallForPool: (pool: string) => string | null
     addPoolNote: (pool: string, note: string) => void
-    checkSmartWalletsOnPool: (opts: { pool_address: string }) => Promise<any>
+    checkSmartWalletsOnPool: (opts: { listId: string; pool_address: string }) => Promise<any>
     getTokenNarrative: (opts: { mint: string }) => Promise<any>
     getTokenInfo: (opts: { query: string }) => Promise<any>
-    getTokenHolders: (opts: { mint: string; limit: number }) => Promise<any>
+    getTokenHolders: (opts: { mint: string; limit: number; smartWalletListId?: string }) => Promise<any>
     studyTopLPers: (opts: { pool_address: string; limit: number }) => Promise<any>
     listLessons: (opts: { limit: number }) => any
     addLesson: (text: string, tags: string[], opts: any) => void
@@ -967,15 +967,17 @@ export class Cli {
     const limit = parseInt(flags.limit || '5', 10)
     const raw = await this.adapters.screening.getTopCandidates({ limit })
     const pools = raw.candidates || raw.pools || []
+    const smartWalletListId = this.adapters.domain.getActiveStrategy()?.smartWalletListId
+    if (!smartWalletListId) die('Active strategy does not define smartWalletListId')
 
     const enriched = []
     for (const pool of pools) {
       const mint = pool.base?.mint
       const [activeBin, smartWallets, tokenInfo, holders, narrative] = await Promise.allSettled([
         this.adapters.meteora.getActiveBin({ pool_address: pool.pool }),
-        this.adapters.domain.checkSmartWalletsOnPool({ pool_address: pool.pool }),
+        this.adapters.domain.checkSmartWalletsOnPool({ listId: smartWalletListId, pool_address: pool.pool }),
         mint ? this.adapters.domain.getTokenInfo({ query: mint }) : Promise.resolve(null),
-        mint ? this.adapters.domain.getTokenHolders({ mint, limit: 20 }) : Promise.resolve(null),
+        mint ? this.adapters.domain.getTokenHolders({ mint, limit: 20, smartWalletListId }) : Promise.resolve(null),
         mint ? this.adapters.domain.getTokenNarrative({ mint }) : Promise.resolve(null),
       ])
       const ti = tokenInfo.status === 'fulfilled' ? tokenInfo.value?.results?.[0] : null
