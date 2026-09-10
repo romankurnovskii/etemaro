@@ -1,48 +1,53 @@
-# apps/web — Etemaro Browser Console
+# apps/web — Etemaro Browser Console (React + Vite)
 
-Buildless single-page UI served directly by the daemon's IPC server. No bundler, no
-build step, no extra port — the same process that serves `ws://127.0.0.1:8765` also
-serves this UI and the JSON tool API.
+Single-page React app for the Etemaro daemon, built with Vite and served by the
+daemon's IPC server on the same port as the WebSocket (default
+`http://127.0.0.1:8765/`). No separate web process is required.
 
-## Run
+## Develop
 
 ```bash
-etemaro serve            # http://127.0.0.1:8765/
-etemaro serve --port 9000 --open
+pnpm --filter @etemaro/web dev     # Vite dev server on http://127.0.0.1:5173
 ```
 
-Then open the printed URL. The Ink terminal UI (`etemaro attach`) and the browser are
-both clients of the same IPC protocol.
+In dev the app talks to the daemon at `http://127.0.0.1:8765` (override with
+`VITE_DAEMON_URL`). Start the daemon with `etemaro serve` or `pnpm run dev`.
+
+## Build
+
+```bash
+pnpm --filter @etemaro/web build   # emits apps/web/dist
+```
+
+`IpcServer` serves `apps/web/dist` statically, and `pnpm -r build` builds it as
+part of the workspace. The root `pre-commit` hook builds before running tests.
 
 ## Views
 
-- **Dashboard** — live state snapshot: total PnL, open positions, next screening/management timers, busy flag.
-- **Tools** — the full agent tool catalog (auto-derived from the LLM tool schema). Read tools run directly; state-changing tools require an explicit confirm checkbox.
-- **Logs** — structured log stream with a text filter.
-- **Chat** — send prompts to the agent ReAct loop.
-- **Agents** — manage multiple daemon endpoints (one process per wallet/agent). Each agent is a separate daemon; add its URL here to monitor several at once. Set the `ipcToken` here when the daemon requires one.
+- **Agents** — one-click create, start, stop, and re-target an agent's strategy. Backed by `/api/agents*`.
+- **Dashboard** — live state snapshot (PnL, positions, cycle timers).
+- **Tools** — the full agent tool catalog with JSON-Schema-driven forms; protected tools require an explicit confirm.
+- **Logs / Chat** — live log stream and a direct line to the agent.
 
 ## HTTP API (served by IpcServer)
 
 | Method | Path | Description |
 | --- | --- | --- |
-| GET | `/api/health` | Liveness + agent id + tool count (always public) |
+| GET | `/api/health` | Liveness + agent id + tool count (public) |
 | GET | `/api/state` | Latest state snapshot |
-| GET | `/api/tools` | Tool catalog (name, description, JSON Schema, write/protected flags) |
-| POST | `/api/tool` | Invoke a tool: `{ "name": "...", "args": {...}, "confirm": true }` |
+| GET | `/api/tools` | Tool catalog |
+| POST | `/api/tool` | Invoke a tool: `{ "name", "args", "confirm" }` |
+| GET | `/api/agents` | List configured agents with running state |
+| POST | `/api/agents` | Create an agent: `{ "name" }` |
+| POST | `/api/agents/:id/start` | `/stop` | Start / stop an agent child process |
+| POST | `/api/agents/:id/strategy` | Set the agent's active strategy |
 
-WebSocket messages mirror the Ink client: `subscribe:logs`, `subscribe:state`,
-`command:chat`, `command:action`, `command:tool`; the server emits `log:entry`,
-`state:snapshot`, `tool:catalog`, `tool:result`, `ack`, `error`.
+The browser WebSocket uses the shared IPC protocol (`subscribe:logs`,
+`subscribe:state`, `command:chat`, `command:tool`).
 
 ## Security
 
-- The daemon binds `127.0.0.1` by default (`connection.ipcHost` to override). Do not expose it publicly without a token and a reverse proxy.
-- When `connection.ipcToken` is set, HTTP requests need `Authorization: Bearer <token>` (or `?token=`) and WebSocket clients must send `auth` first.
-- State-changing tools (`WRITE_TOOLS` + `self_update`) require `confirm: true`. Keep dry-run enabled until you are ready for live trades.
-- Wallet keystore and `.env` secrets are intentionally **not** exposed through this API.
-
-## Why buildless
-
-Per the project rule to avoid new build systems, this app is plain HTML/CSS/ES modules.
-It can be migrated to Vite later without changing the daemon contract.
+- The daemon binds `127.0.0.1` by default (`connection.ipcHost` to override).
+- With `connection.ipcToken`, HTTP needs `Authorization: Bearer` (or `?token=`) and WebSocket clients must `auth` first.
+- State-changing tools require `confirm: true`; created agents default to **dry-run**.
+- Wallet keystore and `.env` secrets are never exposed through this API.
