@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import { fetchJson } from '../lib/api'
 import type { ManagedAgent } from '../lib/ipc'
 
@@ -9,14 +9,23 @@ function ConfigField({ name, value, onChange }: { name: string; value: unknown; 
   if (type === 'boolean') {
     input = <input id={inputId} type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />
   } else if (type === 'number') {
-    input = <input id={inputId} type="number" value={value as number} onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))} />
+    input = (
+      <input
+        id={inputId}
+        type="number"
+        value={value as number}
+        onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
+      />
+    )
   } else if (type === 'object' && value !== null) {
     input = (
       <textarea
         id={inputId}
         value={JSON.stringify(value, null, 2)}
         onChange={(e) => {
-          try { onChange(JSON.parse(e.target.value)) } catch {}
+          try {
+            onChange(JSON.parse(e.target.value))
+          } catch {}
         }}
         style={{ width: '100%', minHeight: '80px', fontFamily: 'monospace', fontSize: '12px' }}
       />
@@ -48,20 +57,26 @@ export function ConfigView({ agents, token }: ConfigViewProps) {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (selectedAgent) loadConfig(selectedAgent.configPath)
-  }, [selectedAgent, token])
+  const loadConfig = useCallback(
+    async (path: string) => {
+      try {
+        const data = await fetchJson<{ config: Record<string, unknown> }>(
+          `/api/config?path=${encodeURIComponent(path)}`,
+          token,
+        )
+        setConfig({ path, content: data?.config ?? {} })
+        setError(null)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to load config')
+        setConfig(null)
+      }
+    },
+    [token],
+  )
 
-  const loadConfig = async (path: string) => {
-    try {
-      const data = await fetchJson<{ config: Record<string, unknown> }>(`/api/config?path=${encodeURIComponent(path)}`, token)
-      setConfig({ path, content: data?.config ?? {} })
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load config')
-      setConfig(null)
-    }
-  }
+  useEffect(() => {
+    if (selectedAgent) void loadConfig(selectedAgent.configPath)
+  }, [selectedAgent, loadConfig])
 
   const handleChange = (key: string, value: unknown) => {
     if (!config) return
