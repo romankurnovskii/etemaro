@@ -568,6 +568,8 @@ export class Daemon {
       start: (id: string) => this.agentSupervisor.start(id),
       stop: (id: string) => this.agentSupervisor.stop(id),
       setStrategy: (id: string, strategyId: string) => this.agentSupervisor.setStrategy(id, strategyId),
+      readConfig: (configPath: string) => this.agentSupervisor.readConfigFile(configPath),
+      writeConfig: (configPath: string, content: unknown) => this.agentSupervisor.writeConfigFile(configPath, content),
     })
     try {
       await this.ipcServer.start()

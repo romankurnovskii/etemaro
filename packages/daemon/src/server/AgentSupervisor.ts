@@ -155,7 +155,37 @@ export class AgentSupervisor {
     return Boolean(child && child.exitCode === null && !child.killed)
   }
 
+  /**
+   * Read an instance config by absolute path. The path must resolve to a `.json`
+   * file directly inside `config/instances/` — anything else is rejected, so a
+   * client can never read arbitrary files through the API.
+   */
+  readConfigFile(configPath: string): Record<string, unknown> {
+    const id = this.idFromConfigPath(configPath)
+    return this.readConfig(id) as Record<string, unknown>
+  }
+
+  /** Overwrite an instance config by absolute path (same guard as readConfigFile). */
+  writeConfigFile(configPath: string, content: unknown): ManagedAgent {
+    const id = this.idFromConfigPath(configPath)
+    if (!content || typeof content !== 'object' || Array.isArray(content)) {
+      throw new Error('Config content must be a JSON object')
+    }
+    fs.writeFileSync(this.configPathFor(id), `${JSON.stringify(content, null, 2)}\n`)
+    return this.toManaged(id)
+  }
+
   // ─── Internals ────────────────────────────────────────────────────────────
+
+  /** Resolve a client-supplied path to a safe instance id, or throw. */
+  private idFromConfigPath(configPath: string): string {
+    const instancesDir = path.resolve(this.instancesDir())
+    const resolved = path.resolve(String(configPath ?? ''))
+    if (path.dirname(resolved) !== instancesDir || !resolved.endsWith('.json')) {
+      throw new Error('Config path must be a .json file under config/instances')
+    }
+    return this.safeId(path.basename(resolved, '.json'))
+  }
 
   private instancesDir(): string {
     return path.join(this.repoRoot, 'config', 'instances')

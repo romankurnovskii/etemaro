@@ -449,6 +449,8 @@ describe('IpcServer agent control API', () => {
     start: (id: string) => ({ id, running: true }),
     stop: (id: string) => ({ id, running: false }),
     setStrategy: (id: string, strategyId: string) => ({ id, strategyId }),
+    readConfig: (configPath: string) => ({ path: configPath, agentId: 'alpha' }),
+    writeConfig: (configPath: string, content: unknown) => ({ path: configPath, content }),
   }
 
   beforeEach(async () => {
@@ -503,6 +505,46 @@ describe('IpcServer agent control API', () => {
     })
     const body: any = await res.json()
     expect(body.agent.strategyId).toBe('fee_compounding')
+  })
+
+  it('reads an agent config (GET /api/config)', async () => {
+    controlServer.setAgentControl(control)
+    const res = await fetch(`${base}/api/config?path=${encodeURIComponent('/repo/config/instances/alpha.json')}`)
+    const body: any = await res.json()
+    expect(res.status).toBe(200)
+    expect(body.config.agentId).toBe('alpha')
+  })
+
+  it('rejects a config request without a path', async () => {
+    controlServer.setAgentControl(control)
+    const res = await fetch(`${base}/api/config`)
+    expect(res.status).toBe(400)
+  })
+
+  it('writes an agent config (PUT /api/config)', async () => {
+    controlServer.setAgentControl(control)
+    const res = await fetch(`${base}/api/config?path=${encodeURIComponent('/repo/config/instances/alpha.json')}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config: { agentId: 'alpha', risk: { maxPositions: 2 } } }),
+    })
+    const body: any = await res.json()
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.agent.content.risk.maxPositions).toBe(2)
+  })
+
+  it('returns 400 when the control plane rejects the path', async () => {
+    controlServer.setAgentControl({
+      ...control,
+      readConfig: () => {
+        throw new Error('Config path must be a .json file under config/instances')
+      },
+    })
+    const res = await fetch(`${base}/api/config?path=${encodeURIComponent('/etc/passwd')}`)
+    const body: any = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.error.code).toBe('CONFIG_ERROR')
   })
 })
 
