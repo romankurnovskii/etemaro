@@ -191,6 +191,8 @@ The keystore keeps the **private key out of `process.env`** — crucial because 
 | `etemaro wallet export --name <alias>` | Decrypt and print the private key. Requires an interactive TTY and typing `YES` to confirm. |
 | `etemaro wallet remove --name <alias> --yes` | Delete a wallet from the keystore. Without `--yes` it prompts for `YES` on a TTY and refuses when stdout is not a TTY. |
 
+> Running from a source clone (no global `etemaro`)? Prefix each command with `npm run cli --`, e.g. `npm run cli -- wallet import --name <alias> --prompt`. The `--` is required — without it npm consumes `--name`/`--prompt` and fails with `Unknown cli flag`.
+
 Then set `"wallet": "<alias>"` under `connection` in the agent config.
 
 ### Q: What happens if I don't set `ETEMARO_KEYSTORE_PASSPHRASE`?

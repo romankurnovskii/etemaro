@@ -38,6 +38,8 @@ This creates `~/.config/etemaro` and runs the **interactive onboarding wizard**:
 
 On a terminal it will prompt. On a server without a TTY, run `etemaro wallet generate --name main-scalp` first, then add `"wallet": "main-scalp"` to your config. Manage wallets with `etemaro wallet list` and `etemaro wallet remove --name <alias> --yes`; retrieve a key with `etemaro wallet export --name <alias>` (interactive TTY only).
 
+From a source clone (no global `etemaro`), prefix with `npm run cli --`, keeping the `--`: `npm run cli -- wallet generate --name main-scalp`, `npm run cli -- wallet import --name main-scalp --prompt`.
+
 Jupiter, Telegram, and strategy JSON are **not** part of first setup. Add `JUPITER_API_KEY` only when you go live.
 
 Desktop users: paste keys in **Settings → Environment Variables** instead of the CLI.
