@@ -26,7 +26,7 @@ import {
   strategyLibraryPath,
 } from './constants.js'
 
-const ENV_KEYS = ['USER_CONFIG_PATH', 'ETEMARO_DATA_DIR', 'DATA_DIR', 'ETEMARO_INSTANCE_ID', 'INSTANCE_ID'] as const
+const ENV_KEYS = ['USER_CONFIG_PATH', 'ETEMARO_DATA_DIR', 'DATA_DIR', 'ETEMARO_INSTANCE_ID'] as const
 
 function snapshotEnv(): Record<string, string | undefined> {
   const snap: Record<string, string | undefined> = {}
@@ -181,7 +181,6 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
   it('getInstanceId detects instance name from env and config path', () => {
     envSnap = snapshotEnv()
     delete process.env.ETEMARO_INSTANCE_ID
-    delete process.env.INSTANCE_ID
     delete process.env.USER_CONFIG_PATH
 
     // Default instance config is agent-default (Chapter 7)

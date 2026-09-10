@@ -88,14 +88,14 @@ export function getDataDir(): string {
 /**
  * Detect the active instance identifier if running in multi-instance mode.
  * Resolution order:
- * 1. ETEMARO_INSTANCE_ID or INSTANCE_ID
+ * 1. ETEMARO_INSTANCE_ID
  * 2. If USER_CONFIG_PATH env var points to config/instances/<name>.json, extract <name>
  * 3. If USER_CONFIG_PATH env var points to custom config file (e.g. agt_xxx.json), extract clean slug
  * 4. If USER_CONFIG_PATH env var points to config/user-config.json (flat), return '' for backward compatibility
  * 5. Default to DEFAULT_AGENT_ID ('agent-default') for zero-fallback instance isolation (Chapter 7)
  */
 export function getInstanceId(): string {
-  const envInstance = process.env.ETEMARO_INSTANCE_ID || process.env.INSTANCE_ID
+  const envInstance = process.env.ETEMARO_INSTANCE_ID
   if (envInstance?.trim()) {
     return envInstance.trim()
   }
@@ -145,7 +145,6 @@ export function dataPath(...segments: string[]): string {
   const activeConfig = (envConfigPath || USER_CONFIG_PATH).replace(/\\/g, '/')
   const isExplicitInstance = Boolean(
     process.env.ETEMARO_INSTANCE_ID ||
-      process.env.INSTANCE_ID ||
       (envConfigPath && (activeConfig.includes('/instances/') || activeConfig.startsWith('instances/'))),
   )
   // Custom config files (agt_xxx.json) not in instances/ use legacy suffix

@@ -15,6 +15,7 @@ import { configPath, getDataDir, strategyLibraryPath } from '../shared/constants
 import { log } from '../shared/logger.js'
 import type { Strategy, StrategyLibraryData } from '../shared/types.js'
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
+import { listSmartWallets } from './smart-wallets.js'
 
 // ─── Strategy Library Manager ─────────────────────────────────
 const STRATEGY_FILE = strategyLibraryPath('strategy-library.json')
@@ -115,10 +116,19 @@ export class StrategyLibraryManager {
       throw new Error(`Startup failed: 'activeStrategyId' is missing or empty in config.`)
     }
     const merged = this.loadMerged()
-    if (!merged.data.strategies[activeId]) {
+    const activeStrategy = merged.data.strategies[activeId]
+    if (!activeStrategy) {
       throw new Error(
         `Startup failed: Strategy '${activeId}' specified in config is not found in the strategy library.`,
       )
+    }
+    const smartWalletsRequired =
+      config.screening.entrySource === 'smart_wallets' || (config.opportunity?.smartWalletScoreBonus ?? 0) > 0
+    if (smartWalletsRequired && !activeStrategy.smartWalletListId) {
+      throw new Error(`Startup failed: Strategy '${activeId}' must define smartWalletListId for smart-wallet scoring.`)
+    }
+    if (activeStrategy.smartWalletListId) {
+      listSmartWallets({ listId: activeStrategy.smartWalletListId })
     }
   }
 }
