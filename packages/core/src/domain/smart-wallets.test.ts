@@ -38,29 +38,34 @@ describe('smart-wallets domain module', () => {
 
     // Seed test wallet data in the shared path
     const seedData = {
-      wallets: [
-        {
-          name: 'alpha-test-1',
-          address: '7xKp9QZ6mN2vR5wX8yA1bC3dE4fG6hJ9kL2mV4nW7z',
-          category: 'alpha',
-          type: 'lp',
-          addedAt: '2026-08-30T12:00:00.000Z',
+      lists: {
+        alpha: {
+          wallets: [
+            {
+              name: 'alpha-test-1',
+              address: '7xKp9QZ6mN2vR5wX8yA1bC3dE4fG6hJ9kL2mV4nW7z',
+              category: 'alpha',
+              type: 'lp',
+              addedAt: '2026-08-30T12:00:00.000Z',
+            },
+          ],
         },
-      ],
+      },
     }
     fs.writeFileSync(testWalletPath, JSON.stringify(seedData, null, 2), 'utf8')
 
-    const result = listSmartWallets()
+    const result = listSmartWallets({ listId: 'alpha' })
     expect(result.total).toBe(1)
     expect(result.wallets[0]?.name).toBe('alpha-test-1')
   })
 
   it('adds and removes a smart wallet correctly in the shared file', () => {
     process.env.USER_CONFIG_PATH = '/path/to/config/agt_custom_strategy.json'
-    fs.writeFileSync(testWalletPath, JSON.stringify({ wallets: [] }, null, 2), 'utf8')
+    fs.writeFileSync(testWalletPath, JSON.stringify({ lists: { alpha: { wallets: [] } } }, null, 2), 'utf8')
 
     const testAddress = '9mN3pR8sW2vK5xY7bA4cD6eF9gH1jL4kM8nP3qS6t'
     const addRes = addSmartWallet({
+      listId: 'alpha',
       name: 'whale-test',
       address: testAddress,
       category: 'whale',
@@ -68,15 +73,21 @@ describe('smart-wallets domain module', () => {
     })
     expect(addRes.success).toBe(true)
 
-    const listRes = listSmartWallets()
+    const listRes = listSmartWallets({ listId: 'alpha' })
     expect(listRes.total).toBe(1)
     expect(listRes.wallets[0]?.name).toBe('whale-test')
 
-    const remRes = removeSmartWallet({ address: testAddress })
+    const remRes = removeSmartWallet({ listId: 'alpha', address: testAddress })
     expect(remRes.success).toBe(true)
 
-    const listAfter = listSmartWallets()
+    const listAfter = listSmartWallets({ listId: 'alpha' })
     expect(listAfter.total).toBe(0)
+  })
+
+  it('rejects an unknown smart-wallet list instead of using another list', () => {
+    fs.writeFileSync(testWalletPath, JSON.stringify({ lists: { alpha: { wallets: [] } } }, null, 2), 'utf8')
+
+    expect(() => listSmartWallets({ listId: 'copy-trade' })).toThrow(/Smart wallet list "copy-trade" not found/)
   })
 
   describe('smart wallet position cache pruning and bounding', () => {
@@ -93,10 +104,14 @@ describe('smart-wallets domain module', () => {
       fs.writeFileSync(
         testWalletPath,
         JSON.stringify({
-          wallets: [
-            { name: 'w1', address: wallet1, type: 'lp' },
-            { name: 'w2', address: wallet2, type: 'lp' },
-          ],
+          lists: {
+            alpha: {
+              wallets: [
+                { name: 'w1', address: wallet1, type: 'lp' },
+                { name: 'w2', address: wallet2, type: 'lp' },
+              ],
+            },
+          },
         }),
         'utf8',
       )
@@ -105,10 +120,10 @@ describe('smart-wallets domain module', () => {
         positions: [{ pool: 'pool_xyz' }],
       })
 
-      await checkSmartWalletsOnPool({ pool_address: 'pool_xyz' }, mockGetPositions)
+      await checkSmartWalletsOnPool({ listId: 'alpha', pool_address: 'pool_xyz' }, mockGetPositions)
       expect(getSmartWalletCacheSize()).toBe(2)
 
-      removeSmartWallet({ address: wallet1 })
+      removeSmartWallet({ listId: 'alpha', address: wallet1 })
       expect(getSmartWalletCacheSize()).toBe(1)
     })
 
@@ -119,10 +134,14 @@ describe('smart-wallets domain module', () => {
       fs.writeFileSync(
         testWalletPath,
         JSON.stringify({
-          wallets: [
-            { name: 'w1', address: wallet1, type: 'lp' },
-            { name: 'w2', address: wallet2, type: 'lp' },
-          ],
+          lists: {
+            alpha: {
+              wallets: [
+                { name: 'w1', address: wallet1, type: 'lp' },
+                { name: 'w2', address: wallet2, type: 'lp' },
+              ],
+            },
+          },
         }),
         'utf8',
       )
@@ -131,7 +150,7 @@ describe('smart-wallets domain module', () => {
         positions: [{ pool: 'pool_xyz' }],
       })
 
-      await checkSmartWalletsOnPool({ pool_address: 'pool_xyz' }, mockGetPositions)
+      await checkSmartWalletsOnPool({ listId: 'alpha', pool_address: 'pool_xyz' }, mockGetPositions)
       expect(getSmartWalletCacheSize()).toBe(2)
 
       // Prune keeping only wallet2

@@ -41,7 +41,7 @@ import {
 import { addPoolNote, getPoolMemory } from '../domain/pool-memory.js'
 import {
   addSmartWallet,
-  checkSmartWalletsOnPool,
+  checkSmartWalletsOnPool as check_smart_wallets_on_pool,
   listSmartWallets,
   removeSmartWallet,
 } from '../domain/smart-wallets.js'
@@ -54,6 +54,7 @@ import {
 } from '../domain/state.js'
 import {
   addStrategy,
+  getActiveStrategy,
   getStrategy,
   listStrategies,
   removeStrategy,
@@ -80,7 +81,7 @@ import {
 // ─── Adapter imports ───────────────────────────────────────────
 import { discoverPools, getPoolDetail, getTopCandidates } from './blockchain/ScreeningAdapter.js'
 import { studyTopLPers } from './blockchain/StudyAdapter.js'
-import { getTokenHolders, getTokenInfo, getTokenNarrative } from './blockchain/TokenDataAdapter.js'
+import { getTokenHolders as get_token_holders, getTokenInfo, getTokenNarrative } from './blockchain/TokenDataAdapter.js'
 import { getWalletBalances, swapToken } from './blockchain/WalletAdapter.js'
 import {
   notifyClose,
@@ -482,6 +483,12 @@ export async function getPortfolioSummary(options?: { force?: boolean }): Promis
 
 type ToolFn = (args: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>
 
+function getActiveSmartWalletListId(): string {
+  const listId = getActiveStrategy()?.smartWalletListId
+  if (!listId) throw new Error('Active strategy does not define smartWalletListId')
+  return listId
+}
+
 const toolMap: Record<string, ToolFn> = {
   discover_pools: discoverPools as unknown as ToolFn,
   get_top_candidates: getTopCandidates as unknown as ToolFn,
@@ -494,12 +501,14 @@ const toolMap: Record<string, ToolFn> = {
   get_wallet_positions: getWalletPositions as unknown as ToolFn,
   search_pools: searchPools as unknown as ToolFn,
   get_token_info: getTokenInfo as unknown as ToolFn,
-  get_token_holders: getTokenHolders as unknown as ToolFn,
+  get_token_holders: ((args: Record<string, unknown>) =>
+    get_token_holders({ ...args, smartWalletListId: getActiveSmartWalletListId() } as any)) as unknown as ToolFn,
   get_token_narrative: getTokenNarrative as unknown as ToolFn,
-  add_smart_wallet: addSmartWallet as unknown as ToolFn,
-  remove_smart_wallet: removeSmartWallet as unknown as ToolFn,
-  list_smart_wallets: listSmartWallets as unknown as ToolFn,
-  check_smart_wallets_on_pool: checkSmartWalletsOnPool as unknown as ToolFn,
+  add_smart_wallet: (args) => addSmartWallet({ ...args, listId: getActiveSmartWalletListId() } as any),
+  remove_smart_wallet: (args) => removeSmartWallet({ ...args, listId: getActiveSmartWalletListId() } as any),
+  list_smart_wallets: () => listSmartWallets({ listId: getActiveSmartWalletListId() }),
+  check_smart_wallets_on_pool: (args) =>
+    check_smart_wallets_on_pool({ ...args, listId: getActiveSmartWalletListId() } as any),
   claim_fees: claimFees as unknown as ToolFn,
   close_position: closePosition as unknown as ToolFn,
   close_all_positions: ((args: Record<string, unknown> = {}) => {
@@ -1782,7 +1791,10 @@ async function _runSafetyChecks(
 
       // Check smart wallets and inject trigger_source for logging
       try {
-        const smartRes = await checkSmartWalletsOnPool({ pool_address: args.pool_address as string })
+        const smartRes = await check_smart_wallets_on_pool({
+          listId: getActiveSmartWalletListId(),
+          pool_address: args.pool_address as string,
+        })
         if (smartRes?.in_pool && smartRes.in_pool.length > 0) {
           const names = smartRes.in_pool.map((w: any) => w.name || w.address.slice(0, 4)).join(', ')
           args.trigger_source = names

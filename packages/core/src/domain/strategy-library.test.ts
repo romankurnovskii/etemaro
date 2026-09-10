@@ -105,11 +105,17 @@ describe('strategy-library loads both shared and private libraries', () => {
   it('validateActiveStrategy succeeds for a strategy that only exists in the private library', () => {
     mockLibraries()
     const originalActive = config.strategy.activeStrategyId
+    const originalEntrySource = config.screening.entrySource
+    const originalBonus = config.opportunity.smartWalletScoreBonus
     try {
       config.strategy.activeStrategyId = 'copy_trade_lag'
+      config.screening.entrySource = 'market'
+      config.opportunity.smartWalletScoreBonus = 0
       expect(() => lib.validateActiveStrategy()).not.toThrow()
     } finally {
       config.strategy.activeStrategyId = originalActive
+      config.screening.entrySource = originalEntrySource
+      config.opportunity.smartWalletScoreBonus = originalBonus
     }
   })
 
