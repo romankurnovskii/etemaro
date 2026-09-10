@@ -13,7 +13,7 @@
 
 import fs from 'node:fs'
 import { config } from '../../config/Config.js'
-import { USER_CONFIG_PATH } from '../../shared/constants.js'
+import { USER_CONFIG_PATH, dataPath } from '../../shared/constants.js'
 import { log } from '../../shared/logger.js'
 import { loadJsonFile, saveJsonFile } from '../../shared/utils.js'
 import { sleep } from '../../utils/time.js'
@@ -47,6 +47,7 @@ function getAllowedUserIds(): Set<string> {
 
 let chatId: string | null = null
 let _offset = 0
+let _seenUpdates = new Set<number>()
 let _polling = false
 let _liveMessageDepth = 0
 let _warnedMissingChatId = false
@@ -515,6 +516,11 @@ async function poll(onMessage: (msg: IncomingTelegramMessage) => Promise<void>):
       const data = (await res.json()) as any
       for (const update of data.result || []) {
         _offset = update.update_id + 1
+        if (_seenUpdates.has(update.update_id)) {
+          log('telegram_warn', `Skipping already-processed Telegram update ${update.update_id} (duplicate delivery).`)
+          continue
+        }
+        _seenUpdates.add(update.update_id)
         const callback = update.callback_query
         if (callback?.data && callback?.message) {
           const callbackMsg: IncomingTelegramMessage = {
@@ -537,6 +543,7 @@ async function poll(onMessage: (msg: IncomingTelegramMessage) => Promise<void>):
         if (!isAuthorizedIncomingMessage(msg)) continue
         await onMessage(msg)
       }
+      if (data.result?.length) saveOffsetState()
     } catch (e: any) {
       if (!e.message?.includes('aborted')) {
         log('telegram_error', `Poll error: ${e.message}`)
@@ -588,6 +595,49 @@ async function registerCommands(): Promise<void> {
   }
 }
 
+interface TelegramOffsetState {
+  offset: number
+  seen: number[]
+}
+
+const MAX_SEEN_UPDATES = 500
+
+/** Read the persisted getUpdates offset + recently handled update ids. */
+export function readTelegramOffset(file: string): TelegramOffsetState {
+  try {
+    const state = loadJsonFile<Partial<TelegramOffsetState>>(file, {})
+    return {
+      offset: Number(state.offset) || 0,
+      seen: Array.isArray(state.seen) ? state.seen.filter((n): n is number => typeof n === 'number') : [],
+    }
+  } catch {
+    return { offset: 0, seen: [] }
+  }
+}
+
+/** Persist the offset state so a restart does not replay already-handled updates. */
+export function writeTelegramOffset(file: string, state: TelegramOffsetState): void {
+  try {
+    saveJsonFile(file, { offset: state.offset, seen: state.seen.slice(-MAX_SEEN_UPDATES) })
+  } catch {
+    /* best-effort */
+  }
+}
+
+function offsetFilePath(): string {
+  return dataPath('telegram_offset.json')
+}
+
+function loadOffsetState(): void {
+  const state = readTelegramOffset(offsetFilePath())
+  _offset = state.offset
+  _seenUpdates = new Set(state.seen)
+}
+
+function saveOffsetState(): void {
+  writeTelegramOffset(offsetFilePath(), { offset: _offset, seen: [..._seenUpdates] })
+}
+
 export function startPolling(onMessage: (msg: IncomingTelegramMessage) => Promise<void>): void {
   if (!getEffectiveToken()) return
   loadChatId()
@@ -598,9 +648,10 @@ export function startPolling(onMessage: (msg: IncomingTelegramMessage) => Promis
     )
   }
   _polling = true
+  loadOffsetState()
   poll(onMessage) // fire-and-forget
   registerCommands()
-  log('telegram', 'Bot polling started')
+  log('telegram', `Bot polling started (offset ${_offset}, ${_seenUpdates.size} recent ids)`)
 }
 
 export function stopPolling(): void {
