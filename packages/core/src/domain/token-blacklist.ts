@@ -9,12 +9,12 @@
  * @sideEffects Reads and writes `data/token-blacklist.json`
  */
 
-import { sharedDataPath } from '../shared/constants.js'
+import { sharedConfigPath } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
 import type { BlacklistedToken } from '../shared/types.js'
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
 
-const BLACKLIST_FILE = sharedDataPath('token-blacklist.json')
+const BLACKLIST_FILE = sharedConfigPath('token-blacklist.json')
 
 type BlacklistDb = Record<string, BlacklistedToken>
 

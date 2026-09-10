@@ -83,13 +83,13 @@ describe('writeRuntimeSkeleton', () => {
     const dir = tmpDir()
     const result = writeRuntimeSkeleton(dir, {
       defaultUserConfigStr: '{"_version":4}',
-      defaultStrategies: [{ id: 'spot' }],
+      sharedStrategyJson: '{"strategies":{"spot":{"id":"spot"}}}',
     })
     expect(result.env.created).toBe(true)
     expect(result.config.created).toBe(true)
     expect(fs.existsSync(path.join(dir, '.env'))).toBe(true)
     expect(fs.existsSync(path.join(dir, 'config', 'user-config.json'))).toBe(true)
-    expect(fs.existsSync(path.join(dir, 'data', 'strategy-library.shared.json'))).toBe(true)
+    expect(fs.existsSync(path.join(dir, 'config', 'shared', 'strategy-library.shared.json'))).toBe(true)
   })
 
   it('does not overwrite an existing .env', () => {
@@ -98,7 +98,7 @@ describe('writeRuntimeSkeleton', () => {
     fs.writeFileSync(path.join(dir, '.env'), 'LLM_API_KEY="keep-me"\n')
     const result = writeRuntimeSkeleton(dir, {
       defaultUserConfigStr: '{}',
-      defaultStrategies: [],
+      sharedStrategyJson: '{"strategies":{}}',
     })
     expect(result.env.created).toBe(false)
     expect(fs.readFileSync(path.join(dir, '.env'), 'utf8')).toContain('keep-me')

@@ -177,36 +177,13 @@ export function dataPath(...segments: string[]): string {
   return path.join(baseDir, ...segments)
 }
 
-/**
- * Resolve a path for global shared configuration / knowledge files (Chapter 7: config/shared/...).
- * Primary location is config/shared/, falling back to data/shared/ and data/ for backward compatibility.
- */
+/** Resolve a path for global shared configuration / knowledge files. */
 export function sharedConfigPath(...segments: string[]): string {
-  const inConfigShared = path.join(REPO_ROOT, 'config', 'shared', ...segments)
-  // Chapter 7: primary location is config/shared/ (return even if doesn't exist for zero-fallback)
-  return inConfigShared
+  return path.join(REPO_ROOT, 'config', 'shared', ...segments)
 }
 
-/**
- * Resolve a path relative to the data directory for shared / user-maintained knowledge files.
- *
- * Unlike `dataPath`, shared knowledge files (e.g. `smart-wallets.json`, `strategy-library.json`,
- * `strategy-library.shared.json`, `token-blacklist.json`, `dev-blocklist.json`) must NOT get an
- * agent-name suffix when running under a custom `USER_CONFIG_PATH`.
- *
- * Checks data/shared/ first if it exists, then data/.
- */
-export function sharedDataPath(...segments: string[]): string {
-  const inDataShared = path.join(getDataDir(), 'shared', ...segments)
-  if (fs.existsSync(inDataShared)) return inDataShared
-  return path.join(getDataDir(), ...segments)
-}
-
-/**
- * Backward compatibility alias for strategy libraries.
- * @see sharedDataPath
- */
-export const strategyLibraryPath = sharedDataPath
+/** Resolve the canonical shared strategy/configuration path. */
+export const strategyLibraryPath = sharedConfigPath
 
 /**
  * Resolve a path relative to the credentials/keystore directory (.credentials/wallets/<alias>.json).

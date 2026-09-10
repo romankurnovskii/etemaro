@@ -81,7 +81,7 @@ export function formatInitMessage(opts: { directory: string; firstRun: boolean; 
 
 export function writeRuntimeSkeleton(
   directory: string,
-  opts: { defaultUserConfigStr: string; defaultStrategies: unknown },
+  opts: { defaultUserConfigStr: string; sharedStrategyJson: string },
 ): SkeletonResult {
   const configDir = path.join(directory, 'config')
   const dataDir = path.join(directory, 'data')
@@ -106,10 +106,15 @@ export function writeRuntimeSkeleton(
     configCreated = true
   }
 
-  const sharedStrategyFile = path.join(dataDir, 'strategy-library.shared.json')
+  const sharedConfigDir = path.join(configDir, 'shared')
+  fs.mkdirSync(sharedConfigDir, { recursive: true })
+  const sharedStrategyFile = path.join(sharedConfigDir, 'strategy-library.shared.json')
   let strategyCreated = false
   if (!fs.existsSync(sharedStrategyFile)) {
-    fs.writeFileSync(sharedStrategyFile, `${JSON.stringify({ strategies: opts.defaultStrategies }, null, 2)}\n`)
+    fs.writeFileSync(
+      sharedStrategyFile,
+      opts.sharedStrategyJson.endsWith('\n') ? opts.sharedStrategyJson : `${opts.sharedStrategyJson}\n`,
+    )
     strategyCreated = true
   }
 

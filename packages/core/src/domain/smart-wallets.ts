@@ -6,15 +6,15 @@
  * - Manages list of tracked smart wallets with category and label tags
  * - Checks candidate pools for active smart wallet LP position overlaps
  *
- * @sideEffects Reads and writes `data/smart-wallets.json`
+ * @sideEffects Reads and writes `config/shared/smart-wallets.json`
  */
 
-import { CACHE_TTL_MS, SOLANA_PUBKEY_RE, sharedDataPath } from '../shared/constants.js'
+import { CACHE_TTL_MS, SOLANA_PUBKEY_RE, sharedConfigPath } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
 import type { SmartWallet, SmartWalletHit } from '../shared/types.js'
 import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
 
-const WALLETS_PATH = sharedDataPath('smart-wallets.json')
+const WALLETS_PATH = sharedConfigPath('smart-wallets.json')
 
 interface SmartWalletsData {
   wallets: SmartWallet[]
