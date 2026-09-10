@@ -23,14 +23,27 @@ Etemaro uses a strict schema-validated configuration system (Version 3): every r
 ```bash
 # Generate a new wallet (saved to ~/.config/etemaro/.credentials/wallets/<alias>.json)
 etemaro wallet generate --name main-scalp
+# The private key is not printed; retrieve it with `wallet export` if you need a backup.
+# Pass --show-private-key to print it once.
 
 # Or import an existing key
 etemaro wallet import --name main-scalp --prompt
 # or: etemaro wallet import --name main-scalp --file /path/to/keypair.json
+# or: etemaro wallet import --name main-scalp --private-key <base58>   (warns: leaks into shell history)
+
+# List / remove
+etemaro wallet list
+etemaro wallet remove --name main-scalp --yes
 
 # Then reference the alias in your config:
 # "connection": { "wallet": "main-scalp" }
 ```
+
+**Keystore encryption (optional):** set `ETEMARO_KEYSTORE_PASSPHRASE` to encrypt private keys
+at rest with AES-256-GCM. Recommended for production. If it is **not** set, keys are stored as
+plaintext at mode `0600` and a warning is logged on generate/import — everything still works.
+Once a passphrase has been used, the same passphrase is required to load those wallets
+(daemon and `wallet export`); losing it means those wallets cannot be recovered.
 
 ---
 
@@ -68,6 +81,7 @@ Conventional environment variables the daemon reads:
 - `LLM_MODEL`: Default LLM model name.
 - `USER_CONFIG_PATH`: Absolute or repo-relative path to the active JSON config.
 - `ETEMARO_DATA_DIR` (preferred) or `DATA_DIR`: Absolute path for runtime data (state, logs, lessons, pool memory). Default is `<repo>/data`.
+- `ETEMARO_KEYSTORE_PASSPHRASE`: Passphrase that encrypts wallet keystores at rest (AES-256-GCM + scrypt). Optional. When unset, keys are stored as plaintext `0600` and a warning is logged; when set, it is required to load encrypted wallets. See §2 note above and `docs/ARCHITECTURE.md → Keystore Encryption`.
 
 ### API key requirements
 
