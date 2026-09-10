@@ -71,6 +71,22 @@ Inside the interactive terminal dashboard:
 
 ---
 
+### Browser UI (`etemaro serve`)
+
+Prefer a browser over the terminal? Start the agent headlessly and open the built-in console:
+
+```bash
+etemaro serve --open      # http://127.0.0.1:8765/
+```
+
+- **Dashboard** — live positions, PnL, and cycle timers.
+- **Tools** — run any of the agent's tools (same catalog the LLM uses); state-changing tools require an explicit confirm.
+- **Logs / Chat / Agents** — stream logs, chat with the agent, and monitor multiple agent endpoints.
+
+The UI is served by the daemon itself on the IPC port (no extra process); `etemaro attach` and the browser share the same protocol. See [apps/web/README.md](apps/web/README.md).
+
+---
+
 ### Desktop App (GUI)
 
 - **macOS (via Homebrew)**:
