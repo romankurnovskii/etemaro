@@ -360,7 +360,7 @@ Returns DLMM positions for any wallet address.
 Output: { wallet, positions: [...], total_positions }
 \`\`\`
 
-> Repo clone (no global `etemaro`)? Prefix commands with `npm run cli --` (keep the `--`), e.g. `npm run cli -- wallet import --name <alias> --prompt`.
+> Repo clone (no global etemaro)? Prefix commands with "npm run cli --" (keep the --), e.g. npm run cli -- wallet import --name <alias> --prompt.
 
 ### etemaro wallet generate [--name <alias>] [--show-private-key]
 Generates a new Solana keypair and stores it in the local keystore (~/.config/etemaro/.credentials/wallets/<alias>.json, mode 0600). Encrypted with AES-256-GCM when ETEMARO_KEYSTORE_PASSPHRASE is set; plaintext otherwise. The private key is only printed when --show-private-key is passed.
