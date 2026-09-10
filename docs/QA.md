@@ -23,7 +23,7 @@
 2. **Configure Environment & Strategy**:
    - The app automatically verifies your configuration on launch (`validate_agent_config`). If `connection.wallet` is set to an alias but no keystore entry exists, the GUI displays a warning notice.
    - **Environment Manager (Settings Tab)**: Go to **Settings** $\rightarrow$ **Environment Variables (.env)**. You can view, add, edit, or remove process environment variables (`LLM_API_KEY`, etc.) directly in the app. If `.env` does not exist yet, the app automatically copies default entries from `.env.example`.
-   - **Wallet Management**: Use `etemaro wallet generate --name <alias>` or `etemaro wallet import` to set up a keystore wallet, then set `"wallet": "<alias>"` in the agent config.
+   - **Wallet Management**: Use `etemaro wallet generate --name <alias>` or `etemaro wallet import` (prefer `--prompt`/`--file`) to set up a keystore wallet, then set `"wallet": "<alias>"` in the agent config. Inspect with `etemaro wallet list`; delete with `etemaro wallet remove --name <alias> --yes`. Set `ETEMARO_KEYSTORE_PASSPHRASE` to encrypt keys at rest (optional — plaintext `0600` with a warning when unset).
 3. **Start Agent**: Click **"Start Agent"**. The daemon runs in the background and streams live logs, open positions, PnL metrics, and notifications directly to the desktop dashboard.
 
 ---
@@ -171,8 +171,9 @@
 
 - Use `etemaro wallet import --name <alias> --prompt` (or `--file`) to store the key in `~/.config/etemaro/.credentials/wallets/<alias>.json`, then set `"wallet": "<alias>"` in your instance config.
 - Legacy `walletPrivateKey` in configs has been removed in favor of named keystores.
+- Set `ETEMARO_KEYSTORE_PASSPHRASE` to encrypt the keystore at rest (AES-256-GCM). Optional: without it, keys are stored as plaintext `0600`; with it, the same passphrase is required to load the wallet at daemon boot and for `wallet export`. Back it up — losing it makes encrypted wallets unrecoverable.
 
-The keystore keeps private keys **out of `process.env` entirely** — crucial because `console.log(process.env)` or PM2 process tables (`pm2 describe`, `/proc/<pid>/environ`) could otherwise leak the key.
+The keystore keeps the **private key out of `process.env`** — crucial because `console.log(process.env)` or PM2 process tables (`pm2 describe`, `/proc/<pid>/environ`) could otherwise leak the key. When you opt into encryption, only the passphrase lives in the environment, never the key itself.
 
 ---
 
