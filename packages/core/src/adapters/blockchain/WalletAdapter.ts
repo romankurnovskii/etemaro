@@ -671,7 +671,9 @@ export interface SwapSuccessResult {
   tx: string
   input_mint: string
   output_mint: string
+  /** Amount of input token consumed, in human-readable units (SOL, not lamports). */
   amount_in: number
+  /** Amount of output token received, in human-readable units (SOL, not lamports). */
   amount_out: number
   referral_account: string | null
   referral_fee_bps_requested: number
@@ -862,6 +864,8 @@ export async function swapToken({ input_mint, output_mint, amount, slippageBps }
       status?: string
       code?: string
       signature?: string
+      // Jupiter V2 /execute returns raw on-chain integers (lamports for SOL / base-units for SPL).
+      // Divide by 1e9 below before exposing to callers as human-readable SOL.
       inputAmountResult?: number
       outputAmountResult?: number
     }
@@ -901,8 +905,9 @@ export async function swapToken({ input_mint, output_mint, amount, slippageBps }
       tx: result.signature!,
       input_mint,
       output_mint,
-      amount_in: result.inputAmountResult!,
-      amount_out: result.outputAmountResult!,
+      // Convert from Jupiter lamport integers to human-readable SOL units.
+      amount_in: (result.inputAmountResult ?? 0) / 1e9,
+      amount_out: (result.outputAmountResult ?? 0) / 1e9,
       referral_account: referralParams?.referralAccount || null,
       referral_fee_bps_requested: referralParams?.referralFee || 0,
       fee_bps_applied: order.feeBps ?? null,
