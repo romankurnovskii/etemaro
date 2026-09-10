@@ -131,4 +131,44 @@ describe('AgentSupervisor', () => {
   it('throws for a missing agent', () => {
     expect(() => sup.start('nope')).toThrow(/not found/)
   })
+
+  it('records spawned pids in data/agents.runtime.json', () => {
+    sup.create('Runner')
+    sup.start('runner')
+    const reg = JSON.parse(fs.readFileSync(path.join(repo, 'data', 'agents.runtime.json'), 'utf8'))
+    expect(reg).toHaveLength(1)
+    expect(reg[0].id).toBe('runner')
+  })
+
+  it('stopAll terminates every tracked child', () => {
+    sup.create('Alpha')
+    sup.create('Beta')
+    sup.start('alpha')
+    sup.start('beta')
+    expect(sup.stopAll()).toBe(2)
+    expect(spawnFn.mock.results[0]?.value.kill).toHaveBeenCalledWith('SIGTERM')
+    expect(spawnFn.mock.results[1]?.value.kill).toHaveBeenCalledWith('SIGTERM')
+    expect(fs.existsSync(path.join(repo, 'data', 'agents.runtime.json'))).toBe(false)
+  })
+
+  it('reapOrphans kills registered agent pids and clears the registry', () => {
+    const reg = path.join(repo, 'data', 'agents.runtime.json')
+    fs.mkdirSync(path.dirname(reg), { recursive: true })
+    fs.writeFileSync(reg, JSON.stringify([{ id: 'x', pid: 4242 }]))
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+    try {
+      expect(sup.reapOrphans(() => true)).toBe(1)
+      expect(killSpy).toHaveBeenCalledWith(4242, 'SIGTERM')
+      expect(fs.existsSync(reg)).toBe(false)
+    } finally {
+      killSpy.mockRestore()
+    }
+  })
+
+  it('reapOrphans ignores pids that are not agent processes', () => {
+    const reg = path.join(repo, 'data', 'agents.runtime.json')
+    fs.mkdirSync(path.dirname(reg), { recursive: true })
+    fs.writeFileSync(reg, JSON.stringify([{ id: 'x', pid: 4242 }]))
+    expect(sup.reapOrphans(() => false)).toBe(0)
+  })
 })
