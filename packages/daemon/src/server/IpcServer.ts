@@ -327,6 +327,11 @@ export class IpcServer {
         return
       }
 
+      if (pathname === '/api/config' && (req.method === 'GET' || req.method === 'PUT')) {
+        await this._handleConfig(req, res, url)
+        return
+      }
+
       if (pathname === '/api/state' && req.method === 'GET') {
         this._sendJson(res, 200, {
           state: this.latestState ?? { positions: [], totalPnlUsd: 0, busy: false },
@@ -394,6 +399,33 @@ export class IpcServer {
 
   private async _readJsonBody(req: IncomingMessage): Promise<any> {
     return JSON.parse((await this._readBody(req)) || '{}')
+  }
+
+  private async _handleConfig(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const configPath = url.searchParams.get('path')
+    if (!configPath) {
+      this._sendJson(res, 400, { error: { code: 'MISSING_PATH', message: 'path query required' } })
+      return
+    }
+    try {
+      if (req.method === 'GET') {
+        const raw = fs.readFileSync(configPath, 'utf8')
+        const parsed = JSON.parse(raw)
+        this._sendJson(res, 200, { config: parsed })
+        return
+      }
+      if (req.method === 'PUT') {
+        const body = await this._readJsonBody(req)
+        const cfg = body?.config
+        if (cfg === undefined) throw new Error('Missing config in request body')
+        fs.writeFileSync(configPath, `${JSON.stringify(cfg, null, 2)}\n`)
+        this._sendJson(res, 200, { ok: true })
+        return
+      }
+      this._sendJson(res, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Only GET/PUT supported' } })
+    } catch (e: any) {
+      this._sendJson(res, 500, { error: { code: 'CONFIG_ERROR', message: e?.message || String(e) } })
+    }
   }
 
   private async _handleHttpTool(req: IncomingMessage, res: ServerResponse): Promise<void> {

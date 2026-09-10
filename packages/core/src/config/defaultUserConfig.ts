@@ -2,7 +2,7 @@ import { DEFAULT_AGENT_ID } from '../shared/constants.js'
 import type { UserConfigRaw } from './schema.js'
 
 export const DEFAULT_USER_CONFIG: UserConfigRaw = {
-  _version: 4,
+  _version: 5,
   preset: 'custom',
   agentId: DEFAULT_AGENT_ID,
 
@@ -16,6 +16,8 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
     telegramBotToken: 'env.TELEGRAM_BOT_TOKEN',
     telegramChatId: 'env.TELEGRAM_CHAT_ID',
     telegramAllowedUserIds: 'env.TELEGRAM_ALLOWED_USER_IDS',
+    telegramEnabled: true,
+    telegramPolling: true,
     dryRun: true,
   },
 

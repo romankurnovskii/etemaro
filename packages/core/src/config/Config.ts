@@ -90,7 +90,7 @@ function buildConfig(): AppConfig {
 
   // The shape of u now closely matches AppConfig since Zod validates the nested structure.
   return {
-    _version: u._version ?? 4,
+    _version: u._version ?? 5,
     agentId: u.agentId && u.agentId.length > 0 ? u.agentId : DEFAULT_AGENT_ID,
     connection: {
       rpcUrl: u.connection?.rpcUrl ?? '',
@@ -99,6 +99,8 @@ function buildConfig(): AppConfig {
       telegramBotToken: u.connection?.telegramBotToken ?? null,
       telegramChatId: u.connection?.telegramChatId ?? null,
       telegramAllowedUserIds: u.connection?.telegramAllowedUserIds ?? null,
+      telegramEnabled: u.connection?.telegramEnabled ?? true,
+      telegramPolling: u.connection?.telegramPolling ?? true,
       dryRun: u.connection?.dryRun ?? false,
       allowSelfUpdate: u.connection?.allowSelfUpdate ?? false,
       ipcPort: u.connection?.ipcPort,

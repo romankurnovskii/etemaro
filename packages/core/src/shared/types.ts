@@ -604,6 +604,8 @@ export interface ConnectionConfig {
   telegramBotToken?: string | null
   telegramChatId?: string | null
   telegramAllowedUserIds?: string | null
+  telegramEnabled: boolean
+  telegramPolling: boolean
   dryRun: boolean
   allowSelfUpdate: boolean
   ipcPort?: number
