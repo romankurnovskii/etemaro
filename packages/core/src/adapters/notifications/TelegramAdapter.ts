@@ -13,7 +13,7 @@
 
 import fs from 'node:fs'
 import { config } from '../../config/Config.js'
-import { USER_CONFIG_PATH, dataPath } from '../../shared/constants.js'
+import { dataPath, USER_CONFIG_PATH } from '../../shared/constants.js'
 import { log } from '../../shared/logger.js'
 import { loadJsonFile, saveJsonFile } from '../../shared/utils.js'
 import { sleep } from '../../utils/time.js'
