@@ -24,6 +24,8 @@
     "blacklist": "node --import tsx packages/cli/src/Cli.ts blacklist",
     "lessons": "node --import tsx packages/cli/src/Cli.ts lessons",
     "attach": "node --import tsx packages/cli/src/Cli.ts attach",
+    "validate:config": "node --import tsx packages/cli/src/Cli.ts config validate",
+    "validate:strategy": "node --import tsx packages/cli/src/Cli.ts strategy validate",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --passWithNoTests",
     "test:coverage": "vitest run --coverage",
@@ -36,6 +38,7 @@
     "pm2:delete": "pm2 delete etemaro",
     "pm2:logs": "pm2 logs etemaro --lines 100",
     "desktop": "pnpm --filter @etemaro/desktop tauri dev",
+    "web": "pnpm --filter @etemaro/web dev",
     "postinstall": "node scripts/patch-anchor.js"
   },
   "knip": {
