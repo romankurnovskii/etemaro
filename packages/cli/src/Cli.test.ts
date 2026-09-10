@@ -281,3 +281,109 @@ describe('Cli handleGenerateWallet', () => {
     }
   })
 })
+
+describe('Cli wallet commands', () => {
+  it('captures --private-key as a string when importing (space-separated form)', async () => {
+    await loadCore()
+    const importSpy = vi.spyOn(wallet, 'importWallet').mockReturnValue({
+      publicKey: 'mockPubKey',
+      privateKey: 'KEY123',
+      createdAt: new Date().toISOString(),
+      label: 'alice',
+      savedTo: '/tmp/alice.json',
+    } as any)
+    const cli = new Cli({} as any)
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any)
+    const mockStdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    const mockSkill = vi.spyOn(cli as any, 'writeSkillMd').mockImplementation(() => {})
+
+    try {
+      await cli.run(['wallet', 'import', '--name', 'alice', '--private-key', 'KEY123'])
+      expect(importSpy).toHaveBeenCalledWith({ label: 'alice', privateKey: 'KEY123', filePath: undefined })
+    } finally {
+      importSpy.mockRestore()
+      mockExit.mockRestore()
+      mockStdout.mockRestore()
+      mockSkill.mockRestore()
+    }
+  })
+
+  it('refuses wallet remove without --yes when stdout is not a TTY', async () => {
+    await loadCore()
+    const cli = new Cli({} as any)
+    const existsSpy = vi.spyOn(fs, 'existsSync').mockReturnValue(true)
+    const unlinkSpy = vi.spyOn(fs, 'unlinkSync').mockImplementation((() => {}) as any)
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code}`)
+    }) as any)
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const originalIsTTY = process.stdout.isTTY
+    Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true, writable: true })
+
+    try {
+      await expect((cli as any).handleWalletRemove({ name: 'doomed' })).rejects.toThrow('exit:1')
+      expect(unlinkSpy).not.toHaveBeenCalled()
+      expect(stderrSpy.mock.calls.flat().join('')).toContain('Refusing to delete')
+    } finally {
+      existsSpy.mockRestore()
+      unlinkSpy.mockRestore()
+      mockExit.mockRestore()
+      stderrSpy.mockRestore()
+      Object.defineProperty(process.stdout, 'isTTY', {
+        value: originalIsTTY,
+        configurable: true,
+        writable: true,
+      })
+    }
+  })
+
+  it('deletes every matching keystore file with --yes', async () => {
+    await loadCore()
+    const cli = new Cli({} as any)
+    const existsSpy = vi.spyOn(fs, 'existsSync').mockReturnValue(true)
+    const unlinkSpy = vi.spyOn(fs, 'unlinkSync').mockImplementation((() => {}) as any)
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any)
+    const mockStdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    try {
+      await (cli as any).handleWalletRemove({ name: 'gone', yes: true })
+      expect(unlinkSpy).toHaveBeenCalledTimes(2)
+    } finally {
+      existsSpy.mockRestore()
+      unlinkSpy.mockRestore()
+      mockExit.mockRestore()
+      mockStdout.mockRestore()
+    }
+  })
+
+  it('omits the private key unless --show-private-key is passed', async () => {
+    await loadCore()
+    const generateSpy = vi.spyOn(wallet, 'generateNewWallet').mockReturnValue({
+      publicKey: 'pub',
+      privateKey: 'secret-priv',
+      createdAt: new Date().toISOString(),
+      label: 'w',
+      savedTo: '/tmp/w.json',
+    } as any)
+    const cli = new Cli({} as any)
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any)
+    let printed = ''
+    const mockStdout = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: any) => {
+      printed += String(chunk)
+      return true
+    })
+
+    try {
+      ;(cli as any).handleGenerateWallet({ name: 'w' })
+      expect(JSON.parse(printed).privateKey).toBeUndefined()
+
+      printed = ''
+      ;(cli as any).handleGenerateWallet({ name: 'w', 'show-private-key': true })
+      expect(JSON.parse(printed).privateKey).toBe('secret-priv')
+    } finally {
+      generateSpy.mockRestore()
+      mockExit.mockRestore()
+      mockStdout.mockRestore()
+    }
+  })
+})
