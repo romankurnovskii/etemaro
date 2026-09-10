@@ -71,6 +71,7 @@ import {
   wallet,
 } from '@etemaro/core'
 import cron from 'node-cron'
+import { AgentSupervisor } from './server/AgentSupervisor.js'
 import { IpcServer } from './server/IpcServer.js'
 // These will be injected or resolved at runtime by the adapter layer.
 
@@ -328,6 +329,7 @@ export class Daemon {
 
   // IPC Server
   private ipcServer: IpcServer | null = null
+  private readonly agentSupervisor = new AgentSupervisor()
   private unsubscribeLog: (() => void) | null = null
 
   /**
@@ -545,7 +547,7 @@ export class Daemon {
       ipcToken: config.connection?.ipcToken ?? process.env.ETEMARO_IPC_TOKEN,
       ipcSocketPath: config.connection?.ipcSocketPath,
       ipcHost: config.connection?.ipcHost,
-      webDir: repoPath('apps', 'web'),
+      webDir: repoPath('apps', 'web', 'dist'),
       agentId: getInstanceId(),
     }
     this.ipcServer = new IpcServer(ipcConfig)
@@ -560,6 +562,13 @@ export class Daemon {
         }),
       ),
     )
+    this.ipcServer.setAgentControl({
+      list: () => this.agentSupervisor.list(),
+      create: (name: string) => this.agentSupervisor.create(name),
+      start: (id: string) => this.agentSupervisor.start(id),
+      stop: (id: string) => this.agentSupervisor.stop(id),
+      setStrategy: (id: string, strategyId: string) => this.agentSupervisor.setStrategy(id, strategyId),
+    })
     try {
       await this.ipcServer.start()
       const bindInfo = ipcConfig.ipcSocketPath
@@ -588,7 +597,6 @@ export class Daemon {
         const result = await this.adapters.toolExecutor.executeTool(name, args)
         return (result ?? {}) as Record<string, unknown>
       })
-
     } catch (err: any) {
       log('startup_warn', `Failed to start IPC server: ${err?.message || err}`)
     }
@@ -859,10 +867,12 @@ Summarize the current portfolio health, total fees earned, and performance of al
               break
             }
             if (bonus <= 0) continue
+            const oppListId = this.adapters.domain.getActiveStrategy()?.smartWalletListId
+            if (!oppListId) continue
             const smart =
               (
                 await this.adapters.domain
-                  .checkSmartWalletsOnPool({ listId: this.getActiveSmartWalletListId(), pool_address: c.pool })
+                  .checkSmartWalletsOnPool({ listId: oppListId, pool_address: c.pool })
                   .catch((err: any) => {
                     log(
                       'screening',
@@ -1446,13 +1456,18 @@ After evaluating, write a brief one-line result per position.
       const earlyFilteredExamples = topCandidates?.filtered_examples || []
 
       const allCandidates: any[] = []
+      const smartWalletListId = activeStrategy?.smartWalletListId
       for (const pool of candidates) {
         const mint = pool.base?.mint
         const [smartWallets, narrative, tokenInfo] = await Promise.allSettled([
-          this.adapters.domain.checkSmartWalletsOnPool({
-            listId: this.getActiveSmartWalletListId(),
-            pool_address: pool.pool,
-          }),
+          smartWalletListId
+            ? Promise.resolve().then(() =>
+                this.adapters.domain.checkSmartWalletsOnPool({
+                  listId: smartWalletListId,
+                  pool_address: pool.pool,
+                }),
+              )
+            : Promise.resolve(null),
           mint ? this.adapters.domain.getTokenNarrative({ mint }) : Promise.resolve(null),
           mint ? this.adapters.domain.getTokenInfo({ query: mint }) : Promise.resolve(null),
         ])
@@ -1985,11 +2000,16 @@ IMPORTANT:
     }
     if (this.latestCandidates.length === 1) {
       const mint = candidate.base?.mint || candidate.base_mint || null
+      const smartWalletListId = this.adapters.domain.getActiveStrategy()?.smartWalletListId
       const [smartWallets, narrative, tokenInfo] = await Promise.allSettled([
-        this.adapters.domain.checkSmartWalletsOnPool({
-          listId: this.getActiveSmartWalletListId(),
-          pool_address: candidate.pool,
-        }),
+        smartWalletListId
+          ? Promise.resolve().then(() =>
+              this.adapters.domain.checkSmartWalletsOnPool({
+                listId: smartWalletListId,
+                pool_address: candidate.pool,
+              }),
+            )
+          : Promise.resolve(null),
         mint ? this.adapters.domain.getTokenNarrative({ mint }) : Promise.resolve(null),
         mint ? this.adapters.domain.getTokenInfo({ query: mint }) : Promise.resolve(null),
       ])

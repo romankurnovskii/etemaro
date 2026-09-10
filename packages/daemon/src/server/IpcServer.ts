@@ -56,6 +56,15 @@ export interface IpcServerConfig {
   agentId?: string
 }
 
+/** Control-plane operations for managing agent instances from clients. */
+export interface AgentControl {
+  list(): unknown[]
+  create(name: string): unknown
+  start(id: string): unknown
+  stop(id: string): unknown
+  setStrategy(id: string, strategyId: string): unknown
+}
+
 /** Result of an internal tool invocation. */
 type ToolOutcome =
   | { ok: true; result: Record<string, unknown> }
@@ -107,6 +116,7 @@ export class IpcServer {
   private chatHandler: ((prompt: string) => void) | null = null
   private actionHandler: ((action: string, args?: unknown) => void) | null = null
   private toolHandler: ((name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>) | null = null
+  private agentControl: AgentControl | null = null
 
   constructor(config: IpcServerConfig) {
     this.config = config
@@ -126,6 +136,8 @@ export class IpcServer {
       void this._handleHttpRequest(req, res)
     })
     this.wss = new WebSocketServer({ server: this.httpServer })
+    // Bind failures surface through the httpServer 'error' listener below; keep ws quiet.
+    this.wss.on('error', () => {})
 
     if (ipcSocketPath) {
       // Remove stale socket file if present (crash recovery)
@@ -245,6 +257,11 @@ export class IpcServer {
     this.toolCatalog = tools
   }
 
+  /** Register the agent control plane (backs /api/agents*). */
+  setAgentControl(control: AgentControl): void {
+    this.agentControl = control
+  }
+
   /** Set the agent identity reported by /api/health and the UI. */
   setAgentId(agentId: string): void {
     this.agentId = agentId
@@ -305,6 +322,11 @@ export class IpcServer {
         return
       }
 
+      if (pathname === '/api/agents' || pathname.startsWith('/api/agents/')) {
+        await this._handleAgentControl(req, res, pathname)
+        return
+      }
+
       if (pathname === '/api/state' && req.method === 'GET') {
         this._sendJson(res, 200, {
           state: this.latestState ?? { positions: [], totalPnlUsd: 0, busy: false },
@@ -329,6 +351,49 @@ export class IpcServer {
     }
 
     this._serveStatic(pathname, res)
+  }
+
+  private async _handleAgentControl(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<void> {
+    if (!this.agentControl) {
+      this._sendJson(res, 503, { error: { code: 'NO_AGENT_CONTROL', message: 'Agent control is not available' } })
+      return
+    }
+    try {
+      if (pathname === '/api/agents' && req.method === 'GET') {
+        this._sendJson(res, 200, { agents: this.agentControl.list() })
+        return
+      }
+      if (pathname === '/api/agents' && req.method === 'POST') {
+        const body = await this._readJsonBody(req)
+        const agent = this.agentControl.create(String(body?.name ?? ''))
+        this._sendJson(res, 200, { ok: true, agent })
+        return
+      }
+      const match = pathname.match(/^\/api\/agents\/([^/]+)\/(start|stop|strategy)$/)
+      if (match && req.method === 'POST') {
+        const id = decodeURIComponent(match[1] as string)
+        const action = match[2]
+        if (action === 'start') {
+          this._sendJson(res, 200, { ok: true, agent: this.agentControl.start(id) })
+          return
+        }
+        if (action === 'stop') {
+          this._sendJson(res, 200, { ok: true, agent: this.agentControl.stop(id) })
+          return
+        }
+        const body = await this._readJsonBody(req)
+        const agent = this.agentControl.setStrategy(id, String(body?.strategyId ?? ''))
+        this._sendJson(res, 200, { ok: true, agent })
+        return
+      }
+      this._sendJson(res, 404, { error: { code: 'NOT_FOUND', message: `No agent route: ${pathname}` } })
+    } catch (e: any) {
+      this._sendJson(res, 400, { error: { code: 'AGENT_OPERATION_FAILED', message: e?.message || String(e) } })
+    }
+  }
+
+  private async _readJsonBody(req: IncomingMessage): Promise<any> {
+    return JSON.parse((await this._readBody(req)) || '{}')
   }
 
   private async _handleHttpTool(req: IncomingMessage, res: ServerResponse): Promise<void> {

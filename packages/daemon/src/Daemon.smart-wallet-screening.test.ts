@@ -145,6 +145,8 @@ vi.mock('@etemaro/core', () => ({
     opportunity: { enabled: false, pollIntervalSec: 45 },
     llm: { screeningModel: 'test' },
   },
+  REPO_ROOT: process.cwd(),
+  defaultUserConfigStr: '{}',
   computeDeployAmount: mockComputeDeployAmount,
   getDataDir: mockGetDataDir,
   dataPath: (p: string) => mockDataPath(p),
@@ -736,5 +738,47 @@ describe('runSmartWalletScreening — maxPositions enforcement', () => {
     const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
     expect(result).toBe('No new positions detected by smart wallets.')
     expect(fsStore['/tmp/test-data/.smart-wallets-snapshot-agt_1.json']).toContain('legacy-p1')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Regression: market-entry cycle must not abort when the active strategy has no
+// smartWalletListId. Previously getActiveSmartWalletListId() threw synchronously
+// while building the Promise.allSettled arguments, escaping isolation and killing
+// the whole screening cycle ("Screening cycle failed: Active strategy does not
+// define smartWalletListId").
+// ─────────────────────────────────────────────────────────────────────────────
+describe('runScreeningCycle — market entry without smartWalletListId', () => {
+  let adapters: DaemonAdapters
+  let daemon: Daemon
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetSnapshot()
+    adapters = createMockAdapters()
+    daemon = new Daemon(adapters)
+  })
+
+  it('degrades gracefully instead of failing the whole cycle', async () => {
+    const coreModule: any = await import('@etemaro/core')
+    const origEntrySource = coreModule.config.screening.entrySource
+    const origConnection = coreModule.config.connection
+    coreModule.config.screening.entrySource = 'market'
+    coreModule.config.connection = { dryRun: true }
+    vi.mocked(coreModule.agentLoop).mockResolvedValue({ content: '⛔ NO DEPLOY' })
+
+    adapters.domain.getActiveStrategy = vi.fn().mockReturnValue({ name: 'NoList', bestFor: 'x' })
+    adapters.screening.getTopCandidates = vi.fn().mockResolvedValue({
+      candidates: [{ pool: 'poolP1', name: 'P1', base: { mint: 'mintP1' } }],
+    })
+
+    try {
+      const res = await daemon.runScreeningCycle({ silent: true })
+      expect(String(res)).not.toContain('does not define smartWalletListId')
+      expect(adapters.domain.checkSmartWalletsOnPool).not.toHaveBeenCalled()
+    } finally {
+      coreModule.config.screening.entrySource = origEntrySource
+      coreModule.config.connection = origConnection
+    }
   })
 })
