@@ -611,9 +611,17 @@ export class Daemon {
       this.maybeRunMissedBriefing().catch((err: any) => {
         log('cron_error', `Failed to check missed briefing on startup: ${err?.message || err}`)
       })
-      this.adapters.telegram.startPolling((msg: any) => this.telegramHandler(msg))
+      if (config.connection.telegramPolling) {
+        if (config.connection.telegramPolling) {
+          this.adapters.telegram.startPolling((msg: any) => this.telegramHandler(msg))
+        } else {
+          console.log('Telegram polling disabled — notifications only, no inbound commands.')
+        }
+      } else {
+        log('startup', 'Telegram polling disabled (telegramPolling: false) — notifications only, no inbound commands.')
+      }
       this.drainTelegramQueue().catch((err: any) => {
-        log('telegram_warn', `Initial telegram queue drain failed: ${err?.message || err}`)
+        log('startup_warn', `Initial telegram queue drain failed: ${err?.message || err}`)
       })
       this.runScreeningCycle({ silent: false }).catch((e: any) => {
         log('startup_error', e.message)

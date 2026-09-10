@@ -131,6 +131,7 @@ function isAuthorizedIncomingMessage(msg: IncomingTelegramMessage): boolean {
 
 // ─── Core send ───────────────────────────────────────────────────
 export function isEnabled(): boolean {
+  if (config.connection?.telegramEnabled === false) return false
   return !!getEffectiveToken()
 }
 

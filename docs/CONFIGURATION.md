@@ -1,6 +1,6 @@
 # Etemaro — Configuration Guide
 
-Etemaro uses a strict schema-validated configuration system (Version 3): every required field MUST be present in the active JSON configuration file. By default the application reads `config/user-config.json`, but a custom path can be set via the `USER_CONFIG_PATH` environment variable.
+Etemaro uses a strict schema-validated configuration system (Version 5): every required field MUST be present in the active JSON configuration file. By default the application reads `config/user-config.json`, but a custom path can be set via the `USER_CONFIG_PATH` environment variable.
 
 ```
               ┌────────────────────────┐
@@ -105,18 +105,20 @@ Optional:
 
 ## 3. User Configuration (`user-config.json`)
 
-### Schema Version 3
+### Schema Version 5
 
 Configuration is a **nested JSON object**. The root contains `_version`, `preset`, `agentId`, and the `connection` block. All other settings are in named category objects.
 
 ```json
 {
-  "_version": 4,
+  "_version": 5,
   "preset": "custom",
   "agentId": "",
   "connection": {
     "rpcUrl": "https://pump.helius-rpc.com",
     "dryRun": true,
+    "telegramEnabled": true,
+    "telegramPolling": true,
     "telegramChatId": "env.TELEGRAM_CHAT_ID"
   },
 
@@ -146,7 +148,7 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 
 | Field          | Purpose                                                         | Example                    |
 | -------------- | --------------------------------------------------------------- | -------------------------- |
-| `_version`   | Schema version. Must be `4`.                                   | `4`                      |
+| `_version`   | Schema version. Must be `5`.                                   | `5`                      |
 | `preset`     | Informational label for the config profile.                     | `"custom"`               |
 | `agentId`    | Stable HiveMind instance ID.`""` = auto-assign.               | `""` or `"agt_abc123"` |
 | `connection` | Network, provider, wallet, runtime mode, and Telegram settings. | `{ ... }`                |
@@ -163,6 +165,8 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 | `telegramChatId`         | Telegram destination chat ID.                                                                | `"env.TELEGRAM_CHAT_ID"`          |
 | `telegramBotToken`       | Telegram bot token.                                                                          | `"env.TELEGRAM_BOT_TOKEN"`        |
 | `telegramAllowedUserIds` | Comma-separated Telegram user IDs allowed to control the bot.                                | `"env.TELEGRAM_ALLOWED_USER_IDS"` |
+| `telegramEnabled`        | Master switch for Telegram integration. When `false`, no messages are sent or received.       | `true`                            |
+| `telegramPolling`        | Enable inbound command polling. When `false`, agent sends notifications only (no `/status`, `/deploy`). Useful for multi-agent setups where only one agent polls. | `true`                            |
 
 #### Risk
 
@@ -369,7 +373,7 @@ The `api` block contains two independent services.
     - screening.minTvl: Required
     - hiveMind.pullMode: Required
   ```
-- **No backward compatibility**: Version 3 is strict. Old V1/V2 keys (`darwinEnabled`, `hiveMindUrl`, `pnlSource`, `connection.*`, etc.) are not accepted — update your config to V3.
+- **No backward compatibility**: Version 5 is strict. Old V1/V2 keys (`darwinEnabled`, `hiveMindUrl`, `pnlSource`, `connection.*`, etc.) are not accepted — update your config to V5.
 - **Dynamic Reloading**: `reloadScreeningThresholds()` re-reads the config file at the start of every screening cycle and applies changes to the running singleton without restart.
 
 ---

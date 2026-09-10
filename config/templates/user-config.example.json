@@ -1,5 +1,5 @@
 {
-  "_version": 4,
+  "_version": 5,
   "preset": "custom",
   "agentId": "",
 
@@ -12,6 +12,8 @@
     "telegramBotToken": "env.TELEGRAM_BOT_TOKEN",
     "telegramChatId": "env.TELEGRAM_CHAT_ID",
     "telegramAllowedUserIds": "env.TELEGRAM_ALLOWED_USER_IDS",
+    "telegramEnabled": true,
+    "telegramPolling": true,
     "dryRun": true
   },
 
