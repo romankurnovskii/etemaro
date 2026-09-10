@@ -1,16 +1,21 @@
 /**
  * @file IpcServer.ts
- * @description WebSocket IPC server for the Etemaro daemon.
+ * @description WebSocket + HTTP server for the Etemaro daemon.
  *
- * Binds a WebSocket server on a Unix domain socket (preferred) or a TCP port
- * so that lightweight clients (Ink CLI, Desktop) can:
+ * Binds a single http.Server (TCP port or Unix domain socket) and attaches a
+ * WebSocket upgrade handler. This lets lightweight clients (Ink CLI, browser
+ * web UI, Desktop) do everything over one port:
  *   - Stream structured logs in real time
  *   - Receive live state snapshots (positions, PnL, next cron schedule)
  *   - Submit chat prompts and manual action commands
+ *   - Browse the tool catalog and invoke any agent tool
  *
- * Auth is optional: when `ipcToken` is set in config, connecting clients must
- * send an AUTH message within AUTH_TIMEOUT_MS; otherwise the connection is
- * closed.  When `ipcToken` is absent, all local connections are trusted.
+ * When `webDir` is configured the same server hosts the static web UI at `/`,
+ * so `etemaro serve` needs no second process or port.
+ *
+ * Auth is optional: when `ipcToken` is set in config, WebSocket clients must
+ * send an AUTH message within AUTH_TIMEOUT_MS and HTTP clients must present a
+ * bearer token.  When `ipcToken` is absent, all localhost connections are trusted.
  *
  * @pattern Extends existing daemon shutdown pattern (registerExitSignal).
  * @dependencies ws (npm), @etemaro/core IPC protocol types
@@ -18,14 +23,19 @@
 
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
-import { createServer } from 'node:http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import path from 'node:path'
 import {
   type IpcCommandActionPayload,
   type IpcCommandChatPayload,
+  type IpcCommandToolPayload,
   type IpcLogEntry,
   type IpcMessage,
   IpcMessageType,
   type IpcStateSnapshot,
+  type IpcToolCatalogPayload,
+  type IpcToolDescriptor,
+  type IpcToolResultPayload,
 } from '@etemaro/core'
 import { WebSocket, WebSocketServer } from 'ws'
 
@@ -38,12 +48,42 @@ export interface IpcServerConfig {
   ipcToken?: string
   /** Unix domain socket path (preferred over TCP when set). */
   ipcSocketPath?: string
+  /** Bind host for the TCP listener. Default: 127.0.0.1 (localhost only). */
+  ipcHost?: string
+  /** Directory containing the static web UI to serve at `/`. */
+  webDir?: string
+  /** Agent identity reported by `GET /api/health`. */
+  agentId?: string
 }
+
+/** Result of an internal tool invocation. */
+type ToolOutcome =
+  | { ok: true; result: Record<string, unknown> }
+  | { ok: false; status: number; code: string; message: string }
 
 // ─── Internal State ─────────────────────────────────────────────────────────
 
 /** Milliseconds a client has to send an AUTH message before being kicked. */
 const AUTH_TIMEOUT_MS = 2000
+
+/** Maximum accepted JSON body for POST /api/tool. */
+const MAX_BODY_BYTES = 1_000_000
+
+const CONTENT_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.map': 'application/json; charset=utf-8',
+}
 
 interface ConnectedClient {
   id: string
@@ -61,35 +101,40 @@ export class IpcServer {
   private httpServer: ReturnType<typeof createServer> | null = null
   private readonly clients = new Map<string, ConnectedClient>()
   private latestState: IpcStateSnapshot | null = null
+  private toolCatalog: IpcToolDescriptor[] = []
+  private agentId: string
 
   private chatHandler: ((prompt: string) => void) | null = null
   private actionHandler: ((action: string, args?: unknown) => void) | null = null
+  private toolHandler: ((name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>) | null = null
 
   constructor(config: IpcServerConfig) {
     this.config = config
+    this.agentId = config.agentId ?? 'agent-default'
   }
 
   // ─── Public API ───────────────────────────────────────────────────────────
 
   /**
-   * Start the WebSocket server.  Binds to Unix socket if `ipcSocketPath` is
-   * configured, otherwise binds to TCP `ipcPort` (defaulting to 8765).
+   * Start the server. Binds to a Unix socket if `ipcSocketPath` is configured,
+   * otherwise to TCP `ipcPort` on `ipcHost` (default 127.0.0.1:8765).
    */
   async start(): Promise<void> {
-    const { ipcSocketPath, ipcPort = 8765 } = this.config
+    const { ipcSocketPath, ipcPort = 8765, ipcHost = '127.0.0.1' } = this.config
+
+    this.httpServer = createServer((req, res) => {
+      void this._handleHttpRequest(req, res)
+    })
+    this.wss = new WebSocketServer({ server: this.httpServer })
 
     if (ipcSocketPath) {
       // Remove stale socket file if present (crash recovery)
-      if (fs.existsSync(ipcSocketPath)) {
-        fs.unlinkSync(ipcSocketPath)
-      }
-      // Ensure parent directory exists
-      const dir = ipcSocketPath.substring(0, ipcSocketPath.lastIndexOf('/'))
+      if (fs.existsSync(ipcSocketPath)) fs.unlinkSync(ipcSocketPath)
+      const dir = path.dirname(ipcSocketPath)
       if (dir) fs.mkdirSync(dir, { recursive: true })
 
-      this.httpServer = createServer()
-      this.wss = new WebSocketServer({ server: this.httpServer })
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
+        this.httpServer?.once('error', reject)
         this.httpServer?.listen(ipcSocketPath, () => resolve())
       })
       // Ensure socket is accessible by the daemon process owner
@@ -99,10 +144,9 @@ export class IpcServer {
         /* best-effort */
       }
     } else {
-      this.wss = new WebSocketServer({ port: ipcPort })
       await new Promise<void>((resolve, reject) => {
-        this.wss?.once('listening', resolve)
-        this.wss?.once('error', reject)
+        this.httpServer?.once('error', reject)
+        this.httpServer?.listen(ipcPort, ipcHost, () => resolve())
       })
     }
 
@@ -111,27 +155,32 @@ export class IpcServer {
 
   /**
    * Gracefully stop the server — close all client connections, then close the
-   * WebSocket server and HTTP server (if used).
+   * WebSocket server and HTTP server, and remove any Unix socket file.
    */
   async stop(): Promise<void> {
-    // Close all clients
     for (const client of this.clients.values()) {
       client.ws.close(1001, 'Server shutting down')
     }
     this.clients.clear()
 
-    await new Promise<void>((resolve) => {
-      if (this.wss) {
-        this.wss.close(() => resolve())
-      } else {
-        resolve()
-      }
-    })
+    const wss = this.wss
+    this.wss = null
+    if (wss) {
+      await new Promise<void>((resolve) => wss.close(() => resolve()))
+    }
 
-    if (this.httpServer) {
-      await new Promise<void>((resolve) => {
-        this.httpServer?.close(() => resolve())
-      })
+    const httpServer = this.httpServer
+    this.httpServer = null
+    if (httpServer) {
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()))
+    }
+
+    if (this.config.ipcSocketPath && fs.existsSync(this.config.ipcSocketPath)) {
+      try {
+        fs.unlinkSync(this.config.ipcSocketPath)
+      } catch {
+        /* best-effort */
+      }
     }
   }
 
@@ -186,12 +235,227 @@ export class IpcServer {
     this.actionHandler = handler
   }
 
-  /** Whether the server is running. */
-  get isRunning(): boolean {
-    return this.wss !== null
+  /** Register the handler invoked for command:tool / POST /api/tool. */
+  onTool(handler: (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>): void {
+    this.toolHandler = handler
   }
 
-  // ─── Private Helpers ──────────────────────────────────────────────────────
+  /** Publish the tool catalog (sent to WS clients after AUTH, served at /api/tools). */
+  setToolCatalog(tools: IpcToolDescriptor[]): void {
+    this.toolCatalog = tools
+  }
+
+  /** Set the agent identity reported by /api/health and the UI. */
+  setAgentId(agentId: string): void {
+    this.agentId = agentId
+  }
+
+  /** Whether the server is running. */
+  get isRunning(): boolean {
+    return this.httpServer !== null
+  }
+
+  /** Actual bound TCP port (null for Unix sockets or when stopped). */
+  get boundPort(): number | null {
+    const addr = this.httpServer?.address()
+    return typeof addr === 'object' && addr ? addr.port : null
+  }
+
+  /** Configured agent identity. */
+  get currentAgentId(): string {
+    return this.agentId
+  }
+
+  // ─── HTTP ─────────────────────────────────────────────────────────────────
+
+  private async _handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204)
+      res.end()
+      return
+    }
+
+    let url: URL
+    try {
+      url = new URL(req.url || '/', 'http://localhost')
+    } catch {
+      this._sendJson(res, 400, { error: { code: 'BAD_REQUEST', message: 'Malformed URL' } })
+      return
+    }
+    const pathname = url.pathname
+
+    if (pathname === '/api/health') {
+      this._sendJson(res, 200, {
+        status: 'ok',
+        agentId: this.agentId,
+        webUi: Boolean(this.config.webDir),
+        tools: this.toolCatalog.length,
+      })
+      return
+    }
+
+    if (pathname.startsWith('/api/')) {
+      if (!this._isHttpAuthorized(req, url)) {
+        this._sendJson(res, 401, { error: { code: 'UNAUTHORIZED', message: 'Missing or invalid token' } })
+        return
+      }
+
+      if (pathname === '/api/state' && req.method === 'GET') {
+        this._sendJson(res, 200, {
+          state: this.latestState ?? { positions: [], totalPnlUsd: 0, busy: false },
+          agentId: this.agentId,
+        })
+        return
+      }
+
+      if (pathname === '/api/tools' && req.method === 'GET') {
+        const payload: IpcToolCatalogPayload = { tools: this.toolCatalog }
+        this._sendJson(res, 200, { agentId: this.agentId, ...payload })
+        return
+      }
+
+      if (pathname === '/api/tool' && req.method === 'POST') {
+        await this._handleHttpTool(req, res)
+        return
+      }
+
+      this._sendJson(res, 404, { error: { code: 'NOT_FOUND', message: `No API route: ${pathname}` } })
+      return
+    }
+
+    this._serveStatic(pathname, res)
+  }
+
+  private async _handleHttpTool(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    let parsed: { name?: unknown; args?: unknown; confirm?: unknown }
+    try {
+      parsed = JSON.parse((await this._readBody(req)) || '{}')
+    } catch (e: any) {
+      this._sendJson(res, 400, { error: { code: 'INVALID_JSON', message: e?.message || 'Invalid JSON body' } })
+      return
+    }
+
+    const outcome = await this._invokeTool(parsed?.name, parsed?.args, parsed?.confirm)
+    if (!outcome.ok) {
+      this._sendJson(res, outcome.status, { error: { code: outcome.code, message: outcome.message } })
+      return
+    }
+    this._sendJson(res, 200, { ok: true, agentId: this.agentId, result: outcome.result })
+  }
+
+  private _readBody(req: IncomingMessage, limit = MAX_BODY_BYTES): Promise<string> {
+    return new Promise((resolve, reject) => {
+      let body = ''
+      req.on('data', (chunk) => {
+        body += chunk
+        if (body.length > limit) {
+          reject(new Error('Request body too large'))
+          req.destroy()
+        }
+      })
+      req.on('end', () => resolve(body))
+      req.on('error', reject)
+    })
+  }
+
+  private _isHttpAuthorized(req: IncomingMessage, url: URL): boolean {
+    if (!this.config.ipcToken) return true
+    const header = req.headers.authorization
+    if (header === `Bearer ${this.config.ipcToken}`) return true
+    if (url.searchParams.get('token') === this.config.ipcToken) return true
+    return false
+  }
+
+  private _serveStatic(pathname: string, res: ServerResponse): void {
+    const webDir = this.config.webDir
+    if (!webDir) {
+      this._sendJson(res, 404, {
+        error: { code: 'NO_WEB_UI', message: 'Web UI not bundled. Run from the repo or set webDir.' },
+      })
+      return
+    }
+
+    const rootDir = path.resolve(webDir)
+    let rel = pathname
+    try {
+      rel = decodeURIComponent(pathname)
+    } catch {
+      /* use raw */
+    }
+    if (rel === '/' || rel === '') rel = '/index.html'
+
+    // Path traversal guard: resolved path must stay inside rootDir.
+    const resolved = path.resolve(rootDir, `.${rel}`)
+    if (resolved !== rootDir && !resolved.startsWith(rootDir + path.sep)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('Forbidden')
+      return
+    }
+
+    let target = resolved
+    if (!fs.existsSync(target) || !fs.statSync(target).isFile()) {
+      // SPA fallback for extension-less routes.
+      target = path.extname(rel) ? target : path.join(rootDir, 'index.html')
+    }
+
+    if (!fs.existsSync(target) || !fs.statSync(target).isFile()) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('Not found')
+      return
+    }
+
+    const ext = path.extname(target).toLowerCase()
+    res.writeHead(200, {
+      'Content-Type': CONTENT_TYPES[ext] ?? 'application/octet-stream',
+      'Cache-Control': 'no-cache',
+    })
+    res.end(fs.readFileSync(target))
+  }
+
+  private _sendJson(res: ServerResponse, status: number, body: unknown): void {
+    const payload = JSON.stringify(body)
+    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(payload)
+  }
+
+  // ─── Tool invocation ──────────────────────────────────────────────────────
+
+  private async _invokeTool(nameRaw: unknown, argsRaw: unknown, confirmRaw: unknown): Promise<ToolOutcome> {
+    if (typeof nameRaw !== 'string' || !nameRaw.trim()) {
+      return { ok: false, status: 400, code: 'INVALID_TOOL', message: 'Tool name is required' }
+    }
+    const name = nameRaw.trim()
+    const descriptor = this.toolCatalog.find((t) => t.name === name)
+    if (!descriptor) {
+      return { ok: false, status: 404, code: 'UNKNOWN_TOOL', message: `Unknown tool: ${name}` }
+    }
+    if (descriptor.isProtected && confirmRaw !== true) {
+      return {
+        ok: false,
+        status: 403,
+        code: 'CONFIRM_REQUIRED',
+        message: `Tool "${name}" changes state; pass confirm=true to execute`,
+      }
+    }
+    if (!this.toolHandler) {
+      return { ok: false, status: 503, code: 'NO_HANDLER', message: 'No tool handler registered' }
+    }
+    const args =
+      argsRaw && typeof argsRaw === 'object' && !Array.isArray(argsRaw) ? (argsRaw as Record<string, unknown>) : {}
+    try {
+      const result = await this.toolHandler(name, args)
+      return { ok: true, result: result ?? {} }
+    } catch (e: any) {
+      return { ok: false, status: 500, code: 'TOOL_FAILED', message: e?.message || String(e) }
+    }
+  }
+
+  // ─── WebSocket ────────────────────────────────────────────────────────────
 
   private _handleConnection(ws: WebSocket): void {
     const id = randomUUID()
@@ -211,6 +475,8 @@ export class IpcServer {
           ws.close(1008, 'Auth timeout')
         }
       }, AUTH_TIMEOUT_MS)
+    } else {
+      this._sendCatalog(ws)
     }
 
     ws.on('message', (data) => this._handleMessage(client, data))
@@ -243,6 +509,7 @@ export class IpcServer {
       client.authenticated = true
       if (client.authTimer) clearTimeout(client.authTimer)
       this._sendAck(client.ws, msg.id)
+      this._sendCatalog(client.ws)
       return
     }
 
@@ -289,6 +556,24 @@ export class IpcServer {
         break
       }
 
+      case IpcMessageType.COMMAND_TOOL: {
+        const payload = msg.payload as IpcCommandToolPayload
+        const ref = msg.id
+        this._sendAck(client.ws, ref)
+        void this._invokeTool(payload?.name, payload?.args, payload?.confirm).then((outcome) => {
+          const resultPayload: IpcToolResultPayload = outcome.ok
+            ? { ref, name: String(payload?.name ?? ''), ok: true, result: outcome.result }
+            : { ref, name: String(payload?.name ?? ''), ok: false, error: outcome.message, code: outcome.code }
+          this._send(client.ws, {
+            id: randomUUID(),
+            type: IpcMessageType.TOOL_RESULT,
+            payload: resultPayload,
+            timestamp: Date.now(),
+          })
+        })
+        break
+      }
+
       default:
         this._sendError(client.ws, msg.id, 'UNKNOWN_TYPE', `Unknown message type: ${msg.type}`)
     }
@@ -305,6 +590,17 @@ export class IpcServer {
         client.ws.send(serialised)
       }
     }
+  }
+
+  private _sendCatalog(ws: WebSocket): void {
+    if (!this.toolCatalog.length) return
+    const payload: IpcToolCatalogPayload = { tools: this.toolCatalog }
+    this._send(ws, {
+      id: randomUUID(),
+      type: IpcMessageType.TOOL_CATALOG,
+      payload,
+      timestamp: Date.now(),
+    })
   }
 
   private _send(ws: WebSocket, msg: IpcMessage): void {

@@ -1,10 +1,13 @@
 /**
  * @file IpcServer.test.ts
- * @description Unit tests for the WebSocket IPC server.
- * Uses real WebSocket connections on ephemeral ports (port 0) to avoid conflicts.
+ * @description Unit tests for the WebSocket + HTTP IPC server.
+ * Uses real connections on ephemeral ports (port 0) to avoid conflicts.
  */
 
-import { type IpcMessage, IpcMessageType } from '@etemaro/core'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { type IpcMessage, IpcMessageType, type IpcToolDescriptor, repoPath } from '@etemaro/core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WebSocket } from 'ws'
 import { IpcServer } from './IpcServer.js'
@@ -23,6 +26,23 @@ async function connect(port: number, _token?: string): Promise<WebSocket> {
     ws.once('open', () => resolve(ws))
     ws.once('error', reject)
   })
+}
+
+/**
+ * Connect and attach a message watcher *before* the socket opens, so messages
+ * the server sends immediately on connection cannot race past the listener.
+ */
+async function connectWatching(
+  port: number,
+  predicate: (m: IpcMessage) => boolean,
+): Promise<{ ws: WebSocket; first: Promise<IpcMessage> }> {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`)
+  const first = waitForMessage(ws, predicate)
+  await new Promise<void>((resolve, reject) => {
+    ws.once('open', () => resolve())
+    ws.once('error', reject)
+  })
+  return { ws, first }
 }
 
 /** Wait for a single message from a WebSocket client. */
@@ -54,6 +74,22 @@ async function waitForMessage(
   })
 }
 
+const SAMPLE_TOOL: IpcToolDescriptor = {
+  name: 'get_wallet_balance',
+  description: 'Return wallet balances',
+  parameters: { type: 'object', properties: {}, additionalProperties: false },
+  isWrite: false,
+  isProtected: false,
+}
+
+const WRITE_TOOL: IpcToolDescriptor = {
+  name: 'close_position',
+  description: 'Close an open position',
+  parameters: { type: 'object', properties: { position_address: { type: 'string' } }, required: ['position_address'] },
+  isWrite: true,
+  isProtected: true,
+}
+
 // ─── Test Setup ───────────────────────────────────────────────────────────────
 
 let server: IpcServer
@@ -63,8 +99,7 @@ beforeEach(async () => {
   // Use port 0 to let OS pick a free port
   server = new IpcServer({ ipcPort: 0 })
   await server.start()
-  // @ts-expect-error — accessing private wss to discover bound port in tests
-  port = (server.wss as import('ws').WebSocketServer).address()?.port as number
+  port = server.boundPort as number
 })
 
 afterEach(async () => {
@@ -87,10 +122,10 @@ describe('IpcServer lifecycle', () => {
   })
 
   it('stops cleanly and isRunning is false after stop', async () => {
-    // stop is called in afterEach, but test an extra stop call here
     const ws = await connect(port)
     ws.close()
     await server.stop()
+    expect(server.isRunning).toBe(false)
     // Prevent double-stop in afterEach from throwing
     server = new IpcServer({ ipcPort: 0 })
     await server.stop() // no-op on fresh unstarted server should not throw
@@ -190,8 +225,7 @@ describe('IpcServer auth — token required', () => {
   beforeEach(async () => {
     authServer = new IpcServer({ ipcPort: 0, ipcToken: 'secret-token' })
     await authServer.start()
-    // @ts-expect-error
-    authPort = (authServer.wss as import('ws').WebSocketServer).address()?.port as number
+    authPort = authServer.boundPort as number
   })
 
   afterEach(async () => {
@@ -234,13 +268,245 @@ describe('IpcServer graceful shutdown', () => {
     const closed1 = new Promise<void>((r) => ws1.once('close', () => r()))
     const closed2 = new Promise<void>((r) => ws2.once('close', () => r()))
 
-    // stop is called in afterEach; call it here explicitly
     await server.stop()
     // Re-create so afterEach doesn't throw
     server = new IpcServer({ ipcPort: 0 })
 
-    // Both clients must have received close events
     await Promise.all([closed1, closed2])
     expect(true).toBe(true) // reached here = graceful
+  })
+})
+
+// ─── HTTP API + static web UI ─────────────────────────────────────────────────
+
+describe('IpcServer HTTP + web UI', () => {
+  let webServer: IpcServer
+  let base: string
+  let webDir: string
+
+  beforeEach(async () => {
+    webDir = fs.mkdtempSync(path.join(os.tmpdir(), 'etemaro-web-'))
+    fs.writeFileSync(path.join(webDir, 'index.html'), '<!doctype html><title>etemaro</title>')
+    fs.writeFileSync(path.join(webDir, 'app.js'), 'console.log("hi")')
+
+    webServer = new IpcServer({ ipcPort: 0, webDir, agentId: 'agent-test' })
+    webServer.setToolCatalog([SAMPLE_TOOL, WRITE_TOOL])
+    await webServer.start()
+    base = `http://127.0.0.1:${webServer.boundPort}`
+  })
+
+  afterEach(async () => {
+    await webServer.stop()
+    fs.rmSync(webDir, { recursive: true, force: true })
+  })
+
+  it('GET /api/health reports ok, agent id and tool count', async () => {
+    const res = await fetch(`${base}/api/health`)
+    expect(res.status).toBe(200)
+    const body: any = await res.json()
+    expect(body.status).toBe('ok')
+    expect(body.agentId).toBe('agent-test')
+    expect(body.tools).toBe(2)
+  })
+
+  it('GET /api/tools returns the catalog', async () => {
+    const res = await fetch(`${base}/api/tools`)
+    expect(res.status).toBe(200)
+    const body: any = await res.json()
+    expect(body.tools.map((t: IpcToolDescriptor) => t.name)).toEqual(['get_wallet_balance', 'close_position'])
+  })
+
+  it('GET /api/state returns the latest snapshot', async () => {
+    webServer.broadcastState({ positions: [], totalPnlUsd: 12.5, busy: true })
+    const res = await fetch(`${base}/api/state`)
+    const body: any = await res.json()
+    expect(body.state.totalPnlUsd).toBe(12.5)
+    expect(body.state.busy).toBe(true)
+  })
+
+  it('POST /api/tool invokes a read tool and returns the result', async () => {
+    const handler = vi.fn().mockResolvedValue({ sol: 1.5 })
+    webServer.onTool(handler)
+
+    const res = await fetch(`${base}/api/tool`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'get_wallet_balance', args: {} }),
+    })
+    expect(res.status).toBe(200)
+    const body: any = await res.json()
+    expect(body.result).toEqual({ sol: 1.5 })
+    expect(handler).toHaveBeenCalledWith('get_wallet_balance', {})
+  })
+
+  it('POST /api/tool blocks a protected tool without confirm', async () => {
+    webServer.onTool(vi.fn().mockResolvedValue({}))
+    const res = await fetch(`${base}/api/tool`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'close_position', args: { position_address: 'x' } }),
+    })
+    expect(res.status).toBe(403)
+    const body: any = await res.json()
+    expect(body.error.code).toBe('CONFIRM_REQUIRED')
+  })
+
+  it('POST /api/tool allows a protected tool with confirm=true', async () => {
+    webServer.onTool(vi.fn().mockResolvedValue({ closed: true }))
+    const res = await fetch(`${base}/api/tool`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'close_position', args: { position_address: 'x' }, confirm: true }),
+    })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as any).result).toEqual({ closed: true })
+  })
+
+  it('POST /api/tool returns 404 for an unknown tool', async () => {
+    const res = await fetch(`${base}/api/tool`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'not_a_tool' }),
+    })
+    expect(res.status).toBe(404)
+    expect(((await res.json()) as any).error.code).toBe('UNKNOWN_TOOL')
+  })
+
+  it('POST /api/tool surfaces handler errors as 500', async () => {
+    webServer.onTool(vi.fn().mockRejectedValue(new Error('boom')))
+    const res = await fetch(`${base}/api/tool`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'get_wallet_balance' }),
+    })
+    expect(res.status).toBe(500)
+    expect(((await res.json()) as any).error.message).toBe('boom')
+  })
+
+  it('serves the static web UI at /', async () => {
+    const res = await fetch(`${base}/`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/html')
+    expect(await res.text()).toContain('etemaro')
+  })
+
+  it('serves JS assets with a JS content type', async () => {
+    const res = await fetch(`${base}/app.js`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/javascript')
+  })
+
+  it('blocks path traversal', async () => {
+    const res = await fetch(`${base}/%2e%2e%2f%2e%2e%2fetc%2fpasswd`)
+    expect(res.status).toBe(403)
+  })
+
+  it('sends the tool catalog over WebSocket after connect', async () => {
+    const { ws, first } = await connectWatching(
+      webServer.boundPort as number,
+      (m) => m.type === IpcMessageType.TOOL_CATALOG,
+    )
+    const msg = await first
+    expect((msg.payload as { tools: IpcToolDescriptor[] }).tools).toHaveLength(2)
+    ws.close()
+  })
+
+  it('executes command:tool over WebSocket and returns TOOL_RESULT', async () => {
+    webServer.onTool(vi.fn().mockResolvedValue({ sol: 3 }))
+    const { ws, first } = await connectWatching(
+      webServer.boundPort as number,
+      (m) => m.type === IpcMessageType.TOOL_CATALOG,
+    )
+    await first
+    ws.send(makeMsg(IpcMessageType.COMMAND_TOOL, { name: 'get_wallet_balance', args: {} }))
+    const result = await waitForMessage(ws, (m) => m.type === IpcMessageType.TOOL_RESULT)
+    expect((result.payload as { ok: boolean; result: { sol: number } }).ok).toBe(true)
+    expect((result.payload as { result: { sol: number } }).result.sol).toBe(3)
+    ws.close()
+  })
+
+  it('rejects command:tool for a protected tool without confirm', async () => {
+    const { ws, first } = await connectWatching(
+      webServer.boundPort as number,
+      (m) => m.type === IpcMessageType.TOOL_CATALOG,
+    )
+    await first
+    ws.send(makeMsg(IpcMessageType.COMMAND_TOOL, { name: 'close_position', args: {} }))
+    const result = await waitForMessage(ws, (m) => m.type === IpcMessageType.TOOL_RESULT)
+    const payload = result.payload as { ok: boolean; code: string }
+    expect(payload.ok).toBe(false)
+    expect(payload.code).toBe('CONFIRM_REQUIRED')
+    ws.close()
+  })
+})
+
+describe('IpcServer serves the bundled apps/web UI', () => {
+  let uiServer: IpcServer
+  let base: string
+
+  beforeEach(async () => {
+    uiServer = new IpcServer({ ipcPort: 0, webDir: repoPath('apps', 'web'), agentId: 'agent-ui' })
+    await uiServer.start()
+    base = `http://127.0.0.1:${uiServer.boundPort}`
+  })
+
+  afterEach(async () => {
+    await uiServer.stop()
+  })
+
+  it('serves index.html at /', async () => {
+    const res = await fetch(`${base}/`)
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Etemaro')
+    expect(html).toContain('/app.js')
+  })
+
+  it('serves the app bundle', async () => {
+    const res = await fetch(`${base}/app.js`)
+    expect(res.status).toBe(200)
+    expect(await res.text()).toContain('connectWs')
+  })
+
+  it('serves styles.css with a CSS content type', async () => {
+    const res = await fetch(`${base}/styles.css`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/css')
+  })
+})
+
+describe('IpcServer HTTP auth', () => {
+  let authServer: IpcServer
+  let base: string
+
+  beforeEach(async () => {
+    authServer = new IpcServer({ ipcPort: 0, ipcToken: 'secret-token', agentId: 'agent-auth' })
+    authServer.setToolCatalog([SAMPLE_TOOL])
+    await authServer.start()
+    base = `http://127.0.0.1:${authServer.boundPort}`
+  })
+
+  afterEach(async () => {
+    await authServer.stop()
+  })
+
+  it('health stays public', async () => {
+    const res = await fetch(`${base}/api/health`)
+    expect(res.status).toBe(200)
+  })
+
+  it('rejects /api/tools without a token', async () => {
+    const res = await fetch(`${base}/api/tools`)
+    expect(res.status).toBe(401)
+  })
+
+  it('accepts /api/tools with a bearer token', async () => {
+    const res = await fetch(`${base}/api/tools`, { headers: { Authorization: 'Bearer secret-token' } })
+    expect(res.status).toBe(200)
+  })
+
+  it('accepts /api/tools with a query token', async () => {
+    const res = await fetch(`${base}/api/tools?token=secret-token`)
+    expect(res.status).toBe(200)
   })
 })
