@@ -1,7 +1,15 @@
 import fs from 'node:fs'
 import { dataPath, LESSONS_FILENAME, wallet } from '@etemaro/core'
 import { describe, expect, it, vi } from 'vitest'
-import { applyCliRuntimeFlags, Cli, formatConfigLoadError, loadCore, resolveGlobalFlagValue } from './Cli.js'
+import {
+  applyCliRuntimeFlags,
+  Cli,
+  expandHome,
+  formatConfigLoadError,
+  loadCore,
+  resolveGlobalFlagValue,
+  resolveWalletImportSource,
+} from './Cli.js'
 
 describe('resolveGlobalFlagValue', () => {
   it('returns the value following the long flag', () => {
@@ -385,5 +393,65 @@ describe('Cli wallet commands', () => {
       mockExit.mockRestore()
       mockStdout.mockRestore()
     }
+  })
+})
+
+describe('resolveWalletImportSource', () => {
+  const collector = (answers: string[]) => {
+    const asked: string[] = []
+    const ask = async (question: string) => {
+      asked.push(question)
+      return answers.shift() ?? ''
+    }
+    return { asked, ask }
+  }
+
+  it('asks for alias, then source, then file path', async () => {
+    const { asked, ask } = collector(['my-wallet', '1', '~/key.json'])
+    const result = await resolveWalletImportSource({ usePrompt: false }, ask)
+    expect(result).toEqual({ alias: 'my-wallet', filePath: '~/key.json', usePrompt: false })
+    expect(asked[1]).toMatch(/Import from/)
+  })
+
+  it('defaults to the private-key prompt when the choice is empty', async () => {
+    const { ask } = collector(['wallet-1', ''])
+    const result = await resolveWalletImportSource({ usePrompt: false }, ask)
+    expect(result.alias).toBe('wallet-1')
+    expect(result.usePrompt).toBe(true)
+  })
+
+  it('selects the file branch for "file" as well as "1"', async () => {
+    const { ask } = collector(['w', 'file', '/tmp/k.json'])
+    const result = await resolveWalletImportSource({ usePrompt: false }, ask)
+    expect(result.filePath).toBe('/tmp/k.json')
+  })
+
+  it('does not ask when alias and source are already supplied', async () => {
+    const ask = vi.fn()
+    const result = await resolveWalletImportSource({ alias: 'a', filePath: '/tmp/k.json', usePrompt: false }, ask)
+    expect(ask).not.toHaveBeenCalled()
+    expect(result).toEqual({ alias: 'a', filePath: '/tmp/k.json', usePrompt: false })
+  })
+
+  it('asks only for the alias when the source is already supplied', async () => {
+    const { asked, ask } = collector(['a'])
+    const result = await resolveWalletImportSource({ usePrompt: true }, ask)
+    expect(result).toEqual({ alias: 'a', usePrompt: true })
+    expect(asked).toHaveLength(1)
+  })
+})
+
+describe('expandHome', () => {
+  it('expands a leading ~/', () => {
+    const home = process.env.HOME || ''
+    expect(expandHome('~/key.json')).toBe(`${home}/key.json`)
+  })
+
+  it('expands a bare ~', () => {
+    expect(expandHome('~')).toBe(process.env.HOME || '~')
+  })
+
+  it('leaves other paths untouched', () => {
+    expect(expandHome('/abs/key.json')).toBe('/abs/key.json')
   })
 })

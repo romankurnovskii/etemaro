@@ -74,6 +74,52 @@ async function promptSecret(promptText: string): Promise<string> {
   })
 }
 
+/** Expand a leading `~` in a user-supplied path. */
+export function expandHome(input: string): string {
+  const value = String(input ?? '').trim()
+  if (value === '~') return process.env.HOME || value
+  if (value.startsWith('~/')) return path.join(process.env.HOME || '', value.slice(2))
+  return value
+}
+
+export interface WalletImportSource {
+  alias?: string
+  filePath?: string
+  usePrompt: boolean
+}
+
+/**
+ * Fill in missing wallet-import inputs through a guided flow.
+ * All prompting goes through `ask`, keeping this pure and unit-testable.
+ */
+export async function resolveWalletImportSource(
+  initial: WalletImportSource,
+  ask: (question: string) => Promise<string>,
+): Promise<WalletImportSource> {
+  const result: WalletImportSource = { ...initial }
+
+  if (!result.alias) {
+    const answer = (await ask('Wallet alias (name): ')).trim()
+    if (answer) result.alias = answer
+  }
+
+  if (!result.filePath && !result.usePrompt) {
+    const choice = (
+      await ask('Import from:\n  1) Solana CLI keypair JSON file\n  2) Base58 private key\nChoice (1/2) [2]: ')
+    )
+      .trim()
+      .toLowerCase()
+    if (choice === '1' || choice.startsWith('f')) {
+      const filePath = (await ask('Path to keypair JSON: ')).trim()
+      if (filePath) result.filePath = filePath
+    } else {
+      result.usePrompt = true
+    }
+  }
+
+  return result
+}
+
 import {
   assessSetup,
   formatInitMessage,
@@ -370,6 +416,7 @@ Output: { success, publicKey, createdAt, label, savedTo }
 
 ### etemaro wallet import --name <alias> [--private-key <key>] [--file <path>] [--prompt]
 Imports an existing wallet. Prefer --prompt or --file: --private-key exposes the secret in shell history and process listings.
+Run "etemaro wallet import" with no flags on a terminal for a guided flow: it asks for the alias, then whether to import from a keypair JSON file or a Base58 private key.
 \`\`\`
 Output: { success, publicKey, createdAt, label, savedTo }
 \`\`\`
@@ -875,20 +922,41 @@ export class Cli {
   }
 
   private async handleWalletImport(flags: Record<string, any>): Promise<void> {
-    const alias = flags.name || flags.label
-    if (!alias) die('Usage: etemaro wallet import --name <alias> [--file <path> | --prompt]')
+    const interactive = Boolean(stdinStream.isTTY && stdoutStream.isTTY && !process.env.CI)
 
+    let alias: string | undefined = flags.name || flags.label
     let privateKey: string | undefined = flags['private-key']
-    if (!privateKey && flags.file) {
-      // File import handled by wallet.importWallet
-    } else if (!privateKey && flags.prompt) {
+    let filePath: string | undefined = flags.file
+    let usePrompt = Boolean(flags.prompt)
+
+    // Guided flow: ask for the alias and the source when they were not passed.
+    if (interactive && (!alias || (!privateKey && !filePath && !usePrompt))) {
+      const rl = readline.createInterface({ input: stdinStream, output: stdoutStream })
+      try {
+        const resolved = await resolveWalletImportSource({ alias, filePath, usePrompt }, (question) =>
+          rl.question(question),
+        )
+        alias = resolved.alias
+        filePath = resolved.filePath
+        usePrompt = resolved.usePrompt
+      } finally {
+        rl.close()
+      }
+    }
+
+    if (!alias) die('Usage: etemaro wallet import --name <alias> [--file <path> | --prompt]')
+    if (!privateKey && !filePath && !usePrompt) {
+      die('Provide a source: --file <path> or --prompt, or run on a terminal for the guided flow')
+    }
+    if (!privateKey && usePrompt) {
       privateKey = await promptSecret('Enter Base58 private key: ')
     }
+    if (filePath) filePath = expandHome(filePath)
 
     const result = wallet.importWallet({
       label: alias,
       privateKey,
-      filePath: flags.file,
+      filePath,
     })
 
     const payload: Record<string, unknown> = {
