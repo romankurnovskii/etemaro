@@ -626,6 +626,16 @@ describe('Telegram /stop & Busy Cycle Queue Draining (#236)', () => {
     expect(shutdownSpy).toHaveBeenCalledWith('telegram /stop')
   })
 
+  it('resets the swap-failure circuit through the shared command handler', async () => {
+    const reply = await (daemon as any).processCommandOrChat('/reset-halt', 'cli')
+
+    expect(reply).toMatch(/^Swap-failure circuit (reset|already clear)/)
+  })
+
+  it('advertises the swap-failure reset command in help', () => {
+    expect((daemon as any).formatHelpText()).toContain('/reset-halt')
+  })
+
   it('Edge Case 1: handles concurrent /stop without duplicate shutdown', async () => {
     const shutdownSpy = vi.spyOn(daemon as any, 'shutdown')
 

@@ -117,6 +117,7 @@ npm run cli remove-strategy -- --id my_strat             # Remove a strategy
 /hive pull       — pull shared HiveMind lessons now (see HIVEMIND.md)
 /pause           — pause cron jobs
 /resume          — resume cron jobs
+/reset-halt      — clear the swap-failure circuit breaker
 /add smart wallet <address> name=<label> category=alpha type=lp   — track a KOL/whale wallet
 /remove smart wallet <address>                                    — stop tracking a wallet
 /list smart wallets                                               — show tracked wallets

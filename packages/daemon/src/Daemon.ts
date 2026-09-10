@@ -33,6 +33,7 @@ import {
   dataPath,
   desktop,
   domain,
+  getConsecutiveSwapFailures,
   getDataDir,
   getLastBriefingDate,
   getTrackedPosition,
@@ -45,6 +46,7 @@ import {
   log,
   meteora,
   registerExitSignal,
+  resetConsecutiveSwapFailures,
   SHARED_STRATEGY_LIB_FILENAME,
   SMART_WALLETS_FILENAME,
   STATE_FILENAME,
@@ -2294,6 +2296,14 @@ IMPORTANT:
     }
   }
 
+  private resetSwapFailureCircuit(): string {
+    const previousCount = getConsecutiveSwapFailures()
+    resetConsecutiveSwapFailures()
+    return previousCount > 0
+      ? `Swap-failure circuit reset (cleared ${previousCount} consecutive failure${previousCount === 1 ? '' : 's'}).`
+      : 'Swap-failure circuit already clear.'
+  }
+
   private async telegramHandler(msg: any): Promise<void> {
     if (this.shuttingDown) return
     const text = msg?.text?.trim()
@@ -2338,6 +2348,11 @@ IMPORTANT:
 
     if (text === '/help') {
       await this.sendTelegramSafe(this.formatHelpText())
+      return
+    }
+
+    if (text === '/reset-halt') {
+      await this.sendTelegramSafe(this.resetSwapFailureCircuit())
       return
     }
 
@@ -2779,6 +2794,15 @@ IMPORTANT:
       return reply
     }
 
+    if (isCmd('reset-halt')) {
+      const reply = this.resetSwapFailureCircuit()
+      if (source === 'cli') {
+        log('agent_reply', `🤖\n${reply}`)
+        this.ipcServer?.broadcastChatReply(reply)
+      }
+      return reply
+    }
+
     if (isCmd('briefing')) {
       try {
         const reply = await this.adapters.briefing.generateBriefing()
@@ -2975,6 +2999,7 @@ IMPORTANT:
       '/hive pull — manual HiveMind pull now',
       '/pause — stop cron cycles',
       '/resume — start cron cycles again',
+      '/reset-halt — clear the swap-failure circuit breaker',
       '/stop — shut down agent',
     ].join('\n')
   }
@@ -3372,6 +3397,12 @@ Interactive REPL is active. Type a command or question at the prompt below and p
       // ── Slash commands ───────────────────────
       if (input === '/stop') {
         await this.shutdown('user command')
+        return
+      }
+
+      if (input === '/reset-halt') {
+        console.log(`\n${this.resetSwapFailureCircuit()}\n`)
+        rl.prompt()
         return
       }
 
