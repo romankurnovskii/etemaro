@@ -440,12 +440,81 @@ describe('IpcServer HTTP + web UI', () => {
   })
 })
 
-describe('IpcServer serves the bundled apps/web UI', () => {
+describe('IpcServer agent control API', () => {
+  let controlServer: IpcServer
+  let base: string
+  const control = {
+    list: () => [{ id: 'alpha', name: 'Alpha', running: true }],
+    create: (name: string) => ({ id: 'new', name, running: false }),
+    start: (id: string) => ({ id, running: true }),
+    stop: (id: string) => ({ id, running: false }),
+    setStrategy: (id: string, strategyId: string) => ({ id, strategyId }),
+  }
+
+  beforeEach(async () => {
+    controlServer = new IpcServer({ ipcPort: 0 })
+    await controlServer.start()
+    base = `http://127.0.0.1:${controlServer.boundPort}`
+  })
+
+  afterEach(async () => {
+    await controlServer.stop()
+  })
+
+  it('returns 503 before a control plane is registered', async () => {
+    const res = await fetch(`${base}/api/agents`)
+    expect(res.status).toBe(503)
+  })
+
+  it('lists agents', async () => {
+    controlServer.setAgentControl(control)
+    const res = await fetch(`${base}/api/agents`)
+    const body: any = await res.json()
+    expect(body.agents).toHaveLength(1)
+    expect(body.agents[0].id).toBe('alpha')
+  })
+
+  it('creates an agent', async () => {
+    controlServer.setAgentControl(control)
+    const res = await fetch(`${base}/api/agents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'New Bot' }),
+    })
+    const body: any = await res.json()
+    expect(res.status).toBe(200)
+    expect(body.agent.name).toBe('New Bot')
+  })
+
+  it('starts and stops an agent', async () => {
+    controlServer.setAgentControl(control)
+    const started: any = await (await fetch(`${base}/api/agents/alpha/start`, { method: 'POST' })).json()
+    expect(started.agent.running).toBe(true)
+    const stopped: any = await (await fetch(`${base}/api/agents/alpha/stop`, { method: 'POST' })).json()
+    expect(stopped.agent.running).toBe(false)
+  })
+
+  it('sets an agent strategy', async () => {
+    controlServer.setAgentControl(control)
+    const res = await fetch(`${base}/api/agents/alpha/strategy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ strategyId: 'fee_compounding' }),
+    })
+    const body: any = await res.json()
+    expect(body.agent.strategyId).toBe('fee_compounding')
+  })
+})
+
+const webDistDir = repoPath('apps', 'web', 'dist')
+const hasWebDist = fs.existsSync(path.join(webDistDir, 'index.html'))
+
+describe.skipIf(!hasWebDist)('IpcServer serves the built apps/web bundle', () => {
   let uiServer: IpcServer
   let base: string
 
   beforeEach(async () => {
-    uiServer = new IpcServer({ ipcPort: 0, webDir: repoPath('apps', 'web'), agentId: 'agent-ui' })
+    uiServer = new IpcServer({ ipcPort: 0, webDir: webDistDir, agentId: 'agent-ui' })
     await uiServer.start()
     base = `http://127.0.0.1:${uiServer.boundPort}`
   })
@@ -459,19 +528,16 @@ describe('IpcServer serves the bundled apps/web UI', () => {
     expect(res.status).toBe(200)
     const html = await res.text()
     expect(html).toContain('Etemaro')
-    expect(html).toContain('/app.js')
+    expect(html).toContain('/assets/')
   })
 
-  it('serves the app bundle', async () => {
-    const res = await fetch(`${base}/app.js`)
+  it('serves the hashed JS bundle referenced by index.html', async () => {
+    const html = await (await fetch(`${base}/`)).text()
+    const match = html.match(/\/assets\/[^"]+\.js/)
+    expect(match).toBeTruthy()
+    const res = await fetch(`${base}${match?.[0]}`)
     expect(res.status).toBe(200)
-    expect(await res.text()).toContain('connectWs')
-  })
-
-  it('serves styles.css with a CSS content type', async () => {
-    const res = await fetch(`${base}/styles.css`)
-    expect(res.status).toBe(200)
-    expect(res.headers.get('content-type')).toContain('text/css')
+    expect(res.headers.get('content-type')).toContain('javascript')
   })
 })
 
