@@ -101,6 +101,10 @@ function buildConfig(): AppConfig {
       telegramAllowedUserIds: u.connection?.telegramAllowedUserIds ?? null,
       dryRun: u.connection?.dryRun ?? false,
       allowSelfUpdate: u.connection?.allowSelfUpdate ?? false,
+      ipcPort: u.connection?.ipcPort,
+      ipcToken: u.connection?.ipcToken,
+      ipcSocketPath: u.connection?.ipcSocketPath,
+      ipcHost: u.connection?.ipcHost,
     },
     risk: {
       maxPositions: u.risk.maxPositions,

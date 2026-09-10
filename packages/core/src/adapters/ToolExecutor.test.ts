@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../config/Config.js'
 import { getPendingLiquidation } from '../domain/liquidation-queue.js'
-import { __setStateFilePath } from '../domain/state.js'
+import { __setStateFilePath, getConsecutiveSwapFailures, resetConsecutiveSwapFailures } from '../domain/state.js'
 import * as MeteoraAdapter from './blockchain/MeteoraAdapter.js'
 import * as WalletAdapter from './blockchain/WalletAdapter.js'
 import { tools } from './ToolDefinitions.js'
@@ -324,6 +324,21 @@ describe('ToolExecutor - swapBaseToSolWithRetry', () => {
     expect(res.swapped).toBe(false)
     expect(res.result).toBeNull()
     expect(WalletAdapter.swapToken).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not trip the deploy circuit for best-effort cleanup swaps (affectsCircuit:false)', async () => {
+    resetConsecutiveSwapFailures()
+    const baseMint = 'SWEEPER_DEAD_MINT_111111111111111111'
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      tokens: [{ mint: baseMint, symbol: 'DEAD', balance: 500, usd: 1.5 }],
+    } as any)
+    vi.mocked(WalletAdapter.swapToken).mockResolvedValue({ success: false, error: 'No route found' } as any)
+
+    await swapBaseToSolWithRetry(baseMint, 'sweeper', 0.05, null, null, { affectsCircuit: false })
+    expect(getConsecutiveSwapFailures()).toBe(0)
+
+    await swapBaseToSolWithRetry(baseMint, 'after close', 0.05, null, null)
+    expect(getConsecutiveSwapFailures()).toBe(1)
   })
 
   it('abandons immediately without further retries when swapToken returns liquidity.unavailable (TOKEN_NOT_TRADABLE)', async () => {

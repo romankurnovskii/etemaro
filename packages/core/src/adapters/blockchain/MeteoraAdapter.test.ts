@@ -72,6 +72,9 @@ vi.mock('../../config/Config.js', () => ({
     api: { meridian: { lpAgentRelayEnabled: true } },
     connection: {},
   },
+  // Imported dynamically by the post-close path; must exist on the mock or the
+  // relay close intermittently fails with a Vitest "no export defined" error.
+  reloadScreeningThresholds: vi.fn(),
 }))
 
 import { Keypair, PublicKey, Transaction } from '@solana/web3.js'
@@ -306,7 +309,7 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
 
     try {
       const result = await closePosition({ position_address: positionAddress })
-      expect(result.success).toBe(true)
+      expect(result.success, JSON.stringify(result)).toBe(true)
     } finally {
       fetchSpy.mockRestore()
     }
@@ -318,7 +321,9 @@ describe('MeteoraAdapter — relay transaction simulation', () => {
         replaceRecentBlockhash: true,
       }),
     )
-  }, 15000)
+    // The relay path performs real 5s + 3s polling waits; under full-suite parallelism
+    // these can push close to the default 15s ceiling. Give it headroom.
+  }, 30000)
 })
 
 describe('MeteoraAdapter — PnL source options (meteora_api vs rpc)', () => {
