@@ -360,6 +360,36 @@ Returns DLMM positions for any wallet address.
 Output: { wallet, positions: [...], total_positions }
 \`\`\`
 
+### etemaro wallet generate [--name <alias>] [--show-private-key]
+Generates a new Solana keypair and stores it in the local keystore (~/.config/etemaro/.credentials/wallets/<alias>.json, mode 0600). Encrypted with AES-256-GCM when ETEMARO_KEYSTORE_PASSPHRASE is set; plaintext otherwise. The private key is only printed when --show-private-key is passed.
+\`\`\`
+Output: { success, publicKey, createdAt, label, savedTo }
+\`\`\`
+
+### etemaro wallet import --name <alias> [--private-key <key>] [--file <path>] [--prompt]
+Imports an existing wallet. Prefer --prompt or --file: --private-key exposes the secret in shell history and process listings.
+\`\`\`
+Output: { success, publicKey, createdAt, label, savedTo }
+\`\`\`
+
+### etemaro wallet list
+Lists saved wallets with alias, public key, encryption status, and path.
+\`\`\`
+Output: [{ alias, publicKey, encrypted, path }]
+\`\`\`
+
+### etemaro wallet export --name <alias>
+Decrypts and prints the private key (interactive TTY confirmation required).
+\`\`\`
+Output: { alias, publicKey, privateKey, warning }
+\`\`\`
+
+### etemaro wallet remove --name <alias> [--yes]
+Permanently deletes a saved wallet from the keystore. Requires --yes when stdout is not a TTY.
+\`\`\`
+Output: { success, removed, paths }
+\`\`\`
+
 ### etemaro strategy validate <file...> [--json] [--strict]
 Validates strategy JSON (a library or a single strategy object) against the canonical Strategy schema.
 Reports unknown and legacy fields the runtime will ignore, and checks smartWalletListId wiring against the loaded config.
@@ -479,6 +509,14 @@ export class Cli {
       process.exit(0)
     }
 
+    // One-shot commands must keep stdout machine-readable (JSON via out()). Core
+    // log()/logStructured() write to stdout and would corrupt it, so mute them for
+    // everything except the long-running daemon/TUI commands.
+    if (!['start', 'serve', 'web', 'attach'].includes(subcommand)) {
+      const { setStdoutMuted } = await import('@etemaro/core')
+      setStdoutMuted(true)
+    }
+
     // Parse flags
     const { values: flags } = parseArgs({
       args: argv,
@@ -511,6 +549,10 @@ export class Cli {
         dir: { type: 'string' },
         label: { type: 'string' },
         name: { type: 'string' },
+        'private-key': { type: 'string' },
+        file: { type: 'string' },
+        prompt: { type: 'boolean' },
+        'show-private-key': { type: 'boolean' },
         description: { type: 'string' },
         desc: { type: 'string' },
         id: { type: 'string' },
@@ -558,6 +600,9 @@ export class Cli {
             return this.handleWalletList()
           case 'export':
             return this.handleWalletExport(flags)
+          case 'remove':
+          case 'delete':
+            return this.handleWalletRemove(flags)
           case 'swap-all':
             return this.handleSwapAllTokensToSol(flags)
           default:
@@ -808,18 +853,23 @@ export class Cli {
 
   private handleGenerateWallet(flags: Record<string, any>): void {
     const alias = flags.name || flags.label || 'default'
-    const result = wallet.generateNewWallet({
-      label: alias,
-    })
-    out({
+    const result = wallet.generateNewWallet({ label: alias })
+    const payload: Record<string, unknown> = {
       success: true,
       publicKey: result.publicKey,
-      privateKey: result.privateKey,
       createdAt: result.createdAt,
       label: result.label,
       savedTo: result.savedTo ?? path.join(this.etemaroDir, '.credentials', 'wallets', `${alias}.json`),
       message: `New Solana wallet generated and saved as "${alias}"`,
-    })
+    }
+    if (flags['show-private-key'] === true) {
+      payload.privateKey = result.privateKey
+      payload.warning = 'Private key printed to stdout — it may persist in terminal scrollback or CI logs.'
+    } else {
+      payload.note =
+        'Private key not printed. Retrieve it with "etemaro wallet export --name <alias>" (interactive TTY only).'
+    }
+    out(payload)
   }
 
   private async handleWalletImport(flags: Record<string, any>): Promise<void> {
@@ -839,17 +889,23 @@ export class Cli {
       filePath: flags.file,
     })
 
-    out({
+    const payload: Record<string, unknown> = {
       success: true,
       publicKey: result.publicKey,
       createdAt: result.createdAt,
       label: result.label,
+      savedTo: result.savedTo,
       message: `Wallet imported as "${alias}"`,
-    })
+    }
+    if (typeof flags['private-key'] === 'string' && flags['private-key'].length > 0) {
+      payload.warning =
+        'The private key was passed on the command line and may persist in shell history / process listings. Prefer --prompt or --file.'
+    }
+    out(payload)
   }
 
   private async handleWalletList(): Promise<void> {
-    const walletsMap = new Map<string, { alias: string; publicKey?: string; path: string }>()
+    const walletsMap = new Map<string, { alias: string; publicKey?: string; encrypted?: boolean; path: string }>()
 
     const searchDirs = [
       path.join(getEtemaroDir(), '.credentials', 'wallets'),
@@ -866,15 +922,17 @@ export class Cli {
             try {
               const raw = JSON.parse(fs.readFileSync(fullPath, 'utf8'))
               let pubKey: string | undefined
+              let encrypted = false
               if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+                encrypted = raw.encrypted === true
                 if (typeof raw.publicKey === 'string' && raw.publicKey.trim().length > 0) {
                   pubKey = raw.publicKey.trim()
-                } else if (typeof raw.privateKey === 'string' && raw.privateKey.trim().length > 0) {
+                } else if (!encrypted && typeof raw.privateKey === 'string' && raw.privateKey.trim().length > 0) {
                   pubKey = Keypair.fromSecretKey(bs58.decode(raw.privateKey.trim())).publicKey.toBase58()
                 }
               }
               if (!walletsMap.has(alias)) {
-                walletsMap.set(alias, { alias, publicKey: pubKey, path: fullPath })
+                walletsMap.set(alias, { alias, publicKey: pubKey, encrypted, path: fullPath })
               }
             } catch {
               if (!walletsMap.has(alias)) {
@@ -889,6 +947,47 @@ export class Cli {
     }
 
     out(Array.from(walletsMap.values()))
+  }
+
+  private async handleWalletRemove(flags: Record<string, any>): Promise<void> {
+    const alias = flags.name || flags.label
+    if (!alias) die('Usage: etemaro wallet remove --name <alias> [--yes]')
+
+    const credDirs = [
+      path.join(getEtemaroDir(), '.credentials', 'wallets'),
+      path.join(_REPO_ROOT, 'config', '.credentials', 'wallets'),
+    ]
+    const targets = credDirs.map((dir) => path.join(dir, `${alias}.json`)).filter((f) => fs.existsSync(f))
+    if (targets.length === 0) die(`Wallet alias not found: ${alias}`)
+
+    // Deleting a wallet is irreversible. Require --yes, or an explicit YES on a TTY.
+    if (flags.yes !== true) {
+      if (!process.stdout.isTTY) {
+        die('Refusing to delete a wallet without confirmation. Re-run with --yes for non-interactive use.')
+      }
+      const rl = readline.createInterface({ input: stdinStream, output: stdoutStream })
+      try {
+        const answer = await rl.question(
+          `Delete wallet "${alias}" from ${targets.length} location(s)? This cannot be undone. Type YES to confirm: `,
+        )
+        if (answer.trim() !== 'YES') {
+          console.error('Cancelled.')
+          process.exit(1)
+        }
+      } finally {
+        rl.close()
+      }
+    }
+
+    for (const target of targets) {
+      try {
+        fs.unlinkSync(target)
+      } catch (err: any) {
+        die(`Failed to delete ${target}: ${err?.message || err}`)
+      }
+    }
+
+    out({ success: true, removed: alias, paths: targets })
   }
 
   private async handleWalletExport(flags: Record<string, any>): Promise<void> {
@@ -915,9 +1014,11 @@ export class Cli {
       return
     }
 
-    // Check secure keystore (.credentials/wallets/<alias>.json)
+    // Check secure keystore (.credentials/wallets/<alias>.json) — decrypts when needed.
+    const { readKeystoreFile } = (await import('@etemaro/core')) as any
     let foundPub: string | undefined
     let foundPriv: string | undefined
+    let readError: string | undefined
 
     const credDirs = [
       path.join(getEtemaroDir(), '.credentials', 'wallets'),
@@ -925,31 +1026,20 @@ export class Cli {
     ]
     for (const dir of credDirs) {
       const credFile = path.join(dir, `${alias}.json`)
-      if (fs.existsSync(credFile)) {
-        try {
-          const raw = JSON.parse(fs.readFileSync(credFile, 'utf8'))
-          if (
-            typeof raw === 'object' &&
-            raw !== null &&
-            !Array.isArray(raw) &&
-            typeof raw.privateKey === 'string' &&
-            raw.privateKey.trim().length > 0
-          ) {
-            const priv = raw.privateKey.trim()
-            foundPriv = priv
-            foundPub =
-              typeof raw.publicKey === 'string' && raw.publicKey.trim().length > 0
-                ? raw.publicKey.trim()
-                : Keypair.fromSecretKey(bs58.decode(priv)).publicKey.toBase58()
-            break
-          }
-        } catch {
-          /* ignore */
-        }
+      if (!fs.existsSync(credFile)) continue
+      try {
+        const keystore = readKeystoreFile(credFile)
+        foundPriv = keystore.privateKey
+        foundPub = keystore.publicKey || Keypair.fromSecretKey(bs58.decode(keystore.privateKey)).publicKey.toBase58()
+        break
+      } catch (err: any) {
+        readError = err?.message || String(err)
       }
     }
 
-    if (!foundPriv) die(`Wallet alias not found: ${alias}`)
+    if (!foundPriv) {
+      die(readError ? `Failed to read wallet "${alias}": ${readError}` : `Wallet alias not found: ${alias}`)
+    }
 
     out({
       alias,
