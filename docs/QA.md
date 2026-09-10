@@ -177,6 +177,28 @@ The keystore keeps the **private key out of `process.env`** — crucial because 
 
 ---
 
+## Wallet Management (CLI)
+
+### Q: How do I create, list, export, and remove a wallet?
+
+**A:** Use the CLI (or the Desktop **Settings** tab). Every wallet is referenced by an alias; the private key never goes into `user-config.json`.
+
+| Command | What it does |
+|---------|--------------|
+| `etemaro wallet generate --name <alias>` | Create a new keypair and store it in the keystore. The private key is **not** printed unless you add `--show-private-key`. |
+| `etemaro wallet import --name <alias> --prompt` | Import an existing Base58 key interactively (nothing in shell history). `--file <path>` imports a Solana CLI keypair JSON; `--private-key <key>` imports inline but warns — the key may persist in shell history and process listings. |
+| `etemaro wallet list` | List aliases, public keys, and whether each keystore file is encrypted. |
+| `etemaro wallet export --name <alias>` | Decrypt and print the private key. Requires an interactive TTY and typing `YES` to confirm. |
+| `etemaro wallet remove --name <alias> --yes` | Delete a wallet from the keystore. Without `--yes` it prompts for `YES` on a TTY and refuses when stdout is not a TTY. |
+
+Then set `"wallet": "<alias>"` under `connection` in the agent config.
+
+### Q: What happens if I don't set `ETEMARO_KEYSTORE_PASSPHRASE`?
+
+**A:** It is optional. **Without it**, private keys are stored as **plaintext** `{ "publicKey", "privateKey" }` at mode `0600` and a `wallet_warn` line is logged on generate/import; the daemon loads them normally and `wallet export` works. **With it**, keys are encrypted at rest (AES-256-GCM + scrypt), plaintext keystores are migrated on first read, and the same passphrase becomes **required** to load those wallets (daemon boot, `wallet export`); a missing or wrong passphrase fails with a clear error, and a lost passphrase makes encrypted wallets unrecoverable — back it up. `wallet list` and `wallet remove` never decrypt, so they work either way.
+
+---
+
 ## Dry Run & Operations
 
 ### Q: When running the screening cycle in dry-run mode, is any data saved locally?
