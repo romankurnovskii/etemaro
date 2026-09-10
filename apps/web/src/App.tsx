@@ -5,11 +5,12 @@ import { useStrategies } from './hooks/useStrategies'
 import { DAEMON_URL, WS_URL } from './lib/api'
 import { AgentsView } from './views/AgentsView'
 import { ChatView } from './views/ChatView'
+import { ConfigView } from './views/ConfigView'
 import { DashboardView } from './views/DashboardView'
 import { LogsView } from './views/LogsView'
 import { ToolsView } from './views/ToolsView'
 
-const TABS = ['agents', 'dashboard', 'tools', 'logs', 'chat'] as const
+const TABS = ['agents', 'dashboard', 'tools', 'config', 'logs', 'chat'] as const
 type Tab = (typeof TABS)[number]
 
 export default function App() {
@@ -71,6 +72,7 @@ export default function App() {
         ) : null}
         {tab === 'dashboard' ? <DashboardView snapshot={conn.snapshot} /> : null}
         {tab === 'tools' ? <ToolsView catalog={conn.catalog} token={token} initialToolName={openTool} /> : null}
+        {tab === 'config' ? <ConfigView agents={agents.agents} token={token} /> : null}
         {tab === 'logs' ? <LogsView logs={conn.logs} /> : null}
         {tab === 'chat' ? <ChatView chat={conn.chat} onSend={conn.sendChat} /> : null}
       </main>
