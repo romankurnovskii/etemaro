@@ -90,6 +90,11 @@ export function loadAndValidateConfig(): ValidatedUserConfig {
       raw = JSON.parse(content)
     }
   } catch (e) {
+    if (isHelpOrInfoCommand()) {
+      // Validation/info commands must be able to report on a broken config
+      // instead of dying during core import.
+      return JSON.parse(defaultUserConfigStr) as unknown as ValidatedUserConfig
+    }
     throw new Error(`Failed to parse ${getConfigFileName()}: ${e instanceof Error ? e.message : String(e)}`, {
       cause: e,
     })

@@ -489,6 +489,11 @@ function getActiveSmartWalletListId(): string {
   return listId
 }
 
+/** Optional variant for enrichment tools that must degrade in market mode. */
+function getActiveSmartWalletListIdOptional(): string | undefined {
+  return getActiveStrategy()?.smartWalletListId ?? undefined
+}
+
 const toolMap: Record<string, ToolFn> = {
   discover_pools: discoverPools as unknown as ToolFn,
   get_top_candidates: getTopCandidates as unknown as ToolFn,
@@ -502,13 +507,24 @@ const toolMap: Record<string, ToolFn> = {
   search_pools: searchPools as unknown as ToolFn,
   get_token_info: getTokenInfo as unknown as ToolFn,
   get_token_holders: ((args: Record<string, unknown>) =>
-    get_token_holders({ ...args, smartWalletListId: getActiveSmartWalletListId() } as any)) as unknown as ToolFn,
+    get_token_holders({
+      ...args,
+      smartWalletListId: getActiveSmartWalletListIdOptional(),
+    } as any)) as unknown as ToolFn,
   get_token_narrative: getTokenNarrative as unknown as ToolFn,
   add_smart_wallet: (args) => addSmartWallet({ ...args, listId: getActiveSmartWalletListId() } as any),
   remove_smart_wallet: (args) => removeSmartWallet({ ...args, listId: getActiveSmartWalletListId() } as any),
   list_smart_wallets: () => listSmartWallets({ listId: getActiveSmartWalletListId() }),
-  check_smart_wallets_on_pool: (args) =>
-    check_smart_wallets_on_pool({ ...args, listId: getActiveSmartWalletListId() } as any),
+  check_smart_wallets_on_pool: (args) => {
+    const listId = getActiveSmartWalletListIdOptional()
+    if (!listId) {
+      return {
+        in_pool: [],
+        note: 'Active strategy defines no smartWalletListId; smart-wallet signal skipped (optional in market mode).',
+      }
+    }
+    return check_smart_wallets_on_pool({ ...args, listId } as any)
+  },
   claim_fees: claimFees as unknown as ToolFn,
   close_position: closePosition as unknown as ToolFn,
   close_all_positions: ((args: Record<string, unknown> = {}) => {
@@ -914,6 +930,7 @@ export async function swapBaseToSolWithRetry(
   minUsd: number = 0.05,
   poolAddress?: string | null,
   position?: string | null,
+  opts: { affectsCircuit?: boolean } = {},
 ): Promise<{
   swapped: boolean
   result: Record<string, unknown> | null
@@ -933,6 +950,10 @@ export async function swapBaseToSolWithRetry(
   let amountMultiplier = 1.0
   let currentSlippageBps: number | undefined
   let abandonImmediately = false
+  // Best-effort cleanup swaps (sweeper, batch cleanup) must not trip the deploy
+  // circuit breaker: dead/dust tokens legitimately have no route and would
+  // otherwise block new deploys.
+  const affectsCircuit = opts.affectsCircuit !== false
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
@@ -983,7 +1004,7 @@ export async function swapBaseToSolWithRetry(
       }
 
       if (ok) {
-        recordSwapSuccess()
+        if (affectsCircuit) recordSwapSuccess()
         // Jupiter V2 /execute returns outputAmountResult in lamports; divide by 1e9 for SOL.
         // amount_in is also in lamports if used elsewhere.
         const solReceived =
@@ -1052,7 +1073,7 @@ export async function swapBaseToSolWithRetry(
     'executor_warn',
     `Auto-swap ${label} failed after ${attempts} attempts — base token left unsold (${baseMint.slice(0, 8)})`,
   )
-  recordSwapFailure({ maxFailedSwapsBeforeHalt, haltOnSwapFailure })
+  if (affectsCircuit) recordSwapFailure({ maxFailedSwapsBeforeHalt, haltOnSwapFailure })
   const symbol = lastToken?.symbol || baseMint.slice(0, 8)
   const tokenUsd = lastToken?.usd ?? null
   const alertThreshold = config.management.sweeperAlertUsd ?? 1.0
@@ -1222,7 +1243,9 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
     swapAttempted = true
 
     try {
-      const res = await swapBaseToSolWithRetry(item.mint, 'sweeper', minUsd, item.pool_address)
+      const res = await swapBaseToSolWithRetry(item.mint, 'sweeper', minUsd, item.pool_address, null, {
+        affectsCircuit: false,
+      })
       if (res.swapped) {
         successful++
         results.push({ mint: item.mint, symbol: item.symbol, success: true, result: res.result })
@@ -1343,7 +1366,9 @@ export async function swapAllTokensToSolUnlocked(skipMintsInput: string[] | { sk
     swapAttempted = true
 
     try {
-      const res = await swapBaseToSolWithRetry(token.mint, 'batch cleanup', 0.02)
+      const res = await swapBaseToSolWithRetry(token.mint, 'batch cleanup', 0.02, null, null, {
+        affectsCircuit: false,
+      })
       if (res.swapped) {
         successful++
         results.push({ mint: token.mint, success: true, result: res.result })
