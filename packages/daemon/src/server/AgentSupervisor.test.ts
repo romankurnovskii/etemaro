@@ -100,6 +100,29 @@ describe('AgentSupervisor', () => {
     expect(cfg.strategy.activeStrategyId).toBe('fee_compounding')
   })
 
+  it('reads and writes an instance config by path', () => {
+    sup.create('Configurable')
+    const configPath = path.join(repo, 'config', 'instances', 'configurable.json')
+    expect(sup.readConfigFile(configPath).agentId).toBe('configurable')
+    const updated = { ...sup.readConfigFile(configPath), risk: { maxPositions: 3 } }
+    expect(sup.writeConfigFile(configPath, updated).id).toBe('configurable')
+    expect(sup.readConfigFile(configPath).risk).toEqual({ maxPositions: 3 })
+  })
+
+  it('rejects config paths outside config/instances', () => {
+    expect(() => sup.readConfigFile('/etc/passwd')).toThrow(/config\/instances/)
+    expect(() => sup.readConfigFile(path.join(repo, 'data', 'x.json'))).toThrow(/config\/instances/)
+    expect(() => sup.readConfigFile(path.join(repo, 'config', 'instances', '..', 'evil.json'))).toThrow()
+    expect(() => sup.writeConfigFile(path.join(repo, 'config', 'users.json'), {})).toThrow(/config\/instances/)
+    expect(() => sup.readConfigFile(path.join(repo, 'config', 'instances', 'x.txt'))).toThrow(/config\/instances/)
+  })
+
+  it('rejects non-object config content', () => {
+    sup.create('Guard')
+    const configPath = path.join(repo, 'config', 'instances', 'guard.json')
+    expect(() => sup.writeConfigFile(configPath, 'nope')).toThrow(/JSON object/)
+  })
+
   it('rejects path traversal ids', () => {
     expect(() => sup.start('../evil')).toThrow(/Invalid agent id/)
     expect(() => sup.start('a/b')).toThrow(/Invalid agent id/)
