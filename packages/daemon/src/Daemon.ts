@@ -35,17 +35,20 @@ import {
   domain,
   getConsecutiveSwapFailures,
   getDataDir,
+  getInstanceId,
   getLastBriefingDate,
   getTrackedPosition,
   getTrackedPositions,
   hivemind,
   type IpcPositionSummary,
+  type IpcToolDescriptor,
   isPnlSuspect,
   loadJsonFile,
   loadJsonFileWithInfo,
   log,
   meteora,
   registerExitSignal,
+  repoPath,
   resetConsecutiveSwapFailures,
   SHARED_STRATEGY_LIB_FILENAME,
   SMART_WALLETS_FILENAME,
@@ -536,16 +539,32 @@ export class Daemon {
       this.adapters.desktop.startServer((msg: any) => this.desktopHandler(msg))
     }
 
-    // Start WebSocket IPC server (Ink CLI / Desktop clients)
+    // Start IPC server (Ink CLI / browser web UI / Desktop clients)
     const ipcConfig = {
       ipcPort: config.connection?.ipcPort ?? 8765,
       ipcToken: config.connection?.ipcToken ?? process.env.ETEMARO_IPC_TOKEN,
       ipcSocketPath: config.connection?.ipcSocketPath,
+      ipcHost: config.connection?.ipcHost,
+      webDir: repoPath('apps', 'web'),
+      agentId: getInstanceId(),
     }
     this.ipcServer = new IpcServer(ipcConfig)
+    this.ipcServer.setToolCatalog(
+      tools.map(
+        (tool): IpcToolDescriptor => ({
+          name: tool.function.name,
+          description: tool.function.description,
+          parameters: tool.function.parameters as unknown as Record<string, unknown>,
+          isWrite: toolExecutor.WRITE_TOOLS.has(tool.function.name),
+          isProtected: toolExecutor.PROTECTED_TOOLS.has(tool.function.name),
+        }),
+      ),
+    )
     try {
       await this.ipcServer.start()
-      const bindInfo = ipcConfig.ipcSocketPath ? ipcConfig.ipcSocketPath : `ws://127.0.0.1:${ipcConfig.ipcPort}`
+      const bindInfo = ipcConfig.ipcSocketPath
+        ? ipcConfig.ipcSocketPath
+        : `http://${ipcConfig.ipcHost ?? '127.0.0.1'}:${ipcConfig.ipcPort}`
       log('startup', `IPC server listening on ${bindInfo}`)
 
       this.unsubscribeLog = addLogListener((entry) => {
@@ -565,6 +584,11 @@ export class Daemon {
       })
 
       this.broadcastIpcState()
+      this.ipcServer.onTool(async (name, args) => {
+        const result = await this.adapters.toolExecutor.executeTool(name, args)
+        return (result ?? {}) as Record<string, unknown>
+      })
+
     } catch (err: any) {
       log('startup_warn', `Failed to start IPC server: ${err?.message || err}`)
     }
