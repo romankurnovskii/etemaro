@@ -697,7 +697,9 @@ interface GetPerformanceHistoryOpts {
  * Finalizes the trade to 'realized', zeroes unliquidated residual, and derives lesson.
  */
 export interface SettleTradeLiquidationOpts {
+  /** Amount of SOL received from the liquidation swap. MUST be in human-readable SOL units (NOT lamports). */
   amountOutSol: number
+  /** SOL/USD price at settlement time. Derived from the position's entry data if omitted. */
   solPrice?: number
   tx?: string
   position?: string
