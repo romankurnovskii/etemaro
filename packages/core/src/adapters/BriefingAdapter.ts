@@ -1,6 +1,6 @@
 /**
  * @file BriefingAdapter.ts
- * @description Generates a plain-text morning briefing message summarizing the last 24h of positions, performance, and lessons.
+ * @description Generates a plain-text briefing message summarizing the last 24h of positions, performance, and lessons.
  *
  * @features
  * - Aggregates open/closed positions, PnL, fees, and new lessons from state.json and lessons.json

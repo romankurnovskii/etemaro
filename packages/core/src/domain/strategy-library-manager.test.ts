@@ -102,6 +102,20 @@ describe('StrategyLibraryManager source handling', () => {
     expect(() => strategyLibraryManager.loadMerged()).toThrow(/Shared strategy library is required/)
   })
 
+  it('requires a wallet list for smart-wallet-enabled strategies', () => {
+    mockLibraries()
+    const originalEntrySource = config.screening.entrySource
+    const originalActiveStrategyId = config.strategy.activeStrategyId
+    try {
+      config.screening.entrySource = 'smart_wallets'
+      config.strategy.activeStrategyId = 'single_sided_reseed'
+      expect(() => strategyLibraryManager.validate()).toThrow(/must define smartWalletListId/)
+    } finally {
+      config.screening.entrySource = originalEntrySource
+      config.strategy.activeStrategyId = originalActiveStrategyId
+    }
+  })
+
   it('savePrivate writes to the private library path', () => {
     let renamedTo = ''
     vi.spyOn(fs, 'writeFileSync').mockImplementation((() => undefined) as any)
@@ -144,11 +158,17 @@ describe('StrategyLibraryManager boot validation', () => {
   it('validate passes when the active strategy exists only in the private library', () => {
     mockPrivateOnly({ copy_trade_lag: { id: 'copy_trade_lag', name: 'Copy Trade Lag', author: 'custom' } })
     const originalActive = config.strategy.activeStrategyId
+    const originalEntrySource = config.screening.entrySource
+    const originalBonus = config.opportunity.smartWalletScoreBonus
     try {
       config.strategy.activeStrategyId = 'copy_trade_lag'
+      config.screening.entrySource = 'market'
+      config.opportunity.smartWalletScoreBonus = 0
       expect(() => strategyLibraryManager.validate()).not.toThrow()
     } finally {
       config.strategy.activeStrategyId = originalActive
+      config.screening.entrySource = originalEntrySource
+      config.opportunity.smartWalletScoreBonus = originalBonus
     }
   })
 

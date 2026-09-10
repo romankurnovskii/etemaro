@@ -16,12 +16,23 @@ import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
 
 const WALLETS_PATH = sharedConfigPath('smart-wallets.json')
 
-interface SmartWalletsData {
+interface SmartWalletList {
   wallets: SmartWallet[]
 }
 
+interface SmartWalletsData {
+  lists: Record<string, SmartWalletList>
+}
+
+function loadWalletList(listId: string): SmartWalletList {
+  const data = loadJsonFile<SmartWalletsData>(WALLETS_PATH, { lists: {} }, { label: 'smart-wallets' })
+  const list = data.lists[listId]
+  if (!list) throw new Error(`Smart wallet list "${listId}" not found`)
+  return list
+}
+
 function loadWallets(): SmartWalletsData {
-  return loadJsonFile<SmartWalletsData>(WALLETS_PATH, { wallets: [] }, { label: 'smart-wallets' })
+  return loadJsonFile<SmartWalletsData>(WALLETS_PATH, { lists: {} }, { label: 'smart-wallets' })
 }
 
 function saveWallets(data: SmartWalletsData): void {
@@ -29,11 +40,13 @@ function saveWallets(data: SmartWalletsData): void {
 }
 
 export function addSmartWallet({
+  listId,
   name,
   address,
   category = 'alpha',
   type = 'lp',
 }: {
+  listId: string
   name: string
   address: string
   category?: string
@@ -43,29 +56,33 @@ export function addSmartWallet({
     return { success: false, error: 'Invalid Solana address format' }
   }
   const data = loadWallets()
-  const existing = data.wallets.find((w) => w.address === address)
+  const list = data.lists[listId]
+  if (!list) throw new Error(`Smart wallet list "${listId}" not found`)
+  const existing = list.wallets.find((w) => w.address === address)
   if (existing) {
     return { success: false, error: `Already tracked as "${existing.name}"` }
   }
-  data.wallets.push({ name, address, category, type, addedAt: new Date().toISOString() })
+  list.wallets.push({ name, address, category, type, addedAt: new Date().toISOString() })
   saveWallets(data)
   log('smart_wallets', `Added wallet: ${name} (${category}, type=${type})`)
   return { success: true, wallet: { name, address, category, type } }
 }
 
-export function removeSmartWallet({ address }: { address: string }): Record<string, unknown> {
+export function removeSmartWallet({ listId, address }: { listId: string; address: string }): Record<string, unknown> {
   const data = loadWallets()
-  const wallet = data.wallets.find((w) => w.address === address)
+  const list = data.lists[listId]
+  if (!list) throw new Error(`Smart wallet list "${listId}" not found`)
+  const wallet = list.wallets.find((w) => w.address === address)
   if (!wallet) return { success: false, error: 'Wallet not found' }
-  data.wallets = data.wallets.filter((w) => w.address !== address)
+  list.wallets = list.wallets.filter((w) => w.address !== address)
   saveWallets(data)
   _cache.delete(address)
   log('smart_wallets', `Removed wallet: ${wallet.name}`)
   return { success: true, removed: wallet.name }
 }
 
-export function listSmartWallets(): { total: number; wallets: SmartWallet[] } {
-  const { wallets } = loadWallets()
+export function listSmartWallets({ listId }: { listId: string }): { total: number; wallets: SmartWallet[] } {
+  const { wallets } = loadWalletList(listId)
   return { total: wallets.length, wallets }
 }
 
@@ -121,7 +138,7 @@ export type GetWalletPositionsFn = (opts: { wallet_address: string }) => Promise
  * @param opts.getWalletPositions - Function to fetch wallet positions (injected to avoid circular deps)
  */
 export async function checkSmartWalletsOnPool(
-  { pool_address }: { pool_address: string },
+  { listId, pool_address }: { listId: string; pool_address: string },
   getWalletPositions?: GetWalletPositionsFn,
 ): Promise<{
   pool: string
@@ -130,7 +147,7 @@ export async function checkSmartWalletsOnPool(
   confidence_boost: boolean
   signal: string
 }> {
-  const { wallets: allWallets } = loadWallets()
+  const { wallets: allWallets } = loadWalletList(listId)
   // Only check LP-type wallets — holder wallets don't have positions
   const wallets = allWallets.filter((w) => !w.type || w.type === 'lp')
   if (wallets.length === 0) {

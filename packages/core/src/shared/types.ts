@@ -378,6 +378,7 @@ export interface Strategy {
   id: string
   name: string
   author: string
+  smartWalletListId?: string
   lpStrategy: string
   tokenCriteria: Record<string, unknown>
   entry: Record<string, unknown>

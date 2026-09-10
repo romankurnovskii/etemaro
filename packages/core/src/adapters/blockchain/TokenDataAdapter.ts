@@ -204,9 +204,11 @@ export async function getTokenInfo({ query }: { query: string }): Promise<TokenI
 export async function getTokenHolders({
   mint,
   limit = 20,
+  smartWalletListId,
 }: {
   mint: string
   limit?: number
+  smartWalletListId?: string
 }): Promise<TokenHoldersResponse> {
   // Fetch holders and total supply in parallel
   const [holdersRes, tokenRes] = await Promise.all([
@@ -249,63 +251,65 @@ export async function getTokenHolders({
   const smartWalletsHolding: SmartWalletHolder[] = []
   try {
     const smartWalletsMod = await import('../../domain/smart-wallets.js')
-    const smartWallets: SmartWallet[] = smartWalletsMod.listSmartWallets().wallets
+    if (smartWalletListId) {
+      const smartWallets: SmartWallet[] = smartWalletsMod.listSmartWallets({ listId: smartWalletListId }).wallets
 
-    if (smartWallets.length > 0) {
-      const addresses = smartWallets.map((w: SmartWallet) => w.address).join(',')
-      const kwRes = await fetch(`${DATAPI_BASE}/holders/${mint}?addresses=${addresses}`).catch(() => null)
-      const kwData: any = kwRes?.ok ? await kwRes.json() : null
-      const kwHolders: any[] = Array.isArray(kwData) ? kwData : kwData?.holders || kwData?.data || []
+      if (smartWallets.length > 0) {
+        const addresses = smartWallets.map((w: SmartWallet) => w.address).join(',')
+        const kwRes = await fetch(`${DATAPI_BASE}/holders/${mint}?addresses=${addresses}`).catch(() => null)
+        const kwData: any = kwRes?.ok ? await kwRes.json() : null
+        const kwHolders: any[] = Array.isArray(kwData) ? kwData : kwData?.holders || kwData?.data || []
 
-      const smartWalletMap = new Map(smartWallets.map((w: SmartWallet) => [w.address, w]))
-      const matchedHolders = kwHolders
-        .map((h: any) => ({ ...h, addr: h.address || h.wallet }))
-        .filter((h: any) => smartWalletMap.has(h.addr))
+        const smartWalletMap = new Map(smartWallets.map((w: SmartWallet) => [w.address, w]))
+        const matchedHolders = kwHolders
+          .map((h: any) => ({ ...h, addr: h.address || h.wallet }))
+          .filter((h: any) => smartWalletMap.has(h.addr))
 
-      await Promise.all(
-        matchedHolders.map(async (h: any) => {
-          const wallet = smartWalletMap.get(h.addr)
-          const pct = totalSupply ? parseFloat(((Number(h.amount) / totalSupply) * 100).toFixed(4)) : null
+        await Promise.all(
+          matchedHolders.map(async (h: any) => {
+            const wallet = smartWalletMap.get(h.addr)
+            const pct = totalSupply ? parseFloat(((Number(h.amount) / totalSupply) * 100).toFixed(4)) : null
 
-          let pnl: SmartWalletPnl | null = null
-          try {
-            const pnlRes = await fetch(`${DATAPI_BASE}/pnl-positions?address=${h.addr}&assetId=${mint}`)
-            if (pnlRes.ok) {
-              const pnlData = (await pnlRes.json()) as Record<string, any>
-              const pos = pnlData?.[h.addr]?.tokenPositions?.[0]
-              if (pos)
-                pnl = {
-                  balance: pos.balance,
-                  balance_usd: pos.balanceValue,
-                  avg_cost: pos.averageCost,
-                  realized_pnl: pos.realizedPnl,
-                  unrealized_pnl: pos.unrealizedPnl,
-                  total_pnl: pos.totalPnl,
-                  total_pnl_pct: pos.totalPnlPercentage,
-                  buys: pos.totalBuys,
-                  sells: pos.totalSells,
-                  wins: pos.totalWins,
-                  bought_value: pos.boughtValue,
-                  sold_value: pos.soldValue,
-                  first_active: pos.firstActiveTime,
-                  last_active: pos.lastActiveTime,
-                  holding_days: pos.holdingPeriodInSeconds ? Math.round(pos.holdingPeriodInSeconds / 86400) : null,
-                }
+            let pnl: SmartWalletPnl | null = null
+            try {
+              const pnlRes = await fetch(`${DATAPI_BASE}/pnl-positions?address=${h.addr}&assetId=${mint}`)
+              if (pnlRes.ok) {
+                const pnlData = (await pnlRes.json()) as Record<string, any>
+                const pos = pnlData?.[h.addr]?.tokenPositions?.[0]
+                if (pos)
+                  pnl = {
+                    balance: pos.balance,
+                    balance_usd: pos.balanceValue,
+                    avg_cost: pos.averageCost,
+                    realized_pnl: pos.realizedPnl,
+                    unrealized_pnl: pos.unrealizedPnl,
+                    total_pnl: pos.totalPnl,
+                    total_pnl_pct: pos.totalPnlPercentage,
+                    buys: pos.totalBuys,
+                    sells: pos.totalSells,
+                    wins: pos.totalWins,
+                    bought_value: pos.boughtValue,
+                    sold_value: pos.soldValue,
+                    first_active: pos.firstActiveTime,
+                    last_active: pos.lastActiveTime,
+                    holding_days: pos.holdingPeriodInSeconds ? Math.round(pos.holdingPeriodInSeconds / 86400) : null,
+                  }
+              }
+            } catch {
+              /* ignore */
             }
-          } catch {
-            /* ignore */
-          }
 
-          smartWalletsHolding.push({
-            name: wallet?.name || '',
-            category: wallet?.category || '',
-            address: h.addr,
-            pct,
-            sol_balance: h.solBalanceDisplay ?? h.solBalance,
-            pnl,
-          })
-        }),
-      )
+            smartWalletsHolding.push({
+              name: wallet?.name || '',
+              category: wallet?.category || '',
+              address: h.addr,
+              pct,
+              sol_balance: h.solBalanceDisplay ?? h.solBalance,
+              pnl,
+            })
+          }),
+        )
+      }
     }
   } catch {
     // SmartWallets module not yet available in adapter layer — skip cross-reference
