@@ -53,6 +53,8 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
   })
 
   it('configPath resolves to <root>/config, not packages/core/config', () => {
+    envSnap = snapshotEnv()
+    delete process.env.USER_CONFIG_PATH // test the default resolution, not an env override
     expect(configPath('user-config.json')).toBe(path.join(REPO_ROOT, 'config', 'user-config.json'))
     expect(configPath('user-config.json')).not.toContain('packages/core/config')
   })
