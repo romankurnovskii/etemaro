@@ -45,13 +45,7 @@ import {
   listSmartWallets,
   removeSmartWallet,
 } from '../domain/smart-wallets.js'
-import {
-  getConsecutiveSwapFailures,
-  isHalted,
-  recordSwapFailure,
-  recordSwapSuccess,
-  setPositionInstruction,
-} from '../domain/state.js'
+import { recordSwapFailure, recordSwapSuccess, setPositionInstruction } from '../domain/state.js'
 import {
   addStrategy,
   getActiveStrategy,
@@ -87,7 +81,7 @@ import { getWalletBalances, swapToken } from './blockchain/WalletAdapter.js'
 import { getNotificationPort } from './notifications/notificationPort.js'
 import { tools as toolDefinitions } from './ToolDefinitions.js'
 
-import { validateDeployPoolThresholds } from './tooling/deploySafety.js'
+import { runSafetyChecks, validateDeployPoolThresholds } from './tooling/deploySafety.js'
 
 // ─── Cron restarter (registered by index.js) ───────────────────
 
@@ -99,7 +93,7 @@ export {
   recordSwapFailure,
   resetConsecutiveSwapFailures,
 } from '../domain/state.js'
-export { _runSafetyChecks as runSafetyChecks, validateDeployPoolThresholds as _validateDeployPoolThresholds }
+export { runSafetyChecks, validateDeployPoolThresholds as _validateDeployPoolThresholds }
 
 export function registerCronRestarter(fn: () => void): void {
   _cronRestarter = fn
@@ -1247,7 +1241,7 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
 
   // ─── Pre-execution safety checks ──────────
   if (PROTECTED_TOOLS.has(name)) {
-    const safetyCheck = await _runSafetyChecks(name, args)
+    const safetyCheck = await runSafetyChecks(name, args, { getActiveSmartWalletListId })
     if (!safetyCheck.pass) {
       log('safety_block', `${name} blocked: ${safetyCheck.reason}`)
       logStructured({
@@ -1442,254 +1436,6 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
 /**
  * Run safety checks before executing write operations.
  */
-async function _runSafetyChecks(
-  name: string,
-  args: Record<string, unknown>,
-): Promise<{
-  pass: boolean
-  reason?: string
-  warnings?: string[]
-  source?: 'discovery' | 'dlmm' | 'missing'
-  entryMarketData?: Record<string, unknown>
-}> {
-  switch (name) {
-    case 'deploy_position': {
-      // Circuit-breaker: if recent swap failures have crossed the threshold,
-      // refuse to open new positions until the operator resets the counter.
-      const haltOpts = {
-        maxFailedSwapsBeforeHalt: config.management.maxFailedSwapsBeforeHalt ?? 5,
-        haltOnSwapFailure: config.management.haltOnSwapFailure ?? true,
-      }
-      if (isHalted(haltOpts)) {
-        const count = getConsecutiveSwapFailures()
-        return {
-          pass: false,
-          reason:
-            `Circuit-breaker: ${count} consecutive swap failures (threshold ${haltOpts.maxFailedSwapsBeforeHalt}). ` +
-            'New deploys are blocked. Manual review required. Reset the counter to resume.',
-        }
-      }
-
-      const poolThresholds = await validateDeployPoolThresholds(args)
-      if (!poolThresholds.pass) return poolThresholds
-      if (poolThresholds.entryMarketData) Object.assign(args, poolThresholds.entryMarketData)
-      if (poolThresholds.warnings?.length) {
-        logStructured({
-          category: 'screening',
-          message: 'Pool screening passed using DLMM fallback (Pool Discovery API indexing lag)',
-          metadata: {
-            tool: 'deploy_position',
-            pool: args.pool_address,
-            source: poolThresholds.source,
-            warnings: poolThresholds.warnings,
-          },
-        })
-      }
-
-      // Reject pools with bin_step out of configured range
-      const minStep = config.screening.minBinStep
-      const maxStep = config.screening.maxBinStep
-      if (args.bin_step != null && ((args.bin_step as number) < minStep || (args.bin_step as number) > maxStep)) {
-        return {
-          pass: false,
-          reason: `bin_step ${args.bin_step} is outside the allowed range of [${minStep}-${maxStep}].`,
-        }
-      }
-
-      const deployAmountY = Number(args.amount_y ?? args.amount_sol ?? 0)
-      const deployAmountX = Number(args.amount_x ?? 0)
-      if (Number.isFinite(deployAmountX) && deployAmountX > 0) {
-        return {
-          pass: false,
-          reason: 'This agent only supports single-side SOL deploys. Use amount_y/amount_sol and keep amount_x=0.',
-        }
-      }
-      const requestedBinsBelow = Number(
-        args.bins_below ?? config.strategy.defaultBinsBelow ?? config.strategy.minBinsBelow,
-      )
-      const requestedBinsAbove = Number(args.bins_above ?? 0)
-      const minBinsBelow = Math.max(
-        getMinSafeBinsBelow(),
-        Number(config.strategy.minBinsBelow ?? getMinSafeBinsBelow()),
-      )
-      const isSingleSidedSol = deployAmountY > 0 && deployAmountX <= 0
-      const requestedTotalBins = requestedBinsBelow + requestedBinsAbove
-      const requestedVolatility = args.volatility == null ? null : Number(args.volatility)
-      if (args.volatility != null && (!Number.isFinite(requestedVolatility!) || requestedVolatility! <= 0)) {
-        return {
-          pass: false,
-          reason: `volatility ${args.volatility} is invalid. Refusing deploy because the volatility feed is unusable.`,
-        }
-      }
-      if (
-        args.downside_pct == null &&
-        args.upside_pct == null &&
-        (!Number.isFinite(requestedBinsBelow) ||
-          !Number.isFinite(requestedBinsAbove) ||
-          !Number.isInteger(requestedBinsBelow) ||
-          !Number.isInteger(requestedBinsAbove) ||
-          requestedBinsBelow < 0 ||
-          requestedBinsAbove < 0 ||
-          requestedTotalBins < minBinsBelow)
-      ) {
-        return {
-          pass: false,
-          reason: `deploy range ${requestedTotalBins} total bins is below minimum ${minBinsBelow}. Refusing 1-bin/tiny-range deploy.`,
-        }
-      }
-      if (
-        isSingleSidedSol &&
-        args.downside_pct == null &&
-        (!Number.isFinite(requestedBinsBelow) ||
-          !Number.isInteger(requestedBinsBelow) ||
-          requestedBinsBelow < minBinsBelow)
-      ) {
-        return {
-          pass: false,
-          reason: `bins_below ${args.bins_below ?? 'missing'} is below minimum ${minBinsBelow}. Refusing 1-bin/tiny-range deploy.`,
-        }
-      }
-      if (
-        isSingleSidedSol &&
-        args.upside_pct == null &&
-        (!Number.isFinite(requestedBinsAbove) || !Number.isInteger(requestedBinsAbove) || requestedBinsAbove !== 0)
-      ) {
-        return {
-          pass: false,
-          reason: 'Single-side SOL deploy must use bins_above=0.',
-        }
-      }
-
-      // Check position count limit + duplicate pool guard — force fresh scan to avoid stale cache
-      const positions = await getMyPositions({ force: true })
-      if ((positions as any).total_positions >= config.risk.maxPositions) {
-        return {
-          pass: false,
-          reason: `Max positions (${config.risk.maxPositions}) reached. Close a position first.`,
-        }
-      }
-      const alreadyInPool = (positions as any).positions.some((p: any) => p.pool === args.pool_address)
-      if (alreadyInPool) {
-        return {
-          pass: false,
-          reason: `Already have an open position in pool ${args.pool_address}. Cannot open duplicate.`,
-        }
-      }
-
-      // Block same base token across different pools
-      if (args.base_mint) {
-        const alreadyHasMint = (positions as any).positions.some((p: any) => p.base_mint === args.base_mint)
-        if (alreadyHasMint) {
-          return {
-            pass: false,
-            reason: `Already holding base token ${args.base_mint} in another pool. One position per token only.`,
-          }
-        }
-      }
-
-      // Check smart wallets and inject trigger_source for logging
-      try {
-        const smartRes = await check_smart_wallets_on_pool({
-          listId: getActiveSmartWalletListId(),
-          pool_address: args.pool_address as string,
-        })
-        if (smartRes?.in_pool && smartRes.in_pool.length > 0) {
-          const names = smartRes.in_pool.map((w: any) => w.name || w.address.slice(0, 4)).join(', ')
-          args.trigger_source = names
-        }
-      } catch (_e) {
-        // Silently ignore if it fails, it's just for logging
-      }
-
-      // Check amount limits
-      const amountY = deployAmountY
-      if (!Number.isFinite(amountY) || amountY <= 0) {
-        return {
-          pass: false,
-          reason: 'Must provide a positive SOL amount (amount_y).',
-        }
-      }
-
-      const minDeploy = Math.max(0.1, config.management.deployAmountSol)
-      if (amountY < minDeploy) {
-        return {
-          pass: false,
-          reason: `Amount ${amountY} SOL is below the minimum deploy amount (${minDeploy} SOL). Use at least ${minDeploy} SOL.`,
-        }
-      }
-      if (amountY > config.risk.maxDeployAmount) {
-        return {
-          pass: false,
-          reason: `SOL amount ${amountY} exceeds maximum allowed per position (${config.risk.maxDeployAmount}).`,
-        }
-      }
-
-      // Check SOL balance
-      if (!config.connection.dryRun) {
-        const balance = await getWalletBalances()
-        const gasReserve = config.management.gasReserve
-        const minRequired = amountY + gasReserve
-        if (balance.sol < minRequired) {
-          return {
-            pass: false,
-            reason: `Insufficient SOL: have ${balance.sol} SOL, need ${minRequired} SOL (${amountY} deploy + ${gasReserve} gas reserve).`,
-          }
-        }
-      }
-
-      return { pass: true }
-    }
-
-    case 'swap_token': {
-      // Basic validation: check that input_mint and output_mint are non-empty strings and amount is positive
-      if (!args.input_mint || typeof args.input_mint !== 'string' || args.input_mint.trim() === '') {
-        return { pass: false, reason: 'input_mint is required' }
-      }
-      if (!args.output_mint || typeof args.output_mint !== 'string' || args.output_mint.trim() === '') {
-        return { pass: false, reason: 'output_mint is required' }
-      }
-      if (typeof args.amount !== 'number' || args.amount <= 0) {
-        return { pass: false, reason: 'amount must be a positive number' }
-      }
-      return { pass: true }
-    }
-
-    case 'self_update': {
-      if (!config.connection?.allowSelfUpdate) {
-        return {
-          pass: false,
-          reason:
-            'self_update is disabled by default. Set connection.allowSelfUpdate: true in your config to enable it.',
-        }
-      }
-      if (!process.stdin.isTTY) {
-        return {
-          pass: false,
-          reason:
-            'self_update is only allowed from a local interactive TTY session, not from Telegram or background automation.',
-        }
-      }
-      return { pass: true }
-    }
-
-    case 'claim_fees': {
-      if (!args.position_address || typeof args.position_address !== 'string' || args.position_address.trim() === '') {
-        return { pass: false, reason: 'position_address is required' }
-      }
-      return { pass: true }
-    }
-
-    case 'close_position': {
-      if (!args.position_address || typeof args.position_address !== 'string' || args.position_address.trim() === '') {
-        return { pass: false, reason: 'position_address is required' }
-      }
-      return { pass: true }
-    }
-
-    default:
-      return { pass: true }
-  }
-}
 
 /**
  * Summarize a result for logging (truncate large responses).
