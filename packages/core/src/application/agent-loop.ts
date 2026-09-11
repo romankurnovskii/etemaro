@@ -12,9 +12,9 @@
  */
 
 import { jsonrepair } from 'jsonrepair'
-import { config } from '../config/Config.js'
 import type { ConfigPort } from '../ports/config.js'
 import type { LlmFactory, LlmPort } from '../ports/llm.js'
+import { getConfig } from '../shared/configProvider.js'
 import { createCorrelationId, createTimer, log, logStructured, setCorrelationId } from '../shared/logger.js'
 import type {
   AgentMessage,
@@ -389,7 +389,7 @@ export interface AgentLoopDeps {
 
 export async function agentLoop(
   goal: string,
-  maxSteps: number = config.llm.maxSteps,
+  maxSteps: number = getConfig().llm.maxSteps,
   sessionHistory: AgentMessage[] = [],
   agentType: AgentRole = 'GENERAL',
   model: string | null = null,
@@ -397,7 +397,7 @@ export async function agentLoop(
   options: AgentLoopCallbacks & { interactive?: boolean } & { deps: AgentLoopDeps },
 ): Promise<AgentLoopResult> {
   const { interactive = false, onToolStart = null, onToolFinish = null, deps } = options
-  const cfg: ConfigPort = deps.config ?? config
+  const cfg: ConfigPort = deps.config ?? getConfig()
 
   // Generate correlation ID for this agent loop invocation
   const correlationId = createCorrelationId()

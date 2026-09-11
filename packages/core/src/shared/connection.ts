@@ -1,13 +1,13 @@
 /**
  * @file connection.ts
  * @description Centralized Solana RPC connection and wallet manager.
- * Uses config.connection as the single source of truth with automatic RPC fallback support.
+ * Uses getConfig().connection as the single source of truth with automatic RPC fallback support.
  */
 
 import fs from 'node:fs'
 import { Connection, Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
-import { config } from '../config/Config.js'
+import { getConfig } from './configProvider.js'
 import { credentialsPath } from './constants.js'
 import {
   isEncryptedKeystore,
@@ -31,13 +31,14 @@ let _walletAlias: string | null = null
 
 /**
  * Returns the configured primary or fallback RPC URL.
- * Reads from config.connection only; env vars must be wired through config.
+ * Reads only the resolved connection config; env vars must be wired through config.
  */
 export function getRpcUrl(fallback = false): string {
-  if (fallback && config.connection?.rpcUrl2) {
-    return config.connection.rpcUrl2
+  const connection = getConfig().connection
+  if (fallback && connection?.rpcUrl2) {
+    return connection.rpcUrl2
   }
-  return config.connection?.rpcUrl || 'https://api.mainnet-beta.solana.com'
+  return connection?.rpcUrl || 'https://api.mainnet-beta.solana.com'
 }
 
 /**
@@ -67,14 +68,14 @@ export function getConnection(fallback = false): Connection {
 
 /**
  * Returns the Keypair for the configured wallet.
- * Resolves the keypair from the secure keystore using config.connection.wallet alias.
+ * Resolves the keypair from the secure keystore using getConfig().connection.wallet alias.
  */
 export function getWalletKeypair(): Keypair {
   if (_walletKeypair) {
     return _walletKeypair
   }
 
-  const alias = config.connection?.wallet?.trim()
+  const alias = getConfig().connection?.wallet?.trim()
   if (!alias) {
     throw new Error('Wallet is not configured. Set connection.wallet (alias) in your configuration.')
   }
@@ -145,7 +146,7 @@ export function getWalletAddress(): string | null {
  * Returns true if a fallback RPC URL is configured in config.
  */
 export function hasFallbackRpc(): boolean {
-  return Boolean(config.connection?.rpcUrl2)
+  return Boolean(getConfig().connection?.rpcUrl2)
 }
 
 /**
@@ -212,5 +213,5 @@ export function resetConnectionState(): void {
  */
 export function setWalletKeypair(kp: Keypair | null): void {
   _walletKeypair = kp
-  _walletAlias = kp ? config.connection?.wallet || 'mock' : null
+  _walletAlias = kp ? getConfig().connection?.wallet || 'mock' : null
 }

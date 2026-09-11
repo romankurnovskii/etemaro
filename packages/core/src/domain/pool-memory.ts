@@ -10,7 +10,7 @@
  * @sideEffects Reads and writes `data/pool-memory.json`
  */
 
-import { config } from '../config/Config.js'
+import { getConfig } from '../shared/configProvider.js'
 import { dataPath, MAX_NOTE_LENGTH } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
 import { readStateFile, writeStateFile } from '../shared/stateStore.js'
@@ -39,7 +39,7 @@ function save(data: PoolMemoryDb): void {
 }
 
 function isFeeGeneratingDeploy(deploy: PoolMemoryDeploy): boolean {
-  const minFeeEarnedPct = Number(config.management.repeatDeployCooldownMinFeeEarnedPct ?? 0)
+  const minFeeEarnedPct = Number(getConfig().management.repeatDeployCooldownMinFeeEarnedPct ?? 0)
   const feeEarnedPct = Number(deploy.fee_earned_pct ?? 0)
   const feesUsd = Number(deploy.fees_earned_usd ?? 0)
   const feesSol = Number(deploy.fees_earned_sol ?? 0)
@@ -186,7 +186,7 @@ export function recordPoolDeploy(poolAddress: string, deployData: RecordPoolDepl
       .toLowerCase()
       .includes('stop loss')
   ) {
-    const cooldownHours = Math.max(0, Number(config.management.repeatDeployCooldownHours ?? 12))
+    const cooldownHours = Math.max(0, Number(getConfig().management.repeatDeployCooldownHours ?? 12))
     const poolCooldownUntil = setPoolCooldown(entry, cooldownHours, 'stop loss')
     const mintCooldownUntil = setBaseMintCooldown(db, entry.base_mint, cooldownHours, 'stop loss')
     log('pool-memory', `Cooldown set for ${entry.name} until ${poolCooldownUntil} (stop loss close)`)
@@ -198,8 +198,8 @@ export function recordPoolDeploy(poolAddress: string, deployData: RecordPoolDepl
     }
   }
 
-  const oorTriggerCount = config.management.oorCooldownTriggerCount ?? 3
-  const oorCooldownHours = config.management.oorCooldownHours ?? 12
+  const oorTriggerCount = getConfig().management.oorCooldownTriggerCount ?? 3
+  const oorCooldownHours = getConfig().management.oorCooldownHours ?? 12
   const recentDeploys = entry.deploys.slice(-oorTriggerCount)
   const repeatedOorCloses =
     recentDeploys.length >= oorTriggerCount && recentDeploys.every((d) => isOorCloseReason(d.close_reason))
@@ -217,10 +217,10 @@ export function recordPoolDeploy(poolAddress: string, deployData: RecordPoolDepl
     }
   }
 
-  if (config.management.repeatDeployCooldownEnabled) {
-    const triggerCount = Math.max(1, Number(config.management.repeatDeployCooldownTriggerCount ?? 3))
-    const cooldownHours = Math.max(0, Number(config.management.repeatDeployCooldownHours ?? 12))
-    const rawScope = String(config.management.repeatDeployCooldownScope || 'token').toLowerCase()
+  if (getConfig().management.repeatDeployCooldownEnabled) {
+    const triggerCount = Math.max(1, Number(getConfig().management.repeatDeployCooldownTriggerCount ?? 3))
+    const cooldownHours = Math.max(0, Number(getConfig().management.repeatDeployCooldownHours ?? 12))
+    const rawScope = String(getConfig().management.repeatDeployCooldownScope || 'token').toLowerCase()
     const scope: 'pool' | 'token' | 'both' = (['pool', 'token', 'both'] as string[]).includes(rawScope)
       ? (rawScope as 'pool' | 'token' | 'both')
       : 'token'
