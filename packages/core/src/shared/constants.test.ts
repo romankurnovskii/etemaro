@@ -4,7 +4,7 @@
  *
  * @features
  * - Confirms REPO_ROOT contains pnpm-workspace.yaml
- * - Asserts configPath('user-config.json') resolves to <root>/config and not packages/core/config
+ * - Asserts configPath('agent-config.json') resolves to <root>/config and not packages/core/config
  * - dataPath honors ETEMARO_DATA_DIR / DATA_DIR overrides and AGENT_CONFIG_PATH agent suffix
  *
  * @dependencies vitest
@@ -54,23 +54,24 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
 
   it('configPath resolves to <root>/config, not packages/core/config', () => {
     envSnap = snapshotEnv()
-    delete process.env.USER_CONFIG_PATH // test the default resolution, not an env override
-    expect(configPath('user-config.json')).toBe(path.join(REPO_ROOT, 'config', 'user-config.json'))
-    expect(configPath('user-config.json')).not.toContain('packages/core/config')
+    delete process.env.AGENT_CONFIG_PATH // test the default resolution, not an env override
+    const resolved = configPath('agent-config.json')
+    expect(resolved.startsWith(path.join(REPO_ROOT, 'config') + path.sep)).toBe(true)
+    expect(resolved).not.toContain('packages/core/config')
   })
 
   it('configPath honors custom AGENT_CONFIG_PATH override', () => {
     envSnap = snapshotEnv()
-    process.env.USER_CONFIG_PATH = '/custom/path/agent-1.json'
-    expect(configPath('user-config.json')).toBe('/custom/path/agent-1.json')
+    process.env.AGENT_CONFIG_PATH = '/custom/path/agent-1.json'
+    expect(configPath('agent-config.json')).toBe('/custom/path/agent-1.json')
 
-    process.env.USER_CONFIG_PATH = 'config/relative-custom.json'
-    expect(configPath('user-config.json')).toBe(path.resolve(REPO_ROOT, 'config/relative-custom.json'))
+    process.env.AGENT_CONFIG_PATH = 'config/relative-custom.json'
+    expect(configPath('agent-config.json')).toBe(path.resolve(REPO_ROOT, 'config/relative-custom.json'))
   })
 
   it('dataPath isolates into data/instances/agent-default when using default config', () => {
     envSnap = snapshotEnv()
-    delete process.env.USER_CONFIG_PATH
+    delete process.env.AGENT_CONFIG_PATH
     delete process.env.ETEMARO_DATA_DIR
     delete process.env.DATA_DIR
     expect(getDataDir()).toBe(path.join(REPO_ROOT, 'data'))
@@ -78,9 +79,9 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     expect(dataPath('logs')).toBe(path.join(REPO_ROOT, 'data', 'instances', 'agent-default', 'logs'))
   })
 
-  it('dataPath resolves flat filenames when explicitly pointing to root user-config.json', () => {
+  it('dataPath resolves flat filenames when explicitly pointing to root agent-config.json', () => {
     envSnap = snapshotEnv()
-    process.env.USER_CONFIG_PATH = 'config/user-config.json'
+    process.env.AGENT_CONFIG_PATH = 'config/agent-config.json'
     expect(dataPath('state.json')).toBe(path.join(REPO_ROOT, 'data', 'state.json'))
     expect(dataPath('logs')).toBe(path.join(REPO_ROOT, 'data', 'logs'))
   })
@@ -89,7 +90,7 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     envSnap = snapshotEnv()
     delete process.env.ETEMARO_DATA_DIR
     delete process.env.DATA_DIR
-    process.env.USER_CONFIG_PATH = '/path/to/config/agt_a717d5fa29c5d09fe188bc16.json'
+    process.env.AGENT_CONFIG_PATH = '/path/to/config/agt_a717d5fa29c5d09fe188bc16.json'
     expect(dataPath('state.json')).toBe(path.join(REPO_ROOT, 'data', 'state-agt_a717d5fa29c5d09fe188bc16.json'))
     expect(dataPath('lessons.json')).toBe(path.join(REPO_ROOT, 'data', 'lessons-agt_a717d5fa29c5d09fe188bc16.json'))
     // Directory segments (e.g. logs/) are not suffix-renamed
@@ -98,7 +99,7 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
 
   it('getDataDir / dataPath honor ETEMARO_DATA_DIR over repo default and DATA_DIR', () => {
     envSnap = snapshotEnv()
-    delete process.env.USER_CONFIG_PATH
+    delete process.env.AGENT_CONFIG_PATH
     process.env.DATA_DIR = '/tmp/data-dir-alias'
     process.env.ETEMARO_DATA_DIR = '/tmp/etemaro-data-preferred'
     expect(getDataDir()).toBe(path.resolve('/tmp/etemaro-data-preferred'))
@@ -120,7 +121,7 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
   it('dataPath combines ETEMARO_DATA_DIR with agent suffix from AGENT_CONFIG_PATH', () => {
     envSnap = snapshotEnv()
     process.env.ETEMARO_DATA_DIR = '/tmp/agent-data-root'
-    process.env.USER_CONFIG_PATH = '/cfg/agt_desktop_1.json'
+    process.env.AGENT_CONFIG_PATH = '/cfg/agt_desktop_1.json'
     expect(dataPath('state.json')).toBe(path.resolve('/tmp/agent-data-root', 'state-agt_desktop_1.json'))
     expect(dataPath('notifications.jsonl')).toBe(
       path.resolve('/tmp/agent-data-root', 'notifications-agt_desktop_1.jsonl'),
@@ -139,7 +140,7 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     envSnap = snapshotEnv()
     delete process.env.ETEMARO_DATA_DIR
     delete process.env.DATA_DIR
-    process.env.USER_CONFIG_PATH = '/path/to/config/agt_a717d5fa29c5d09fe188bc16.json'
+    process.env.AGENT_CONFIG_PATH = '/path/to/config/agt_a717d5fa29c5d09fe188bc16.json'
 
     // State & ephemeral files are intentionally agent-suffixed...
     expect(dataPath('state.json')).toBe(path.join(REPO_ROOT, 'data', 'state-agt_a717d5fa29c5d09fe188bc16.json'))
@@ -183,20 +184,20 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
   it('getInstanceId detects instance name from env and config path', () => {
     envSnap = snapshotEnv()
     delete process.env.ETEMARO_INSTANCE_ID
-    delete process.env.USER_CONFIG_PATH
+    delete process.env.AGENT_CONFIG_PATH
 
     // Default instance config is agent-default (Chapter 7)
     expect(getInstanceId()).toBe('agent-default')
 
     // Explicit flat non-instance config returns ''
-    process.env.USER_CONFIG_PATH = 'config/user-config.json'
+    process.env.AGENT_CONFIG_PATH = 'config/agent-config.json'
     expect(getInstanceId()).toBe('')
 
     process.env.ETEMARO_INSTANCE_ID = 'agent-sol-1'
     expect(getInstanceId()).toBe('agent-sol-1')
     delete process.env.ETEMARO_INSTANCE_ID
 
-    process.env.USER_CONFIG_PATH = 'config/instances/agent-usdc-2.json'
+    process.env.AGENT_CONFIG_PATH = 'config/instances/agent-usdc-2.json'
     expect(getInstanceId()).toBe('agent-usdc-2')
   })
 
@@ -204,7 +205,7 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     envSnap = snapshotEnv()
     delete process.env.ETEMARO_DATA_DIR
     delete process.env.DATA_DIR
-    process.env.USER_CONFIG_PATH = 'config/instances/agent-sol-1.json'
+    process.env.AGENT_CONFIG_PATH = 'config/instances/agent-sol-1.json'
 
     expect(dataPath('state.json')).toBe(path.join(REPO_ROOT, 'data', 'instances', 'agent-sol-1', 'state.json'))
     expect(dataPath('lessons.json')).toBe(path.join(REPO_ROOT, 'data', 'instances', 'agent-sol-1', 'lessons.json'))
@@ -237,7 +238,7 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
   })
 
   it('configPath finds configs in config/instances/ if present', () => {
-    delete process.env.USER_CONFIG_PATH
+    delete process.env.AGENT_CONFIG_PATH
     expect(configPath('agent-default.json')).toBe(path.join(REPO_ROOT, 'config', 'instances', 'agent-default.json'))
   })
 })

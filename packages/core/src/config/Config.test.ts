@@ -16,7 +16,7 @@ describe('fee/active-TVL gate timeframe scaling', () => {
   })
 
   it('config default for 5m matches the scaled floor (not the old static 0.05)', () => {
-    // Only valid when user-config.json does not override minFeeActiveTvlRatio.
+    // Only valid when agent-config.json does not override minFeeActiveTvlRatio.
     if (process.env.FORCE_RAW_SCREENING_DEFAULT) return
     expect(config.screening.timeframe).toBe('5m')
     expect(config.screening.minFeeActiveTvlRatio).toBe(0.02)
@@ -73,14 +73,14 @@ describe('hiveMind agentId support', () => {
     vi.resetModules()
 
     mockExistsSync = vi.fn((path: string) => {
-      if (path.endsWith('user-config.json')) return true
+      if (path.endsWith('agent-config.json')) return true
       return true
     })
 
     const baseConfig = JSON.parse(defaultAgentConfigStr)
 
     mockReadFileSync = vi.fn((path: string, _encoding: string) => {
-      if (path.endsWith('user-config.json') || path.endsWith('agent-default.json')) {
+      if (path.endsWith('agent-config.json') || path.endsWith('agent-default.json')) {
         return JSON.stringify({
           ...baseConfig,
           agentId: 'local-top-level-agent',
@@ -123,7 +123,7 @@ describe('hiveMind agentId support', () => {
   it('falls back to agent-default agentId when top-level agentId is null or empty', async () => {
     const baseConfig = JSON.parse(defaultAgentConfigStr)
     mockReadFileSync.mockImplementation((path: string, _encoding: string) => {
-      if (path.endsWith('user-config.json') || path.endsWith('agent-default.json')) {
+      if (path.endsWith('agent-config.json') || path.endsWith('agent-default.json')) {
         return JSON.stringify({
           ...baseConfig,
           agentId: null,
@@ -148,14 +148,14 @@ describe('hiveMind agentId support', () => {
 })
 
 describe('fail-closed config load and validation behavior', () => {
-  const originalConfigPath = process.env.USER_CONFIG_PATH
+  const originalConfigPath = process.env.AGENT_CONFIG_PATH
   const originalSkipEnv = process.env.ETEMARO_SKIP_ENV_VALIDATION
 
   afterEach(() => {
     if (originalConfigPath === undefined) {
-      delete process.env.USER_CONFIG_PATH
+      delete process.env.AGENT_CONFIG_PATH
     } else {
-      process.env.USER_CONFIG_PATH = originalConfigPath
+      process.env.AGENT_CONFIG_PATH = originalConfigPath
     }
     if (originalSkipEnv === undefined) {
       delete process.env.ETEMARO_SKIP_ENV_VALIDATION
@@ -169,7 +169,7 @@ describe('fail-closed config load and validation behavior', () => {
 
   it('throws ConfigLoadError when an explicit AGENT_CONFIG_PATH does not exist', async () => {
     vi.resetModules()
-    process.env.USER_CONFIG_PATH = '/path/to/nonexistent/custom-config.json'
+    process.env.AGENT_CONFIG_PATH = '/path/to/nonexistent/custom-config.json'
 
     let error: any
     try {
@@ -185,7 +185,7 @@ describe('fail-closed config load and validation behavior', () => {
 
   it('throws ConfigLoadError when an explicit AGENT_CONFIG_PATH contains corrupted JSON', async () => {
     vi.resetModules()
-    process.env.USER_CONFIG_PATH = '/path/to/corrupted-config.json'
+    process.env.AGENT_CONFIG_PATH = '/path/to/corrupted-config.json'
 
     vi.doMock('node:fs', () => ({
       default: {
@@ -210,7 +210,7 @@ describe('fail-closed config load and validation behavior', () => {
 
   it('throws ConfigLoadError when an explicit AGENT_CONFIG_PATH fails schema validation', async () => {
     vi.resetModules()
-    process.env.USER_CONFIG_PATH = '/path/to/invalid-schema.json'
+    process.env.AGENT_CONFIG_PATH = '/path/to/invalid-schema.json'
 
     vi.doMock('node:fs', () => ({
       default: {
@@ -233,16 +233,16 @@ describe('fail-closed config load and validation behavior', () => {
     expect(error.message).toMatch(/invalid-schema\.json has invalid or missing fields/)
   })
 
-  it('throws ConfigLoadError when default user-config.json contains corrupted JSON without explicit AGENT_CONFIG_PATH', async () => {
+  it('throws ConfigLoadError when default agent-config.json contains corrupted JSON without explicit AGENT_CONFIG_PATH', async () => {
     vi.resetModules()
-    delete process.env.USER_CONFIG_PATH
+    delete process.env.AGENT_CONFIG_PATH
 
     vi.doMock('node:fs', () => ({
       default: {
-        existsSync: (p: string) => p.endsWith('user-config.json'),
+        existsSync: (p: string) => p.endsWith('agent-config.json'),
         readFileSync: () => '{"corrupted": true,',
       },
-      existsSync: (p: string) => p.endsWith('user-config.json'),
+      existsSync: (p: string) => p.endsWith('agent-config.json'),
       readFileSync: () => '{"corrupted": true,',
     }))
 
@@ -255,12 +255,12 @@ describe('fail-closed config load and validation behavior', () => {
 
     expect(error).toBeDefined()
     expect(error.name).toBe('ConfigLoadError')
-    expect(error.message).toMatch(/Failed to parse user-config\.json/)
+    expect(error.message).toMatch(/Failed to parse agent-config\.json/)
   })
 
   it('bypasses fatal error and falls back when ETEMARO_SKIP_ENV_VALIDATION is enabled for info/help commands', async () => {
     vi.resetModules()
-    process.env.USER_CONFIG_PATH = '/path/to/nonexistent/custom-config.json'
+    process.env.AGENT_CONFIG_PATH = '/path/to/nonexistent/custom-config.json'
     process.env.ETEMARO_SKIP_ENV_VALIDATION = '1'
 
     const { config: testConfig } = await import('./Config.js')
@@ -386,14 +386,14 @@ describe('DEFAULT_AGENT_CONFIG template parity and validation', () => {
 
   describe('legacy RPC migration', () => {
     const originalEnv = { ...process.env }
-    const originalUserConfigPath = process.env.USER_CONFIG_PATH
+    const originalUserConfigPath = process.env.AGENT_CONFIG_PATH
 
     afterEach(() => {
       process.env = { ...originalEnv }
       if (originalUserConfigPath) {
-        process.env.USER_CONFIG_PATH = originalUserConfigPath
+        process.env.AGENT_CONFIG_PATH = originalUserConfigPath
       } else {
-        delete process.env.USER_CONFIG_PATH
+        delete process.env.AGENT_CONFIG_PATH
       }
     })
 
@@ -404,7 +404,7 @@ describe('DEFAULT_AGENT_CONFIG template parity and validation', () => {
       fullConfig.connection.rpcUrl = 'https://pump.helius-rpc.com'
       fullConfig.pnl = { ...(fullConfig.pnl || {}), source: 'rpc', rpcUrl: 'https://pump.helius-rpc.com' }
       fs.writeFileSync(tmpPath, JSON.stringify(fullConfig))
-      process.env.USER_CONFIG_PATH = tmpPath
+      process.env.AGENT_CONFIG_PATH = tmpPath
       process.env.RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=test-key'
 
       const result = loadAndValidateConfig()
@@ -419,7 +419,7 @@ describe('DEFAULT_AGENT_CONFIG template parity and validation', () => {
       const fullConfig = JSON.parse(defaultAgentConfigStr)
       fullConfig.connection.rpcUrl = 'https://pump.helius-rpc.com'
       fs.writeFileSync(tmpPath, JSON.stringify(fullConfig))
-      process.env.USER_CONFIG_PATH = tmpPath
+      process.env.AGENT_CONFIG_PATH = tmpPath
       process.env.RPC_URL = 'https://pump.helius-rpc.com'
 
       const result = loadAndValidateConfig()
@@ -433,7 +433,7 @@ describe('DEFAULT_AGENT_CONFIG template parity and validation', () => {
       const fullConfig = JSON.parse(defaultAgentConfigStr)
       fullConfig.connection.rpcUrl = 'https://pump.helius-rpc.com'
       fs.writeFileSync(tmpPath, JSON.stringify(fullConfig))
-      process.env.USER_CONFIG_PATH = tmpPath
+      process.env.AGENT_CONFIG_PATH = tmpPath
       delete process.env.RPC_URL
 
       const result = loadAndValidateConfig()
@@ -475,7 +475,7 @@ describe('DEFAULT_AGENT_CONFIG template parity and validation', () => {
       const { formatConfigLoadError } = await import('./formatConfigLoadError.js')
       const error = {
         name: 'ConfigLoadError',
-        configPath: '/Users/r/test/user-config.json',
+        configPath: '/Users/r/test/agent-config.json',
         issues: [
           {
             path: ['llm', 'defaultModel'],
@@ -484,12 +484,12 @@ describe('DEFAULT_AGENT_CONFIG template parity and validation', () => {
         ],
       }
       const output = formatConfigLoadError(error)
-      expect(output).toContain('/Users/r/test/user-config.json')
+      expect(output).toContain('/Users/r/test/agent-config.json')
       expect(output).toContain('Field "llm.defaultModel" requires environment variable: LLM_MODEL')
       expect(output).toContain('Set the environment variable in your .env file or system environment:')
       expect(output).toContain('LLM_MODEL=<value>')
       expect(output).toContain('OR update the value directly in your configuration file:')
-      expect(output).toContain('/Users/r/test/user-config.json')
+      expect(output).toContain('/Users/r/test/agent-config.json')
     })
   })
 

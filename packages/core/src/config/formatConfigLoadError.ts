@@ -23,7 +23,7 @@ export function formatConfigLoadError(err: any, fallbackPath?: string): string {
     err?.cause?.configPath ||
     fallbackPath ||
     process.env.AGENT_CONFIG_PATH ||
-    process.env.USER_CONFIG_PATH ||
+    process.env.AGENT_CONFIG_PATH ||
     AGENT_CONFIG_PATH ||
     path.resolve(process.cwd(), 'config', 'agent-config.json')
 

@@ -38,7 +38,7 @@ export function ensureDotenvLoaded(): void {
 }
 
 function getActiveConfigPath(): string {
-  const envPath = process.env.AGENT_CONFIG_PATH?.trim() || process.env.USER_CONFIG_PATH?.trim()
+  const envPath = process.env.AGENT_CONFIG_PATH?.trim() || process.env.AGENT_CONFIG_PATH?.trim()
   if (envPath) {
     return path.isAbsolute(envPath) ? envPath : path.resolve(REPO_ROOT, envPath)
   }
@@ -60,7 +60,7 @@ export function isHelpOrInfoCommand(): boolean {
 
 export function loadAndValidateConfig(): ValidatedAgentConfig {
   ensureDotenvLoaded()
-  const isExplicitConfig = Boolean(process.env.AGENT_CONFIG_PATH?.trim() || process.env.USER_CONFIG_PATH?.trim())
+  const isExplicitConfig = Boolean(process.env.AGENT_CONFIG_PATH?.trim() || process.env.AGENT_CONFIG_PATH?.trim())
   const activeConfigPath = getActiveConfigPath()
 
   // Ensure user config directory and file exist

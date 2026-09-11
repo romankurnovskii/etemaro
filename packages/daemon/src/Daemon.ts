@@ -424,7 +424,7 @@ export class Daemon {
         : 'default <repo>/data'
 
     // Config file source - single source of truth from config system
-    const configSource = process.env.USER_CONFIG_PATH ? 'AGENT_CONFIG_PATH env var' : 'default'
+    const configSource = process.env.AGENT_CONFIG_PATH ? 'AGENT_CONFIG_PATH env var' : 'default'
     log('startup', `Config: ${AGENT_CONFIG_PATH} (source: ${configSource})`)
 
     // Active strategy info

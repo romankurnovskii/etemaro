@@ -229,7 +229,7 @@ graph TD
     subgraph "Configuration Sources"
         ENV[".env<br/>Secrets: keys, tokens, RPC URLs"]
         USER["agent-config.json<br/>Runtime settings: thresholds, strategy, GMGN API"]
-        DEFAULTS["DEFAULT_USER_CONFIG<br/>Typed core defaults in TypeScript"]
+        DEFAULTS["DEFAULT_AGENT_CONFIG<br/>Typed core defaults in TypeScript"]
     end
 
     subgraph "Config Builder"
