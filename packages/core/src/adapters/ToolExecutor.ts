@@ -16,7 +16,6 @@
 import { execSync, spawn } from 'node:child_process'
 
 // ─── Shared imports ────────────────────────────────────────────
-import { config } from '../config/Config.js'
 import { getRecentDecisions } from '../domain/decision-log.js'
 import { blockDev, listBlockedDevs, unblockDev } from '../domain/dev-blocklist.js'
 // ─── JS module imports (no type declarations) ─────────────────
@@ -82,6 +81,7 @@ import { getNotificationPort } from './notifications/notificationPort.js'
 import { tools as toolDefinitions } from './ToolDefinitions.js'
 
 import { runSafetyChecks, validateDeployPoolThresholds } from './tooling/deploySafety.js'
+import { getToolConfig } from './tooling/toolConfig.js'
 
 // ─── Cron restarter (registered by index.js) ───────────────────
 
@@ -325,14 +325,18 @@ const toolMap: Record<string, ToolFn> = {
   list_blocked_deployers: listBlockedDevs as ToolFn,
   get_user_config: () => ({
     configPath: USER_CONFIG_PATH,
-    preset: (config as any).preset ?? 'custom',
-    risk: config.risk,
-    screening: config.screening,
-    management: config.management,
-    strategy: config.strategy,
-    opportunity: config.opportunity,
-    schedule: config.schedule,
-    llm: { temperature: config.llm.temperature, maxTokens: config.llm.maxTokens, maxSteps: config.llm.maxSteps },
+    preset: (getToolConfig() as any).preset ?? 'custom',
+    risk: getToolConfig().risk,
+    screening: getToolConfig().screening,
+    management: getToolConfig().management,
+    strategy: getToolConfig().strategy,
+    opportunity: getToolConfig().opportunity,
+    schedule: getToolConfig().schedule,
+    llm: {
+      temperature: getToolConfig().llm.temperature,
+      maxTokens: getToolConfig().llm.maxTokens,
+      maxSteps: getToolConfig().llm.maxSteps,
+    },
   }),
   add_lesson: ({ rule, tags, pinned, role }: Record<string, unknown>) => {
     addLesson(rule as string, (tags as string[]) || [], { pinned: !!pinned, role: (role as AgentRole) || null })
@@ -551,7 +555,7 @@ const toolMap: Record<string, ToolFn> = {
       const mapping = CONFIG_MAP[key]
       if (!mapping) continue
       const livePath = mapping.slice(1).filter((part: unknown) => typeof part === 'string')
-      let target = config as any
+      let target = getToolConfig() as any
       for (const part of livePath.slice(0, -1)) target = target[part]
       const field = livePath.at(-1)!
       const before = target[field]
@@ -564,19 +568,19 @@ const toolMap: Record<string, ToolFn> = {
       applied.maxBinsBelow != null ||
       applied.defaultBinsBelow != null
     ) {
-      config.strategy.minBinsBelow = Math.max(
+      getToolConfig().strategy.minBinsBelow = Math.max(
         getMinSafeBinsBelow(),
-        Math.round(Number(config.strategy.minBinsBelow ?? getMinSafeBinsBelow())),
+        Math.round(Number(getToolConfig().strategy.minBinsBelow ?? getMinSafeBinsBelow())),
       )
-      config.strategy.maxBinsBelow = Math.max(
-        config.strategy.minBinsBelow,
-        Math.round(Number(config.strategy.maxBinsBelow ?? config.strategy.minBinsBelow)),
+      getToolConfig().strategy.maxBinsBelow = Math.max(
+        getToolConfig().strategy.minBinsBelow,
+        Math.round(Number(getToolConfig().strategy.maxBinsBelow ?? getToolConfig().strategy.minBinsBelow)),
       )
-      config.strategy.defaultBinsBelow = Math.max(
-        config.strategy.minBinsBelow,
+      getToolConfig().strategy.defaultBinsBelow = Math.max(
+        getToolConfig().strategy.minBinsBelow,
         Math.min(
-          config.strategy.maxBinsBelow,
-          Math.round(Number(config.strategy.defaultBinsBelow ?? config.strategy.maxBinsBelow)),
+          getToolConfig().strategy.maxBinsBelow,
+          Math.round(Number(getToolConfig().strategy.defaultBinsBelow ?? getToolConfig().strategy.maxBinsBelow)),
         ),
       )
     }
@@ -610,7 +614,7 @@ const toolMap: Record<string, ToolFn> = {
       _cronRestarter()
       log(
         'config',
-        `Cron restarted — management: ${config.schedule.managementIntervalMin}m, screening: ${config.schedule.screeningIntervalMin}m, pnlPoll: ${config.pnl.pollIntervalSec}s`,
+        `Cron restarted — management: ${getToolConfig().schedule.managementIntervalMin}m, screening: ${getToolConfig().schedule.screeningIntervalMin}m, pnlPoll: ${getToolConfig().pnl.pollIntervalSec}s`,
       )
     }
 
@@ -685,10 +689,10 @@ export async function swapBaseToSolWithRetry(
   errorCategory?: SwapErrorCategory | null
   abandonImmediately?: boolean
 }> {
-  const attempts = Math.max(1, Number(config.management.autoSwapRetryAttempts ?? 3))
-  const delayMs = Math.max(0, Number(config.management.autoSwapRetryDelayMs ?? 3000))
-  const haltOnSwapFailure = config.management.haltOnSwapFailure ?? true
-  const maxFailedSwapsBeforeHalt = config.management.maxFailedSwapsBeforeHalt ?? 5
+  const attempts = Math.max(1, Number(getToolConfig().management.autoSwapRetryAttempts ?? 3))
+  const delayMs = Math.max(0, Number(getToolConfig().management.autoSwapRetryDelayMs ?? 3000))
+  const haltOnSwapFailure = getToolConfig().management.haltOnSwapFailure ?? true
+  const maxFailedSwapsBeforeHalt = getToolConfig().management.maxFailedSwapsBeforeHalt ?? 5
   let lastErr: string | null = null
   let lastErrorCode: string | null = null
   let lastErrorCategory: SwapErrorCategory | null = null
@@ -824,7 +828,7 @@ export async function swapBaseToSolWithRetry(
   if (affectsCircuit) recordSwapFailure({ maxFailedSwapsBeforeHalt, haltOnSwapFailure })
   const symbol = lastToken?.symbol || baseMint.slice(0, 8)
   const tokenUsd = lastToken?.usd ?? null
-  const alertThreshold = config.management.sweeperAlertUsd ?? 1.0
+  const alertThreshold = getToolConfig().management.sweeperAlertUsd ?? 1.0
 
   // Register in persistent liquidation queue
   await enqueuePendingLiquidation({
@@ -956,10 +960,10 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
   let abandoned = 0
   const results: any[] = []
 
-  const interSwapDelayMs = Math.max(0, Number(config.management.autoSwapInterSwapDelayMs ?? 1500))
-  const minUsd = Math.max(0, Number(config.management.sweeperMinUsd ?? 0.02))
-  const maxAttempts = Math.max(1, Number(config.management.sweeperMaxAttempts ?? 10))
-  const abandonWindowHours = Math.max(1, Number(config.management.sweeperAbandonWindowHours ?? 2))
+  const interSwapDelayMs = Math.max(0, Number(getToolConfig().management.autoSwapInterSwapDelayMs ?? 1500))
+  const minUsd = Math.max(0, Number(getToolConfig().management.sweeperMinUsd ?? 0.02))
+  const maxAttempts = Math.max(1, Number(getToolConfig().management.sweeperMaxAttempts ?? 10))
+  const abandonWindowHours = Math.max(1, Number(getToolConfig().management.sweeperAbandonWindowHours ?? 2))
   let swapAttempted = false
 
   for (const item of pendingItems) {
@@ -1095,7 +1099,7 @@ export async function swapAllTokensToSolUnlocked(skipMintsInput: string[] | { sk
   let successful = 0
   let failed = 0
   const results = []
-  const interSwapDelayMs = Math.max(0, Number(config.management.autoSwapInterSwapDelayMs ?? 1500))
+  const interSwapDelayMs = Math.max(0, Number(getToolConfig().management.autoSwapInterSwapDelayMs ?? 1500))
   let swapAttempted = false
 
   for (const token of balances.tokens as any[]) {
@@ -1388,7 +1392,7 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
             .catch((err: any) => {
               log('telegram_warn', `Failed to send claim error notification: ${err?.message || err}`)
             })
-        } else if (config.management.autoSwapAfterClaim && (result as any).base_mint) {
+        } else if (getToolConfig().management.autoSwapAfterClaim && (result as any).base_mint) {
           const poolAddress = (result as any).pool || (args.pool_address as string)
           await swapBaseToSolWithRetry((result as any).base_mint, 'after claim', 0.05, poolAddress)
         }

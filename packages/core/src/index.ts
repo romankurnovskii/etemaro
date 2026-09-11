@@ -21,6 +21,7 @@ export {
   telegramNotificationPort,
 } from './adapters/notifications/notificationPort.js'
 export * from './adapters/ToolDefinitions.js'
+export { getToolConfig, resetToolConfig, setToolConfig } from './adapters/tooling/toolConfig.js'
 // Resolve name collision by explicitly exporting AgentLoopResult from agent-loop.js
 export type { AgentLoopResult } from './application/agent-loop.js'
 export * from './application/agent-loop.js'
