@@ -54,6 +54,9 @@ export const StatusPane: React.FC<StatusPaneProps> = ({
 
   const positionsCount = state?.positions?.length ?? 0
   const isBusy = state?.busy ? 'Busy (executing cycle)' : 'Idle'
+  const shortWallet = state?.walletAddress ? `${state.walletAddress.slice(0, 4)}…${state.walletAddress.slice(-4)}` : '—'
+  const strategy = state?.activeStrategyId || '—'
+  const configPath = state?.configPath || '—'
 
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="blue" paddingX={1}>
@@ -65,6 +68,21 @@ export const StatusPane: React.FC<StatusPaneProps> = ({
           <Text dimColor>[{isBusy}]</Text>
         </Box>
         <Box>{connStatus}</Box>
+      </Box>
+
+      <Box flexDirection="row" gap={2} marginTop={0}>
+        <Box>
+          <Text dimColor>Wallet: </Text>
+          <Text>{shortWallet}</Text>
+        </Box>
+        <Box>
+          <Text dimColor>Strategy: </Text>
+          <Text>{strategy}</Text>
+        </Box>
+        <Box>
+          <Text dimColor>Config: </Text>
+          <Text>{configPath}</Text>
+        </Box>
       </Box>
 
       <Box flexDirection="row" gap={2} marginTop={0}>

@@ -11,6 +11,8 @@ describe('createDaemonAdapters', () => {
     expect(adapters.screening).toBeDefined()
     expect(typeof adapters.agentLoopDeps.executeTool).toBe('function')
     expect(typeof adapters.agentLoopDeps.getTools).toBe('function')
+    // Regression: the daemon composition must supply an LLM factory, else agentLoop throws.
+    expect(typeof adapters.agentLoopDeps.createLlm).toBe('function')
     expect(adapters.agentLoopDeps.getTools()).toBe(tools)
   })
 })

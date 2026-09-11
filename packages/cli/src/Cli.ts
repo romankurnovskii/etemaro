@@ -94,16 +94,17 @@ let toolExecutor: CoreExports['toolExecutor'] = null as any
 let domain: CoreExports['domain'] = null as any
 let token: CoreExports['token'] = null as any
 let study: CoreExports['study'] = null as any
-let telegram: CoreExports['telegram'] = null as any
-let desktop: CoreExports['desktop'] = null as any
-let briefing: CoreExports['briefing'] = null as any
-let hivemind: CoreExports['hivemind'] = null as any
-let tools: CoreExports['tools'] = null as any
+let _telegram: CoreExports['telegram'] = null as any
+let _desktop: CoreExports['desktop'] = null as any
+let _briefing: CoreExports['briefing'] = null as any
+let _hivemind: CoreExports['hivemind'] = null as any
+let _tools: CoreExports['tools'] = null as any
 let defaultUserConfigStr: CoreExports['defaultUserConfigStr'] = null as any
 let validateConfigFile: CoreExports['validateConfigFile'] = null as any
 
-// Lazily populated Daemon constructor
+// Lazily populated Daemon constructor + composition factory
 let DaemonCtor: DaemonExports['Daemon'] = null as any
+let createDaemonAdaptersFn: DaemonExports['createDaemonAdapters'] = null as any
 
 /**
  * Load core and daemon modules after environment is prepared.
@@ -134,15 +135,16 @@ export async function loadCore(): Promise<void> {
   domain = coreMod.domain
   token = coreMod.token
   study = coreMod.study
-  telegram = coreMod.telegram
-  desktop = coreMod.desktop
-  briefing = coreMod.briefing
-  hivemind = coreMod.hivemind
-  tools = coreMod.tools
+  _telegram = coreMod.telegram
+  _desktop = coreMod.desktop
+  _briefing = coreMod.briefing
+  _hivemind = coreMod.hivemind
+  _tools = coreMod.tools
   defaultUserConfigStr = coreMod.defaultUserConfigStr
   validateConfigFile = (coreMod as any).validateConfigFile
-  // Assign Daemon constructor
+  // Assign Daemon constructor + composition factory
   DaemonCtor = daemonMod.Daemon
+  createDaemonAdaptersFn = daemonMod.createDaemonAdapters
 }
 
 // ─── Adapter Imports ────────────────────────────────────────────
@@ -1561,50 +1563,7 @@ async function main() {
   loadRuntimeDotenv(defaultEtemaroHome())
   await loadCore()
 
-  const agentLoopDeps = {
-    executeTool: toolExecutor.executeTool,
-    getTools: () => tools,
-    getWalletBalances: async () => {
-      const bal = await wallet.getWalletBalances()
-      return {
-        sol: bal.sol,
-        usd: bal.sol_usd,
-        tokens: bal.tokens.map((t: any) => ({
-          mint: t.mint,
-          symbol: t.symbol,
-          amount: t.amount,
-          usd: t.usd,
-        })),
-      }
-    },
-    getMyPositions: meteora.getMyPositions,
-    getStateSummary: domain.getStateSummary,
-    getLessonsForPrompt: (opts: any) => domain.getLessonsForPrompt(opts),
-    getPerformanceSummary: () => {
-      const summary = domain.getPerformanceSummary()
-      return summary ? JSON.stringify(summary) : null
-    },
-    getDecisionSummary: domain.getDecisionSummary,
-    getWeightsSummary: domain.getWeightsSummary,
-  }
-
-  const daemon = new DaemonCtor({
-    meteora,
-    wallet,
-    screening,
-    toolExecutor,
-    telegram,
-    desktop,
-    briefing,
-    hivemind,
-    domain: {
-      ...domain,
-      addPoolNote: (pool: string, note: string) => domain.addPoolNote({ pool_address: pool, note }),
-      getTokenNarrative: token.getTokenNarrative,
-      getTokenInfo: token.getTokenInfo,
-    },
-    agentLoopDeps,
-  })
+  const daemon = new DaemonCtor(createDaemonAdaptersFn())
 
   const cli = new Cli({
     meteora,
