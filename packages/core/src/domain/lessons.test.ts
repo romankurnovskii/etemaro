@@ -25,7 +25,7 @@ type MockedConstants = typeof import('../shared/constants.js') & { __testDataDir
 const constants = (await import('../shared/constants.js')) as MockedConstants
 const tmpDir = constants.__testDataDir
 const lessonsFile = path.join(tmpDir, 'lessons.json')
-const configFile = path.join(tmpDir, 'user-config.json')
+const configFile = path.join(tmpDir, 'agent-config.json')
 
 describe('lessons domain — Price PnL vs Net PnL disambiguation', () => {
   beforeEach(() => {

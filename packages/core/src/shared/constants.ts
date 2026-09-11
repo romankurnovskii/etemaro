@@ -5,7 +5,7 @@
  * @features
  * - Resolves monorepo repository root directory dynamically
  * - Defines known token mint addresses (SOL, USDC, USDT)
- * - Defines default path constants (`configPath`, `dataPath`, `USER_CONFIG_PATH`)
+ * - Defines default path constants (`configPath`, `dataPath`, `AGENT_CONFIG_PATH`)
  */
 
 import fs from 'node:fs'
@@ -85,14 +85,12 @@ export function getDataDir(): string {
   return path.join(REPO_ROOT, 'data')
 }
 
-/** Canonical agent config filename (renamed from user-config.json). */
+/** Canonical agent config filename. */
 export const AGENT_CONFIG_FILENAME = 'agent-config.json'
-/** Legacy config filename, still supported for backward compatibility. */
-export const LEGACY_USER_CONFIG_FILENAME = 'user-config.json'
 
-/** Env-provided config path: AGENT_CONFIG_PATH preferred, USER_CONFIG_PATH deprecated fallback. */
+/** Path from the AGENT_CONFIG_PATH env var, if set. */
 export function getEnvConfigPath(): string | undefined {
-  return process.env.AGENT_CONFIG_PATH?.trim() || process.env.USER_CONFIG_PATH?.trim() || undefined
+  return process.env.AGENT_CONFIG_PATH?.trim() || undefined
 }
 
 function resolveAgainstRepo(p: string): string {
@@ -103,9 +101,9 @@ function resolveAgainstRepo(p: string): string {
  * Detect the active instance identifier if running in multi-instance mode.
  * Resolution order:
  * 1. ETEMARO_INSTANCE_ID
- * 2. If USER_CONFIG_PATH env var points to config/instances/<name>.json, extract <name>
- * 3. If USER_CONFIG_PATH env var points to custom config file (e.g. agt_xxx.json), extract clean slug
- * 4. If USER_CONFIG_PATH env var points to config/user-config.json (flat), return '' for backward compatibility
+ * 2. If AGENT_CONFIG_PATH env var points to config/instances/<name>.json, extract <name>
+ * 3. If AGENT_CONFIG_PATH env var points to custom config file (e.g. agt_xxx.json), extract clean slug
+ * 4. If AGENT_CONFIG_PATH env var points to config/agent-config.json (flat), return '' (no instance isolation)
  * 5. Default to DEFAULT_AGENT_ID ('agent-default') for zero-fallback instance isolation (Chapter 7)
  */
 export function getInstanceId(): string {
@@ -113,8 +111,8 @@ export function getInstanceId(): string {
   if (envInstance?.trim()) {
     return envInstance.trim()
   }
-  // Check env directly (AGENT_CONFIG_PATH or legacy USER_CONFIG_PATH); the exported
-  // constant is evaluated at import time and cannot reflect later overrides.
+  // Check env directly; the exported constant is evaluated at import time and cannot
+  // reflect later overrides.
   const envConfigPath = getEnvConfigPath()
   if (envConfigPath) {
     const norm = envConfigPath.replace(/\\/g, '/')
@@ -122,18 +120,13 @@ export function getInstanceId(): string {
     if (instanceMatch?.[1]) {
       return instanceMatch[1]
     }
-    // A flat agent-config.json / legacy user-config.json opts out of instance isolation.
+    // A flat agent-config.json opts out of instance isolation.
     const baseName = path.basename(norm)
-    if (baseName === AGENT_CONFIG_FILENAME || baseName === LEGACY_USER_CONFIG_FILENAME) {
+    if (baseName === AGENT_CONFIG_FILENAME) {
       return ''
     }
     const base = path.basename(envConfigPath, path.extname(envConfigPath))
-    if (
-      base &&
-      !['user-config', 'agent-config', 'user-config.v2', 'user-config.prod', 'user-config.example'].includes(
-        base.toLowerCase(),
-      )
-    ) {
+    if (base && base.toLowerCase() !== 'agent-config') {
       return base.replace(/[^a-zA-Z0-9_-]/g, '_')
     }
   }
@@ -171,7 +164,7 @@ export function dataPath(...segments: string[]): string {
   )
 
   // Chapter 7 zero-fallback: always isolate when using default instance (agent-default)
-  // unless explicitly running with flat user-config.json (instanceId === '')
+  // unless explicitly running with flat agent-config.json (instanceId === '')
   // Custom configs (agt_xxx.json) use legacy suffix for backward compatibility
   const useInstanceIsolation = isExplicitInstance || instanceId === DEFAULT_AGENT_ID
 
@@ -230,14 +223,12 @@ export function credentialsPath(...segments: string[]): string {
 
 /** Resolve a path relative to the config directory. */
 export function configPath(...segments: string[]): string {
-  // Honor an env-provided config path for the main config file (new or legacy name).
-  if (segments.length === 1 && (segments[0] === AGENT_CONFIG_FILENAME || segments[0] === LEGACY_USER_CONFIG_FILENAME)) {
+  // Honor an env-provided config path for the main config file.
+  if (segments.length === 1 && segments[0] === AGENT_CONFIG_FILENAME) {
     const envPath = getEnvConfigPath()
     if (envPath) return resolveAgainstRepo(envPath)
-    if (segments[0] === AGENT_CONFIG_FILENAME) {
-      const canonical = path.join(configBaseDir(), AGENT_CONFIG_FILENAME)
-      return fs.existsSync(canonical) ? canonical : getDefaultConfigPath()
-    }
+    const canonical = path.join(configBaseDir(), AGENT_CONFIG_FILENAME)
+    return fs.existsSync(canonical) ? canonical : getDefaultConfigPath()
   }
   // Chapter 7: check config/instances/<file> first for instance configurations
   if (segments.length === 1) {
@@ -254,15 +245,11 @@ export function configPath(...segments: string[]): string {
 /**
  * Canonical default configuration path.
  * Prefers config/instances/agent-default.json (Chapter 7 zero-fallback model),
- * falling back to config/user-config.json if the instance file has not yet been initialized.
+ * falling back to config/agent-config.json if the instance file has not yet been initialized.
  */
 export function getDefaultConfigPath(): string {
   const base = configBaseDir()
-  const candidates = [
-    path.join(base, 'instances', 'agent-default.json'),
-    path.join(base, AGENT_CONFIG_FILENAME),
-    path.join(base, LEGACY_USER_CONFIG_FILENAME),
-  ]
+  const candidates = [path.join(base, 'instances', 'agent-default.json'), path.join(base, AGENT_CONFIG_FILENAME)]
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate
   }
@@ -275,9 +262,6 @@ export const AGENT_CONFIG_PATH = (() => {
   const envPath = getEnvConfigPath()
   return envPath ? resolveAgainstRepo(envPath) : getDefaultConfigPath()
 })()
-
-/** @deprecated Renamed to AGENT_CONFIG_PATH; retained for backward compatibility. */
-export const USER_CONFIG_PATH = AGENT_CONFIG_PATH
 
 /** Get the etemaro runtime/config home directory (e.g. ~/.config/etemaro).
  *  Resolution order:
@@ -304,7 +288,7 @@ export const MAX_DECISIONS = 100
 export const SYNC_GRACE_MS = 5 * 60_000
 export const MIN_SAFE_BINS_BELOW = 10 // Safe default minimum bins below (fallback if not configured)
 
-// Runtime override set by Config.ts after loading user-config.json
+// Runtime override set by Config.ts after loading agent-config.json
 let _minSafeBinsBelowOverride: number | null = null
 
 export function setMinSafeBinsBelowOverride(value: number): void {

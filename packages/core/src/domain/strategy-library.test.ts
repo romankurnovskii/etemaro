@@ -20,12 +20,12 @@ describe('strategy-library persistence and validation', () => {
     const actualExistsSync = fs.existsSync
     vi.spyOn(fs, 'existsSync').mockImplementation((pathArg: any) => {
       const p = pathArg.toString()
-      if (p.includes('user-config.json') || p.includes('strategy-library.shared.json')) return true
+      if (p.includes('agent-config.json') || p.includes('strategy-library.shared.json')) return true
       return actualExistsSync(pathArg)
     })
     vi.spyOn(fs, 'readFileSync').mockImplementation(((pathArg: any, options: any) => {
       const p = pathArg.toString()
-      if (p.includes('user-config.json')) {
+      if (p.includes('agent-config.json')) {
         return JSON.stringify({ strategy: { activeStrategyId: 'old_id' } })
       }
       if (p.includes('strategy-library.shared.json')) {

@@ -48,7 +48,7 @@ function buildConfig(): AppConfig {
         console.warn(`[config] Warning: using fallback defaults for info/init: ${err.message}`)
       }
     } else {
-      const explicitConfig = process.env.AGENT_CONFIG_PATH?.trim() || process.env.USER_CONFIG_PATH?.trim()
+      const explicitConfig = process.env.AGENT_CONFIG_PATH?.trim() || process.env.AGENT_CONFIG_PATH?.trim()
       const resolvedConfigPath = err?.configPath ?? (explicitConfig ? explicitConfig : AGENT_CONFIG_PATH)
       const baseMessage = explicitConfig
         ? `[config] Fatal: Failed to load explicit configuration from AGENT_CONFIG_PATH="${explicitConfig}": ${err.message}`
