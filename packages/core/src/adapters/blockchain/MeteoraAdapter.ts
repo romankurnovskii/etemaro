@@ -49,12 +49,34 @@ import {
   deriveOpenPnlPct,
   getClosedPnlPct,
   getClosedPnlValue,
+  isSolMint,
   maybeNum,
+  resolveCloseAccounting,
+  resolveNonSolMint,
   resolvePerformanceSignalSnapshot,
   roundNum,
   safeNum,
 } from './pnlHelpers.js'
 import { invalidateBalanceCache, normalizeMint } from './WalletAdapter.js'
+
+/**
+ * Inspect the wallet after a close to find any base tokens that still need a swap.
+ * Returns 0/0 when the close returned only SOL (or the balance cannot be read),
+ * which is the common case for single-sided bid-ask positions that pumped away.
+ */
+async function resolveClosedPositionInventory(closeBaseMint: string): Promise<{ amount: number; usd: number }> {
+  if (!closeBaseMint || isSolMint(closeBaseMint)) return { amount: 0, usd: 0 }
+  try {
+    invalidateBalanceCache()
+    const balances = await getWalletBalances({ force: true })
+    const token = (balances?.tokens || []).find((t: any) => t.mint === closeBaseMint && (t.balance || 0) > 0)
+    if (!token) return { amount: 0, usd: 0 }
+    return { amount: Number(token.balance) || 0, usd: Number(token.usd) || 0 }
+  } catch (e: any) {
+    log('close_warn', `Failed to read wallet balance for ${closeBaseMint.slice(0, 8)} after close: ${e?.message || e}`)
+    return { amount: 0, usd: 0 }
+  }
+}
 
 // ─── Lazy SDK loader ───────────────────────────────────────────
 let _DLMM: any = null
@@ -1823,7 +1845,11 @@ export async function closePosition({ position_address, reason }: { position_add
             log('close_warn', `Relay closed PnL fetch failed: ${e.message}`)
           }
 
-          const closeBaseMint = livePosition?.base_mint || pool.lbPair.tokenXMint.toString()
+          const closeBaseMint = resolveNonSolMint({
+            trackedBaseMint: livePosition?.base_mint || (tracked as any).base_mint,
+            tokenXMint: pool.lbPair.tokenXMint?.toString?.() ?? pool.lbPair.tokenXMint,
+            tokenYMint: pool.lbPair.tokenYMint?.toString?.() ?? pool.lbPair.tokenYMint,
+          })
           const signalSnapshot = resolvePerformanceSignalSnapshot({
             poolAddress,
             baseMint: closeBaseMint,
@@ -1849,19 +1875,25 @@ export async function closePosition({ position_address, reason }: { position_add
             log('meteora_warn', `Failed to fetch pool exit metrics for ${poolAddress}: ${err?.message || err}`)
           }
 
-          const isBaseNonSol = closeBaseMint && closeBaseMint !== 'So11111111111111111111111111111111111111112'
-          const closeStatus = isBaseNonSol ? 'closed_pending_swap' : 'realized'
+          const inventory = await resolveClosedPositionInventory(closeBaseMint)
+          const accounting = resolveCloseAccounting({
+            finalValueUsd,
+            unsoldTokensAmount: inventory.amount,
+            unsoldTokensUsd: inventory.usd,
+            sweeperMinUsd: Number(config.management.sweeperMinUsd ?? 0.02),
+          })
 
           await recordPerformance({
             position: position_address,
             pool: poolAddress,
             pool_name: tracked.pool_name || poolMeta.name || poolAddress.slice(0, 8),
             base_mint: closeBaseMint,
-            status: closeStatus,
-            liquidation_mint: isBaseNonSol ? closeBaseMint : undefined,
-            unrealized_residual_usd: isBaseNonSol ? finalValueUsd : 0,
-            cash_realized_sol: isBaseNonSol ? 0 : tracked.amount_sol,
-            cash_realized_usd: isBaseNonSol ? 0 : finalValueUsd,
+            status: accounting.status,
+            liquidation_mint: accounting.status === 'closed_pending_swap' ? closeBaseMint : undefined,
+            unrealized_residual_usd: accounting.unrealizedResidualUsd,
+            unrealized_tokens_amount: accounting.unrealizedTokensAmount,
+            cash_realized_sol: accounting.status === 'realized' ? tracked.amount_sol : 0,
+            cash_realized_usd: accounting.cashRealizedUsd,
             strategy: tracked.strategy,
             bin_range: tracked.bin_range,
             bin_step: tracked.bin_step || null,
@@ -2124,7 +2156,11 @@ export async function closePosition({ position_address, reason }: { position_add
         }
       }
 
-      const closeBaseMint = pool.lbPair.tokenXMint.toString()
+      const closeBaseMint = resolveNonSolMint({
+        trackedBaseMint: (tracked as any).base_mint,
+        tokenXMint: pool.lbPair.tokenXMint?.toString?.() ?? pool.lbPair.tokenXMint,
+        tokenYMint: pool.lbPair.tokenYMint?.toString?.() ?? pool.lbPair.tokenYMint,
+      })
       const signalSnapshot = resolvePerformanceSignalSnapshot({
         poolAddress,
         baseMint: closeBaseMint,
@@ -2150,19 +2186,25 @@ export async function closePosition({ position_address, reason }: { position_add
         log('meteora_warn', `Failed to fetch pool exit metrics for ${poolAddress}: ${err?.message || err}`)
       }
 
-      const isBaseNonSol = closeBaseMint && closeBaseMint !== 'So11111111111111111111111111111111111111112'
-      const closeStatus = isBaseNonSol ? 'closed_pending_swap' : 'realized'
+      const inventory = await resolveClosedPositionInventory(closeBaseMint)
+      const accounting = resolveCloseAccounting({
+        finalValueUsd,
+        unsoldTokensAmount: inventory.amount,
+        unsoldTokensUsd: inventory.usd,
+        sweeperMinUsd: Number(config.management.sweeperMinUsd ?? 0.02),
+      })
 
       await recordPerformance({
         position: position_address,
         pool: poolAddress,
         pool_name: tracked.pool_name || poolMeta.name || poolAddress.slice(0, 8),
         base_mint: closeBaseMint,
-        status: closeStatus,
-        liquidation_mint: isBaseNonSol ? closeBaseMint : undefined,
-        unrealized_residual_usd: isBaseNonSol ? finalValueUsd : 0,
-        cash_realized_sol: isBaseNonSol ? 0 : tracked.amount_sol,
-        cash_realized_usd: isBaseNonSol ? 0 : finalValueUsd,
+        status: accounting.status,
+        liquidation_mint: accounting.status === 'closed_pending_swap' ? closeBaseMint : undefined,
+        unrealized_residual_usd: accounting.unrealizedResidualUsd,
+        unrealized_tokens_amount: accounting.unrealizedTokensAmount,
+        cash_realized_sol: accounting.status === 'realized' ? tracked.amount_sol : 0,
+        cash_realized_usd: accounting.cashRealizedUsd,
         strategy: tracked.strategy,
         bin_range: tracked.bin_range,
         bin_step: tracked.bin_step || null,

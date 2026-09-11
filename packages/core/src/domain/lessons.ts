@@ -734,9 +734,14 @@ export async function settleTradeLiquidation(mint: string, opts: SettleTradeLiqu
   const additionalSol = opts.amountOutSol || 0
   const solPrice =
     opts.solPrice || (rec.amount_sol > 0 && rec.initial_value_usd > 0 ? rec.initial_value_usd / rec.amount_sol : 150)
-  const newCashSol = (rec.cash_realized_sol || 0) + additionalSol
   const additionalUsd = additionalSol * solPrice
-  const newCashUsd = Math.round(((rec.cash_realized_usd || 0) + additionalUsd) * 100) / 100
+  // When settlement is triggered because the token is already gone from the wallet
+  // (no swap output reported), preserve the residual USD captured at close. Zeroing
+  // it here silently destroyed the value of positions that closed as 100% SOL.
+  const fallbackResidualUsd = additionalSol > 1e-6 ? 0 : Math.max(0, rec.unrealized_residual_usd || 0)
+  const fallbackResidualSol = fallbackResidualUsd > 0 && solPrice > 0 ? fallbackResidualUsd / solPrice : 0
+  const newCashSol = (rec.cash_realized_sol || 0) + additionalSol + fallbackResidualSol
+  const newCashUsd = Math.round(((rec.cash_realized_usd || 0) + additionalUsd + fallbackResidualUsd) * 100) / 100
 
   rec.cash_realized_sol = Math.round(newCashSol * 10000) / 10000
   rec.cash_realized_usd = newCashUsd
@@ -925,9 +930,14 @@ export function updatePendingTradesMarkToMarket(priceMap: Record<string, number>
     const mint = rec.liquidation_mint || rec.base_mint
     if (!mint) continue
 
+    // Only revalue records with a real, recorded token inventory. When the close
+    // returned 100% SOL there are no tokens to mark; recomputing from amount * price
+    // here used to zero out `final_value_usd` and fabricate a -100% loss.
+    const amount = rec.unrealized_tokens_amount || 0
+    if (!(amount > 0)) continue
+
     const price = priceMap[mint]
     if (typeof price === 'number' && Number.isFinite(price) && price >= 0) {
-      const amount = rec.unrealized_tokens_amount || 0
       const newResidual = Math.round(amount * price * 100) / 100
       rec.unrealized_residual_usd = newResidual
       const newFinal = Math.round(((rec.cash_realized_usd || 0) + newResidual) * 100) / 100
@@ -1062,6 +1072,10 @@ export function getPerformanceSummary(): Record<string, unknown> | null {
     realized_win_rate_pct: realizedRecords.length > 0 ? Math.round((realizedWins / realizedRecords.length) * 100) : 0,
     total_lessons: data.lessons.length,
   }
+}
+
+export function getPerformanceRecords(): PerformanceRecord[] {
+  return load().performance || []
 }
 
 // ─── Local Helpers ─────────────────────────────────────────────

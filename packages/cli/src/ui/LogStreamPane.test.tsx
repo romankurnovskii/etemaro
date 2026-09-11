@@ -35,4 +35,22 @@ describe('LogStreamPane', () => {
     expect(output).toContain('Log message 1')
     expect(output).toContain('Log message 10')
   })
+
+  it('renders platform-appropriate scroll and return hints', () => {
+    const isMac = process.platform === 'darwin'
+    const liveOutput = renderToString(<LogStreamPane logs={sampleLogs} maxVisible={10} scrollOffset={0} />)
+    if (isMac) {
+      expect(liveOutput).toContain('[Ctrl+U/D or Shift+↑/↓] to scroll')
+    } else {
+      expect(liveOutput).toContain('[PgUp/PgDn] to scroll')
+    }
+
+    const scrolledOutput = renderToString(<LogStreamPane logs={sampleLogs} maxVisible={10} scrollOffset={5} />)
+    if (isMac) {
+      expect(scrolledOutput).toContain('[End or Ctrl+D]')
+    } else {
+      expect(scrolledOutput).toContain('[End or PgDn]')
+    }
+    expect(scrolledOutput).toContain('return to live')
+  })
 })
