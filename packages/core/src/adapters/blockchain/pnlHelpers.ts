@@ -4,7 +4,7 @@
  */
 import { config } from '../../config/Config.js'
 import { getAndClearStagedSignals } from '../../domain/signal-tracker.js'
-import { DEFAULT_AGENT_ID } from '../../shared/constants.js'
+import { DEFAULT_AGENT_ID, TOKEN_MINTS } from '../../shared/constants.js'
 import { agentMeridianJson, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js'
 
 export function safeNum(value: any): number {
@@ -111,6 +111,96 @@ export function deriveLpAgentPnlPct(lpData: any, solMode = false): number | null
   const unclaimedFees = solMode ? safeNum(lpData.unCollectedFeeNative) : safeNum(lpData.unCollectedFee)
   const pnl = currentValue + unclaimedFees - deposit
   return (pnl / deposit) * 100
+}
+
+const NATIVE_SOL_MINT = 'So11111111111111111111111111111111111111111'
+const WSOL_MINT = TOKEN_MINTS.SOL
+
+/** True for wrapped SOL and native SOL mints. */
+export function isSolMint(mint?: string | null): boolean {
+  return mint === WSOL_MINT || mint === NATIVE_SOL_MINT
+}
+
+/**
+ * Pick the non-SOL (base/meme) mint for a closed pool.
+ *
+ * Meteora DLMM exposes the quote side on either `tokenX` or `tokenY`, so we
+ * cannot assume `tokenX` is the base token. We prefer the tracked base mint and
+ * fall back to whichever side is not SOL.
+ */
+export function resolveNonSolMint({
+  trackedBaseMint,
+  tokenXMint,
+  tokenYMint,
+}: {
+  trackedBaseMint?: string | null
+  tokenXMint?: string | null
+  tokenYMint?: string | null
+}): string {
+  const candidates = [trackedBaseMint, tokenXMint, tokenYMint]
+  for (const candidate of candidates) {
+    if (candidate && !isSolMint(candidate)) return candidate
+  }
+  return tokenXMint || tokenYMint || trackedBaseMint || ''
+}
+
+export interface CloseAccounting {
+  status: 'realized' | 'closed_pending_swap'
+  /** USD value of the SOL actually returned to the wallet at close. */
+  cashRealizedUsd: number
+  /** USD value of base tokens still held in the wallet awaiting a swap. */
+  unrealizedResidualUsd: number
+  /** Base-token units still held in the wallet. */
+  unrealizedTokensAmount: number
+  /** Whether a genuine, above-dust base-token inventory was detected. */
+  hasUnsoldInventory: boolean
+}
+
+/**
+ * Decide how a just-closed position splits between realized SOL cash and unsold
+ * base-token inventory.
+ *
+ * We must never assume a non-SOL pool always leaves tokens behind. A single-sided
+ * bid-ask position that closes as 100% SOL has no inventory; classifying it as
+ * `closed_pending_swap` with `cash_realized_usd = 0` previously let the
+ * mark-to-market sweeper collapse its value to a phantom -100% loss.
+ */
+export function resolveCloseAccounting({
+  finalValueUsd,
+  unsoldTokensAmount,
+  unsoldTokensUsd,
+  sweeperMinUsd = 0.02,
+}: {
+  finalValueUsd: number
+  unsoldTokensAmount?: number | null
+  unsoldTokensUsd?: number | null
+  sweeperMinUsd?: number
+}): CloseAccounting {
+  const final = Number.isFinite(finalValueUsd) ? Math.max(0, finalValueUsd) : 0
+  const amount = Number.isFinite(unsoldTokensAmount as number) ? Math.max(0, unsoldTokensAmount as number) : 0
+  const unsoldUsd = Number.isFinite(unsoldTokensUsd as number) ? Math.max(0, unsoldTokensUsd as number) : 0
+  const threshold = Number.isFinite(sweeperMinUsd) ? Math.max(0, sweeperMinUsd) : 0.02
+
+  const hasUnsoldInventory = amount > 0 && unsoldUsd >= threshold
+  if (!hasUnsoldInventory) {
+    return {
+      status: 'realized',
+      cashRealizedUsd: roundNum(final, 2),
+      unrealizedResidualUsd: 0,
+      unrealizedTokensAmount: 0,
+      hasUnsoldInventory: false,
+    }
+  }
+
+  // Guard against a stale wallet price exceeding the withdrawn total.
+  const residual = roundNum(Math.min(unsoldUsd, final > 0 ? final : unsoldUsd), 2)
+  return {
+    status: 'closed_pending_swap',
+    cashRealizedUsd: roundNum(Math.max(0, final - residual), 2),
+    unrealizedResidualUsd: residual,
+    unrealizedTokensAmount: amount,
+    hasUnsoldInventory: true,
+  }
 }
 
 export async function _fetchRawOpenPositionsFromMeridian({

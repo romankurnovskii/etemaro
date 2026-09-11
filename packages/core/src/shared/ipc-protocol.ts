@@ -145,6 +145,12 @@ export interface IpcStateSnapshot {
   positions: IpcPositionSummary[]
   /** Aggregate unrealised + realised PnL in USD. */
   totalPnlUsd: number
+  /** Lifetime realized PnL in USD across all recorded closed positions. */
+  totalRealizedPnlUsd?: number
+  /** Realized PnL in USD achieved during current daemon session. */
+  sessionPnlUsd?: number
+  /** Aggregate unclaimed fees in USD across all currently open positions. */
+  unclaimedFeesUsd?: number
   /** ISO timestamp when the next screening cycle is scheduled. */
   nextScreenAt?: string
   /** ISO timestamp when the next management cycle is scheduled. */
@@ -157,6 +163,8 @@ export interface IpcStateSnapshot {
   activeStrategyId?: string | null
   /** Resolved agent-config.json path. */
   configPath?: string
+  /** Whether the daemon is running in dry-run mode. */
+  dryRun?: boolean
 }
 
 /** Minimal position summary for state snapshots. */
@@ -167,6 +175,7 @@ export interface IpcPositionSummary {
   pnlUsd?: number
   pnlPct?: number
   valueUsd?: number
+  unclaimedFeesUsd?: number
   deployedAt?: string
 }
 
