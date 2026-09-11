@@ -13,8 +13,8 @@ import fs from 'node:fs'
 import { config } from '../config/Config.js'
 import { configPath, getDataDir, strategyLibraryPath } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
+import { readStateFile, writeStateFile } from '../shared/stateStore.js'
 import type { Strategy, StrategyLibraryData } from '../shared/types.js'
-import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
 import { listSmartWallets } from './smart-wallets.js'
 
 // ─── Strategy Library Manager ─────────────────────────────────
@@ -48,11 +48,11 @@ export class StrategyLibraryManager {
   }
 
   loadPrivate(): StrategyLibraryData {
-    return loadJsonFile<StrategyLibraryData>(this.paths.privatePath, { strategies: {} })
+    return readStateFile<StrategyLibraryData>(this.paths.privatePath, { strategies: {} })
   }
 
   savePrivate(data: StrategyLibraryData): void {
-    saveJsonFile(this.paths.privatePath, data)
+    writeStateFile(this.paths.privatePath, data)
   }
 
   private loadSharedWithInfo(): SharedLibraryInfo {
@@ -60,7 +60,7 @@ export class StrategyLibraryManager {
       throw new Error(`Shared strategy library is required at ${this.paths.sharedPath}`)
     }
     return {
-      data: loadJsonFile<StrategyLibraryData>(
+      data: readStateFile<StrategyLibraryData>(
         this.paths.sharedPath,
         { strategies: {} },
         { label: 'strategy-library.shared', critical: true },
@@ -260,10 +260,10 @@ export function setActiveStrategy({ id }: { id: string }): Record<string, unknow
 
   const userConfigPath = configPath('user-config.json')
   try {
-    const raw = loadJsonFile<{ strategy?: { activeStrategyId?: string } }>(userConfigPath, {})
+    const raw = readStateFile<{ strategy?: { activeStrategyId?: string } }>(userConfigPath, {})
     if (!raw.strategy) raw.strategy = {}
     raw.strategy.activeStrategyId = id
-    saveJsonFile(userConfigPath, raw)
+    writeStateFile(userConfigPath, raw)
   } catch (err) {
     const errorMsg = `Failed to update user config: ${err}`
     log('strategy', errorMsg)
@@ -306,10 +306,10 @@ export function removeStrategy({ id }: { id: string }): Record<string, unknown> 
       // Clear the active strategy pointer if no strategies exist at all
       const userConfigPath = configPath('user-config.json')
       try {
-        const raw = loadJsonFile<{ strategy?: { activeStrategyId?: string | null } }>(userConfigPath, {})
+        const raw = readStateFile<{ strategy?: { activeStrategyId?: string | null } }>(userConfigPath, {})
         if (!raw.strategy) raw.strategy = {}
         raw.strategy.activeStrategyId = null
-        saveJsonFile(userConfigPath, raw)
+        writeStateFile(userConfigPath, raw)
       } catch (err) {
         log('strategy', `Failed to update user config during removal: ${err}`)
       }
