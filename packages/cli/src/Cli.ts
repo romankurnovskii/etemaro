@@ -1456,7 +1456,7 @@ export function formatConfigLoadError(err: any): string {
     err?.configPath ||
     err?.cause?.configPath ||
     process.env.AGENT_CONFIG_PATH ||
-    process.env.USER_CONFIG_PATH ||
+    process.env.AGENT_CONFIG_PATH ||
     _AGENT_CONFIG_PATH ||
     path.resolve(process.cwd(), 'config', 'agent-config.json')
 
@@ -1561,7 +1561,7 @@ async function main() {
   const dataDirArg = resolveGlobalFlagValue(argv, '--data-dir', '-d')
   if (configPathArg) {
     process.env.AGENT_CONFIG_PATH = path.resolve(configPathArg)
-    process.env.USER_CONFIG_PATH = path.resolve(configPathArg) // legacy alias
+    process.env.AGENT_CONFIG_PATH = path.resolve(configPathArg) // legacy alias
   }
   if (dataDirArg) process.env.ETEMARO_DATA_DIR = path.resolve(dataDirArg)
 

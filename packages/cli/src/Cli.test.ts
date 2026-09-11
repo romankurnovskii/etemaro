@@ -98,7 +98,7 @@ describe('formatConfigLoadError', () => {
   it('formats error with exact config file path and tells user how to set env or edit json directly', () => {
     const error = {
       name: 'ConfigLoadError',
-      configPath: '/custom/path/user-config.json',
+      configPath: '/custom/path/agent-config.json',
       issues: [
         {
           path: ['llm', 'defaultModel'],
@@ -114,20 +114,20 @@ describe('formatConfigLoadError', () => {
     }
 
     const output = formatConfigLoadError(error)
-    expect(output).toContain('/custom/path/user-config.json')
+    expect(output).toContain('/custom/path/agent-config.json')
     expect(output).toContain('Field "llm.defaultModel" requires environment variable: LLM_MODEL')
     expect(output).toContain('Field "connection.rpcUrl" requires environment variable: RPC_URL')
     expect(output).toContain('Set the environment variable in your .env file or system environment')
     expect(output).toContain('LLM_MODEL=<value>')
     expect(output).toContain('RPC_URL=<value>')
     expect(output).toContain('OR update the value directly in your configuration file:')
-    expect(output).toContain('/custom/path/user-config.json')
+    expect(output).toContain('/custom/path/agent-config.json')
   })
 
   it('formats additional schema errors alongside the config file path', () => {
     const error = {
       name: 'ConfigLoadError',
-      configPath: '/path/user-config.json',
+      configPath: '/path/agent-config.json',
       issues: [
         {
           path: ['risk', 'maxPositions'],
@@ -137,7 +137,7 @@ describe('formatConfigLoadError', () => {
     }
 
     const output = formatConfigLoadError(error)
-    expect(output).toContain('/path/user-config.json')
+    expect(output).toContain('/path/agent-config.json')
     expect(output).toContain('Field "risk.maxPositions": Expected number, received string')
   })
 })

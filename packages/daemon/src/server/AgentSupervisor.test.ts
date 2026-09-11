@@ -31,7 +31,7 @@ beforeEach(() => {
   repo = fs.mkdtempSync(path.join(os.tmpdir(), 'etemaro-sup-'))
   fs.mkdirSync(path.join(repo, 'config'), { recursive: true })
   fs.writeFileSync(
-    path.join(repo, 'config', 'user-config.json'),
+    path.join(repo, 'config', 'agent-config.json'),
     JSON.stringify({
       agentId: 'template',
       connection: { dryRun: false },

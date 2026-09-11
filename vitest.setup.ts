@@ -8,9 +8,9 @@ const testEtemaroHome = path.join(os.tmpdir(), `etemaro-vitest-${process.pid}`);
 fs.mkdirSync(testEtemaroHome, { recursive: true });
 process.env.ETEMARO_HOME = testEtemaroHome;
 
-const testConfigPath = path.join(testEtemaroHome, 'config', 'user-config.json');
+const testConfigPath = path.join(testEtemaroHome, 'config', 'agent-config.json');
 fs.mkdirSync(path.dirname(testConfigPath), { recursive: true });
-process.env.USER_CONFIG_PATH = testConfigPath;
+process.env.AGENT_CONFIG_PATH = testConfigPath;
 
 // Required env vars for env.* references in config.
 process.env.RPC_URL = 'https://test-rpc.solana.com';

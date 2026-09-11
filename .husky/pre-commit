@@ -12,7 +12,7 @@ pnpm test
 # Config uses --env-optional so structural errors are caught without requiring deployment secrets.
 # The private strategy library gets --active so the active-strategy smartWalletListId gate is checked.
 CONFIG_CANDIDATE=""
-for f in config/instances/agent-default.json config/agent-config.json config/user-config.json; do
+for f in config/instances/agent-default.json config/agent-config.json config/agent-config.json; do
   if [ -f "$f" ]; then CONFIG_CANDIDATE="$f"; break; fi
 done
 if [ -n "$CONFIG_CANDIDATE" ]; then

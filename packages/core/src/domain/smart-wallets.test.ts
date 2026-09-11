@@ -9,7 +9,7 @@ import { sharedConfigPath } from '../shared/constants.js'
 import { addSmartWallet, listSmartWallets, removeSmartWallet } from './smart-wallets.js'
 
 describe('smart-wallets domain module', () => {
-  const originalConfigPath = process.env.USER_CONFIG_PATH
+  const originalConfigPath = process.env.AGENT_CONFIG_PATH
   const testWalletPath = sharedConfigPath('smart-wallets.json')
   let backupContent: string | null = null
 
@@ -21,9 +21,9 @@ describe('smart-wallets domain module', () => {
 
   afterEach(() => {
     if (originalConfigPath === undefined) {
-      delete process.env.USER_CONFIG_PATH
+      delete process.env.AGENT_CONFIG_PATH
     } else {
-      process.env.USER_CONFIG_PATH = originalConfigPath
+      process.env.AGENT_CONFIG_PATH = originalConfigPath
     }
 
     if (backupContent !== null) {
@@ -34,7 +34,7 @@ describe('smart-wallets domain module', () => {
   })
 
   it('reads from sharedConfigPath without agent suffix even when AGENT_CONFIG_PATH is set', () => {
-    process.env.USER_CONFIG_PATH = '/path/to/config/agt_custom_strategy.json'
+    process.env.AGENT_CONFIG_PATH = '/path/to/config/agt_custom_strategy.json'
 
     // Seed test wallet data in the shared path
     const seedData = {
@@ -60,7 +60,7 @@ describe('smart-wallets domain module', () => {
   })
 
   it('adds and removes a smart wallet correctly in the shared file', () => {
-    process.env.USER_CONFIG_PATH = '/path/to/config/agt_custom_strategy.json'
+    process.env.AGENT_CONFIG_PATH = '/path/to/config/agt_custom_strategy.json'
     fs.writeFileSync(testWalletPath, JSON.stringify({ lists: { alpha: { wallets: [] } } }, null, 2), 'utf8')
 
     const testAddress = '9mN3pR8sW2vK5xY7bA4cD6eF9gH1jL4kM8nP3qS6t'
