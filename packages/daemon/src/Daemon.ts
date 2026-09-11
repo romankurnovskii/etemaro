@@ -106,6 +106,7 @@ export interface DaemonAdapters {
     editMessageWithButtons: (text: string, messageId: number, buttons: any[]) => Promise<any>
     answerCallbackQuery: (queryId: string, text?: string) => Promise<any>
     notifyOutOfRange: (data: { pair: string; minutesOOR: number }) => Promise<any>
+    notifyDeploy: (data: any) => Promise<any>
     notifyTransactionError?: (data: {
       type: 'deploy' | 'close' | 'claim' | 'swap' | 'confirm'
       pair?: string
@@ -1971,6 +1972,18 @@ IMPORTANT:
         deployedPools.add(pool)
         deployedCount++
         processedPositions.push({ position: posItem.position, resolved: true })
+        // Notify deploy for Telegram after successful smart wallet deployment
+        this.adapters.telegram
+          .notifyDeploy({
+            pair: detail.name || pool,
+            amountSol: deployAmount,
+            position: deployRes.position.position,
+            tx: deployRes.txs?.[0] || deployRes.tx,
+            // Other details from deployRes can be passed if available
+          })
+          .catch((err: any) => {
+            log('telegram_warn', `Failed to send smart wallet deploy notification: ${err?.message || err}`)
+          })
       } catch (e: any) {
         log('cron_error', `[SmartWallets] Deploy failed for pool ${pool}: ${e.message}`)
         processedPositions.push({ position: posItem.position, resolved: false })
