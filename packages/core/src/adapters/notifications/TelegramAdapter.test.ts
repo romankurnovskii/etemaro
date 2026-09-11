@@ -7,6 +7,10 @@ import {
   editMessage,
   isEnabled,
   isTelegramConfigured,
+  notifyClose,
+  notifyDeploy,
+  notifyLiquidationAlert,
+  notifyOutOfRange,
   notifySwap,
   notifySwapError,
   notifyTransactionError,
@@ -270,5 +274,47 @@ describe('TelegramAdapter notifications', () => {
       expect(editPayloads.length).toBe(2)
       expect(editPayloads[1]).toContain('Completed.')
     }
+  })
+
+  it('notifies even if live message is active (regression)', async () => {
+    config.connection.telegramBotToken = 'test_token'
+    config.connection.telegramChatId = '123456'
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, result: { message_id: 111 } }),
+    } as any)
+
+    const live = await createLiveMessage('Title', 'Intro')
+    expect(live).not.toBeNull()
+
+    // Now call all notify* functions
+    await notifyDeploy({ pair: 'BTC/SOL', amountSol: 1, position: 'pos1', tx: 'tx1' })
+    expect(NotificationSink.notify).toHaveBeenCalledWith('deploy', '✅', 'Deployed BTC/SOL', expect.any(String))
+
+    await notifyClose({ pair: 'BTC/SOL', pnlUsd: 1, pnlPct: 1 })
+    expect(NotificationSink.notify).toHaveBeenCalledWith('close', '🔒', 'Closed BTC/SOL', expect.any(String))
+
+    await notifySwap({ inputSymbol: 'SOL', outputSymbol: 'BTC', amountIn: '1', amountOut: '0.01', tx: 'tx2' })
+    expect(NotificationSink.notify).toHaveBeenCalledWith('swap', '🔄', 'Swapped SOL → BTC', expect.any(String))
+
+    await notifySwapError({ inputSymbol: 'SOL', outputSymbol: 'BTC', reason: 'Error' })
+    expect(NotificationSink.notify).toHaveBeenCalledWith('swap_error', '⚠️', expect.any(String), expect.any(String))
+
+    await notifyLiquidationAlert({ mint: 'mint', amount: 1 })
+    expect(NotificationSink.notify).toHaveBeenCalledWith(
+      'liquidation_alert',
+      '🚨',
+      expect.any(String),
+      expect.any(String),
+    )
+
+    await notifyOutOfRange({ pair: 'BTC/SOL', minutesOOR: 5 })
+    expect(NotificationSink.notify).toHaveBeenCalledWith('oor', '⚠️', 'Out of Range: BTC/SOL', expect.any(String))
+
+    await notifyTransactionError({ type: 'swap', reason: 'Failed', tx: 'tx3' })
+    expect(NotificationSink.notify).toHaveBeenCalledWith('tx_error', '❌', expect.any(String), expect.any(String))
+
+    await live?.finalize('Done')
   })
 })
