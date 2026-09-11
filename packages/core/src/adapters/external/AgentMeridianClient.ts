@@ -12,9 +12,11 @@
  */
 
 import { config } from '../../config/Config.js'
-import { DEFAULT_AGENT_ID } from '../../shared/constants.js'
+import { getAgentIdForRequests } from '../../shared/agentIdentity.js'
 import { createTimer, logStructured } from '../../shared/logger.js'
 import { sleep } from '../../utils/time.js'
+
+export { getAgentIdForRequests }
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -45,11 +47,6 @@ export function getAgentMeridianHeaders({ json = false } = {}): Record<string, s
   if (json) headers['Content-Type'] = 'application/json'
   if (config.api.meridian.publicApiKey) headers['x-api-key'] = config.api.meridian.publicApiKey
   return headers
-}
-
-export function getAgentIdForRequests(): string {
-  // ponytail: local agentId only — no fallback to hiveMind.agentId (separate identity)
-  return config.agentId || DEFAULT_AGENT_ID
 }
 
 function isRetryableStatus(status: number): boolean {

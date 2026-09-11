@@ -15,7 +15,7 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { getAgentIdForRequests } from '../adapters/external/AgentMeridianClient.js'
+import { getAgentIdForRequests } from './agentIdentity.js'
 import { DEFAULT_AGENT_ID, dataPath } from './constants.js'
 import { getDryRun, setDryRun } from './flags.js'
 import type { IpcLogEntry } from './ipc-protocol.js'
