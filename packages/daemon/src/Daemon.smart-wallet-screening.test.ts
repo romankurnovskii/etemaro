@@ -245,6 +245,7 @@ function createMockAdapters(): DaemonAdapters {
       editMessageWithButtons: vi.fn().mockResolvedValue({}),
       answerCallbackQuery: vi.fn().mockResolvedValue({}),
       notifyOutOfRange: vi.fn().mockResolvedValue({}),
+      notifyDeploy: vi.fn().mockResolvedValue({}),
       isEnabled: vi.fn().mockReturnValue(false),
       createLiveMessage: vi.fn().mockResolvedValue(null),
     },
