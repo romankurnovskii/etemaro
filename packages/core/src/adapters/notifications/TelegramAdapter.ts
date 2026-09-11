@@ -473,26 +473,32 @@ export async function createLiveMessage(title: string, intro: string = 'Starting
       scheduleFlush()
     },
     async finalize(finalText: string): Promise<void> {
-      if (state.flushTimer) {
-        clearTimeout(state.flushTimer)
-        state.flushTimer = null
+      try {
+        if (state.flushTimer) {
+          clearTimeout(state.flushTimer)
+          state.flushTimer = null
+        }
+        if (state.flushPromise) await state.flushPromise
+        state.footer = finalText
+        await flushNow()
+      } finally {
+        _liveMessageDepth = Math.max(0, _liveMessageDepth - 1)
+        typing.stop()
       }
-      if (state.flushPromise) await state.flushPromise
-      state.footer = finalText
-      await flushNow()
-      _liveMessageDepth = Math.max(0, _liveMessageDepth - 1)
-      typing.stop()
     },
     async fail(errorText: string): Promise<void> {
-      if (state.flushTimer) {
-        clearTimeout(state.flushTimer)
-        state.flushTimer = null
+      try {
+        if (state.flushTimer) {
+          clearTimeout(state.flushTimer)
+          state.flushTimer = null
+        }
+        if (state.flushPromise) await state.flushPromise
+        state.footer = `❌ ${errorText}`
+        await flushNow()
+      } finally {
+        _liveMessageDepth = Math.max(0, _liveMessageDepth - 1)
+        typing.stop()
       }
-      if (state.flushPromise) await state.flushPromise
-      state.footer = `❌ ${errorText}`
-      await flushNow()
-      _liveMessageDepth = Math.max(0, _liveMessageDepth - 1)
-      typing.stop()
     },
   }
 }
@@ -680,7 +686,6 @@ export async function notifyDeploy({
   binStep,
   baseFee,
 }: NotifyDeployArgs): Promise<void> {
-  if (hasActiveLiveMessage()) return
   const priceStr = priceRange
     ? `Price range: ${priceRange.min < 0.0001 ? priceRange.min.toExponential(3) : priceRange.min.toFixed(6)} – ${priceRange.max < 0.0001 ? priceRange.max.toExponential(3) : priceRange.max.toFixed(6)}\n`
     : ''
@@ -711,7 +716,6 @@ interface NotifyCloseArgs {
 }
 
 export async function notifyClose({ pair, pnlUsd, pnlPct, status, solReceived }: NotifyCloseArgs): Promise<void> {
-  if (hasActiveLiveMessage()) return
   const sign = pnlUsd >= 0 ? '+' : ''
   let body: string
   if (status === 'closed_pending_swap') {
@@ -741,7 +745,6 @@ export async function notifySwap({
   tx,
   amountUsd,
 }: NotifySwapArgs): Promise<void> {
-  if (hasActiveLiveMessage()) return
   const usdPart = amountUsd != null && !Number.isNaN(Number(amountUsd)) ? ` (~$${Number(amountUsd).toFixed(2)})` : ''
   const body = `In: ${amountIn ?? '?'}${usdPart} | Out: ${amountOut ?? '?'}\nTx: ${tx?.slice(0, 16)}...`
   notify('swap', '🔄', `Swapped ${inputSymbol} → ${outputSymbol}`, body)
@@ -761,7 +764,6 @@ export async function notifySwapError({
   outputSymbol: string
   reason?: string
 }): Promise<void> {
-  if (hasActiveLiveMessage()) return
   const body = `Reason: ${reason || 'Unknown error'}`
   notify('swap_error', '⚠️', `Auto-swap failed: ${inputSymbol} → ${outputSymbol}`, body)
   await sendPlain(`⚠️ Auto-swap failed: ${inputSymbol} → ${outputSymbol}\n${body}`)
@@ -782,7 +784,6 @@ export async function notifyLiquidationAlert({
   reason?: string
   attempts?: number
 }): Promise<void> {
-  if (hasActiveLiveMessage()) return
   const tokenLabel = symbol || mint.slice(0, 8)
   const usdLabel = usd != null ? ` (~$${usd.toFixed(2)})` : ''
   const attemptsLabel = attempts ? ` after ${attempts} attempts` : ''
@@ -803,7 +804,6 @@ interface NotifyOutOfRangeArgs {
 }
 
 export async function notifyOutOfRange({ pair, minutesOOR }: NotifyOutOfRangeArgs): Promise<void> {
-  if (hasActiveLiveMessage()) return
   const body = `Been OOR for ${minutesOOR} minutes`
   notify('oor', '⚠️', `Out of Range: ${pair}`, body)
   await sendPlain(`⚠️ Out of Range ${pair}\n${body}`)
@@ -822,7 +822,6 @@ export async function notifyTransactionError({
   reason: string
   tx?: string
 }): Promise<void> {
-  if (hasActiveLiveMessage()) return
   const identifier = pair || (position ? position.slice(0, 8) : 'unknown')
   const title = `Transaction Failed: ${type.toUpperCase()} | ${identifier}`
   const details = tx ? `Reason: ${reason}\nTx: ${tx.slice(0, 16)}...` : `Reason: ${reason}`
