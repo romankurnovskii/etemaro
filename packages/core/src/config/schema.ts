@@ -94,7 +94,7 @@ const envBoolean = z.union([z.boolean(), z.string()]).transform((val, ctx) => {
   return val
 })
 
-export const UserConfigSchema = z
+export const AgentConfigSchema = z
   .object({
     _version: z.number().optional().default(5),
     preset: z.string().optional(),
@@ -416,5 +416,5 @@ export const UserConfigSchema = z
   })
   .strict()
 
-export type ValidatedUserConfig = z.infer<typeof UserConfigSchema>
-export type UserConfigRaw = z.input<typeof UserConfigSchema>
+export type ValidatedAgentConfig = z.infer<typeof AgentConfigSchema>
+export type AgentConfigRaw = z.input<typeof AgentConfigSchema>

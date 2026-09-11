@@ -5,7 +5,7 @@
  * @features
  * - Confirms REPO_ROOT contains pnpm-workspace.yaml
  * - Asserts configPath('user-config.json') resolves to <root>/config and not packages/core/config
- * - dataPath honors ETEMARO_DATA_DIR / DATA_DIR overrides and USER_CONFIG_PATH agent suffix
+ * - dataPath honors ETEMARO_DATA_DIR / DATA_DIR overrides and AGENT_CONFIG_PATH agent suffix
  *
  * @dependencies vitest
  */
@@ -26,7 +26,7 @@ import {
   strategyLibraryPath,
 } from './constants.js'
 
-const ENV_KEYS = ['USER_CONFIG_PATH', 'ETEMARO_DATA_DIR', 'DATA_DIR', 'ETEMARO_INSTANCE_ID'] as const
+const ENV_KEYS = ['AGENT_CONFIG_PATH', 'ETEMARO_DATA_DIR', 'DATA_DIR', 'ETEMARO_INSTANCE_ID'] as const
 
 function snapshotEnv(): Record<string, string | undefined> {
   const snap: Record<string, string | undefined> = {}
@@ -59,7 +59,7 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     expect(configPath('user-config.json')).not.toContain('packages/core/config')
   })
 
-  it('configPath honors custom USER_CONFIG_PATH override', () => {
+  it('configPath honors custom AGENT_CONFIG_PATH override', () => {
     envSnap = snapshotEnv()
     process.env.USER_CONFIG_PATH = '/custom/path/agent-1.json'
     expect(configPath('user-config.json')).toBe('/custom/path/agent-1.json')
@@ -85,7 +85,7 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     expect(dataPath('logs')).toBe(path.join(REPO_ROOT, 'data', 'logs'))
   })
 
-  it('dataPath automatically adds agent suffix when USER_CONFIG_PATH is set to custom config', () => {
+  it('dataPath automatically adds agent suffix when AGENT_CONFIG_PATH is set to custom config', () => {
     envSnap = snapshotEnv()
     delete process.env.ETEMARO_DATA_DIR
     delete process.env.DATA_DIR
@@ -117,7 +117,7 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     expect(getDataDir()).toBe(path.resolve('/tmp/only-data-dir'))
   })
 
-  it('dataPath combines ETEMARO_DATA_DIR with agent suffix from USER_CONFIG_PATH', () => {
+  it('dataPath combines ETEMARO_DATA_DIR with agent suffix from AGENT_CONFIG_PATH', () => {
     envSnap = snapshotEnv()
     process.env.ETEMARO_DATA_DIR = '/tmp/agent-data-root'
     process.env.USER_CONFIG_PATH = '/cfg/agt_desktop_1.json'
@@ -135,7 +135,7 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     expect(getDataDir()).toBe(path.resolve(home, '.config/etemaro/data'))
   })
 
-  it('shared knowledge paths use config/shared even with a custom USER_CONFIG_PATH', () => {
+  it('shared knowledge paths use config/shared even with a custom AGENT_CONFIG_PATH', () => {
     envSnap = snapshotEnv()
     delete process.env.ETEMARO_DATA_DIR
     delete process.env.DATA_DIR

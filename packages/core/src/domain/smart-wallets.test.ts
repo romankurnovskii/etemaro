@@ -33,7 +33,7 @@ describe('smart-wallets domain module', () => {
     }
   })
 
-  it('reads from sharedConfigPath without agent suffix even when USER_CONFIG_PATH is set', () => {
+  it('reads from sharedConfigPath without agent suffix even when AGENT_CONFIG_PATH is set', () => {
     process.env.USER_CONFIG_PATH = '/path/to/config/agt_custom_strategy.json'
 
     // Seed test wallet data in the shared path

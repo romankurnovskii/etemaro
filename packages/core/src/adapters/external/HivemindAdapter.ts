@@ -15,7 +15,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import { config } from '../../config/Config.js'
 import { mergePresets } from '../../domain/strategy-library.js'
-import { USER_CONFIG_PATH } from '../../shared/constants.js'
+import { AGENT_CONFIG_PATH } from '../../shared/constants.js'
 import { log } from '../../shared/logger.js'
 import type { AgentRole, HiveMindCache, HiveMindSharedLesson } from '../../shared/types.js'
 import { dataPath, repoPath, sanitizeStoredText } from '../../shared/utils.js'
@@ -89,19 +89,19 @@ function getVersion(): string {
 const AGENT_VERSION = getVersion()
 
 function readUserConfig(): Record<string, unknown> {
-  return readJson<Record<string, unknown>>(USER_CONFIG_PATH, {})
+  return readJson<Record<string, unknown>>(AGENT_CONFIG_PATH, {})
 }
 
 function _getUserConfigValue(
-  userConfig: Record<string, unknown>,
+  agentConfig: Record<string, unknown>,
   flatKey: string,
   category: string,
   nestedKey: string,
 ): unknown {
-  if (userConfig[flatKey] !== undefined && userConfig[flatKey] !== null && userConfig[flatKey] !== '') {
-    return userConfig[flatKey]
+  if (agentConfig[flatKey] !== undefined && agentConfig[flatKey] !== null && agentConfig[flatKey] !== '') {
+    return agentConfig[flatKey]
   }
-  const nested = userConfig[category]
+  const nested = agentConfig[category]
   if (nested && typeof nested === 'object' && nestedKey in (nested as Record<string, unknown>)) {
     const val = (nested as Record<string, unknown>)[nestedKey]
     if (val !== undefined && val !== null && val !== '') return val
@@ -110,7 +110,7 @@ function _getUserConfigValue(
 }
 
 function writeUserConfig(nextConfig: Record<string, unknown>): void {
-  writeJson(USER_CONFIG_PATH, nextConfig)
+  writeJson(AGENT_CONFIG_PATH, nextConfig)
 }
 
 function readCache(): HiveMindCache {
@@ -147,8 +147,8 @@ export function isHiveMindEnabled(): boolean {
 }
 
 export function ensureAgentId(): string {
-  const userConfig = readUserConfig()
-  const apiSection = userConfig.api as Record<string, unknown> | undefined
+  const agentConfig = readUserConfig()
+  const apiSection = agentConfig.api as Record<string, unknown> | undefined
   const existingId = apiSection?.hiveMind
     ? ((apiSection.hiveMind as Record<string, unknown>).agentId as string | null)
     : null
@@ -159,19 +159,19 @@ export function ensureAgentId(): string {
 
   const agentId = `agt_${safeRandomBytesHex(12)}`
   if (!apiSection || typeof apiSection !== 'object') {
-    userConfig.api = {}
+    agentConfig.api = {}
   }
   if (
-    !(userConfig.api as Record<string, unknown>).hiveMind ||
-    typeof (userConfig.api as Record<string, unknown>).hiveMind !== 'object'
+    !(agentConfig.api as Record<string, unknown>).hiveMind ||
+    typeof (agentConfig.api as Record<string, unknown>).hiveMind !== 'object'
   ) {
-    ;(userConfig.api as Record<string, unknown>).hiveMind = {}
+    ;(agentConfig.api as Record<string, unknown>).hiveMind = {}
   }
-  ;(userConfig.api as Record<string, unknown>).hiveMind = {
-    ...((userConfig.api as Record<string, unknown>).hiveMind as Record<string, unknown>),
+  ;(agentConfig.api as Record<string, unknown>).hiveMind = {
+    ...((agentConfig.api as Record<string, unknown>).hiveMind as Record<string, unknown>),
     agentId,
   }
-  writeUserConfig(userConfig)
+  writeUserConfig(agentConfig)
   config.api.hiveMind.agentId = agentId
   log('hivemind', `Generated agentId ${agentId}`)
   return agentId

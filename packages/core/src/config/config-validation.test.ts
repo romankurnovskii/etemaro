@@ -3,9 +3,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { validateConfigDocument, validateConfigFile } from './config-validation.js'
-import { DEFAULT_USER_CONFIG } from './defaultUserConfig.js'
+import { DEFAULT_AGENT_CONFIG } from './defaultAgentConfig.js'
 
-const base = DEFAULT_USER_CONFIG as any
+const base = DEFAULT_AGENT_CONFIG as any
 
 describe('config-validation', () => {
   it('accepts a structurally valid config when env refs are optional', () => {

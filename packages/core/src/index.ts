@@ -31,7 +31,7 @@ export * from './application/prompt-builder.js'
 // Flat exports for standard utilities, types, and configs
 export * from './config/Config.js'
 export * from './config/config-validation.js'
-export * from './config/defaultUserConfig.js'
+export * from './config/defaultAgentConfig.js'
 export * from './domain/index.js'
 export {
   EMPTY_PRIVATE_STRATEGY_LIBRARY,
