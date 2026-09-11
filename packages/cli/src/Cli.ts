@@ -100,6 +100,7 @@ let _briefing: CoreExports['briefing'] = null as any
 let _hivemind: CoreExports['hivemind'] = null as any
 let _tools: CoreExports['tools'] = null as any
 let defaultUserConfigStr: CoreExports['defaultUserConfigStr'] = null as any
+let emptyPrivateStrategyLibraryStr = ''
 let validateConfigFile: CoreExports['validateConfigFile'] = null as any
 
 // Lazily populated Daemon constructor + composition factory
@@ -141,6 +142,7 @@ export async function loadCore(): Promise<void> {
   _hivemind = coreMod.hivemind
   _tools = coreMod.tools
   defaultUserConfigStr = coreMod.defaultUserConfigStr
+  emptyPrivateStrategyLibraryStr = (coreMod as any).emptyPrivateStrategyLibraryStr ?? ''
   validateConfigFile = (coreMod as any).validateConfigFile
   // Assign Daemon constructor + composition factory
   DaemonCtor = daemonMod.Daemon
@@ -423,6 +425,7 @@ export class Cli {
     const skeleton = writeRuntimeSkeleton(targetDir, {
       defaultUserConfigStr,
       sharedStrategyJson: fs.readFileSync(_strategyLibraryPath('strategy-library.shared.json'), 'utf8'),
+      privateStrategyJson: emptyPrivateStrategyLibraryStr,
     })
     this.writeSkillMd()
 

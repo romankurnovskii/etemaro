@@ -391,6 +391,8 @@ export interface Strategy {
 }
 
 export interface StrategyLibraryData {
+  /** Human-readable purpose note for this file (top-level; ignored by the runtime). */
+  description?: string
   strategies: Record<string, Strategy>
 }
 
