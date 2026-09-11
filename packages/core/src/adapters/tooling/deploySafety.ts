@@ -2,13 +2,13 @@
  * @file deploySafety.ts
  * @description Pre-deploy pool-detail resolution and threshold validation, extracted verbatim from ToolExecutor.
  */
-import { config } from '../../config/Config.js'
 import { checkSmartWalletsOnPool as check_smart_wallets_on_pool } from '../../domain/smart-wallets.js'
 import { getConsecutiveSwapFailures, isHalted } from '../../domain/state.js'
 import { getMinSafeBinsBelow } from '../../shared/constants.js'
 import { logStructured } from '../../shared/logger.js'
 import { getMyPositions } from '../blockchain/MeteoraAdapter.js'
 import { getWalletBalances } from '../blockchain/WalletAdapter.js'
+import { getToolConfig } from './toolConfig.js'
 
 const POOL_DISCOVERY_BASE = 'https://pool-discovery-api.datapi.meteora.ag'
 const MIN_VOLATILITY_TIMEFRAME = '30m'
@@ -85,14 +85,14 @@ function poolDetailTimeframeMetric(
 }
 
 function poolDetailFeeActiveTvlRatio(pool: Record<string, unknown>): number | null {
-  const timeframe = String(config.screening.timeframe || '5m')
+  const timeframe = String(getToolConfig().screening.timeframe || '5m')
   const direct = poolDetailTimeframeMetric(pool, 'fee_active_tvl_ratio', timeframe)
   if (direct != null) return direct
   return poolDetailTimeframeMetric(pool, 'fee_tvl_ratio', timeframe)
 }
 
 function poolDetailVolume(pool: Record<string, unknown>): number | null {
-  const timeframe = String(config.screening.timeframe || '5m')
+  const timeframe = String(getToolConfig().screening.timeframe || '5m')
   return poolDetailTimeframeMetric(pool, 'volume', timeframe)
 }
 
@@ -123,7 +123,7 @@ async function fetchDlmmPoolDetail(poolAddress: string): Promise<Record<string, 
 
 async function fetchFreshPoolDetail(
   poolAddress: string,
-  timeframe: string = config.screening.timeframe || '5m',
+  timeframe: string = getToolConfig().screening.timeframe || '5m',
 ): Promise<PoolDetailFetchResult> {
   let discoveryError: string | undefined
   try {
@@ -174,8 +174,8 @@ export async function validateDeployPoolThresholds(args: Record<string, unknown>
   const usingDlmmFallback = source === 'dlmm'
 
   const tvl = poolDetailTvl(detail)
-  const minTvl = numberOrNull(config.screening.minTvl)
-  const maxTvl = numberOrNull(config.screening.maxTvl)
+  const minTvl = numberOrNull(getToolConfig().screening.minTvl)
+  const maxTvl = numberOrNull(getToolConfig().screening.maxTvl)
   if (tvl == null) {
     return {
       pass: false,
@@ -196,7 +196,7 @@ export async function validateDeployPoolThresholds(args: Record<string, unknown>
   }
 
   const feeActiveTvlRatio = poolDetailFeeActiveTvlRatio(detail)
-  const minFeeActiveTvlRatio = numberOrNull(config.screening.minFeeActiveTvlRatio)
+  const minFeeActiveTvlRatio = numberOrNull(getToolConfig().screening.minFeeActiveTvlRatio)
   if (minFeeActiveTvlRatio != null && minFeeActiveTvlRatio > 0) {
     if (feeActiveTvlRatio == null) {
       if (!usingDlmmFallback) {
@@ -216,7 +216,7 @@ export async function validateDeployPoolThresholds(args: Record<string, unknown>
     }
   }
 
-  const screeningTimeframe = String(config.screening.timeframe || '5m')
+  const screeningTimeframe = String(getToolConfig().screening.timeframe || '5m')
   const volatilityTimeframe = getVolatilityTimeframe(screeningTimeframe)
   let volatilityResult: PoolDetailFetchResult = { pool: detail, source }
   if (screeningTimeframe !== volatilityTimeframe) {
@@ -237,8 +237,8 @@ export async function validateDeployPoolThresholds(args: Record<string, unknown>
   }
 
   const actualBinStep = poolDetailBinStep(detail)
-  const minStep = numberOrNull(config.screening.minBinStep)
-  const maxStep = numberOrNull(config.screening.maxBinStep)
+  const minStep = numberOrNull(getToolConfig().screening.minBinStep)
+  const maxStep = numberOrNull(getToolConfig().screening.maxBinStep)
   if (actualBinStep != null && minStep != null && actualBinStep < minStep) {
     return {
       pass: false,
@@ -289,8 +289,8 @@ export async function runSafetyChecks(
       // Circuit-breaker: if recent swap failures have crossed the threshold,
       // refuse to open new positions until the operator resets the counter.
       const haltOpts = {
-        maxFailedSwapsBeforeHalt: config.management.maxFailedSwapsBeforeHalt ?? 5,
-        haltOnSwapFailure: config.management.haltOnSwapFailure ?? true,
+        maxFailedSwapsBeforeHalt: getToolConfig().management.maxFailedSwapsBeforeHalt ?? 5,
+        haltOnSwapFailure: getToolConfig().management.haltOnSwapFailure ?? true,
       }
       if (isHalted(haltOpts)) {
         const count = getConsecutiveSwapFailures()
@@ -319,8 +319,8 @@ export async function runSafetyChecks(
       }
 
       // Reject pools with bin_step out of configured range
-      const minStep = config.screening.minBinStep
-      const maxStep = config.screening.maxBinStep
+      const minStep = getToolConfig().screening.minBinStep
+      const maxStep = getToolConfig().screening.maxBinStep
       if (args.bin_step != null && ((args.bin_step as number) < minStep || (args.bin_step as number) > maxStep)) {
         return {
           pass: false,
@@ -337,12 +337,12 @@ export async function runSafetyChecks(
         }
       }
       const requestedBinsBelow = Number(
-        args.bins_below ?? config.strategy.defaultBinsBelow ?? config.strategy.minBinsBelow,
+        args.bins_below ?? getToolConfig().strategy.defaultBinsBelow ?? getToolConfig().strategy.minBinsBelow,
       )
       const requestedBinsAbove = Number(args.bins_above ?? 0)
       const minBinsBelow = Math.max(
         getMinSafeBinsBelow(),
-        Number(config.strategy.minBinsBelow ?? getMinSafeBinsBelow()),
+        Number(getToolConfig().strategy.minBinsBelow ?? getMinSafeBinsBelow()),
       )
       const isSingleSidedSol = deployAmountY > 0 && deployAmountX <= 0
       const requestedTotalBins = requestedBinsBelow + requestedBinsAbove
@@ -394,10 +394,10 @@ export async function runSafetyChecks(
 
       // Check position count limit + duplicate pool guard — force fresh scan to avoid stale cache
       const positions = await getMyPositions({ force: true })
-      if ((positions as any).total_positions >= config.risk.maxPositions) {
+      if ((positions as any).total_positions >= getToolConfig().risk.maxPositions) {
         return {
           pass: false,
-          reason: `Max positions (${config.risk.maxPositions}) reached. Close a position first.`,
+          reason: `Max positions (${getToolConfig().risk.maxPositions}) reached. Close a position first.`,
         }
       }
       const alreadyInPool = (positions as any).positions.some((p: any) => p.pool === args.pool_address)
@@ -442,24 +442,24 @@ export async function runSafetyChecks(
         }
       }
 
-      const minDeploy = Math.max(0.1, config.management.deployAmountSol)
+      const minDeploy = Math.max(0.1, getToolConfig().management.deployAmountSol)
       if (amountY < minDeploy) {
         return {
           pass: false,
           reason: `Amount ${amountY} SOL is below the minimum deploy amount (${minDeploy} SOL). Use at least ${minDeploy} SOL.`,
         }
       }
-      if (amountY > config.risk.maxDeployAmount) {
+      if (amountY > getToolConfig().risk.maxDeployAmount) {
         return {
           pass: false,
-          reason: `SOL amount ${amountY} exceeds maximum allowed per position (${config.risk.maxDeployAmount}).`,
+          reason: `SOL amount ${amountY} exceeds maximum allowed per position (${getToolConfig().risk.maxDeployAmount}).`,
         }
       }
 
       // Check SOL balance
-      if (!config.connection.dryRun) {
+      if (!getToolConfig().connection.dryRun) {
         const balance = await getWalletBalances()
-        const gasReserve = config.management.gasReserve
+        const gasReserve = getToolConfig().management.gasReserve
         const minRequired = amountY + gasReserve
         if (balance.sol < minRequired) {
           return {
@@ -487,7 +487,7 @@ export async function runSafetyChecks(
     }
 
     case 'self_update': {
-      if (!config.connection?.allowSelfUpdate) {
+      if (!getToolConfig().connection?.allowSelfUpdate) {
         return {
           pass: false,
           reason:
