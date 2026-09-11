@@ -49,6 +49,9 @@ export interface StateSnapshot {
   nextScreenAt?: string
   nextManageAt?: string
   busy: boolean
+  walletAddress?: string | null
+  activeStrategyId?: string | null
+  configPath?: string
 }
 
 export interface JsonSchema {
