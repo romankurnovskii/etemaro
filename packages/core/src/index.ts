@@ -22,6 +22,8 @@ export {
 } from './adapters/notifications/notificationPort.js'
 export * from './adapters/ToolDefinitions.js'
 export { getToolConfig, resetToolConfig, setToolConfig } from './adapters/tooling/toolConfig.js'
+export type { ChainPort, MarketDataPort, ToolPorts, WalletPort } from './adapters/tooling/toolPorts.js'
+export { getToolPorts, resetToolPorts, setToolPorts } from './adapters/tooling/toolPorts.js'
 // Resolve name collision by explicitly exporting AgentLoopResult from agent-loop.js
 export type { AgentLoopResult } from './application/agent-loop.js'
 export * from './application/agent-loop.js'
