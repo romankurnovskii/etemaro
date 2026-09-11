@@ -146,7 +146,7 @@ vi.mock('@etemaro/core', () => ({
     llm: { screeningModel: 'test' },
   },
   REPO_ROOT: process.cwd(),
-  defaultUserConfigStr: '{}',
+  defaultAgentConfigStr: '{}',
   computeDeployAmount: mockComputeDeployAmount,
   getDataDir: mockGetDataDir,
   dataPath: (p: string) => mockDataPath(p),

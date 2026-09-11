@@ -1,6 +1,6 @@
 /**
  * @file config-validation.ts
- * @description Validates a user-config document/file against `UserConfigSchema` and returns
+ * @description Validates a user-config document/file against `AgentConfigSchema` and returns
  * the shared ValidationReport shape (same comprehensive format as strategy validation).
  *
  * The same Zod schema used at boot is the single source of truth. Unknown keys and
@@ -9,7 +9,7 @@
  */
 import fs from 'node:fs'
 import type { ValidationEntry, ValidationReport } from '../shared/validation.js'
-import { UserConfigSchema } from './schema.js'
+import { AgentConfigSchema } from './schema.js'
 
 export interface ConfigValidationOptions {
   /** Downgrade unset environment-variable references from error to warning. */
@@ -54,7 +54,7 @@ export function validateConfigDocument(
   doc: unknown,
   opts: ConfigValidationOptions = {},
 ): { ok: boolean; entries: ValidationEntry[]; totals: ValidationReport['totals'] } {
-  const result = UserConfigSchema.safeParse(doc)
+  const result = AgentConfigSchema.safeParse(doc)
   const errors: string[] = []
   const warnings: string[] = []
   const unknownFields: string[] = []

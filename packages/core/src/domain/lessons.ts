@@ -12,13 +12,13 @@
 
 import { getConfig } from '../shared/configProvider.js'
 import {
+  AGENT_CONFIG_PATH,
   dataPath,
   MAX_CHANGE_PER_STEP,
   MAX_MANUAL_LESSON_LENGTH,
   MIN_EVOLVE_POSITIONS,
   PERFORMANCE_SIGNAL_FIELDS,
   ROLE_TAGS,
-  USER_CONFIG_PATH,
 } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
 import { readStateFile, writeStateFile } from '../shared/stateStore.js'
@@ -338,7 +338,7 @@ interface EvolutionResult {
 export function evolveThresholds(
   perfData: PerformanceRecord[],
   cfg: AppConfig,
-  targetConfigPath: string = USER_CONFIG_PATH,
+  targetConfigPath: string = AGENT_CONFIG_PATH,
 ): EvolutionResult | null {
   if (!perfData || perfData.length < MIN_EVOLVE_POSITIONS) return null
 
@@ -419,18 +419,18 @@ export function evolveThresholds(
   if (Object.keys(changes).length === 0) return { changes: {}, rationale: {} }
 
   // ── Persist changes to user-config.json ───────────────────────
-  const userConfig = readStateFile<Record<string, unknown>>(targetConfigPath, {})
-  if (!userConfig.screening || typeof userConfig.screening !== 'object' || Array.isArray(userConfig.screening)) {
-    userConfig.screening = {}
+  const agentConfig = readStateFile<Record<string, unknown>>(targetConfigPath, {})
+  if (!agentConfig.screening || typeof agentConfig.screening !== 'object' || Array.isArray(agentConfig.screening)) {
+    agentConfig.screening = {}
   }
-  Object.assign(userConfig.screening as Record<string, unknown>, changes)
+  Object.assign(agentConfig.screening as Record<string, unknown>, changes)
   // Clean up legacy root-level keys if present from previous versions
-  delete (userConfig as Record<string, unknown>).minFeeActiveTvlRatio
-  delete (userConfig as Record<string, unknown>).minOrganic
-  userConfig._lastEvolved = new Date().toISOString()
-  userConfig._positionsAtEvolution = perfData.length
+  delete (agentConfig as Record<string, unknown>).minFeeActiveTvlRatio
+  delete (agentConfig as Record<string, unknown>).minOrganic
+  agentConfig._lastEvolved = new Date().toISOString()
+  agentConfig._positionsAtEvolution = perfData.length
 
-  writeStateFile(targetConfigPath, userConfig)
+  writeStateFile(targetConfigPath, agentConfig)
 
   // Apply to live config object immediately
   const s = cfg.screening

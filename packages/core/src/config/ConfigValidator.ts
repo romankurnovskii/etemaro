@@ -13,8 +13,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import dotenv from 'dotenv'
 import { AGENT_CONFIG_PATH, getEtemaroDir, REPO_ROOT } from '../shared/constants.js'
-import { defaultUserConfigStr } from './defaultUserConfig.js'
-import { UserConfigSchema, type ValidatedUserConfig } from './schema.js'
+import { defaultAgentConfigStr } from './defaultAgentConfig.js'
+import { AgentConfigSchema, type ValidatedAgentConfig } from './schema.js'
 
 let dotenvLoaded = false
 export function ensureDotenvLoaded(): void {
@@ -58,7 +58,7 @@ export function isHelpOrInfoCommand(): boolean {
   )
 }
 
-export function loadAndValidateConfig(): ValidatedUserConfig {
+export function loadAndValidateConfig(): ValidatedAgentConfig {
   ensureDotenvLoaded()
   const isExplicitConfig = Boolean(process.env.AGENT_CONFIG_PATH?.trim() || process.env.USER_CONFIG_PATH?.trim())
   const activeConfigPath = getActiveConfigPath()
@@ -67,13 +67,13 @@ export function loadAndValidateConfig(): ValidatedUserConfig {
   if (!fs.existsSync(activeConfigPath)) {
     if (isExplicitConfig) {
       if (isHelpOrInfoCommand()) {
-        return JSON.parse(defaultUserConfigStr)
+        return JSON.parse(defaultAgentConfigStr)
       }
       throw new Error(`Configuration file not found at "${activeConfigPath}"`)
     }
     console.log(`[config] ${getConfigFileName()} not found, initializing from default config`)
     fs.mkdirSync(path.dirname(activeConfigPath), { recursive: true })
-    fs.writeFileSync(activeConfigPath, `${defaultUserConfigStr}\n`, 'utf8')
+    fs.writeFileSync(activeConfigPath, `${defaultAgentConfigStr}\n`, 'utf8')
   }
 
   // Read user config
@@ -84,8 +84,8 @@ export function loadAndValidateConfig(): ValidatedUserConfig {
       if (isExplicitConfig) {
         throw new Error(`Configuration file is empty: "${activeConfigPath}"`)
       }
-      fs.writeFileSync(activeConfigPath, `${defaultUserConfigStr}\n`, 'utf8')
-      raw = JSON.parse(defaultUserConfigStr)
+      fs.writeFileSync(activeConfigPath, `${defaultAgentConfigStr}\n`, 'utf8')
+      raw = JSON.parse(defaultAgentConfigStr)
     } else {
       raw = JSON.parse(content)
     }
@@ -93,7 +93,7 @@ export function loadAndValidateConfig(): ValidatedUserConfig {
     if (isHelpOrInfoCommand()) {
       // Validation/info commands must be able to report on a broken config
       // instead of dying during core import.
-      return JSON.parse(defaultUserConfigStr) as unknown as ValidatedUserConfig
+      return JSON.parse(defaultAgentConfigStr) as unknown as ValidatedAgentConfig
     }
     throw new Error(`Failed to parse ${getConfigFileName()}: ${e instanceof Error ? e.message : String(e)}`, {
       cause: e,
@@ -114,11 +114,11 @@ export function loadAndValidateConfig(): ValidatedUserConfig {
 
   // If running info commands, we can bypass strict parsing
   if (isHelpOrInfoCommand()) {
-    return raw as unknown as ValidatedUserConfig // Bypass validation
+    return raw as unknown as ValidatedAgentConfig // Bypass validation
   }
 
   // Validate with Zod
-  const result = UserConfigSchema.safeParse(raw)
+  const result = AgentConfigSchema.safeParse(raw)
 
   if (!result.success) {
     const issues = result.error?.issues ?? (result.error as any)?.errors ?? []

@@ -6,13 +6,13 @@
  * used by the desktop app and PM2 multi-agent setups.
  *
  * @pattern Reuses the instance-config layout produced by `etemaro new-agent`.
- * @dependencies node:child_process, @etemaro/core (REPO_ROOT, defaultUserConfigStr)
+ * @dependencies node:child_process, @etemaro/core (REPO_ROOT, defaultAgentConfigStr)
  */
 
 import { type ChildProcess, execSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { defaultUserConfigStr, REPO_ROOT } from '@etemaro/core'
+import { defaultAgentConfigStr, REPO_ROOT } from '@etemaro/core'
 
 export interface ManagedAgent {
   id: string
@@ -122,7 +122,7 @@ export class AgentSupervisor {
       cwd: this.repoRoot,
       env: {
         ...process.env,
-        USER_CONFIG_PATH: configPath,
+        AGENT_CONFIG_PATH: configPath,
         // Base data dir only — core appends instances/<id> via dataPath().
         ETEMARO_DATA_DIR: path.join(this.repoRoot, 'data'),
         ETEMARO_INSTANCE_ID: agentId,
@@ -321,7 +321,7 @@ export class AgentSupervisor {
     } catch {
       /* fall through to defaults */
     }
-    return JSON.parse(defaultUserConfigStr) as InstanceConfig
+    return JSON.parse(defaultAgentConfigStr) as InstanceConfig
   }
 
   private safeId(id: string): string {

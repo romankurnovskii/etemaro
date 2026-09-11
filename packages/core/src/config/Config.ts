@@ -22,9 +22,9 @@ import { setDryRun } from '../shared/flags.js'
 import type { AppConfig } from '../shared/types.js'
 import { numericConfig, resolveEnvString } from '../shared/utils.js'
 import { isHelpOrInfoCommand, loadAndValidateConfig } from './ConfigValidator.js'
-import { DEFAULT_USER_CONFIG } from './defaultUserConfig.js'
+import { DEFAULT_AGENT_CONFIG } from './defaultAgentConfig.js'
 import { formatConfigLoadError } from './formatConfigLoadError.js'
-import type { ValidatedUserConfig } from './schema.js'
+import type { ValidatedAgentConfig } from './schema.js'
 
 export class ConfigLoadError extends Error {
   public configPath?: string
@@ -39,7 +39,7 @@ export class ConfigLoadError extends Error {
 }
 
 function buildConfig(): AppConfig {
-  let loaded: Partial<ValidatedUserConfig> = {}
+  let loaded: Partial<ValidatedAgentConfig> = {}
   try {
     loaded = loadAndValidateConfig()
   } catch (err: any) {
@@ -68,7 +68,7 @@ function buildConfig(): AppConfig {
     }
   }
 
-  const defaultFallback = DEFAULT_USER_CONFIG as unknown as ValidatedUserConfig
+  const defaultFallback = DEFAULT_AGENT_CONFIG as unknown as ValidatedAgentConfig
   const u = {
     ...defaultFallback,
     ...loaded,
@@ -86,7 +86,7 @@ function buildConfig(): AppConfig {
     },
     llm: { ...defaultFallback.llm, ...loaded.llm },
     chartIndicators: { ...defaultFallback.chartIndicators, ...loaded.chartIndicators },
-  } as unknown as ValidatedUserConfig
+  } as unknown as ValidatedAgentConfig
 
   // The shape of u now closely matches AppConfig since Zod validates the nested structure.
   return {

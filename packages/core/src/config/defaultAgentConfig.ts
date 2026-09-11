@@ -1,7 +1,7 @@
 import { DEFAULT_AGENT_ID } from '../shared/constants.js'
-import type { UserConfigRaw } from './schema.js'
+import type { AgentConfigRaw } from './schema.js'
 
-export const DEFAULT_USER_CONFIG: UserConfigRaw = {
+export const DEFAULT_AGENT_CONFIG: AgentConfigRaw = {
   _version: 5,
   preset: 'custom',
   agentId: DEFAULT_AGENT_ID,
@@ -229,4 +229,4 @@ export const DEFAULT_USER_CONFIG: UserConfigRaw = {
   },
 }
 
-export const defaultUserConfigStr = JSON.stringify(DEFAULT_USER_CONFIG, null, 2)
+export const defaultAgentConfigStr = JSON.stringify(DEFAULT_AGENT_CONFIG, null, 2)
