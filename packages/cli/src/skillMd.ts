@@ -226,6 +226,6 @@ Opens the interactive terminal dashboard (Ink TUI) that attaches to a running ag
 --silent      Suppress Telegram notifications for this run
 --port <port> IPC port for serve/attach (default 8765)
 --open        Open the browser after 'etemaro serve' starts
---config <path>  Path to user-config.json (alias: -c). Overrides USER_CONFIG_PATH env var.
+--config <path>  Path to user-config.json (alias: -c). Overrides AGENT_CONFIG_PATH env var.
 --data-dir <path>  Data directory (alias: -d). Overrides ETEMARO_DATA_DIR/DATA_DIR env vars.
 `

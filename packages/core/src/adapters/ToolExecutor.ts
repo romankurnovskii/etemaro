@@ -54,7 +54,7 @@ import {
   setActiveStrategy,
 } from '../domain/strategy-library.js'
 import { addToBlacklist, listBlacklist, removeFromBlacklist } from '../domain/token-blacklist.js'
-import { getMinSafeBinsBelow, REPO_ROOT, USER_CONFIG_PATH } from '../shared/constants.js'
+import { AGENT_CONFIG_PATH, getMinSafeBinsBelow, REPO_ROOT } from '../shared/constants.js'
 import { log, logAction, logStructured } from '../shared/logger.js'
 import { Mutex } from '../shared/mutex.js'
 import type { AgentRole, PortfolioSummaryResult, SwapErrorCategory } from '../shared/types.js'
@@ -309,7 +309,7 @@ const toolMap: Record<string, ToolFn> = {
   unblock_deployer: unblockDev as ToolFn,
   list_blocked_deployers: listBlockedDevs as ToolFn,
   get_user_config: () => ({
-    configPath: USER_CONFIG_PATH,
+    configPath: AGENT_CONFIG_PATH,
     preset: (getToolConfig() as any).preset ?? 'custom',
     risk: getToolConfig().risk,
     screening: getToolConfig().screening,
@@ -518,7 +518,7 @@ const toolMap: Record<string, ToolFn> = {
       return { success: false, unknown, reason }
     }
 
-    const userConfig = loadJsonFile<Record<string, unknown>>(USER_CONFIG_PATH, {}, { critical: true })
+    const agentConfig = loadJsonFile<Record<string, unknown>>(AGENT_CONFIG_PATH, {}, { critical: true })
 
     // Auto-scale fee/volume when timeframe changes (unless user set them explicitly in same call).
     if (applied.timeframe != null && applied.minFeeActiveTvlRatio == null && applied.minVolume == null) {
@@ -575,7 +575,7 @@ const toolMap: Record<string, ToolFn> = {
       const mapping = CONFIG_MAP[key]
       const persistPath = mapping?.find((part: unknown) => Array.isArray(part))
       if (Array.isArray(persistPath) && persistPath.length > 0) {
-        let target = userConfig
+        let target = agentConfig
         for (const part of persistPath.slice(0, -1)) {
           if (!target[part] || typeof target[part] !== 'object' || Array.isArray(target[part])) {
             target[part] = {}
@@ -584,11 +584,11 @@ const toolMap: Record<string, ToolFn> = {
         }
         target[persistPath.at(-1)!] = val
       } else {
-        userConfig[key] = val
+        agentConfig[key] = val
       }
     }
-    userConfig._lastAgentTune = new Date().toISOString()
-    saveJsonFile(USER_CONFIG_PATH, userConfig)
+    agentConfig._lastAgentTune = new Date().toISOString()
+    saveJsonFile(AGENT_CONFIG_PATH, agentConfig)
 
     // Restart cron jobs if intervals changed
     const intervalChanged =

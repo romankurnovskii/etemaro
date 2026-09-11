@@ -19,6 +19,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import * as readline from 'node:readline'
 import {
+  AGENT_CONFIG_PATH,
   type AgentLoopDeps,
   type AgentMessage,
   addLogListener,
@@ -63,7 +64,6 @@ import {
   TOKEN_BLACKLIST_FILENAME,
   toolExecutor,
   tools,
-  USER_CONFIG_PATH,
   updatePnlAndCheckExits,
 } from '@etemaro/core'
 import cron from 'node-cron'
@@ -424,8 +424,8 @@ export class Daemon {
         : 'default <repo>/data'
 
     // Config file source - single source of truth from config system
-    const configSource = process.env.USER_CONFIG_PATH ? 'USER_CONFIG_PATH env var' : 'default'
-    log('startup', `Config: ${USER_CONFIG_PATH} (source: ${configSource})`)
+    const configSource = process.env.USER_CONFIG_PATH ? 'AGENT_CONFIG_PATH env var' : 'default'
+    log('startup', `Config: ${AGENT_CONFIG_PATH} (source: ${configSource})`)
 
     // Active strategy info
     const configuredStrategyId = config.strategy?.activeStrategyId
@@ -3055,7 +3055,7 @@ IMPORTANT:
         busy: this.managementBusy || this.screeningBusy || this.busy,
         walletAddress: this.getWalletAddressSafe(),
         activeStrategyId: this.adapters.domain.getActiveStrategy()?.id ?? null,
-        configPath: USER_CONFIG_PATH,
+        configPath: AGENT_CONFIG_PATH,
       })
     } catch (e: any) {
       log('ipc_warn', `Failed to broadcast IPC state: ${e.message}`)

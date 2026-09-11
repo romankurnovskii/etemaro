@@ -13,7 +13,7 @@
 
 import fs from 'node:fs'
 import { config } from '../../config/Config.js'
-import { dataPath, USER_CONFIG_PATH } from '../../shared/constants.js'
+import { AGENT_CONFIG_PATH, dataPath } from '../../shared/constants.js'
 import { log } from '../../shared/logger.js'
 import { loadJsonFile, saveJsonFile } from '../../shared/utils.js'
 import { sleep } from '../../utils/time.js'
@@ -68,14 +68,14 @@ function saveChatId(id: string): void {
     if (config.connection) {
       config.connection.telegramChatId = id
     }
-    const cfg = loadJsonFile<Record<string, unknown>>(USER_CONFIG_PATH, {})
+    const cfg = loadJsonFile<Record<string, unknown>>(AGENT_CONFIG_PATH, {})
     const connection =
       cfg.connection && typeof cfg.connection === 'object' && !Array.isArray(cfg.connection)
         ? (cfg.connection as Record<string, unknown>)
         : {}
     connection.telegramChatId = id
     cfg.connection = connection
-    saveJsonFile(USER_CONFIG_PATH, cfg)
+    saveJsonFile(AGENT_CONFIG_PATH, cfg)
   } catch (e: any) {
     log('telegram_error', `Failed to persist chatId: ${e.message}`)
   }

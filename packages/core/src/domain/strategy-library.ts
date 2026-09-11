@@ -259,12 +259,12 @@ export function setActiveStrategy({ id }: { id: string }): Record<string, unknow
   if (!mergedDb.strategies[id])
     return { error: `Strategy "${id}" not found`, available: Object.keys(mergedDb.strategies) }
 
-  const userConfigPath = configPath('user-config.json')
+  const agentConfigPath = configPath('user-config.json')
   try {
-    const raw = readStateFile<{ strategy?: { activeStrategyId?: string } }>(userConfigPath, {})
+    const raw = readStateFile<{ strategy?: { activeStrategyId?: string } }>(agentConfigPath, {})
     if (!raw.strategy) raw.strategy = {}
     raw.strategy.activeStrategyId = id
-    writeStateFile(userConfigPath, raw)
+    writeStateFile(agentConfigPath, raw)
   } catch (err) {
     const errorMsg = `Failed to update user config: ${err}`
     log('strategy', errorMsg)
@@ -305,12 +305,12 @@ export function removeStrategy({ id }: { id: string }): Record<string, unknown> 
       setActiveStrategy({ id: newActive })
     } else {
       // Clear the active strategy pointer if no strategies exist at all
-      const userConfigPath = configPath('user-config.json')
+      const agentConfigPath = configPath('user-config.json')
       try {
-        const raw = readStateFile<{ strategy?: { activeStrategyId?: string | null } }>(userConfigPath, {})
+        const raw = readStateFile<{ strategy?: { activeStrategyId?: string | null } }>(agentConfigPath, {})
         if (!raw.strategy) raw.strategy = {}
         raw.strategy.activeStrategyId = null
-        writeStateFile(userConfigPath, raw)
+        writeStateFile(agentConfigPath, raw)
       } catch (err) {
         log('strategy', `Failed to update user config during removal: ${err}`)
       }

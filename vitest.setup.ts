@@ -29,7 +29,7 @@ process.env.DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY = 'bWVyaWRpYW4taXMtdGhlLWJlc3QtYWd
 
 // Write the default user config to the temp path (source of truth: defaultUserConfig.ts).
 // Deferred import so it is loaded after the env vars above are in place.
-const { defaultUserConfigStr } = await import('./packages/core/src/config/defaultUserConfig.js');
+const { defaultAgentConfigStr } = await import('./packages/core/src/config/defaultAgentConfig.js');
 if (!fs.existsSync(testConfigPath)) {
-  fs.writeFileSync(testConfigPath, `${defaultUserConfigStr}\n`, 'utf8');
+  fs.writeFileSync(testConfigPath, `${defaultAgentConfigStr}\n`, 'utf8');
 }

@@ -16,8 +16,8 @@ vi.mock('../shared/constants.js', async (importOriginal) => {
   }
 })
 
-import { DEFAULT_USER_CONFIG } from '../config/defaultUserConfig.js'
-import { UserConfigSchema } from '../config/schema.js'
+import { DEFAULT_AGENT_CONFIG } from '../config/defaultAgentConfig.js'
+import { AgentConfigSchema } from '../config/schema.js'
 import type { AppConfig, PerformanceRecord } from '../shared/types.js'
 import { evolveThresholds, getPerformanceHistory, getPerformanceSummary, recordPerformance } from './lessons.js'
 
@@ -141,16 +141,16 @@ describe('evolveThresholds — config persistence & schema validity', () => {
   beforeEach(() => {
     fs.mkdirSync(tmpDir, { recursive: true })
     fs.writeFileSync(lessonsFile, JSON.stringify({ lessons: [], performance: [] }))
-    fs.writeFileSync(configFile, JSON.stringify(DEFAULT_USER_CONFIG, null, 2))
+    fs.writeFileSync(configFile, JSON.stringify(DEFAULT_AGENT_CONFIG, null, 2))
   })
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('writes evolved thresholds to screening object, cleans up legacy root keys, and passes UserConfigSchema', () => {
+  it('writes evolved thresholds to screening object, cleans up legacy root keys, and passes AgentConfigSchema', () => {
     // Seed config with legacy corrupted root keys
-    const initialConfig = JSON.parse(JSON.stringify(DEFAULT_USER_CONFIG))
+    const initialConfig = JSON.parse(JSON.stringify(DEFAULT_AGENT_CONFIG))
     initialConfig.minFeeActiveTvlRatio = 0.01 // legacy corrupted root key
     initialConfig.minOrganic = 50 // legacy corrupted root key
     fs.writeFileSync(configFile, JSON.stringify(initialConfig, null, 2))
@@ -290,8 +290,8 @@ describe('evolveThresholds — config persistence & schema validity', () => {
     expect(typeof savedConfig._lastEvolved).toBe('string')
     expect(savedConfig._positionsAtEvolution).toBe(5)
 
-    // 4. Saved config MUST pass strict UserConfigSchema validation
-    const parseResult = UserConfigSchema.safeParse(savedConfig)
+    // 4. Saved config MUST pass strict AgentConfigSchema validation
+    const parseResult = AgentConfigSchema.safeParse(savedConfig)
     expect(parseResult.success).toBe(true)
   })
 })

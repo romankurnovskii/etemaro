@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMinSafeBinsBelow } from '../shared/constants.js'
 import { scaleScreeningToTimeframe } from '../shared/utils.js'
 import { config } from './Config.js'
-import { DEFAULT_USER_CONFIG, defaultUserConfigStr } from './defaultUserConfig.js'
-import { UserConfigSchema } from './schema.js'
+import { DEFAULT_AGENT_CONFIG, defaultAgentConfigStr } from './defaultAgentConfig.js'
+import { AgentConfigSchema } from './schema.js'
 
 // Pool febu-SOL (2CVn...) fee/active-TVL from the Meteora Pool Discovery API.
 const FEE_ACTIVE_TVL_RATIO_5M = 0.02540134632532999
@@ -77,7 +77,7 @@ describe('hiveMind agentId support', () => {
       return true
     })
 
-    const baseConfig = JSON.parse(defaultUserConfigStr)
+    const baseConfig = JSON.parse(defaultAgentConfigStr)
 
     mockReadFileSync = vi.fn((path: string, _encoding: string) => {
       if (path.endsWith('user-config.json') || path.endsWith('agent-default.json')) {
@@ -121,7 +121,7 @@ describe('hiveMind agentId support', () => {
   })
 
   it('falls back to agent-default agentId when top-level agentId is null or empty', async () => {
-    const baseConfig = JSON.parse(defaultUserConfigStr)
+    const baseConfig = JSON.parse(defaultAgentConfigStr)
     mockReadFileSync.mockImplementation((path: string, _encoding: string) => {
       if (path.endsWith('user-config.json') || path.endsWith('agent-default.json')) {
         return JSON.stringify({
@@ -167,7 +167,7 @@ describe('fail-closed config load and validation behavior', () => {
     vi.restoreAllMocks()
   })
 
-  it('throws ConfigLoadError when an explicit USER_CONFIG_PATH does not exist', async () => {
+  it('throws ConfigLoadError when an explicit AGENT_CONFIG_PATH does not exist', async () => {
     vi.resetModules()
     process.env.USER_CONFIG_PATH = '/path/to/nonexistent/custom-config.json'
 
@@ -183,7 +183,7 @@ describe('fail-closed config load and validation behavior', () => {
     expect(error.message).toMatch(/Fatal: Failed to load explicit configuration from AGENT_CONFIG_PATH/)
   })
 
-  it('throws ConfigLoadError when an explicit USER_CONFIG_PATH contains corrupted JSON', async () => {
+  it('throws ConfigLoadError when an explicit AGENT_CONFIG_PATH contains corrupted JSON', async () => {
     vi.resetModules()
     process.env.USER_CONFIG_PATH = '/path/to/corrupted-config.json'
 
@@ -208,7 +208,7 @@ describe('fail-closed config load and validation behavior', () => {
     expect(error.message).toMatch(/Failed to parse corrupted-config\.json/)
   })
 
-  it('throws ConfigLoadError when an explicit USER_CONFIG_PATH fails schema validation', async () => {
+  it('throws ConfigLoadError when an explicit AGENT_CONFIG_PATH fails schema validation', async () => {
     vi.resetModules()
     process.env.USER_CONFIG_PATH = '/path/to/invalid-schema.json'
 
@@ -233,7 +233,7 @@ describe('fail-closed config load and validation behavior', () => {
     expect(error.message).toMatch(/invalid-schema\.json has invalid or missing fields/)
   })
 
-  it('throws ConfigLoadError when default user-config.json contains corrupted JSON without explicit USER_CONFIG_PATH', async () => {
+  it('throws ConfigLoadError when default user-config.json contains corrupted JSON without explicit AGENT_CONFIG_PATH', async () => {
     vi.resetModules()
     delete process.env.USER_CONFIG_PATH
 
@@ -269,13 +269,13 @@ describe('fail-closed config load and validation behavior', () => {
   })
 })
 
-describe('DEFAULT_USER_CONFIG template parity and validation', () => {
-  it('defaultUserConfigStr accurately serializes DEFAULT_USER_CONFIG', () => {
-    const parsed = JSON.parse(defaultUserConfigStr)
-    expect(parsed).toEqual(DEFAULT_USER_CONFIG)
+describe('DEFAULT_AGENT_CONFIG template parity and validation', () => {
+  it('defaultAgentConfigStr accurately serializes DEFAULT_AGENT_CONFIG', () => {
+    const parsed = JSON.parse(defaultAgentConfigStr)
+    expect(parsed).toEqual(DEFAULT_AGENT_CONFIG)
   })
 
-  it('validates DEFAULT_USER_CONFIG against UserConfigSchema with mock env', () => {
+  it('validates DEFAULT_AGENT_CONFIG against AgentConfigSchema with mock env', () => {
     const mockEnv = {
       HELIUS_API_KEY: 'test-helius',
       LLM_BASE_URL: 'https://openrouter.ai/api/v1',
@@ -293,7 +293,7 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
     Object.assign(process.env, mockEnv)
 
     try {
-      const result = UserConfigSchema.safeParse(DEFAULT_USER_CONFIG)
+      const result = AgentConfigSchema.safeParse(DEFAULT_AGENT_CONFIG)
       expect(result.success).toBe(true)
     } finally {
       process.env = originalEnv
@@ -317,8 +317,8 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
     Object.assign(process.env, mockEnv)
 
     try {
-      const configWithUnknown = { ...DEFAULT_USER_CONFIG, unknownTopLevelKey: 'should-fail' }
-      const result = UserConfigSchema.safeParse(configWithUnknown)
+      const configWithUnknown = { ...DEFAULT_AGENT_CONFIG, unknownTopLevelKey: 'should-fail' }
+      const result = AgentConfigSchema.safeParse(configWithUnknown)
       expect(result.success).toBe(false)
       if (!result.success) {
         const unrecognizedIssue = result.error.issues.find(
@@ -349,13 +349,13 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
 
     try {
       const configWithUnknownNested = {
-        ...DEFAULT_USER_CONFIG,
+        ...DEFAULT_AGENT_CONFIG,
         risk: {
-          ...DEFAULT_USER_CONFIG.risk,
+          ...DEFAULT_AGENT_CONFIG.risk,
           unknownRiskField: 99,
         },
       }
-      const result = UserConfigSchema.safeParse(configWithUnknownNested)
+      const result = AgentConfigSchema.safeParse(configWithUnknownNested)
       expect(result.success).toBe(false)
       if (!result.success) {
         const unrecognizedIssue = result.error.issues.find(
@@ -400,7 +400,7 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
     it('migrates legacy hardcoded primary RPC to .env value when they differ', async () => {
       const { loadAndValidateConfig } = await import('./ConfigValidator.js')
       const tmpPath = `/tmp/etemaro-test-config-${Date.now()}.json`
-      const fullConfig = JSON.parse(defaultUserConfigStr)
+      const fullConfig = JSON.parse(defaultAgentConfigStr)
       fullConfig.connection.rpcUrl = 'https://pump.helius-rpc.com'
       fullConfig.pnl = { ...(fullConfig.pnl || {}), source: 'rpc', rpcUrl: 'https://pump.helius-rpc.com' }
       fs.writeFileSync(tmpPath, JSON.stringify(fullConfig))
@@ -416,7 +416,7 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
     it('does not migrate when .env RPC_URL matches legacy default', async () => {
       const { loadAndValidateConfig } = await import('./ConfigValidator.js')
       const tmpPath = `/tmp/etemaro-test-config-${Date.now()}.json`
-      const fullConfig = JSON.parse(defaultUserConfigStr)
+      const fullConfig = JSON.parse(defaultAgentConfigStr)
       fullConfig.connection.rpcUrl = 'https://pump.helius-rpc.com'
       fs.writeFileSync(tmpPath, JSON.stringify(fullConfig))
       process.env.USER_CONFIG_PATH = tmpPath
@@ -430,7 +430,7 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
     it('does not migrate when .env RPC_URL is unset', async () => {
       const { loadAndValidateConfig } = await import('./ConfigValidator.js')
       const tmpPath = `/tmp/etemaro-test-config-${Date.now()}.json`
-      const fullConfig = JSON.parse(defaultUserConfigStr)
+      const fullConfig = JSON.parse(defaultAgentConfigStr)
       fullConfig.connection.rpcUrl = 'https://pump.helius-rpc.com'
       fs.writeFileSync(tmpPath, JSON.stringify(fullConfig))
       process.env.USER_CONFIG_PATH = tmpPath
@@ -444,15 +444,15 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
 
   describe('direct model configuration and formatConfigLoadError', () => {
     it('resolves direct model without requiring LLM_MODEL env var', async () => {
-      const { UserConfigSchema } = await import('./schema.js')
-      const baseConfig = JSON.parse(defaultUserConfigStr)
+      const { AgentConfigSchema } = await import('./schema.js')
+      const baseConfig = JSON.parse(defaultAgentConfigStr)
       baseConfig.llm.defaultModel = 'anthropic/claude-3.5-sonnet'
       // Set role models to reference an unset env var
       baseConfig.llm.managementModel = 'env.UNSET_LLM_MODEL'
       baseConfig.llm.screeningModel = 'env.UNSET_LLM_MODEL'
       baseConfig.llm.generalModel = 'env.UNSET_LLM_MODEL'
 
-      const parsed = UserConfigSchema.parse(baseConfig)
+      const parsed = AgentConfigSchema.parse(baseConfig)
       expect(parsed.llm.defaultModel).toBe('anthropic/claude-3.5-sonnet')
       expect(parsed.llm.managementModel).toBe('anthropic/claude-3.5-sonnet')
       expect(parsed.llm.screeningModel).toBe('anthropic/claude-3.5-sonnet')
@@ -460,13 +460,13 @@ describe('DEFAULT_USER_CONFIG template parity and validation', () => {
     })
 
     it('resolves model alias without requiring LLM_MODEL env var', async () => {
-      const { UserConfigSchema } = await import('./schema.js')
-      const baseConfig = JSON.parse(defaultUserConfigStr)
+      const { AgentConfigSchema } = await import('./schema.js')
+      const baseConfig = JSON.parse(defaultAgentConfigStr)
       delete baseConfig.llm.defaultModel
       baseConfig.llm.model = 'openai/gpt-4o'
       baseConfig.llm.managementModel = 'env.UNSET_LLM_MODEL'
 
-      const parsed = UserConfigSchema.parse(baseConfig)
+      const parsed = AgentConfigSchema.parse(baseConfig)
       expect(parsed.llm.defaultModel).toBe('openai/gpt-4o')
       expect(parsed.llm.managementModel).toBe('openai/gpt-4o')
     })

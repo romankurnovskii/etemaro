@@ -99,7 +99,7 @@ let _desktop: CoreExports['desktop'] = null as any
 let _briefing: CoreExports['briefing'] = null as any
 let _hivemind: CoreExports['hivemind'] = null as any
 let _tools: CoreExports['tools'] = null as any
-let defaultUserConfigStr: CoreExports['defaultUserConfigStr'] = null as any
+let defaultAgentConfigStr: CoreExports['defaultAgentConfigStr'] = null as any
 let emptyPrivateStrategyLibraryStr = ''
 let sharedStrategyLibraryStr = ''
 let validateConfigFile: CoreExports['validateConfigFile'] = null as any
@@ -142,7 +142,7 @@ export async function loadCore(): Promise<void> {
   _briefing = coreMod.briefing
   _hivemind = coreMod.hivemind
   _tools = coreMod.tools
-  defaultUserConfigStr = coreMod.defaultUserConfigStr
+  defaultAgentConfigStr = coreMod.defaultAgentConfigStr
   emptyPrivateStrategyLibraryStr = (coreMod as any).emptyPrivateStrategyLibraryStr ?? ''
   sharedStrategyLibraryStr = (coreMod as any).sharedStrategyLibraryStr ?? ''
   validateConfigFile = (coreMod as any).validateConfigFile
@@ -425,7 +425,7 @@ export class Cli {
     const targetDir =
       typeof flags.dir === 'string' && flags.dir.trim().length > 0 ? path.resolve(flags.dir) : this.etemaroDir
     const skeleton = writeRuntimeSkeleton(targetDir, {
-      defaultUserConfigStr,
+      defaultAgentConfigStr,
       sharedStrategyJson: sharedStrategyLibraryStr,
       privateStrategyJson: emptyPrivateStrategyLibraryStr,
     })
@@ -535,7 +535,7 @@ export class Cli {
       die(`Agent configuration already exists at ${targetConfigFile}. Use --force to overwrite.`)
     }
 
-    // Load template: prefer templates/user-config.example.json, fallback to instances/agent-default.json, then defaultUserConfigStr
+    // Load template: prefer templates/user-config.example.json, fallback to instances/agent-default.json, then defaultAgentConfigStr
     const templateCandidates = [
       path.join(repoConfigDir, 'templates', 'user-config.example.json'),
       path.join(repoConfigDir, 'instances', 'agent-default.json'),
@@ -555,7 +555,7 @@ export class Cli {
     }
 
     const finalTemplateContent: Record<string, any> =
-      templateContent ?? (defaultUserConfigStr ? JSON.parse(defaultUserConfigStr) : {})
+      templateContent ?? (defaultAgentConfigStr ? JSON.parse(defaultAgentConfigStr) : {})
 
     // Populate metadata
     finalTemplateContent.name = name

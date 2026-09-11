@@ -82,7 +82,7 @@ describe('writeRuntimeSkeleton', () => {
   it('creates .env, config, and data on a fresh directory', () => {
     const dir = tmpDir()
     const result = writeRuntimeSkeleton(dir, {
-      defaultUserConfigStr: '{"_version":4}',
+      defaultAgentConfigStr: '{"_version":4}',
       sharedStrategyJson: '{"strategies":{"spot":{"id":"spot"}}}',
       privateStrategyJson: '{"description":"private overlay","strategies":{}}',
     })
@@ -102,7 +102,7 @@ describe('writeRuntimeSkeleton', () => {
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(path.join(dir, '.env'), 'LLM_API_KEY="keep-me"\n')
     const result = writeRuntimeSkeleton(dir, {
-      defaultUserConfigStr: '{}',
+      defaultAgentConfigStr: '{}',
       sharedStrategyJson: '{"strategies":{}}',
       privateStrategyJson: '{"strategies":{}}',
     })

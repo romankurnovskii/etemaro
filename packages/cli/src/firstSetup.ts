@@ -82,7 +82,7 @@ export function formatInitMessage(opts: { directory: string; firstRun: boolean; 
 
 export function writeRuntimeSkeleton(
   directory: string,
-  opts: { defaultUserConfigStr: string; sharedStrategyJson: string; privateStrategyJson: string },
+  opts: { defaultAgentConfigStr: string; sharedStrategyJson: string; privateStrategyJson: string },
 ): SkeletonResult {
   const configDir = path.join(directory, 'config')
   const dataDir = path.join(directory, 'data')
@@ -112,7 +112,7 @@ export function writeRuntimeSkeleton(
     fs.mkdirSync(instancesDir, { recursive: true })
     fs.writeFileSync(
       instanceConfigFile,
-      opts.defaultUserConfigStr.endsWith('\n') ? opts.defaultUserConfigStr : `${opts.defaultUserConfigStr}\n`,
+      opts.defaultAgentConfigStr.endsWith('\n') ? opts.defaultAgentConfigStr : `${opts.defaultAgentConfigStr}\n`,
     )
     configFile = instanceConfigFile
     configCreated = true
