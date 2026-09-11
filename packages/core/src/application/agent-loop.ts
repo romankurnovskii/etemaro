@@ -14,6 +14,7 @@
 import { jsonrepair } from 'jsonrepair'
 import OpenAI from 'openai'
 import { config } from '../config/Config.js'
+import type { ConfigPort } from '../ports/config.js'
 import { createCorrelationId, createTimer, log, logStructured, setCorrelationId } from '../shared/logger.js'
 import type {
   AgentMessage,
@@ -376,6 +377,8 @@ export interface AgentLoopDeps {
   getPerformanceSummary: GetPerfSummaryFn
   getDecisionSummary: GetDecisionSummaryFn
   getWeightsSummary?: GetWeightsSummaryFn
+  /** Injected config; defaults to the process config singleton when omitted. */
+  config?: ConfigPort
 }
 
 // ─── Core ReAct Agent Loop ──────────────────────────────────────
@@ -390,6 +393,7 @@ export async function agentLoop(
   options: AgentLoopCallbacks & { interactive?: boolean } & { deps: AgentLoopDeps },
 ): Promise<AgentLoopResult> {
   const { interactive = false, onToolStart = null, onToolFinish = null, deps } = options
+  const cfg: ConfigPort = deps.config ?? config
 
   // Generate correlation ID for this agent loop invocation
   const correlationId = createCorrelationId()
@@ -409,12 +413,13 @@ export async function agentLoop(
   let weightsSummary: string | null = null
   if (agentType === 'SCREENER' && deps.getWeightsSummary) {
     try {
-      if (config.darwin?.enabled) weightsSummary = deps.getWeightsSummary()
+      if (cfg.darwin?.enabled) weightsSummary = deps.getWeightsSummary()
     } catch {
       /* signal-weights not critical */
     }
   }
   const systemPrompt = buildSystemPrompt(
+    cfg,
     agentType,
     portfolio,
     positions,
@@ -441,13 +446,13 @@ export async function agentLoop(
 
   // Initialize OpenAI client
   const client = new OpenAI({
-    baseURL: config.llm.baseUrl,
-    apiKey: config.llm.apiKey,
+    baseURL: cfg.llm.baseUrl,
+    apiKey: cfg.llm.apiKey,
     timeout: 5 * 60 * 1000,
   })
 
-  const DEFAULT_MODEL = config.llm.defaultModel
-  const FALLBACK_MODEL = (config.llm as LlmConfig)?.fallbackModel || null
+  const DEFAULT_MODEL = cfg.llm.defaultModel
+  const FALLBACK_MODEL = (cfg.llm as LlmConfig)?.fallbackModel || null
 
   const _emptyStreak = 0
   for (let step = 0; step < maxSteps; step++) {
@@ -467,8 +472,8 @@ export async function agentLoop(
             model: usedModel,
             messages,
             tools: getToolsForRole(agentType, allTools, goal),
-            temperature: config.llm.temperature,
-            max_tokens: maxOutputTokens ?? config.llm.maxTokens,
+            temperature: cfg.llm.temperature,
+            max_tokens: maxOutputTokens ?? cfg.llm.maxTokens,
           }
           if (!omitToolChoice) reqParams.tool_choice = toolChoice
           response = await client.chat.completions.create(reqParams as any)
