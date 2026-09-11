@@ -20,11 +20,12 @@ import type {
   StateEvent,
   StateSummary,
 } from '../shared/types.js'
-import { loadJsonFile, sanitizeStoredText, saveJsonFile } from '../shared/utils.js'
+import { sanitizeStoredText } from '../shared/utils.js'
 
 export type { PendingLiquidation, PositionRecord } from '../shared/types.js'
 
 import { Mutex } from '../shared/mutex.js'
+import { readStateFile, writeStateFile } from '../shared/stateStore.js'
 import type { AppConfig } from '../shared/types.js'
 
 let STATE_FILE = dataPath('state.json')
@@ -63,7 +64,7 @@ export interface StateData {
 }
 
 export function loadState(): StateData {
-  const data = loadJsonFile<StateData>(
+  const data = readStateFile<StateData>(
     STATE_FILE,
     {
       positions: {},
@@ -86,7 +87,7 @@ function load(): StateData {
 export function saveState(state: StateData): void {
   try {
     state.lastUpdated = new Date().toISOString()
-    saveJsonFile(STATE_FILE, state)
+    writeStateFile(STATE_FILE, state)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     log('state_error', `Failed to write state.json: ${message}`)

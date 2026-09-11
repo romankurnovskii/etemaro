@@ -1,6 +1,6 @@
 import { dataPath, MAX_DECISIONS } from '../shared/constants.js'
+import { readStateFile, writeStateFile } from '../shared/stateStore.js'
 import type { Decision, DecisionType } from '../shared/types.js'
-import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
 
 const DECISION_LOG_FILE = dataPath('decision-log.json')
 
@@ -9,11 +9,11 @@ interface DecisionLogData {
 }
 
 function load(): DecisionLogData {
-  return loadJsonFile<DecisionLogData>(DECISION_LOG_FILE, { decisions: [] })
+  return readStateFile<DecisionLogData>(DECISION_LOG_FILE, { decisions: [] })
 }
 
 function save(data: DecisionLogData): void {
-  saveJsonFile(DECISION_LOG_FILE, data)
+  writeStateFile(DECISION_LOG_FILE, data)
 }
 
 function sanitize(value: unknown, maxLen = 280): string | null {

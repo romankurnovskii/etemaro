@@ -12,8 +12,8 @@
 
 import { dataPath } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
+import { readStateFile, writeStateFile } from '../shared/stateStore.js'
 import type { AppConfig, PerformanceRecord, SignalName, SignalWeightsData } from '../shared/types.js'
-import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
 
 const WEIGHTS_FILE = dataPath('signal-weights.json')
 
@@ -59,7 +59,7 @@ const CATEGORICAL_SIGNALS = new Set<SignalName>(['narrative_quality'])
 // ─── Persistence ─────────────────────────────────────────────────
 
 function loadWeights(): SignalWeightsData {
-  const existing = loadJsonFile<SignalWeightsData | null>(WEIGHTS_FILE, null)
+  const existing = readStateFile<SignalWeightsData | null>(WEIGHTS_FILE, null)
   if (existing) return existing
   const initial: SignalWeightsData = {
     weights: { ...DEFAULT_WEIGHTS },
@@ -74,7 +74,7 @@ function loadWeights(): SignalWeightsData {
 
 function saveWeights(data: SignalWeightsData): void {
   try {
-    saveJsonFile(WEIGHTS_FILE, data)
+    writeStateFile(WEIGHTS_FILE, data)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     log('signal_weights_error', `Failed to write signal-weights.json: ${message}`)

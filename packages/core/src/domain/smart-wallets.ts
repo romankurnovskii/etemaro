@@ -11,8 +11,8 @@
 
 import { CACHE_TTL_MS, SOLANA_PUBKEY_RE, sharedConfigPath } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
+import { readStateFile, writeStateFile } from '../shared/stateStore.js'
 import type { SmartWallet, SmartWalletHit } from '../shared/types.js'
-import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
 
 const WALLETS_PATH = sharedConfigPath('smart-wallets.json')
 
@@ -25,18 +25,18 @@ interface SmartWalletsData {
 }
 
 function loadWalletList(listId: string): SmartWalletList {
-  const data = loadJsonFile<SmartWalletsData>(WALLETS_PATH, { lists: {} }, { label: 'smart-wallets' })
+  const data = readStateFile<SmartWalletsData>(WALLETS_PATH, { lists: {} }, { label: 'smart-wallets' })
   const list = data.lists[listId]
   if (!list) throw new Error(`Smart wallet list "${listId}" not found`)
   return list
 }
 
 function loadWallets(): SmartWalletsData {
-  return loadJsonFile<SmartWalletsData>(WALLETS_PATH, { lists: {} }, { label: 'smart-wallets' })
+  return readStateFile<SmartWalletsData>(WALLETS_PATH, { lists: {} }, { label: 'smart-wallets' })
 }
 
 function saveWallets(data: SmartWalletsData): void {
-  saveJsonFile(WALLETS_PATH, data)
+  writeStateFile(WALLETS_PATH, data)
 }
 
 export function addSmartWallet({

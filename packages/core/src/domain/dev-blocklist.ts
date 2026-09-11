@@ -11,19 +11,19 @@
 
 import { sharedConfigPath } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
+import { readStateFile, writeStateFile } from '../shared/stateStore.js'
 import type { BlockedDev } from '../shared/types.js'
-import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
 
 const BLOCKLIST_FILE = sharedConfigPath('dev-blocklist.json')
 
 type DevBlocklistDb = Record<string, BlockedDev>
 
 function load(): DevBlocklistDb {
-  return loadJsonFile<DevBlocklistDb>(BLOCKLIST_FILE, {}, { label: 'dev-blocklist' })
+  return readStateFile<DevBlocklistDb>(BLOCKLIST_FILE, {}, { label: 'dev-blocklist' })
 }
 
 function save(data: DevBlocklistDb): void {
-  saveJsonFile(BLOCKLIST_FILE, data)
+  writeStateFile(BLOCKLIST_FILE, data)
 }
 
 export function isDevBlocked(devWallet: string | null | undefined): boolean {

@@ -46,11 +46,13 @@ export type {
   SwapNotification,
   TransactionErrorNotification,
 } from './ports/index.js'
+export type { StateStorePort, StateStoreReadOptions } from './ports/state-store.js'
 export * from './shared/constants.js'
 export * from './shared/ipc-protocol.js'
 export * from './shared/keystore.js'
 export * from './shared/logger.js'
 export * from './shared/mutex.js'
+export { getStateStore, readStateFile, resetStateStore, setStateStore, writeStateFile } from './shared/stateStore.js'
 export * from './shared/types.js'
 export * from './shared/utils.js'
 export * from './shared/validation.js'

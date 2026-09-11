@@ -20,18 +20,19 @@ import {
   USER_CONFIG_PATH,
 } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
+import { readStateFile, writeStateFile } from '../shared/stateStore.js'
 import type { AgentRole, AppConfig, Lesson, LessonsData, PerformanceRecord, SignalSnapshot } from '../shared/types.js'
-import { avg, clamp, isFiniteNum, loadJsonFile, nudge, sanitizeStoredText, saveJsonFile } from '../shared/utils.js'
+import { avg, clamp, isFiniteNum, nudge, sanitizeStoredText } from '../shared/utils.js'
 import { getSharedLessonsForPrompt, pushHiveLesson, pushHivePerformanceEvent } from './hivemindBridge.js'
 
 const LESSONS_FILE = dataPath('lessons.json')
 
 function load(): LessonsData {
-  return loadJsonFile<LessonsData>(LESSONS_FILE, { lessons: [], performance: [] })
+  return readStateFile<LessonsData>(LESSONS_FILE, { lessons: [], performance: [] })
 }
 
 function save(data: LessonsData): void {
-  saveJsonFile(LESSONS_FILE, data)
+  writeStateFile(LESSONS_FILE, data)
 }
 
 function buildSignalSnapshot(perf: Record<string, unknown>): SignalSnapshot | null {
@@ -416,7 +417,7 @@ export function evolveThresholds(
   if (Object.keys(changes).length === 0) return { changes: {}, rationale: {} }
 
   // ── Persist changes to user-config.json ───────────────────────
-  const userConfig = loadJsonFile<Record<string, unknown>>(targetConfigPath, {})
+  const userConfig = readStateFile<Record<string, unknown>>(targetConfigPath, {})
   if (!userConfig.screening || typeof userConfig.screening !== 'object' || Array.isArray(userConfig.screening)) {
     userConfig.screening = {}
   }
@@ -427,7 +428,7 @@ export function evolveThresholds(
   userConfig._lastEvolved = new Date().toISOString()
   userConfig._positionsAtEvolution = perfData.length
 
-  saveJsonFile(targetConfigPath, userConfig)
+  writeStateFile(targetConfigPath, userConfig)
 
   // Apply to live config object immediately
   const s = cfg.screening

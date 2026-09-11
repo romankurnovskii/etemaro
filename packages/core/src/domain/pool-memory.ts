@@ -13,14 +13,9 @@
 import { config } from '../config/Config.js'
 import { dataPath, MAX_NOTE_LENGTH } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
+import { readStateFile, writeStateFile } from '../shared/stateStore.js'
 import type { PoolMemoryDeploy, PoolMemoryEntry } from '../shared/types.js'
-import {
-  isAdjustedWinRateExcludedReason,
-  isOorCloseReason,
-  loadJsonFile,
-  sanitizeStoredText,
-  saveJsonFile,
-} from '../shared/utils.js'
+import { isAdjustedWinRateExcludedReason, isOorCloseReason, sanitizeStoredText } from '../shared/utils.js'
 import { recordPoolMetric } from './pool-metrics.js'
 
 const POOL_MEMORY_FILE = dataPath('pool-memory.json')
@@ -35,12 +30,12 @@ type PoolMemoryDb = Record<string, PoolMemoryEntry>
 
 function load(): PoolMemoryDb {
   const file = _poolMemoryFilePath || POOL_MEMORY_FILE
-  return loadJsonFile<PoolMemoryDb>(file, {})
+  return readStateFile<PoolMemoryDb>(file, {})
 }
 
 function save(data: PoolMemoryDb): void {
   const file = _poolMemoryFilePath || POOL_MEMORY_FILE
-  saveJsonFile(file, data)
+  writeStateFile(file, data)
 }
 
 function isFeeGeneratingDeploy(deploy: PoolMemoryDeploy): boolean {
