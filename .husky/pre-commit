@@ -19,6 +19,4 @@ if [ -f config/shared/strategy-library.json ]; then
   pnpm --silent run validate:strategy --active config/shared/strategy-library.json || exit 1
 fi
 
-if [ -f config/shared/strategy-library.shared.json ]; then
-  pnpm --silent run validate:strategy config/shared/strategy-library.shared.json || exit 1
-fi
+# Shared strategy library is bundled in code; only the private overlay is validated above.
