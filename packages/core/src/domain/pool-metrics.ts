@@ -15,7 +15,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { dataPath } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
-import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
+import { readStateFile, writeStateFile } from '../shared/stateStore.js'
 
 let _poolMetricsDirOverride: string | null = null
 
@@ -80,7 +80,7 @@ export function recordPoolMetric(poolAddress: string, input: PoolMetricSnapshotI
 
   try {
     const filePath = getPoolMetricFile(poolAddress, input.position)
-    const existing = loadJsonFile<PoolMetricSnapshot[]>(filePath, [])
+    const existing = readStateFile<PoolMetricSnapshot[]>(filePath, [])
 
     const snapshot: PoolMetricSnapshot = {
       timestamp: new Date().toISOString(),
@@ -89,7 +89,7 @@ export function recordPoolMetric(poolAddress: string, input: PoolMetricSnapshotI
     }
 
     existing.push(snapshot)
-    saveJsonFile(filePath, existing)
+    writeStateFile(filePath, existing)
     log(
       'pool-metrics',
       `Saved pool metric snapshot for ${input.pair || poolAddress} (pos: ${input.position.slice(0, 8)}) [${existing.length} entries]`,
@@ -104,5 +104,5 @@ export function recordPoolMetric(poolAddress: string, input: PoolMetricSnapshotI
  */
 export function readPoolMetrics(poolAddress: string, positionAddress: string): PoolMetricSnapshot[] {
   const filePath = getPoolMetricFile(poolAddress, positionAddress)
-  return loadJsonFile<PoolMetricSnapshot[]>(filePath, [])
+  return readStateFile<PoolMetricSnapshot[]>(filePath, [])
 }

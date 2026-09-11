@@ -11,19 +11,19 @@
 
 import { sharedConfigPath } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
+import { readStateFile, writeStateFile } from '../shared/stateStore.js'
 import type { BlacklistedToken } from '../shared/types.js'
-import { loadJsonFile, saveJsonFile } from '../shared/utils.js'
 
 const BLACKLIST_FILE = sharedConfigPath('token-blacklist.json')
 
 type BlacklistDb = Record<string, BlacklistedToken>
 
 function load(): BlacklistDb {
-  return loadJsonFile<BlacklistDb>(BLACKLIST_FILE, {}, { label: 'token-blacklist' })
+  return readStateFile<BlacklistDb>(BLACKLIST_FILE, {}, { label: 'token-blacklist' })
 }
 
 function save(data: BlacklistDb): void {
-  saveJsonFile(BLACKLIST_FILE, data)
+  writeStateFile(BLACKLIST_FILE, data)
 }
 
 // ─── Check ─────────────────────────────────────────────────────
