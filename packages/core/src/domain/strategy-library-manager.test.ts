@@ -92,14 +92,15 @@ describe('StrategyLibraryManager source handling', () => {
     expect(warned).toBe(true)
   })
 
-  it('fails when the canonical shared file does not exist', () => {
+  it('falls back to the bundled shared library when no canonical shared file exists', () => {
     vi.spyOn(fs, 'existsSync').mockImplementation((pathArg: any) => {
       const p = pathArg.toString()
       if (p.includes('strategy-library.shared.json') || p.includes('strategy-library.json')) return false
       return actualExistsSync(pathArg)
     })
 
-    expect(() => strategyLibraryManager.loadMerged()).toThrow(/Shared strategy library is required/)
+    const merged = strategyLibraryManager.loadMerged()
+    expect(Object.keys(merged.data.strategies)).toContain('custom_ratio_spot')
   })
 
   it('requires a wallet list for smart-wallet-enabled strategies', () => {

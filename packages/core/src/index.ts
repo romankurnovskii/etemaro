@@ -38,6 +38,7 @@ export {
   emptyPrivateStrategyLibraryStr,
   PRIVATE_STRATEGY_LIBRARY_DESCRIPTION,
 } from './domain/strategy-library-defaults.js'
+export { SHARED_STRATEGY_LIBRARY, sharedStrategyLibraryStr } from './domain/strategy-library-shared.js'
 export type {
   CloseNotification,
   ConfigPort,
