@@ -7,14 +7,15 @@ The codebase is a pnpm monorepo. Config and runtime data live at the repository 
 ```
   config/
     agents.json
-    agent-config.json           # Active user configuration (generated via `pnpm cli init` or core defaults)
+    instances/
+      agent-default.json        # Active agent config (created by `etemaro init`)
     templates/
       ecosystem.config.example.cjs # Multi-agent PM2 configuration template
     shared/
       smart-wallets.example.json   # Smart-wallet schema/example
       smart-wallets.json            # Smart-wallet list
-      strategy-library.json         # Local strategy overlay
-      strategy-library.shared.json  # Shared strategy presets
+      strategy-library.json         # Private strategy overlay (created by init; wins on id collision)
+      strategy-library.shared.json  # Optional override of the bundled shared presets
 data/
   state.json                 # Registry of open/closed positions
   lessons.json               # Historical performance lessons
@@ -147,7 +148,7 @@ The wallet architecture separates public config metadata from the raw private ke
 ```
 ~/.config/etemaro/
 ├── config/
-│   └── agent-config.json          # PUBLIC — references wallet by alias only:
+│   └── instances/agent-default.json # PUBLIC — references wallet by alias only:
 │                                  #   "connection": { "wallet": "main-scalp" }
 └── .credentials/                 # SECURE — gitignored, chmod 700
     └── wallets/
