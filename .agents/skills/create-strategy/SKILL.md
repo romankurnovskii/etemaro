@@ -97,11 +97,11 @@ Read these docs **in this order** before generating config — each one layers o
 
 1. `docs/ARCHITECTURE.md` — understand the strategy library's role in deploy decisions
 2. `docs/CONFIGURATION.md` — full field reference (all categories, types, defaults)
-3. `config/templates/user-config.example.json` — canonical template; every field that must be present
+3. `config/templates/agent-config.example.json` — canonical template; every field that must be present
 
 ### Config sections to populate
 
-When generating a new config file, **first copy the entire content of `config/templates/user-config.example.json`**. Then, modify only the specific fields that differ based on the user's requirements. This ensures no required fields are missed. Cover these sections:
+When generating a new config file, **first copy the entire content of `config/templates/agent-config.example.json`**. Then, modify only the specific fields that differ based on the user's requirements. This ensures no required fields are missed. Cover these sections:
 
 #### `strategy` section (always required)
 
@@ -202,13 +202,13 @@ Present the result as three clearly labeled blocks:
 ### Block A — Config patch file
 
 Generate the patch as a separate configuration file. Unless the user specifically requests another name, use the following pattern:
-`config/user-config.<major-strategy-short-idea>.<?minor-desc>.v<YYMMDD>-<counter-number>.json`
-(e.g., `config/user-config.copy-trade.v260817-1.json`).
+`config/agent-config.<major-strategy-short-idea>.<?minor-desc>.v<YYMMDD>-<counter-number>.json`
+(e.g., `config/agent-config.copy-trade.v260817-1.json`).
 
 The generated config MUST be a complete JSON file containing all fields from the example config, with the relevant overrides applied.
 
 Tell the user they can run the bot with this config using:
-`USER_CONFIG_PATH=<filename> npm start`
+`AGENT_CONFIG_PATH=<filename> npm start`
 
 ### Block B — Strategy library entry (if new/customized)
 
@@ -233,7 +233,7 @@ Provide the CLI command to activate it.
 | Need                                          | Read                                                |
 | --------------------------------------------- | --------------------------------------------------- |
 | All config fields + types                     | `docs/CONFIGURATION.md`                             |
-| Field defaults                                | `config/templates/user-config.example.json`         |
+| Field defaults                                | `config/templates/agent-config.example.json`         |
 | Existing strategy presets                     | `config/shared/strategy-library.json`               |
 | Smart wallet tracking setup                   | `docs/QA.md` → Smart Wallets section                |
 | Architecture (how strategy is used at deploy) | `docs/ARCHITECTURE.md` → Strategy Library section   |

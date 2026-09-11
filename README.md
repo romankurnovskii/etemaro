@@ -45,7 +45,7 @@ etemaro wallet import --name etemaro-01-100 --prompt   # existing Base58 key (hi
 
 No flags needed: just run `etemaro wallet import` and it walks you through alias → keypair JSON file or Base58 private key → import.
 
-Then point an agent at the alias: `"wallet": "etemaro-01-100"` in its config (`config/user-config.json` or `config/instances/<id>.json`). Inspect with `etemaro wallet list`.
+Then point an agent at the alias: `"wallet": "etemaro-01-100"` in its config (`config/agent-config.json` or `config/instances/<id>.json`). Inspect with `etemaro wallet list`.
 
 **From a source clone** (no global `etemaro`), prefix with `npm run cli --` — the `--` is required:
 
@@ -130,7 +130,7 @@ git clone https://github.com/romankurnovskii/etemaro
 cd etemaro
 pnpm install
 
-# 2. Initialize configuration (.env and user-config.json)
+# 2. Initialize configuration (.env and agent-config.json)
 pnpm cli init
 
 # 3. Start in dry-run mode
@@ -160,6 +160,6 @@ Clone + PM2 / Docker is **[source setup](#developer--source-setup)** above.
 - 🚀 **[Getting Started Guide](docs/GETTING_STARTED.md)** — Step-by-step first-time setup, environment variables, strategy selection.
 - 📖 **[Usage Guide](docs/USAGE_GUIDE.md)** — Daily operations, CLI commands, Telegram bot controls, REPL, and decision flows.
 - 🏗️ **[Architecture Guide](docs/ARCHITECTURE.md)** — System layout, domain boundaries, adapter layer, and state management.
-- ⚙️ **[Configuration Reference](docs/CONFIGURATION.md)** — Exhaustive configuration reference for `user-config.json`.
+- ⚙️ **[Configuration Reference](docs/CONFIGURATION.md)** — Exhaustive configuration reference for `agent-config.json`.
 - 🧠 **[HiveMind Guide](docs/HIVEMIND.md)** — Fleet learning, lesson sharing, and shared presets.
 - 💻 **[Desktop App](apps/desktop)** — Tauri-based cross-platform desktop UI.

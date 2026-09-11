@@ -58,7 +58,7 @@ Flags:
 To target a specific instance config:
 
 ```bash
-USER_CONFIG_PATH=config/instances/user-config.copy_trade_lag.v260830-1.json \
+AGENT_CONFIG_PATH=config/instances/agent-config.copy_trade_lag.v260830-1.json \
   etemaro strategy validate --active config/shared/strategy-library.json
 ```
 

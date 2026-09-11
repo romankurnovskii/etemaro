@@ -131,7 +131,7 @@ Before executing any deployment command, always run these checks sequentially:
 1. **Check Config:**
 
    ```bash
-   cat user-config.json
+   cat agent-config.json
    ```
 
    Identify `gasReserve`, `positionSizePct`, and `maxDeployAmount`.

@@ -7,7 +7,7 @@ services:
     command: pnpm run dev
     env_file: .env
     environment:
-      - USER_CONFIG_PATH
+      - AGENT_CONFIG_PATH
     volumes:
       - ./packages:/app/packages
       - /app/node_modules
