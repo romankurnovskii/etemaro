@@ -11,7 +11,7 @@ valid and which fields are unknown or wrongly named, so you know what the agent 
 - A strategy field "does nothing" and you suspect a naming/schema problem.
 - You pasted or generated a strategy object and want it checked before adding it.
 - You need to know which fields are ignored by the runtime.
-- You changed `config/user-config.json` and want the same report for it.
+- You changed `config/agent-config.json` and want the same report for it.
 
 ## Prompt Examples
 
@@ -48,7 +48,7 @@ npm run validate:config --env-optional
 To target a specific instance config:
 
 ```bash
-USER_CONFIG_PATH=config/instances/user-config.copy_trade_lag.v260830-1.json \
+AGENT_CONFIG_PATH=config/instances/agent-config.copy_trade_lag.v260830-1.json \
   etemaro strategy validate --active config/shared/strategy-library.json
 ```
 

@@ -44,7 +44,7 @@ module.exports = {
       restart_delay: 5000,
       kill_timeout: 10000,
       env: {
-        USER_CONFIG_PATH: 'config/agt_conservative.json',
+        AGENT_CONFIG_PATH: 'config/instances/agent-config.conservative.json',
         WALLET_PRIVATE_KEY: 'your_private_key_base58_for_agent_1',
       },
     },

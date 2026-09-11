@@ -5,7 +5,7 @@ Run a full screening cycle. Use the Bash tool for all commands sequentially (nev
 
 **Step 1 — Read config:**
 ```
-cat user-config.json
+cat agent-config.json
 ```
 Note `deployAmountSol`, `gasReserve`, and `maxPositions`. Minimum wallet needed = deployAmountSol + gasReserve.
 

@@ -38,7 +38,7 @@ You have access to these CLI commands (always use `node --import tsx packages/cl
 - PnL < -25% with no volume recovery
 - Take profit: total return (fees + PnL) >= 10% of deployed capital
 
-**These rules override user-config thresholds when the token data is clear.** If the position pumped out of range and you're up 15%+, the data is telling you to close — don't wait because config says "OOR wait 10 min."
+**These rules override agent-config thresholds when the token data is clear.** If the position pumped out of range and you're up 15%+, the data is telling you to close — don't wait because config says "OOR wait 10 min."
 
 **Hold when:**
 
