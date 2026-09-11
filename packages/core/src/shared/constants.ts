@@ -85,6 +85,20 @@ export function getDataDir(): string {
   return path.join(REPO_ROOT, 'data')
 }
 
+/** Canonical agent config filename (renamed from user-config.json). */
+export const AGENT_CONFIG_FILENAME = 'agent-config.json'
+/** Legacy config filename, still supported for backward compatibility. */
+export const LEGACY_USER_CONFIG_FILENAME = 'user-config.json'
+
+/** Env-provided config path: AGENT_CONFIG_PATH preferred, USER_CONFIG_PATH deprecated fallback. */
+export function getEnvConfigPath(): string | undefined {
+  return process.env.AGENT_CONFIG_PATH?.trim() || process.env.USER_CONFIG_PATH?.trim() || undefined
+}
+
+function resolveAgainstRepo(p: string): string {
+  return path.isAbsolute(p) ? p : path.resolve(REPO_ROOT, p)
+}
+
 /**
  * Detect the active instance identifier if running in multi-instance mode.
  * Resolution order:
@@ -99,22 +113,26 @@ export function getInstanceId(): string {
   if (envInstance?.trim()) {
     return envInstance.trim()
   }
-  // Check process.env.USER_CONFIG_PATH directly (not the USER_CONFIG_PATH constant which is evaluated at import time)
-  const envConfigPath = process.env.USER_CONFIG_PATH?.trim()
+  // Check env directly (AGENT_CONFIG_PATH or legacy USER_CONFIG_PATH); the exported
+  // constant is evaluated at import time and cannot reflect later overrides.
+  const envConfigPath = getEnvConfigPath()
   if (envConfigPath) {
     const norm = envConfigPath.replace(/\\/g, '/')
     const instanceMatch = norm.match(/(?:^|\/)instances\/([^/]+)\.json$/)
     if (instanceMatch?.[1]) {
       return instanceMatch[1]
     }
-    // Flat user-config.json explicitly opts out of instance isolation
-    if (norm === 'config/user-config.json' || path.basename(norm) === 'user-config.json') {
+    // A flat agent-config.json / legacy user-config.json opts out of instance isolation.
+    const baseName = path.basename(norm)
+    if (baseName === AGENT_CONFIG_FILENAME || baseName === LEGACY_USER_CONFIG_FILENAME) {
       return ''
     }
     const base = path.basename(envConfigPath, path.extname(envConfigPath))
     if (
       base &&
-      !['user-config', 'user-config.v2', 'user-config.prod', 'user-config.example'].includes(base.toLowerCase())
+      !['user-config', 'agent-config', 'user-config.v2', 'user-config.prod', 'user-config.example'].includes(
+        base.toLowerCase(),
+      )
     ) {
       return base.replace(/[^a-zA-Z0-9_-]/g, '_')
     }
@@ -140,9 +158,9 @@ export function dataPath(...segments: string[]): string {
   const baseDir = getDataDir()
   const instanceId = getInstanceId()
 
-  // Check process.env.USER_CONFIG_PATH directly (not the USER_CONFIG_PATH constant which is evaluated at import time)
-  const envConfigPath = process.env.USER_CONFIG_PATH?.trim()
-  const activeConfig = (envConfigPath || USER_CONFIG_PATH).replace(/\\/g, '/')
+  // Check env directly (the exported constant is evaluated at import time).
+  const envConfigPath = getEnvConfigPath()
+  const activeConfig = (envConfigPath || AGENT_CONFIG_PATH).replace(/\\/g, '/')
   const isExplicitInstance = Boolean(
     process.env.ETEMARO_INSTANCE_ID ||
       (envConfigPath && (activeConfig.includes('/instances/') || activeConfig.startsWith('instances/'))),
@@ -203,11 +221,13 @@ export function credentialsPath(...segments: string[]): string {
 
 /** Resolve a path relative to the config directory. */
 export function configPath(...segments: string[]): string {
-  // Honor USER_CONFIG_PATH env var for the main config file
-  if (segments.length === 1 && segments[0] === 'user-config.json') {
-    const envPath = process.env.USER_CONFIG_PATH?.trim()
-    if (envPath) {
-      return path.isAbsolute(envPath) ? envPath : path.resolve(REPO_ROOT, envPath)
+  // Honor an env-provided config path for the main config file (new or legacy name).
+  if (segments.length === 1 && (segments[0] === AGENT_CONFIG_FILENAME || segments[0] === LEGACY_USER_CONFIG_FILENAME)) {
+    const envPath = getEnvConfigPath()
+    if (envPath) return resolveAgainstRepo(envPath)
+    if (segments[0] === AGENT_CONFIG_FILENAME) {
+      const canonical = path.join(REPO_ROOT, 'config', AGENT_CONFIG_FILENAME)
+      return fs.existsSync(canonical) ? canonical : getDefaultConfigPath()
     }
   }
   // Chapter 7: check config/instances/<file> first for instance configurations
@@ -228,17 +248,26 @@ export function configPath(...segments: string[]): string {
  * falling back to config/user-config.json if the instance file has not yet been initialized.
  */
 export function getDefaultConfigPath(): string {
-  const inInstances = path.join(REPO_ROOT, 'config', 'instances', 'agent-default.json')
-  if (fs.existsSync(inInstances)) return inInstances
-  return path.join(REPO_ROOT, 'config', 'user-config.json')
+  const candidates = [
+    path.join(REPO_ROOT, 'config', 'instances', 'agent-default.json'),
+    path.join(REPO_ROOT, 'config', AGENT_CONFIG_FILENAME),
+    path.join(REPO_ROOT, 'config', LEGACY_USER_CONFIG_FILENAME),
+  ]
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+  // New canonical default; `etemaro init` creates it.
+  return path.join(REPO_ROOT, 'config', 'instances', 'agent-default.json')
 }
 
-/** Canonical path to user-config.json or default instance (honors USER_CONFIG_PATH env override). */
-export const USER_CONFIG_PATH = process.env.USER_CONFIG_PATH?.trim()
-  ? path.isAbsolute(process.env.USER_CONFIG_PATH.trim())
-    ? process.env.USER_CONFIG_PATH.trim()
-    : path.resolve(REPO_ROOT, process.env.USER_CONFIG_PATH.trim())
-  : getDefaultConfigPath()
+/** Canonical resolved agent config path (env override, else instance-first default). */
+export const AGENT_CONFIG_PATH = (() => {
+  const envPath = getEnvConfigPath()
+  return envPath ? resolveAgainstRepo(envPath) : getDefaultConfigPath()
+})()
+
+/** @deprecated Renamed to AGENT_CONFIG_PATH; retained for backward compatibility. */
+export const USER_CONFIG_PATH = AGENT_CONFIG_PATH
 
 /** Get the etemaro runtime/config home directory (e.g. ~/.config/etemaro).
  *  Resolution order:
