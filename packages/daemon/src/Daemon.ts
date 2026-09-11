@@ -23,7 +23,6 @@ import {
   type AgentMessage,
   addLogListener,
   agentLoop,
-  briefing,
   computeDeployAmount,
   config,
   confirmPeak,
@@ -31,7 +30,6 @@ import {
   DEFAULT_ENTRY_SOURCE,
   DEV_BLOCKLIST_FILENAME,
   dataPath,
-  desktop,
   domain,
   getConsecutiveSwapFailures,
   getDataDir,
@@ -39,7 +37,6 @@ import {
   getLastBriefingDate,
   getTrackedPosition,
   getTrackedPositions,
-  hivemind,
   type IpcPositionSummary,
   type IpcToolDescriptor,
   isPnlSuspect,
@@ -62,15 +59,13 @@ import {
   sleep,
   TELEGRAM_QUEUE_FILENAME,
   TOKEN_BLACKLIST_FILENAME,
-  telegram,
-  token,
   toolExecutor,
   tools,
   USER_CONFIG_PATH,
   updatePnlAndCheckExits,
-  wallet,
 } from '@etemaro/core'
 import cron from 'node-cron'
+import { createDaemonAdapters } from './composition.js'
 import { AgentSupervisor } from './server/AgentSupervisor.js'
 import { IpcServer } from './server/IpcServer.js'
 // These will be injected or resolved at runtime by the adapter layer.
@@ -3619,51 +3614,7 @@ const isMain =
   isScriptTarget(process.argv[1]) || (process.env.pm_exec_path ? isScriptTarget(process.env.pm_exec_path) : false)
 
 if (isMain) {
-  const agentLoopDeps: AgentLoopDeps = {
-    executeTool: toolExecutor.executeTool,
-    getTools: () => tools,
-    getWalletBalances: async () => {
-      const bal = await wallet.getWalletBalances()
-      return {
-        sol: bal.sol,
-        usd: bal.sol_usd,
-        tokens: bal.tokens.map((t: any) => ({
-          mint: t.mint,
-          symbol: t.symbol,
-          amount: t.amount,
-          usd: t.usd,
-        })),
-      }
-    },
-    getMyPositions: meteora.getMyPositions,
-    getStateSummary: domain.getStateSummary,
-    getLessonsForPrompt: (opts: any) => domain.getLessonsForPrompt(opts),
-    getPerformanceSummary: () => {
-      const summary = domain.getPerformanceSummary()
-      return summary ? JSON.stringify(summary) : null
-    },
-    getDecisionSummary: domain.getDecisionSummary,
-    getWeightsSummary: domain.getWeightsSummary,
-  }
-
-  const daemon = new Daemon({
-    meteora,
-    wallet,
-    screening,
-    toolExecutor,
-    telegram,
-    desktop,
-    briefing,
-
-    hivemind,
-    domain: {
-      ...domain,
-      addPoolNote: (pool: string, note: string) => domain.addPoolNote({ pool_address: pool, note }),
-      getTokenNarrative: token.getTokenNarrative,
-      getTokenInfo: token.getTokenInfo,
-    },
-    agentLoopDeps,
-  })
+  const daemon = new Daemon(createDaemonAdapters())
 
   const hasRepl = process.stdout.isTTY && !process.env.PM2_HOME
   daemon.start({ tty: hasRepl }).catch((err) => {
