@@ -15,6 +15,7 @@ import {
   swapAllTokensToSol,
   swapBaseToSolWithRetry,
   sweepUnsoldTokens,
+  toolRegistry,
   WRITE_TOOLS,
   writeToolsMutex,
 } from './ToolExecutor.js'
@@ -1194,5 +1195,27 @@ describe('ToolExecutor - Unsold Token Lifecycle & Sweeper', () => {
     const res = (await executeTool('get_pending_liquidations', {})) as any
     expect(res).toHaveProperty('liquidations')
     expect(Array.isArray(res.liquidations)).toBe(true)
+  })
+})
+
+describe('ToolExecutor tool registry', () => {
+  it('registers a handler for every LLM-facing tool definition', () => {
+    expect(
+      toolRegistry
+        .getDefinitions()
+        .map((d) => d.function.name)
+        .sort(),
+    ).toEqual(tools.map((t) => t.function.name).sort())
+    for (const t of tools) {
+      expect(typeof toolRegistry.getHandler(t.function.name)).toBe('function')
+    }
+  })
+
+  it('derives the permission sets and keeps close_all_positions internal-only', () => {
+    expect([...toolRegistry.writeTools].sort()).toEqual([...WRITE_TOOLS].sort())
+    expect(toolRegistry.isProtected('self_update')).toBe(true)
+    expect(toolRegistry.isWrite('self_update')).toBe(false)
+    expect(toolRegistry.internalNames()).toContain('close_all_positions')
+    expect(toolRegistry.exposedNames()).not.toContain('close_all_positions')
   })
 })
