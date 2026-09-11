@@ -7,5 +7,6 @@ authors:
 title: "Etemaro: An LLM Agent with Federated Experiential Learning for Autonomous Concentrated-Liquidity Management on Solana"
 version: "3.4.5"
 doi: "10.5281/zenodo.22284026"
+ssrn: "7404538"
 date-released: "2026-08-31"
 url: "https://github.com/romankurnovskii/etemaro"
