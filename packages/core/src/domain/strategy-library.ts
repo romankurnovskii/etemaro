@@ -10,7 +10,7 @@
  */
 
 import fs from 'node:fs'
-import { config } from '../config/Config.js'
+import { getConfig } from '../shared/configProvider.js'
 import { configPath, getDataDir, strategyLibraryPath } from '../shared/constants.js'
 import { log } from '../shared/logger.js'
 import { readStateFile, writeStateFile } from '../shared/stateStore.js'
@@ -111,7 +111,7 @@ export class StrategyLibraryManager {
    * Throws an error with a clear message if the validation fails. Called at agent boot.
    */
   validate(): void {
-    const activeId = config.strategy.activeStrategyId
+    const activeId = getConfig().strategy.activeStrategyId
     if (!activeId || activeId.trim() === '') {
       throw new Error(`Startup failed: 'activeStrategyId' is missing or empty in config.`)
     }
@@ -125,7 +125,7 @@ export class StrategyLibraryManager {
     // A wallet list is mandatory only for the smart-wallets entry mode, which deploys
     // exclusively from tracked wallets. In market mode the smart-wallet signal is an
     // optional boost, so a missing list degrades gracefully instead of failing boot.
-    const smartWalletsRequired = config.screening.entrySource === 'smart_wallets'
+    const smartWalletsRequired = getConfig().screening.entrySource === 'smart_wallets'
     if (smartWalletsRequired && !activeStrategy.smartWalletListId) {
       throw new Error(
         `Startup failed: Strategy '${activeId}' must define smartWalletListId because screening.entrySource is 'smart_wallets'.`,
@@ -225,7 +225,7 @@ export function addStrategy({
  */
 export function listStrategies(): Record<string, unknown> {
   const db = load()
-  const activeId = config.strategy.activeStrategyId
+  const activeId = getConfig().strategy.activeStrategyId
   const strategies = Object.values(db.strategies).map((s) => ({
     id: s.id,
     name: s.name,
@@ -246,7 +246,7 @@ export function getStrategy({ id }: { id: string }): Record<string, unknown> {
   const db = load()
   const strategy = db.strategies[id]
   if (!strategy) return { error: `Strategy "${id}" not found`, available: Object.keys(db.strategies) }
-  return { ...strategy, is_active: config.strategy.activeStrategyId === id }
+  return { ...strategy, is_active: getConfig().strategy.activeStrategyId === id }
 }
 
 /**
@@ -270,7 +270,7 @@ export function setActiveStrategy({ id }: { id: string }): Record<string, unknow
     return { error: errorMsg }
   }
 
-  config.strategy.activeStrategyId = id
+  getConfig().strategy.activeStrategyId = id
   log('strategy', `Active strategy set to: ${mergedDb.strategies[id].name}`)
   return { active: id, name: mergedDb.strategies[id].name }
 }
@@ -296,7 +296,7 @@ export function removeStrategy({ id }: { id: string }): Record<string, unknown> 
   const sharedDb = strategyLibraryManager.loadShared()
   const hasSharedStrategy = !!sharedDb.strategies[id]
 
-  if (config.strategy.activeStrategyId === id && !hasSharedStrategy) {
+  if (getConfig().strategy.activeStrategyId === id && !hasSharedStrategy) {
     const available = new Set([...Object.keys(privateDb.strategies), ...Object.keys(sharedDb.strategies)])
     available.delete(id)
     const newActive = Array.from(available)[0] || null
@@ -313,13 +313,13 @@ export function removeStrategy({ id }: { id: string }): Record<string, unknown> 
       } catch (err) {
         log('strategy', `Failed to update user config during removal: ${err}`)
       }
-      config.strategy.activeStrategyId = '' // empty string represents null
+      getConfig().strategy.activeStrategyId = '' // empty string represents null
     }
   }
 
   savePrivate(privateDb)
   log('strategy', `Strategy removed: ${name}`)
-  return { removed: true, id, name, new_active: config.strategy.activeStrategyId }
+  return { removed: true, id, name, new_active: getConfig().strategy.activeStrategyId }
 }
 
 /**
@@ -327,7 +327,7 @@ export function removeStrategy({ id }: { id: string }): Record<string, unknown> 
  */
 export function getActiveStrategy(): Strategy | null {
   const db = load()
-  const activeId = config.strategy.activeStrategyId
+  const activeId = getConfig().strategy.activeStrategyId
   if (!activeId || !db.strategies[activeId]) return null
   return db.strategies[activeId] || null
 }
