@@ -12,7 +12,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import dotenv from 'dotenv'
-import { getEtemaroDir, REPO_ROOT, USER_CONFIG_PATH } from '../shared/constants.js'
+import { AGENT_CONFIG_PATH, getEtemaroDir, REPO_ROOT } from '../shared/constants.js'
 import { defaultUserConfigStr } from './defaultUserConfig.js'
 import { UserConfigSchema, type ValidatedUserConfig } from './schema.js'
 
@@ -38,11 +38,11 @@ export function ensureDotenvLoaded(): void {
 }
 
 function getActiveConfigPath(): string {
-  const envPath = process.env.USER_CONFIG_PATH?.trim()
+  const envPath = process.env.AGENT_CONFIG_PATH?.trim() || process.env.USER_CONFIG_PATH?.trim()
   if (envPath) {
     return path.isAbsolute(envPath) ? envPath : path.resolve(REPO_ROOT, envPath)
   }
-  return USER_CONFIG_PATH
+  return AGENT_CONFIG_PATH
 }
 
 function getConfigFileName(): string {
@@ -60,7 +60,7 @@ export function isHelpOrInfoCommand(): boolean {
 
 export function loadAndValidateConfig(): ValidatedUserConfig {
   ensureDotenvLoaded()
-  const isExplicitConfig = Boolean(process.env.USER_CONFIG_PATH?.trim())
+  const isExplicitConfig = Boolean(process.env.AGENT_CONFIG_PATH?.trim() || process.env.USER_CONFIG_PATH?.trim())
   const activeConfigPath = getActiveConfigPath()
 
   // Ensure user config directory and file exist
@@ -129,7 +129,7 @@ export function loadAndValidateConfig(): ValidatedUserConfig {
       { cause: result.error },
     )
     err.issues = issues
-    err.configPath = USER_CONFIG_PATH
+    err.configPath = AGENT_CONFIG_PATH
     throw err
   }
 

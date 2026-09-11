@@ -180,7 +180,7 @@ describe('fail-closed config load and validation behavior', () => {
 
     expect(error).toBeDefined()
     expect(error.name).toBe('ConfigLoadError')
-    expect(error.message).toMatch(/Fatal: Failed to load explicit configuration from USER_CONFIG_PATH/)
+    expect(error.message).toMatch(/Fatal: Failed to load explicit configuration from AGENT_CONFIG_PATH/)
   })
 
   it('throws ConfigLoadError when an explicit USER_CONFIG_PATH contains corrupted JSON', async () => {
