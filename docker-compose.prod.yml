@@ -7,7 +7,7 @@ services:
     command: pnpm run start
     env_file: .env
     environment:
-      - USER_CONFIG_PATH
+      - AGENT_CONFIG_PATH
     volumes:
       - ./config:/app/config
       - ./data:/app/data
