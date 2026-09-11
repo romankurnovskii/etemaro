@@ -101,6 +101,7 @@ let _hivemind: CoreExports['hivemind'] = null as any
 let _tools: CoreExports['tools'] = null as any
 let defaultUserConfigStr: CoreExports['defaultUserConfigStr'] = null as any
 let emptyPrivateStrategyLibraryStr = ''
+let sharedStrategyLibraryStr = ''
 let validateConfigFile: CoreExports['validateConfigFile'] = null as any
 
 // Lazily populated Daemon constructor + composition factory
@@ -143,6 +144,7 @@ export async function loadCore(): Promise<void> {
   _tools = coreMod.tools
   defaultUserConfigStr = coreMod.defaultUserConfigStr
   emptyPrivateStrategyLibraryStr = (coreMod as any).emptyPrivateStrategyLibraryStr ?? ''
+  sharedStrategyLibraryStr = (coreMod as any).sharedStrategyLibraryStr ?? ''
   validateConfigFile = (coreMod as any).validateConfigFile
   // Assign Daemon constructor + composition factory
   DaemonCtor = daemonMod.Daemon
@@ -424,7 +426,7 @@ export class Cli {
       typeof flags.dir === 'string' && flags.dir.trim().length > 0 ? path.resolve(flags.dir) : this.etemaroDir
     const skeleton = writeRuntimeSkeleton(targetDir, {
       defaultUserConfigStr,
-      sharedStrategyJson: fs.readFileSync(_strategyLibraryPath('strategy-library.shared.json'), 'utf8'),
+      sharedStrategyJson: sharedStrategyLibraryStr,
       privateStrategyJson: emptyPrivateStrategyLibraryStr,
     })
     this.writeSkillMd()

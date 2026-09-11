@@ -49,6 +49,7 @@ import {
   repoPath,
   resetConsecutiveSwapFailures,
   SHARED_STRATEGY_LIB_FILENAME,
+  SHARED_STRATEGY_LIBRARY,
   SMART_WALLETS_FILENAME,
   STATE_FILENAME,
   STRATEGY_LIB_FILENAME,
@@ -475,9 +476,10 @@ export class Daemon {
     const privateLoaded = privateLibInfo.loadedFrom === 'file'
 
     const sharedLibPath = sharedConfigPath(SHARED_STRATEGY_LIB_FILENAME)
-    const sharedLibInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(sharedLibPath, {
-      strategies: {},
-    })
+    const sharedLibInfo = loadJsonFileWithInfo<{ strategies?: Record<string, unknown> }>(
+      sharedLibPath,
+      SHARED_STRATEGY_LIBRARY,
+    )
     const sharedCount = Object.keys(sharedLibInfo.data.strategies || {}).length
     const sharedLoaded = sharedLibInfo.loadedFrom === 'file'
 
@@ -490,7 +492,7 @@ export class Daemon {
     )
     log(
       'startup',
-      `${SHARED_STRATEGY_LIB_FILENAME}: ${sharedLibPath} (${sharedLoaded ? 'found' : 'missing'}, ${sharedCount} strategies) [total available: ${totalCount}]`,
+      `${SHARED_STRATEGY_LIB_FILENAME}: ${sharedLibPath} (${sharedLoaded ? 'found' : 'bundled'}, ${sharedCount} strategies) [total available: ${totalCount}]`,
     )
 
     const tokenBlacklistPath = sharedConfigPath(TOKEN_BLACKLIST_FILENAME)

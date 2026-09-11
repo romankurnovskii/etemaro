@@ -16,6 +16,7 @@ import { log } from '../shared/logger.js'
 import { readStateFile, writeStateFile } from '../shared/stateStore.js'
 import type { Strategy, StrategyLibraryData } from '../shared/types.js'
 import { listSmartWallets } from './smart-wallets.js'
+import { SHARED_STRATEGY_LIBRARY } from './strategy-library-shared.js'
 
 // ─── Strategy Library Manager ─────────────────────────────────
 const STRATEGY_FILE = strategyLibraryPath('strategy-library.json')
@@ -56,15 +57,15 @@ export class StrategyLibraryManager {
   }
 
   private loadSharedWithInfo(): SharedLibraryInfo {
+    // The bundled library is the source of truth; an on-disk file is an optional override.
     if (!fs.existsSync(this.paths.sharedPath)) {
-      throw new Error(`Shared strategy library is required at ${this.paths.sharedPath}`)
+      return { data: SHARED_STRATEGY_LIBRARY }
     }
     return {
-      data: readStateFile<StrategyLibraryData>(
-        this.paths.sharedPath,
-        { strategies: {} },
-        { label: 'strategy-library.shared', critical: true },
-      ),
+      data: readStateFile<StrategyLibraryData>(this.paths.sharedPath, SHARED_STRATEGY_LIBRARY, {
+        label: 'strategy-library.shared',
+        critical: true,
+      }),
     }
   }
 
