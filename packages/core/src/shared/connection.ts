@@ -168,7 +168,7 @@ export async function withRpcFailover<T>(
         const label = options.label ? ` [${options.label}]` : ''
         log(
           'rpc_warn',
-          `Primary RPC failed${label} (${errMessage.slice(0, 100)}) — no fallback RPC configured (set connection.rpcUrl2 in user-config.json or RPC_URL_2 in .env to enable failover)`,
+          `Primary RPC failed${label} (${errMessage.slice(0, 100)}) — no fallback RPC configured (set connection.rpcUrl2 in agent-config.json or RPC_URL_2 in .env to enable failover)`,
         )
       }
       throw err

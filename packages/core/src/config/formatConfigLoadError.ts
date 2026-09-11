@@ -25,7 +25,7 @@ export function formatConfigLoadError(err: any, fallbackPath?: string): string {
     process.env.AGENT_CONFIG_PATH ||
     process.env.USER_CONFIG_PATH ||
     AGENT_CONFIG_PATH ||
-    path.resolve(process.cwd(), 'config', 'user-config.json')
+    path.resolve(process.cwd(), 'config', 'agent-config.json')
 
   const issues: ConfigIssue[] =
     (Array.isArray(err?.issues) && err.issues) ||

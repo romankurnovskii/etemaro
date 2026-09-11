@@ -103,7 +103,7 @@ function isAuthorizedIncomingMessage(msg: IncomingTelegramMessage): boolean {
     if (!_warnedMissingChatId) {
       log(
         'telegram_warn',
-        'Ignoring inbound Telegram messages because TELEGRAM_CHAT_ID / user-config.telegramChatId is not configured. Auto-registration is disabled for safety.',
+        'Ignoring inbound Telegram messages because TELEGRAM_CHAT_ID / agent-config.telegramChatId is not configured. Auto-registration is disabled for safety.',
       )
       _warnedMissingChatId = true
     }
@@ -650,7 +650,7 @@ export function startPolling(onMessage: (msg: IncomingTelegramMessage) => Promis
   if (!chatId) {
     log(
       'telegram_warn',
-      'TELEGRAM_CHAT_ID not set in .env or user-config.telegramChatId — outbound notifications and inbound control disabled until configured.',
+      'TELEGRAM_CHAT_ID not set in .env or agent-config.telegramChatId — outbound notifications and inbound control disabled until configured.',
     )
   }
   _polling = true

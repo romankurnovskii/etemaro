@@ -1,6 +1,6 @@
 /**
  * @file config-validation.ts
- * @description Validates a user-config document/file against `AgentConfigSchema` and returns
+ * @description Validates a agent-config document/file against `AgentConfigSchema` and returns
  * the shared ValidationReport shape (same comprehensive format as strategy validation).
  *
  * The same Zod schema used at boot is the single source of truth. Unknown keys and

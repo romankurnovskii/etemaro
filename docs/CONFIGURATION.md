@@ -1,6 +1,6 @@
 # Etemaro — Configuration Guide
 
-Etemaro uses a strict schema-validated configuration system (Version 5): every required field MUST be present in the active JSON configuration file. By default the application reads `config/user-config.json`, but a custom path can be set via the `USER_CONFIG_PATH` environment variable.
+Etemaro uses a strict schema-validated configuration system (Version 5): every required field MUST be present in the active JSON configuration file. By default the application reads `config/agent-config.json`, but a custom path can be set via the `AGENT_CONFIG_PATH` environment variable.
 
 ```
               ┌────────────────────────┐
@@ -8,8 +8,8 @@ Etemaro uses a strict schema-validated configuration system (Version 5): every r
               └───────────┬────────────┘     in JSON config values
                           ▼
               ┌────────────────────────┐
-              │    user-config.json    │ ─── Default config (or custom via
-              └───────────┬────────────┘     USER_CONFIG_PATH env var)
+              │    agent-config.json    │ ─── Default config (or custom via
+              └───────────┬────────────┘     AGENT_CONFIG_PATH env var)
                           ▼
               ┌────────────────────────┐
               │      schema.ts (Zod)   │ ─── Startup validation:
@@ -49,7 +49,7 @@ Once a passphrase has been used, the same passphrase is required to load those w
 
 ## 1. `env.` Pattern (Referencing Environment Variables)
 
-Any **string field** in `user-config.json` can reference an environment variable using the `env.` prefix:
+Any **string field** in `agent-config.json` can reference an environment variable using the `env.` prefix:
 
 ```json
 {
@@ -79,7 +79,7 @@ Conventional environment variables the daemon reads:
 - `LLM_API_KEY`: API key for LLM provider.
 - `LLM_BASE_URL`: LLM provider base URL.
 - `LLM_MODEL`: Default LLM model name.
-- `USER_CONFIG_PATH`: Absolute or repo-relative path to the active JSON config.
+- `AGENT_CONFIG_PATH`: Absolute or repo-relative path to the active JSON config.
 - `ETEMARO_DATA_DIR` (preferred) or `DATA_DIR`: Absolute path for runtime data (state, logs, lessons, pool memory). Default is `<repo>/data`.
 - `ETEMARO_KEYSTORE_PASSPHRASE`: Passphrase that encrypts wallet keystores at rest (AES-256-GCM + scrypt). Optional. When unset, keys are stored as plaintext `0600` and a warning is logged; when set, it is required to load encrypted wallets. See §2 note above and `docs/ARCHITECTURE.md → Keystore Encryption`.
 
@@ -103,7 +103,7 @@ Optional:
 
 ---
 
-## 3. User Configuration (`user-config.json`)
+## 3. User Configuration (`agent-config.json`)
 
 ### Schema Version 5
 
@@ -369,7 +369,7 @@ The `api` block contains two independent services.
 
 - **Startup validation**: `loadAndValidateConfig()` reads the config JSON and passes it through the Zod schema (`schema.ts`). Any missing or wrong-type field causes an immediate failure listing every offending path:
   ```
-  Error: user-config.json has invalid or missing fields:
+  Error: agent-config.json has invalid or missing fields:
     - screening.minTvl: Required
     - hiveMind.pullMode: Required
   ```
@@ -397,7 +397,7 @@ Changes are persisted to the active config file immediately and take effect on t
 
 ### In-Memory Singleton (`config`)
 
-- Etemaro exports a singleton `config: AppConfig` built on process startup from `user-config.json` and evaluated environment variables.
+- Etemaro exports a singleton `config: AppConfig` built on process startup from `agent-config.json` and evaluated environment variables.
 - Modules import `config` directly to read active runtime settings.
 - When dynamic settings are updated (e.g. via `reloadScreeningThresholds()` or `setActiveStrategy()`), the in-memory singleton is mutated in-place to keep all references synchronized.
 
@@ -407,5 +407,5 @@ Changes are persisted to the active config file immediately and take effect on t
 
 ### Test Isolation Best Practices
 
-- **Snapshot & Restore**: Test suites that mutate `process.env` (e.g., `USER_CONFIG_PATH`, `RPC_URL`) must snapshot `process.env` in `beforeEach` and restore it in `afterEach`.
+- **Snapshot & Restore**: Test suites that mutate `process.env` (e.g., `AGENT_CONFIG_PATH`, `RPC_URL`) must snapshot `process.env` in `beforeEach` and restore it in `afterEach`.
 - **`resetConfig()` Helper**: Call `resetConfig()` from `@etemaro/core` in test fixtures whenever simulating different configuration files or environment state. This re-evaluates all defaults and refreshes the singleton without requiring module reloading.

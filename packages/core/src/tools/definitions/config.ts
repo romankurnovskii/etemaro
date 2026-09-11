@@ -15,7 +15,7 @@ Use when the user asks:
 - "review my config"
 
 Returns:
-- configPath: the resolved file path (AGENT_CONFIG_PATH or default user-config.json)
+- configPath: the resolved file path (AGENT_CONFIG_PATH or default agent-config.json)
 - preset: config preset label
 - risk, screening, management, strategy, opportunity, schedule, llm sections
 
