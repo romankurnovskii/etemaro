@@ -151,6 +151,12 @@ export interface IpcStateSnapshot {
   nextManageAt?: string
   /** Whether the daemon is currently executing a cron cycle. */
   busy: boolean
+  /** Resolved wallet public key (base58), if a wallet is configured. */
+  walletAddress?: string | null
+  /** Active LP strategy id, if any. */
+  activeStrategyId?: string | null
+  /** Resolved user-config.json path. */
+  configPath?: string
 }
 
 /** Minimal position summary for state snapshots. */
