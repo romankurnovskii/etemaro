@@ -12,10 +12,9 @@
  */
 
 import { jsonrepair } from 'jsonrepair'
-import { OpenAiChatAdapter } from '../adapters/llm/OpenAiChatAdapter.js'
 import { config } from '../config/Config.js'
 import type { ConfigPort } from '../ports/config.js'
-import type { LlmPort } from '../ports/llm.js'
+import type { LlmFactory, LlmPort } from '../ports/llm.js'
 import { createCorrelationId, createTimer, log, logStructured, setCorrelationId } from '../shared/logger.js'
 import type {
   AgentMessage,
@@ -380,8 +379,10 @@ export interface AgentLoopDeps {
   getWeightsSummary?: GetWeightsSummaryFn
   /** Injected config; defaults to the process config singleton when omitted. */
   config?: ConfigPort
-  /** Injected LLM provider; defaults to the OpenAI-compatible adapter when omitted. */
+  /** Injected LLM provider. */
   llm?: LlmPort
+  /** Lazy LLM provider factory, resolved by the composition root. */
+  createLlm?: LlmFactory
 }
 
 // ─── Core ReAct Agent Loop ──────────────────────────────────────
@@ -447,8 +448,11 @@ export async function agentLoop(
 
   const allTools = deps.getTools()
 
-  // LLM provider: injected when supplied, otherwise the default OpenAI-compatible adapter.
-  const llm: LlmPort = deps.llm ?? new OpenAiChatAdapter(cfg)
+  // LLM provider is always injected (instance or factory) by the composition root.
+  const llm = deps.llm ?? deps.createLlm?.(cfg)
+  if (!llm) {
+    throw new Error('agentLoop: no LLM provider supplied (pass deps.llm or deps.createLlm)')
+  }
 
   const DEFAULT_MODEL = cfg.llm.defaultModel
   const FALLBACK_MODEL = (cfg.llm as LlmConfig)?.fallbackModel || null

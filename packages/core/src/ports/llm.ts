@@ -3,6 +3,7 @@
  * @description LLM port. Chat-completion seam so the agent loop depends on an
  * interface instead of a concrete vendor SDK.
  */
+import type { ConfigPort } from './config.js'
 
 export interface LlmChatRequest {
   model: string
@@ -27,3 +28,6 @@ export interface LlmPort {
   readonly name: string
   chat(request: LlmChatRequest): Promise<LlmChatResponse>
 }
+
+/** Factory for the default LLM provider, supplied by the composition root. */
+export type LlmFactory = (cfg: ConfigPort) => LlmPort

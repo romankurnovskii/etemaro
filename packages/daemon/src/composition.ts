@@ -11,6 +11,7 @@ import {
   domain,
   hivemind,
   meteora,
+  OpenAiChatAdapter,
   screening,
   telegram,
   token,
@@ -24,6 +25,7 @@ import type { DaemonAdapters } from './Daemon.js'
 export function createAgentLoopDeps(): AgentLoopDeps {
   return {
     executeTool: toolExecutor.executeTool,
+    createLlm: (cfg) => new OpenAiChatAdapter(cfg),
     getTools: () => tools,
     getWalletBalances: async () => {
       const bal = await wallet.getWalletBalances()

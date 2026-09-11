@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { OpenAiChatAdapter } from '../adapters/llm/OpenAiChatAdapter.js'
 import { agentLoop, INTENT_PATTERNS, INTENT_TOOLS, MANAGER_TOOLS, SCREENER_TOOLS } from '../application/agent-loop.js'
+
+const createLlm = (cfg: any) => new OpenAiChatAdapter(cfg)
 
 const mockOpenAICreate = vi.fn()
 
@@ -81,6 +84,7 @@ describe('agent-loop — deploy_position duplicate guard', () => {
         getLessonsForPrompt,
         getPerformanceSummary,
         getDecisionSummary,
+        createLlm,
       },
     })
 
@@ -162,6 +166,7 @@ describe('agent-loop — resilient concurrent tool execution (Issue #133)', () =
         getLessonsForPrompt,
         getPerformanceSummary,
         getDecisionSummary,
+        createLlm,
       },
     })
 
@@ -246,6 +251,7 @@ STEPS:
         getLessonsForPrompt,
         getPerformanceSummary,
         getDecisionSummary,
+        createLlm,
       },
     })
 
@@ -333,6 +339,7 @@ STEPS:
         getLessonsForPrompt,
         getPerformanceSummary,
         getDecisionSummary,
+        createLlm,
       },
     })
 
@@ -422,6 +429,7 @@ STEPS:
         getLessonsForPrompt,
         getPerformanceSummary,
         getDecisionSummary,
+        createLlm,
       },
     })
 

@@ -39,6 +39,7 @@ export type {
   LiquidationAlertNotification,
   LlmChatRequest,
   LlmChatResponse,
+  LlmFactory,
   LlmPort,
   NotificationPort,
   SwapErrorNotification,

@@ -31,6 +31,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "lint:boundaries": "node scripts/check-boundaries.mjs",
     "pm2:start": "pm2 start config/ecosystem.config.cjs",
     "pm2:restart": "pm2 restart config/ecosystem.config.cjs --update-env",
     "pm2:stop": "pm2 stop etemaro",
