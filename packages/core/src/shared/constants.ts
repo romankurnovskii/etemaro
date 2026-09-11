@@ -194,9 +194,18 @@ export function dataPath(...segments: string[]): string {
   return path.join(baseDir, ...segments)
 }
 
+/**
+ * Base config directory. A source checkout (repo-level config/ exists) uses
+ * REPO_ROOT/config; an installed runtime uses the Etemaro home (the init target).
+ */
+function configBaseDir(): string {
+  const repoConfig = path.join(REPO_ROOT, 'config')
+  return fs.existsSync(repoConfig) ? repoConfig : path.join(getEtemaroDir(), 'config')
+}
+
 /** Resolve a path for global shared configuration / knowledge files. */
 export function sharedConfigPath(...segments: string[]): string {
-  return path.join(REPO_ROOT, 'config', 'shared', ...segments)
+  return path.join(configBaseDir(), 'shared', ...segments)
 }
 
 /** Resolve the canonical shared strategy/configuration path. */
@@ -213,7 +222,7 @@ export function credentialsPath(...segments: string[]): string {
   const inUserWallets = path.join(getEtemaroDir(), '.credentials', 'wallets', ...segments)
   if (fs.existsSync(inUserWallets)) return inUserWallets
 
-  const inRepoWallets = path.join(REPO_ROOT, 'config', '.credentials', 'wallets', ...segments)
+  const inRepoWallets = path.join(configBaseDir(), '.credentials', 'wallets', ...segments)
   if (fs.existsSync(inRepoWallets)) return inRepoWallets
 
   return inUserWallets
@@ -226,20 +235,20 @@ export function configPath(...segments: string[]): string {
     const envPath = getEnvConfigPath()
     if (envPath) return resolveAgainstRepo(envPath)
     if (segments[0] === AGENT_CONFIG_FILENAME) {
-      const canonical = path.join(REPO_ROOT, 'config', AGENT_CONFIG_FILENAME)
+      const canonical = path.join(configBaseDir(), AGENT_CONFIG_FILENAME)
       return fs.existsSync(canonical) ? canonical : getDefaultConfigPath()
     }
   }
   // Chapter 7: check config/instances/<file> first for instance configurations
   if (segments.length === 1) {
-    const inInstances = path.join(REPO_ROOT, 'config', 'instances', segments[0]!)
+    const inInstances = path.join(configBaseDir(), 'instances', segments[0]!)
     if (fs.existsSync(inInstances)) return inInstances
     // Default to instances/ for agent-default.json (zero-fallback model)
     if (segments[0] === 'agent-default.json') {
       return inInstances
     }
   }
-  return path.join(REPO_ROOT, 'config', ...segments)
+  return path.join(configBaseDir(), ...segments)
 }
 
 /**
@@ -248,16 +257,17 @@ export function configPath(...segments: string[]): string {
  * falling back to config/user-config.json if the instance file has not yet been initialized.
  */
 export function getDefaultConfigPath(): string {
+  const base = configBaseDir()
   const candidates = [
-    path.join(REPO_ROOT, 'config', 'instances', 'agent-default.json'),
-    path.join(REPO_ROOT, 'config', AGENT_CONFIG_FILENAME),
-    path.join(REPO_ROOT, 'config', LEGACY_USER_CONFIG_FILENAME),
+    path.join(base, 'instances', 'agent-default.json'),
+    path.join(base, AGENT_CONFIG_FILENAME),
+    path.join(base, LEGACY_USER_CONFIG_FILENAME),
   ]
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate
   }
   // New canonical default; `etemaro init` creates it.
-  return path.join(REPO_ROOT, 'config', 'instances', 'agent-default.json')
+  return path.join(base, 'instances', 'agent-default.json')
 }
 
 /** Canonical resolved agent config path (env override, else instance-first default). */

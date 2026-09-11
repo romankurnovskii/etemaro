@@ -1,15 +1,15 @@
 # Etemaro — Configuration Guide
 
-Etemaro uses a strict schema-validated configuration system (Version 5): every required field MUST be present in the active JSON configuration file. By default the application reads `config/agent-config.json`, but a custom path can be set via the `AGENT_CONFIG_PATH` environment variable.
+Etemaro uses a strict schema-validated configuration system (Version 5): every required field MUST be present in the active JSON configuration file. By default the application reads `config/instances/agent-default.json` (falling back to legacy `config/agent-config.json`, then `config/user-config.json`); a custom path can be set via the `AGENT_CONFIG_PATH` environment variable (legacy alias: `USER_CONFIG_PATH`).
 
 ```
               ┌────────────────────────┐
               │          .env          │ ─── Referenced via "env.VAR_NAME"
               └───────────┬────────────┘     in JSON config values
                           ▼
-              ┌────────────────────────┐
-              │    agent-config.json    │ ─── Default config (or custom via
-              └───────────┬────────────┘     AGENT_CONFIG_PATH env var)
+              ┌──────────────────────────────┐
+              │ instances/agent-default.json │ ─── Default agent config (or custom
+              └───────────┬──────────────────┘     via AGENT_CONFIG_PATH env var)
                           ▼
               ┌────────────────────────┐
               │      schema.ts (Zod)   │ ─── Startup validation:
@@ -79,7 +79,7 @@ Conventional environment variables the daemon reads:
 - `LLM_API_KEY`: API key for LLM provider.
 - `LLM_BASE_URL`: LLM provider base URL.
 - `LLM_MODEL`: Default LLM model name.
-- `AGENT_CONFIG_PATH`: Absolute or repo-relative path to the active JSON config.
+- `AGENT_CONFIG_PATH`: Absolute or repo-relative path to the active JSON config (legacy alias: `USER_CONFIG_PATH`).
 - `ETEMARO_DATA_DIR` (preferred) or `DATA_DIR`: Absolute path for runtime data (state, logs, lessons, pool memory). Default is `<repo>/data`.
 - `ETEMARO_KEYSTORE_PASSPHRASE`: Passphrase that encrypts wallet keystores at rest (AES-256-GCM + scrypt). Optional. When unset, keys are stored as plaintext `0600` and a warning is logged; when set, it is required to load encrypted wallets. See §2 note above and `docs/ARCHITECTURE.md → Keystore Encryption`.
 
@@ -103,7 +103,7 @@ Optional:
 
 ---
 
-## 3. User Configuration (`agent-config.json`)
+## 3. Agent Configuration (`agent-config.json`)
 
 ### Schema Version 5
 
