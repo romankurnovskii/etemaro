@@ -1,4 +1,10 @@
-npx lint-staged
+# Isolate hook runs from the real user home; keystore/SKILL.md writes must not
+# depend on ~/.config/etemaro being writable.
+ETEMARO_HOME="${TMPDIR:-/tmp}/etemaro-precommit-$$"
+export ETEMARO_HOME
+mkdir -p "$ETEMARO_HOME"
+
+node scripts/lint-staged.mjs
 pnpm -r build
 pnpm test
 

@@ -1,7 +1,14 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { REPO_ROOT } from './packages/core/src/shared/constants.js';
 import { defaultUserConfigStr } from './packages/core/src/config/defaultUserConfig.js';
+
+// Isolate tests from the real user home: route the Etemaro keystore/config dir to a temp dir
+// so tests never write to ~/.config/etemaro (which may be read-only or sandboxed).
+const testEtemaroHome = path.join(os.tmpdir(), `etemaro-vitest-${process.pid}`);
+fs.mkdirSync(testEtemaroHome, { recursive: true });
+process.env.ETEMARO_HOME = testEtemaroHome;
 
 // Write a valid user-config.json for tests using defaultUserConfigStr
 const configDir = path.join(REPO_ROOT, 'config');

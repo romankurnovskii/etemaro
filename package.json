@@ -71,10 +71,5 @@
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0"
-  },
-  "lint-staged": {
-    "**/*.{ts,tsx,js,jsx,json,md,html,css,sh}": [
-      "biome check --write --unsafe --no-errors-on-unmatched"
-    ]
   }
 }
