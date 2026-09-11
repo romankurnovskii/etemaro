@@ -10,6 +10,7 @@
  * @sideEffects Reads and writes `data/lessons.json` and pushes events to HiveMind
  */
 
+import { getConfig } from '../shared/configProvider.js'
 import {
   dataPath,
   MAX_CHANGE_PER_STEP,
@@ -173,7 +174,8 @@ export async function recordPerformance(perf: PerformanceRecord): Promise<void> 
 
   // Evolve thresholds every 5 closed positions
   if (data.performance.length % MIN_EVOLVE_POSITIONS === 0) {
-    const { config, reloadScreeningThresholds } = await import('../config/Config.js')
+    const { reloadScreeningThresholds } = await import('../config/Config.js')
+    const config = getConfig()
     const result = evolveThresholds(data.performance, config)
     if (result?.changes && Object.keys(result.changes).length > 0) {
       reloadScreeningThresholds()

@@ -47,6 +47,7 @@ export type {
   TransactionErrorNotification,
 } from './ports/index.js'
 export type { StateStorePort, StateStoreReadOptions } from './ports/state-store.js'
+export { getConfig, resetConfig, setConfig } from './shared/configProvider.js'
 export * from './shared/constants.js'
 export * from './shared/ipc-protocol.js'
 export * from './shared/keystore.js'
