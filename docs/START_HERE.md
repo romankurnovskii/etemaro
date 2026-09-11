@@ -19,6 +19,7 @@ Welcome to the Etemaro project documentation. This index lists all architectural
 ## Rules & Standards
 
 - [AGENTS.md](../AGENTS.md) — Agent Documentation System Rules and behavior guidelines.
+- [CLA.md](CLA.md) — Contributor License Agreement.
 
 ## Q&A & FAQ
 

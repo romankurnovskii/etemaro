@@ -81,17 +81,10 @@ pnpm run attach     # or: etemaro attach
 **One-shot CLI** (scripting / debugging):
 
 ```bash
-npm run balance                              # Check wallet
-npm run positions                            # Open positions
-npm run candidates -- --limit 5              # Top pool candidates
 npm run cli pnl -- <position_address>        # PnL for a position
-npm run screen -- --dry-run                  # Run one screening cycle
-npm run manage -- --dry-run                  # Run one management cycle
 npm run cli deploy -- --pool <addr> --amount 0.5 --dry-run
 npm run cli close -- --position <addr> --dry-run
 npm run cli swap -- --from <mint> --to SOL --amount 100 --dry-run
-npm run lessons                              # View learned lessons
-npm run evolve                               # Auto-adjust thresholds
 ```
 
 **Strategy management** (via CLI):

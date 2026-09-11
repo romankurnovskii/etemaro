@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { dataPath, LESSONS_FILENAME, wallet } from '@etemaro/core'
+import { wallet } from '@etemaro/core'
 import { describe, expect, it, vi } from 'vitest'
 import {
   applyCliRuntimeFlags,
@@ -49,49 +49,6 @@ describe('applyCliRuntimeFlags', () => {
     applyCliRuntimeFlags({}, env)
     expect(env.DRY_RUN).toBe('false')
   })
-})
-
-describe('Cli handleEvolve', () => {
-  it('reads performance data from dataPath(LESSONS_FILENAME)', async () => {
-    await loadCore()
-
-    const mockEvolveThresholds = vi.fn().mockReturnValue({ changes: { minTvl: 1000 }, rationale: 'better yield' })
-    const adapters: any = {
-      domain: {
-        evolveThresholds: mockEvolveThresholds,
-      },
-    }
-
-    const cli = new Cli(adapters)
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any)
-    const mockStdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-
-    const lessonsPath = dataPath(LESSONS_FILENAME)
-    const originalExists = fs.existsSync
-    const originalReadFile = fs.readFileSync
-
-    const existsSpy = vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
-      if (p === lessonsPath) return true
-      return originalExists(p)
-    })
-    const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation((p, ...args) => {
-      if (p === lessonsPath) {
-        return JSON.stringify({ performance: [{ pnl_usd: 10 }] })
-      }
-      return originalReadFile(p, ...args)
-    })
-
-    try {
-      ;(cli as any).handleEvolve()
-      expect(mockEvolveThresholds).toHaveBeenCalledWith([{ pnl_usd: 10 }], expect.anything())
-      expect(mockStdout).toHaveBeenCalled()
-    } finally {
-      mockExit.mockRestore()
-      mockStdout.mockRestore()
-      existsSpy.mockRestore()
-      readSpy.mockRestore()
-    }
-  }, 15000)
 })
 
 describe('formatConfigLoadError', () => {

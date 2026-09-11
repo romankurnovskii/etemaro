@@ -76,13 +76,11 @@ let config: CoreExports['config'] = null as any
 let _computeDeployAmount: CoreExports['computeDeployAmount'] = null as any
 let getTrackedPosition: CoreExports['getTrackedPosition'] = null as any
 let _log: CoreExports['log'] = null as any
-let dataPath: CoreExports['dataPath'] = null as any
 let _getDataDir: CoreExports['getDataDir'] = null as any
 let getEtemaroDir: CoreExports['getEtemaroDir'] = null as any
 let _AGENT_CONFIG_PATH: CoreExports['AGENT_CONFIG_PATH'] = null as any
 let _DEFAULT_ENTRY_SOURCE: CoreExports['DEFAULT_ENTRY_SOURCE'] = null as any
 let _SMART_WALLETS_FILENAME: CoreExports['SMART_WALLETS_FILENAME'] = null as any
-let LESSONS_FILENAME: CoreExports['LESSONS_FILENAME'] = null as any
 let _REPO_ROOT: CoreExports['REPO_ROOT'] = null as any
 let _DEFAULT_ACTIVE_STRATEGY_ID: CoreExports['DEFAULT_ACTIVE_STRATEGY_ID'] = null as any
 let _DEFAULT_STRATEGY_TYPE: CoreExports['DEFAULT_STRATEGY_TYPE'] = null as any
@@ -119,13 +117,11 @@ export async function loadCore(): Promise<void> {
   _computeDeployAmount = coreMod.computeDeployAmount
   getTrackedPosition = coreMod.getTrackedPosition
   _log = coreMod.log
-  dataPath = coreMod.dataPath
   _getDataDir = coreMod.getDataDir
   getEtemaroDir = coreMod.getEtemaroDir
   _AGENT_CONFIG_PATH = coreMod.AGENT_CONFIG_PATH
   _DEFAULT_ENTRY_SOURCE = coreMod.DEFAULT_ENTRY_SOURCE
   _SMART_WALLETS_FILENAME = coreMod.SMART_WALLETS_FILENAME
-  LESSONS_FILENAME = coreMod.LESSONS_FILENAME
   _REPO_ROOT = coreMod.REPO_ROOT
   _DEFAULT_ACTIVE_STRATEGY_ID = coreMod.DEFAULT_ACTIVE_STRATEGY_ID
   _DEFAULT_STRATEGY_TYPE = coreMod.DEFAULT_STRATEGY_TYPE
@@ -341,16 +337,10 @@ export class Cli {
           case 'swap-all':
             return this.handleSwapAllTokensToSol(flags)
           default:
-            return this.handleBalance()
+            return this.handleWalletList()
         }
-      case 'balance':
-        return this.handleBalance()
-      case 'positions':
-        return this.handlePositions()
       case 'pnl':
         return this.handlePnl(argv, flags)
-      case 'candidates':
-        return this.handleCandidates(flags)
       case 'token-info':
         return this.handleTokenInfo(argv, flags)
       case 'token-holders':
@@ -378,10 +368,6 @@ export class Cli {
         return this.handleSweep(flags)
       case 'liquidations':
         return this.handleLiquidations(flags)
-      case 'screen':
-        return this.handleScreen(flags)
-      case 'manage':
-        return this.handleManage(flags)
       case 'config':
         return this.handleConfig(argv, sub2, flags)
       case 'strategy':
@@ -390,16 +376,8 @@ export class Cli {
         return this.handleStudy(flags)
       case 'start':
         return this.handleStart(flags)
-      case 'lessons':
-        return this.handleLessons(argv, sub2, flags)
       case 'pool-memory':
         return this.handlePoolMemory(flags)
-      case 'evolve':
-        return this.handleEvolve()
-      case 'blacklist':
-        return this.handleBlacklist(argv, sub2, flags)
-      case 'performance':
-        return this.handlePerformance(flags)
       case 'init':
         return this.handleInit(flags)
       case 'attach':
@@ -806,14 +784,6 @@ export class Cli {
     })
   }
 
-  private async handleBalance(): Promise<void> {
-    out(await this.adapters.wallet.getWalletBalances())
-  }
-
-  private async handlePositions(): Promise<void> {
-    out(await this.adapters.meteora.getMyPositions({ force: true }))
-  }
-
   private async handlePnl(argv: string[], flags: Record<string, any>): Promise<void> {
     const posAddr = argv.find((a, i) => !a.startsWith('-') && i > 0 && argv[i - 1] !== '--position' && a !== 'pnl')
     const positionAddress = flags.position || posAddr
@@ -837,66 +807,6 @@ export class Cli {
     if (tracked?.strategy) pnl.strategy = tracked.strategy
     if (tracked?.instruction) pnl.instruction = tracked.instruction
     out(pnl)
-  }
-
-  private async handleCandidates(flags: Record<string, any>): Promise<void> {
-    const limit = parseInt(flags.limit || '5', 10)
-    const raw = await this.adapters.screening.getTopCandidates({ limit })
-    const pools = raw.candidates || raw.pools || []
-    // Smart-wallet enrichment is optional in market mode; only the wallet-list tools require it.
-    const smartWalletListId = this.adapters.domain.getActiveStrategy()?.smartWalletListId
-
-    const enriched = []
-    for (const pool of pools) {
-      const mint = pool.base?.mint
-      const [activeBin, smartWallets, tokenInfo, holders, narrative] = await Promise.allSettled([
-        this.adapters.meteora.getActiveBin({ pool_address: pool.pool }),
-        smartWalletListId
-          ? this.adapters.domain.checkSmartWalletsOnPool({ listId: smartWalletListId, pool_address: pool.pool })
-          : Promise.resolve(null),
-        mint ? this.adapters.domain.getTokenInfo({ query: mint }) : Promise.resolve(null),
-        mint ? this.adapters.domain.getTokenHolders({ mint, limit: 20, smartWalletListId }) : Promise.resolve(null),
-        mint ? this.adapters.domain.getTokenNarrative({ mint }) : Promise.resolve(null),
-      ])
-      const ti = tokenInfo.status === 'fulfilled' ? tokenInfo.value?.results?.[0] : null
-      enriched.push({
-        pool: pool.pool,
-        name: pool.name,
-        bin_step: pool.bin_step,
-        fee_pct: pool.fee_pct,
-        fee_active_tvl_ratio: pool.fee_active_tvl_ratio,
-        volume: pool.volume_window,
-        tvl: pool.tvl ?? pool.active_tvl,
-        volatility: pool.volatility,
-        mcap: pool.mcap,
-        organic_score: pool.organic_score,
-        active_pct: pool.active_pct,
-        price_change_pct: pool.price_change_pct,
-        active_bin: activeBin.status === 'fulfilled' ? activeBin.value?.binId : null,
-        smart_wallets:
-          smartWallets.status === 'fulfilled' ? (smartWallets.value?.in_pool || []).map((w: any) => w.name) : [],
-        token: {
-          mint,
-          symbol: pool.base?.symbol,
-          holders: pool.holders,
-          mcap: ti?.mcap,
-          launchpad: ti?.launchpad,
-          global_fees_sol: ti?.global_fees_sol,
-          price_change_1h: ti?.stats_1h?.price_change,
-          net_buyers_1h: ti?.stats_1h?.net_buyers,
-          audit: {
-            top10_pct: ti?.audit?.top_holders_pct,
-            bots_pct: ti?.audit?.bot_holders_pct,
-          },
-        },
-        holders: holders.status === 'fulfilled' ? holders.value : null,
-        narrative: narrative.status === 'fulfilled' ? narrative.value?.narrative : null,
-        pool_memory: this.adapters.domain.recallForPool(pool.pool) || null,
-      })
-      await new Promise((r) => setTimeout(r, 150))
-    }
-
-    out({ candidates: enriched, total_screened: raw.total_screened })
   }
 
   private async handleTokenInfo(argv: string[], flags: Record<string, any>): Promise<void> {
@@ -1023,20 +933,6 @@ export class Cli {
         amount: parseFloat(flags.amount),
       }),
     )
-  }
-
-  private async handleScreen(flags: Record<string, any>): Promise<void> {
-    if (!this.adapters.daemon) die('Screen command requires daemon adapter')
-    this.adapters.domain.validateActiveStrategy()
-    const report = await this.adapters.daemon.runScreeningCycle({ silent: flags.silent })
-    out({ done: true, report: report || 'No action taken' })
-  }
-
-  private async handleManage(flags: Record<string, any>): Promise<void> {
-    if (!this.adapters.daemon) die('Manage command requires daemon adapter')
-    this.adapters.domain.validateActiveStrategy()
-    const report = await this.adapters.daemon.runManagementCycle({ silent: flags.silent })
-    out({ done: true, report: report || 'No action taken' })
   }
 
   private async handleStrategy(argv: string[], sub2: string | undefined, flags: Record<string, any>): Promise<void> {
@@ -1387,61 +1283,9 @@ export class Cli {
     }
   }
 
-  private async handleLessons(argv: string[], sub2: string | undefined, flags: Record<string, any>): Promise<void> {
-    if (sub2 === 'add') {
-      const text = argv
-        .filter((a) => !a.startsWith('-'))
-        .slice(2)
-        .join(' ')
-      if (!text) die('Usage: etemaro lessons add <text>')
-      this.adapters.domain.addLesson(text, [], { pinned: false, role: null })
-      out({ saved: true, rule: text, outcome: 'manual', role: null })
-    } else {
-      const limit = flags.limit ? parseInt(flags.limit, 10) : 50
-      out(this.adapters.domain.listLessons({ limit }))
-    }
-  }
-
   private handlePoolMemory(flags: Record<string, any>): void {
     if (!flags.pool) die('Usage: etemaro pool-memory --pool <addr>')
     out(this.adapters.domain.getPoolMemory({ pool_address: flags.pool }))
-  }
-
-  private handleEvolve(): void {
-    const lessonsFile = dataPath(LESSONS_FILENAME)
-    let perfData: any[] = []
-    if (fs.existsSync(lessonsFile)) {
-      try {
-        perfData = JSON.parse(fs.readFileSync(lessonsFile, 'utf8')).performance || []
-      } catch {
-        /* no data */
-      }
-    }
-    const result = this.adapters.domain.evolveThresholds(perfData, config)
-    if (!result) {
-      out({ evolved: false, reason: `Need at least 5 closed positions (have ${perfData.length})` })
-    } else {
-      out({ evolved: Object.keys(result.changes).length > 0, changes: result.changes, rationale: result.rationale })
-    }
-  }
-
-  private handleBlacklist(_argv: string[], sub2: string | undefined, flags: Record<string, any>): void {
-    if (sub2 === 'add') {
-      if (!flags.mint) die('Usage: etemaro blacklist add --mint <addr> --reason <text>')
-      if (!flags.reason) die('--reason is required')
-      out(this.adapters.domain.addToBlacklist({ mint: flags.mint, reason: flags.reason }))
-    } else if (sub2 === 'list' || !sub2) {
-      out(this.adapters.domain.listBlacklist())
-    } else {
-      die(`Unknown blacklist subcommand: ${sub2}. Use: add, list`)
-    }
-  }
-
-  private handlePerformance(flags: Record<string, any>): void {
-    const limit = flags.limit ? parseInt(flags.limit, 10) : 200
-    const history = this.adapters.domain.getPerformanceHistory({ hours: 999999, limit })
-    const summary = this.adapters.domain.getPerformanceSummary()
-    out({ summary, ...history })
   }
 }
 

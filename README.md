@@ -163,3 +163,15 @@ Clone + PM2 / Docker is **[source setup](#developer--source-setup)** above.
 - ⚙️ **[Configuration Reference](docs/CONFIGURATION.md)** — Exhaustive configuration reference for `agent-config.json`.
 - 🧠 **[HiveMind Guide](docs/HIVEMIND.md)** — Fleet learning, lesson sharing, and shared presets.
 - 💻 **[Desktop App](apps/desktop)** — Tauri-based cross-platform desktop UI.
+
+---
+
+## License
+
+This project is licensed under the **PolyForm Noncommercial License 1.0.0**. 
+
+You are free to use, modify, and distribute this software for personal, academic, or non-profit purposes (including running your own personal trading bots). However, you **may not** use this software for commercial purposes, including but not limited to:
+- Offering the software as a paid service (SaaS, automated trading dashboards for clients, etc.).
+- Selling the software or incorporating it into a commercial product.
+
+See the [LICENSE](docs/LICENSE) file in the root of this repository for the full legal text.
