@@ -12,9 +12,10 @@
  */
 
 import { jsonrepair } from 'jsonrepair'
-import OpenAI from 'openai'
+import { OpenAiChatAdapter } from '../adapters/llm/OpenAiChatAdapter.js'
 import { config } from '../config/Config.js'
 import type { ConfigPort } from '../ports/config.js'
+import type { LlmPort } from '../ports/llm.js'
 import { createCorrelationId, createTimer, log, logStructured, setCorrelationId } from '../shared/logger.js'
 import type {
   AgentMessage,
@@ -379,6 +380,8 @@ export interface AgentLoopDeps {
   getWeightsSummary?: GetWeightsSummaryFn
   /** Injected config; defaults to the process config singleton when omitted. */
   config?: ConfigPort
+  /** Injected LLM provider; defaults to the OpenAI-compatible adapter when omitted. */
+  llm?: LlmPort
 }
 
 // ─── Core ReAct Agent Loop ──────────────────────────────────────
@@ -444,12 +447,8 @@ export async function agentLoop(
 
   const allTools = deps.getTools()
 
-  // Initialize OpenAI client
-  const client = new OpenAI({
-    baseURL: cfg.llm.baseUrl,
-    apiKey: cfg.llm.apiKey,
-    timeout: 5 * 60 * 1000,
-  })
+  // LLM provider: injected when supplied, otherwise the default OpenAI-compatible adapter.
+  const llm: LlmPort = deps.llm ?? new OpenAiChatAdapter(cfg)
 
   const DEFAULT_MODEL = cfg.llm.defaultModel
   const FALLBACK_MODEL = (cfg.llm as LlmConfig)?.fallbackModel || null
@@ -468,15 +467,14 @@ export async function agentLoop(
 
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          const reqParams: Record<string, unknown> = {
+          response = await llm.chat({
             model: usedModel,
             messages,
             tools: getToolsForRole(agentType, allTools, goal),
             temperature: cfg.llm.temperature,
-            max_tokens: maxOutputTokens ?? cfg.llm.maxTokens,
-          }
-          if (!omitToolChoice) reqParams.tool_choice = toolChoice
-          response = await client.chat.completions.create(reqParams as any)
+            maxTokens: maxOutputTokens ?? cfg.llm.maxTokens,
+            toolChoice: omitToolChoice ? undefined : toolChoice,
+          })
         } catch (error) {
           if (providerMode === 'system' && isSystemRoleError(error)) {
             providerMode = 'user_embedded'

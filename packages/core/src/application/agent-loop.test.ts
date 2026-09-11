@@ -498,4 +498,27 @@ describe('agent-loop — portfolio intent routing & tools', () => {
     }
     expect(matched.has('get_position_pnl')).toBe(true)
   })
+
+  it('uses an injected LlmPort instead of constructing an OpenAI client', async () => {
+    const chat = vi.fn().mockResolvedValue({
+      choices: [{ message: { role: 'assistant', content: 'Injected answer', tool_calls: null } }],
+    })
+    const deps = {
+      executeTool: vi.fn(),
+      getTools: vi.fn().mockReturnValue([]),
+      getWalletBalances: vi.fn().mockResolvedValue({ sol: 1, tokens: [] }),
+      getMyPositions: vi.fn().mockResolvedValue({ total_positions: 0, positions: [] }),
+      getStateSummary: vi.fn().mockReturnValue(null),
+      getLessonsForPrompt: vi.fn().mockReturnValue(null),
+      getPerformanceSummary: vi.fn().mockReturnValue(null),
+      getDecisionSummary: vi.fn().mockReturnValue(null),
+      llm: { name: 'fake', chat },
+    }
+
+    const result = await agentLoop('say hi', 5, [], 'GENERAL', null, null, { deps })
+
+    expect(chat).toHaveBeenCalledTimes(1)
+    expect(mockOpenAICreate).not.toHaveBeenCalled()
+    expect(result.content).toBe('Injected answer')
+  })
 })
