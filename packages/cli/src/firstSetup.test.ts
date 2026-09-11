@@ -84,12 +84,17 @@ describe('writeRuntimeSkeleton', () => {
     const result = writeRuntimeSkeleton(dir, {
       defaultUserConfigStr: '{"_version":4}',
       sharedStrategyJson: '{"strategies":{"spot":{"id":"spot"}}}',
+      privateStrategyJson: '{"description":"private overlay","strategies":{}}',
     })
     expect(result.env.created).toBe(true)
     expect(result.config.created).toBe(true)
     expect(fs.existsSync(path.join(dir, '.env'))).toBe(true)
-    expect(fs.existsSync(path.join(dir, 'config', 'user-config.json'))).toBe(true)
+    expect(fs.existsSync(path.join(dir, 'config', 'instances', 'agent-default.json'))).toBe(true)
     expect(fs.existsSync(path.join(dir, 'config', 'shared', 'strategy-library.shared.json'))).toBe(true)
+    expect(fs.existsSync(path.join(dir, 'config', 'shared', 'strategy-library.json'))).toBe(true)
+    expect(fs.readFileSync(path.join(dir, 'config', 'shared', 'strategy-library.json'), 'utf8')).toContain(
+      'private overlay',
+    )
   })
 
   it('does not overwrite an existing .env', () => {
@@ -99,6 +104,7 @@ describe('writeRuntimeSkeleton', () => {
     const result = writeRuntimeSkeleton(dir, {
       defaultUserConfigStr: '{}',
       sharedStrategyJson: '{"strategies":{}}',
+      privateStrategyJson: '{"strategies":{}}',
     })
     expect(result.env.created).toBe(false)
     expect(fs.readFileSync(path.join(dir, '.env'), 'utf8')).toContain('keep-me')

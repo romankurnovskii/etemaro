@@ -19,6 +19,7 @@ export interface SkeletonResult {
   env: { path: string; created: boolean }
   config: { path: string; created: boolean }
   strategyLibrary: { path: string; created: boolean }
+  strategyLibraryPrivate: { path: string; created: boolean }
 }
 
 const ENV_TEMPLATE = `# etemaro — first-run environment
@@ -81,7 +82,7 @@ export function formatInitMessage(opts: { directory: string; firstRun: boolean; 
 
 export function writeRuntimeSkeleton(
   directory: string,
-  opts: { defaultUserConfigStr: string; sharedStrategyJson: string },
+  opts: { defaultUserConfigStr: string; sharedStrategyJson: string; privateStrategyJson: string },
 ): SkeletonResult {
   const configDir = path.join(directory, 'config')
   const dataDir = path.join(directory, 'data')
@@ -96,13 +97,24 @@ export function writeRuntimeSkeleton(
     envCreated = true
   }
 
-  const userConfigFile = path.join(configDir, 'user-config.json')
+  // Instance-first model: the default agent config is config/instances/agent-default.json.
+  // Existing flat config/user-config.json is left untouched (no migration).
+  const instancesDir = path.join(configDir, 'instances')
+  const instanceConfigFile = path.join(instancesDir, 'agent-default.json')
+  const legacyUserConfigFile = path.join(configDir, 'user-config.json')
+  let configFile: string
   let configCreated = false
-  if (!fs.existsSync(userConfigFile)) {
+  if (fs.existsSync(instanceConfigFile)) {
+    configFile = instanceConfigFile
+  } else if (fs.existsSync(legacyUserConfigFile)) {
+    configFile = legacyUserConfigFile
+  } else {
+    fs.mkdirSync(instancesDir, { recursive: true })
     fs.writeFileSync(
-      userConfigFile,
+      instanceConfigFile,
       opts.defaultUserConfigStr.endsWith('\n') ? opts.defaultUserConfigStr : `${opts.defaultUserConfigStr}\n`,
     )
+    configFile = instanceConfigFile
     configCreated = true
   }
 
@@ -118,11 +130,22 @@ export function writeRuntimeSkeleton(
     strategyCreated = true
   }
 
+  const privateStrategyFile = path.join(sharedConfigDir, 'strategy-library.json')
+  let privateStrategyCreated = false
+  if (!fs.existsSync(privateStrategyFile)) {
+    fs.writeFileSync(
+      privateStrategyFile,
+      opts.privateStrategyJson.endsWith('\n') ? opts.privateStrategyJson : `${opts.privateStrategyJson}\n`,
+    )
+    privateStrategyCreated = true
+  }
+
   return {
     directory,
     env: { path: envFile, created: envCreated },
-    config: { path: userConfigFile, created: configCreated },
+    config: { path: configFile, created: configCreated },
     strategyLibrary: { path: sharedStrategyFile, created: strategyCreated },
+    strategyLibraryPrivate: { path: privateStrategyFile, created: privateStrategyCreated },
   }
 }
 
