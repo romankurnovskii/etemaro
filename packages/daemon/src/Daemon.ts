@@ -37,6 +37,7 @@ import {
   getLastBriefingDate,
   getTrackedPosition,
   getTrackedPositions,
+  getWalletAddress,
   type IpcPositionSummary,
   type IpcToolDescriptor,
   isPnlSuspect,
@@ -66,6 +67,9 @@ import {
 } from '@etemaro/core'
 import cron from 'node-cron'
 import { createDaemonAdapters } from './composition.js'
+
+export { createAgentLoopDeps, createDaemonAdapters } from './composition.js'
+
 import { AgentSupervisor } from './server/AgentSupervisor.js'
 import { IpcServer } from './server/IpcServer.js'
 // These will be injected or resolved at runtime by the adapter layer.
@@ -280,6 +284,19 @@ export class Daemon {
     const listId = this.adapters.domain.getActiveStrategy()?.smartWalletListId
     if (!listId) throw new Error('Active strategy does not define smartWalletListId')
     return listId
+  }
+
+  /** Resolved wallet address, cached (keypair resolution touches disk). */
+  private _cachedWalletAddress: string | null | undefined
+  private getWalletAddressSafe(): string | null {
+    if (this._cachedWalletAddress === undefined) {
+      try {
+        this._cachedWalletAddress = getWalletAddress() ?? null
+      } catch {
+        this._cachedWalletAddress = null
+      }
+    }
+    return this._cachedWalletAddress ?? null
   }
 
   private adapters: DaemonAdapters // Dependency injection container for blockchain, messaging, and system adapters
@@ -3034,6 +3051,9 @@ IMPORTANT:
         nextScreenAt,
         nextManageAt,
         busy: this.managementBusy || this.screeningBusy || this.busy,
+        walletAddress: this.getWalletAddressSafe(),
+        activeStrategyId: this.adapters.domain.getActiveStrategy()?.id ?? null,
+        configPath: USER_CONFIG_PATH,
       })
     } catch (e: any) {
       log('ipc_warn', `Failed to broadcast IPC state: ${e.message}`)
