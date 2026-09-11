@@ -66,6 +66,7 @@ import { log, logAction, logStructured } from '../shared/logger.js'
 import { Mutex } from '../shared/mutex.js'
 import type { AgentRole, PortfolioSummaryResult, SwapErrorCategory } from '../shared/types.js'
 import { loadJsonFile, normalizeTimeframe, saveJsonFile, scaleScreeningToTimeframe } from '../shared/utils.js'
+import { ToolRegistry } from '../tools/ToolRegistry.js'
 import { sleep } from '../utils/time.js'
 import {
   claimFees,
@@ -91,6 +92,7 @@ import {
   notifySwapError,
   notifyTransactionError,
 } from './notifications/TelegramAdapter.js'
+import { tools as toolDefinitions } from './ToolDefinitions.js'
 
 // ─── Constants ─────────────────────────────────────────────────
 
@@ -898,9 +900,12 @@ const toolMap: Record<string, ToolFn> = {
   },
 }
 
-// ─── Protected tools ───────────────────────────────────────────
+// ─── Tool registry ─────────────────────────────────────────────
+// Single source of truth joining LLM schemas, handlers, and permission classes.
+// Adding a tool means adding a definition + a handler; the registry validates the pair
+// at load time and derives the write/protected sets from one declaration.
 
-export const WRITE_TOOLS = new Set([
+const WRITE_TOOL_NAMES = [
   'deploy_position',
   'claim_fees',
   'close_position',
@@ -908,8 +913,21 @@ export const WRITE_TOOLS = new Set([
   'swap_token',
   'swap_all_tokens_to_sol',
   'sweep_unsold_tokens',
-])
-export const PROTECTED_TOOLS = new Set([...WRITE_TOOLS, 'self_update'])
+] as const
+
+const PROTECTED_TOOL_NAMES = [...WRITE_TOOL_NAMES, 'self_update'] as const
+
+export const toolRegistry = new ToolRegistry({
+  definitions: toolDefinitions,
+  handlers: toolMap,
+  writeTools: WRITE_TOOL_NAMES,
+  protectedTools: PROTECTED_TOOL_NAMES,
+})
+
+/** @deprecated Prefer toolRegistry.isWrite(); kept for existing consumers. */
+export const WRITE_TOOLS = toolRegistry.writeTools
+/** @deprecated Prefer toolRegistry.isProtected(); kept for existing consumers. */
+export const PROTECTED_TOOLS = toolRegistry.protectedTools
 
 export const writeToolsMutex = new Mutex()
 
@@ -1480,7 +1498,7 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
   name = name.replace(/<.*$/, '').trim()
 
   // ─── Validate tool exists ─────────────────
-  const fn = toolMap[name]
+  const fn = toolRegistry.getHandler(name)
   if (!fn) {
     const error = `Unknown tool: ${name}`
     log('error', error)
