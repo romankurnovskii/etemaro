@@ -136,8 +136,11 @@ pnpm cli init
 # 3. Start in dry-run mode
 pnpm run dev
 
-# or in live mode
+# or in live mode with default agent strategy config
 pnpm run start
+
+# run with custom strategy config
+npm run start -- --config config/instances/your-config.json
 ```
 
 ---

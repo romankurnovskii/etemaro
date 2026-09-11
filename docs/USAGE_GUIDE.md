@@ -21,6 +21,13 @@ The full startup sequence diagram is in [FULL_FLOW.md §3](FULL_FLOW.md#3-startu
 npm run dev        # DRY_RUN=true — safe testing, no real transactions
 npm start          # LIVE mode — real SOL deployed
 npm run pm2:start  # Headless daemon for VPS (24/7)
+
+# Run with another strategy / instance config:
+npm run start -- --config config/instances/agent-my-strategy.json
+# or via environment variable:
+AGENT_CONFIG_PATH=config/instances/agent-my-strategy.json npm run start
+# or with pnpm:
+pnpm start --config config/instances/agent-my-strategy.json
 ```
 
 The REPL prompt shows countdown timers to the next cycle:

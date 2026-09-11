@@ -740,12 +740,12 @@ export async function swapBaseToSolWithRetry(
 
       if (ok) {
         if (affectsCircuit) recordSwapSuccess()
-        // Jupiter V2 /execute returns outputAmountResult in lamports; divide by 1e9 for SOL.
-        // amount_in is also in lamports if used elsewhere.
-        const solReceived =
-          sr.amount_out != null
-            ? (typeof sr.amount_out === 'number' ? sr.amount_out : parseFloat(sr.amount_out)) / 1e9
-            : null
+        // WalletAdapter.swapToken and swapDirectDlmm already normalise amount_out to
+        // human-readable SOL (they divide by the output token's decimals). Dividing
+        // again booked successful swaps as ~0 SOL and let settlement wipe PnL.
+        const parsedAmountOut =
+          sr.amount_out != null ? (typeof sr.amount_out === 'number' ? sr.amount_out : parseFloat(sr.amount_out)) : null
+        const solReceived = parsedAmountOut != null && Number.isFinite(parsedAmountOut) ? parsedAmountOut : null
         const usdValue =
           token.usd ?? (solReceived != null && balances.sol_price ? solReceived * balances.sol_price : null)
 

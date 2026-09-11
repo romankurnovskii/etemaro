@@ -24,6 +24,7 @@ import {
   type AgentMessage,
   addLogListener,
   agentLoop,
+  computeAgentPnlMetrics,
   computeDeployAmount,
   config,
   confirmPeak,
@@ -36,6 +37,7 @@ import {
   getDataDir,
   getInstanceId,
   getLastBriefingDate,
+  getPerformanceRecords,
   getTrackedPosition,
   getTrackedPositions,
   getWalletAddress,
@@ -340,6 +342,9 @@ export class Daemon {
 
   // Latest live positions cache (from Meteora on-chain / REST API)
   private latestLivePositions: any[] = []
+
+  // Daemon boot timestamp for session PnL tracking
+  private readonly sessionStartTime: number = Date.now()
 
   // IPC Server
   private ipcServer: IpcServer | null = null
@@ -3020,15 +3025,14 @@ IMPORTANT:
     if (!this.ipcServer) return
     try {
       const tracked = getTrackedPositions(true)
-      let totalPnlUsd = 0
       const positions: IpcPositionSummary[] = tracked.map((p: any) => {
         const live = this.latestLivePositions.find((lp: any) => lp.position === p.position || lp.pool === p.pool)
         const pnl = Number(live?.pnl_usd ?? p.pnl_usd ?? 0)
-        totalPnlUsd += pnl
         const pnlPct = Number(live?.pnl_pct ?? p.pnl_pct ?? p.peak_pnl_pct ?? 0)
         const tokenSymbol =
           live?.pair ?? p.pool_name ?? p.pair ?? p.tokenSymbol ?? (p.position ? p.position.slice(0, 8) : '')
         const valueUsd = Number(live?.total_value_usd ?? live?.value_usd ?? p.initial_value_usd ?? 0)
+        const unclaimedFeesUsd = Number(live?.unclaimed_fees_usd ?? p.unclaimed_fees_usd ?? 0)
         return {
           positionAddress: p.position ?? p.position_address ?? '',
           poolAddress: p.pool ?? p.pool_address ?? '',
@@ -3036,8 +3040,16 @@ IMPORTANT:
           pnlUsd: Math.round(pnl * 100) / 100,
           pnlPct: Math.round(pnlPct * 100) / 100,
           valueUsd: Math.round(valueUsd * 100) / 100,
+          unclaimedFeesUsd: Math.round(unclaimedFeesUsd * 100) / 100,
           deployedAt: p.deployed_at ? new Date(p.deployed_at).toISOString() : undefined,
         }
+      })
+
+      const perfRecords = getPerformanceRecords()
+      const pnlMetrics = computeAgentPnlMetrics({
+        performanceRecords: perfRecords,
+        sessionStartTime: this.sessionStartTime,
+        livePositions: this.latestLivePositions,
       })
 
       const nextScreenAt = this.screeningLastRun
@@ -3049,13 +3061,17 @@ IMPORTANT:
 
       this.ipcServer.broadcastState({
         positions,
-        totalPnlUsd: Math.round(totalPnlUsd * 100) / 100,
+        totalPnlUsd: pnlMetrics.openUnrealizedPnlUsd,
+        totalRealizedPnlUsd: pnlMetrics.totalRealizedPnlUsd,
+        sessionPnlUsd: pnlMetrics.sessionRealizedPnlUsd,
+        unclaimedFeesUsd: pnlMetrics.openUnclaimedFeesUsd,
         nextScreenAt,
         nextManageAt,
         busy: this.managementBusy || this.screeningBusy || this.busy,
         walletAddress: this.getWalletAddressSafe(),
         activeStrategyId: this.adapters.domain.getActiveStrategy()?.id ?? null,
         configPath: AGENT_CONFIG_PATH,
+        dryRun: Boolean(config.connection?.dryRun),
       })
     } catch (e: any) {
       log('ipc_warn', `Failed to broadcast IPC state: ${e.message}`)

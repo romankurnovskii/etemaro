@@ -44,8 +44,16 @@ export const App: React.FC<AppProps> = ({ socketPath, port = 8765, token, agentI
     }
   }, [stdout])
 
-  // Calculate visible log rows based on terminal height
-  const maxVisible = Math.max(6, terminalRows - 11)
+  // Calculate visible log rows based on terminal height and actual chrome lines
+  // to ensure total rendered lines never exceed terminalRows (preventing terminal scrolling/header overlap)
+  const positionsCount = state?.positions?.length ?? 0
+  const activePoolLines = positionsCount > 0 ? 1 + Math.min(3, positionsCount) + (positionsCount > 3 ? 1 : 0) : 0
+  const statusPaneHeight = 5 + activePoolLines
+  const chatInputHeight = 4
+  const logChromeHeight = 3
+  const buffer = 2
+  const totalChrome = statusPaneHeight + chatInputHeight + logChromeHeight + buffer
+  const maxVisible = Math.max(4, terminalRows - totalChrome)
 
   // Keyboard navigation & controls
   useInput((input, key) => {

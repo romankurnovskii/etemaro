@@ -50,6 +50,7 @@ vi.mock('./WalletAdapter.js', async () => {
     getWallet: vi.fn().mockReturnValue(Keypair.generate()),
     normalizeMint: (mint: string) => mint,
     invalidateBalanceCache: vi.fn(),
+    getWalletBalances: vi.fn().mockResolvedValue({ sol: 0, tokens: [] }),
   }
 })
 

@@ -36,6 +36,9 @@ export const LogStreamPane: React.FC<LogStreamPaneProps> = ({
   const startIndex = Math.max(0, endIndex - maxVisible)
   const visibleLogs = logs.slice(startIndex, endIndex)
   const isScrolled = clampedOffset > 0
+  const isMac = process.platform === 'darwin'
+  const scrollHint = isMac ? '[Ctrl+U/D or Shift+↑/↓] to scroll' : '[PgUp/PgDn] to scroll'
+  const returnLiveHint = isMac ? '[End or Ctrl+D] to return to live' : '[End or PgDn] to return to live'
 
   return (
     <Box
@@ -54,12 +57,10 @@ export const LogStreamPane: React.FC<LogStreamPaneProps> = ({
         <Box>
           {isScrolled ? (
             <Text color="cyan">
-              Viewing {startIndex + 1}-{endIndex} of {totalLogs} | [End] or [PgDn] to return to live
+              Viewing {startIndex + 1}-{endIndex} of {totalLogs} | {returnLiveHint}
             </Text>
           ) : (
-            <Text dimColor>
-              {totalLogs > maxVisible ? `${totalLogs} logs | [PgUp/PgDn] to scroll` : `${totalLogs} logs`}
-            </Text>
+            <Text dimColor>{totalLogs > maxVisible ? `${totalLogs} logs | ${scrollHint}` : `${totalLogs} logs`}</Text>
           )}
         </Box>
       </Box>

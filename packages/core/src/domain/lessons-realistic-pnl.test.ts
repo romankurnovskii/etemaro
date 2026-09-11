@@ -363,4 +363,93 @@ describe('TASK-03: Realistic PnL Accounting & Mark-to-Market', () => {
     // Lesson should reflect failure
     expect(data.lessons.some((l: any) => l.rule.includes('EXECUTION FAILURE') && l.outcome === 'bad')).toBe(true)
   })
+
+  it('AC7: mark-to-market MUST NOT wipe a record with zero token inventory (100% SOL close)', async () => {
+    // Corruption scenario: a single-sided bid-ask close returned 100% SOL, but the
+    // record was stored as closed_pending_swap with cash_realized_usd = 0 and no
+    // token amount. The sweeper must leave the captured residual value intact.
+    await recordPerformance({
+      position: 'pos-sol-only-7',
+      pool: 'pool-sol-only',
+      pool_name: 'BATON-SOL',
+      base_mint: 'mint-baton-7',
+      strategy: 'bid_ask',
+      bin_range: 20,
+      bin_step: 80,
+      volatility: 6,
+      fee_tvl_ratio: 1.7,
+      organic_score: 85,
+      amount_sol: 0.1,
+      initial_value_usd: 10.15,
+      final_value_usd: 10.16,
+      fees_earned_usd: 0.02,
+      minutes_in_range: 30,
+      minutes_held: 30,
+      close_reason: 'pumped far above range',
+      status: 'closed_pending_swap',
+      cash_realized_usd: 0,
+      unrealized_residual_usd: 10.16,
+      // unrealized_tokens_amount intentionally omitted -> stored as 0
+      liquidation_mint: 'mint-baton-7',
+    })
+
+    const updated = updatePendingTradesMarkToMarket({ 'mint-baton-7': 0.05 })
+    expect(updated).toBe(0)
+
+    const data = JSON.parse(fs.readFileSync(lessonsFile, 'utf-8'))
+    const rec = data.performance[0]
+    expect(rec.unrealized_tokens_amount).toBe(0)
+    expect(rec.unrealized_residual_usd).toBe(10.16)
+    expect(rec.final_value_usd).toBe(10.16)
+    // Net PnL = 10.16 - 10.15 + 0.02 = +0.03, NOT -10.1
+    expect(rec.net_pnl_usd).toBeCloseTo(0.03, 2)
+  })
+
+  it('AC8: settling a token already gone from the wallet preserves the residual value', async () => {
+    const { enqueuePendingLiquidation, markLiquidationSuccess } = await import('./liquidation-queue.js')
+
+    await recordPerformance({
+      position: 'pos-gone-8',
+      pool: 'pool-gone',
+      pool_name: 'EMBERCAT-SOL',
+      base_mint: 'mint-gone-8',
+      strategy: 'bid_ask',
+      bin_range: 20,
+      bin_step: 100,
+      volatility: 3,
+      fee_tvl_ratio: 0.2,
+      organic_score: 75,
+      amount_sol: 0.1,
+      initial_value_usd: 10.1,
+      final_value_usd: 10.17,
+      fees_earned_usd: 0,
+      minutes_in_range: 30,
+      minutes_held: 30,
+      close_reason: 'pumped far above range',
+      status: 'closed_pending_swap',
+      cash_realized_usd: 0,
+      unrealized_residual_usd: 10.17,
+      unrealized_tokens_amount: 0,
+      liquidation_mint: 'mint-gone-8',
+    })
+
+    await enqueuePendingLiquidation({
+      mint: 'mint-gone-8',
+      symbol: 'EMBERCAT',
+      amount: 0,
+      usd: 0,
+      position: 'pos-gone-8',
+    })
+
+    // Sweeper finds no wallet balance -> settles with no swap output.
+    await markLiquidationSuccess('mint-gone-8')
+
+    const data = JSON.parse(fs.readFileSync(lessonsFile, 'utf-8'))
+    const rec = data.performance[0]
+    expect(rec.status).toBe('realized')
+    expect(rec.unrealized_residual_usd).toBe(0)
+    expect(rec.cash_realized_usd).toBeCloseTo(10.17, 2)
+    expect(rec.final_value_usd).toBeCloseTo(10.17, 2)
+    expect(rec.net_pnl_usd).toBeCloseTo(0.07, 2)
+  })
 })
