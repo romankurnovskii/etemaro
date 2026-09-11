@@ -313,7 +313,7 @@ export class AgentSupervisor {
   }
 
   private loadTemplate(): InstanceConfig {
-    const templatePath = path.join(this.repoRoot, 'config', 'user-config.json')
+    const templatePath = path.join(this.repoRoot, 'config', 'agent-config.json')
     try {
       if (fs.existsSync(templatePath)) {
         return JSON.parse(fs.readFileSync(templatePath, 'utf8')) as InstanceConfig

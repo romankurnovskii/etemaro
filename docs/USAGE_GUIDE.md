@@ -8,7 +8,7 @@
 
 `npm start` (live) or `npm run dev` (dry-run) boots the daemon:
 
-1. Loads `.env` + `config/user-config.json` into a Zod-validated config singleton.
+1. Loads `.env` + `config/agent-config.json` into a Zod-validated config singleton.
 2. Fetches wallet balances and reconciles `state.json` with on-chain positions.
 3. Ensures a HiveMind `agentId`, then runs `bootstrapHiveMind()` (registers; pulls shared lessons + presets when `pullMode=auto`) and starts the 15-minute HiveMind background sync — see [HIVEMIND.md](HIVEMIND.md).
 4. Initializes the Telegram bot (if `TELEGRAM_BOT_TOKEN` is set).

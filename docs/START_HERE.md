@@ -6,7 +6,7 @@ Welcome to the Etemaro project documentation. This index lists all architectural
 
 - [GETTING_STARTED.md](GETTING_STARTED.md) — Simple first-run tutorial for end users.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Monorepo layout, ReAct loop, tools, and strategy presets.
-- [CONFIGURATION.md](CONFIGURATION.md) — Configuration hierarchy, environment variables, and the full `user-config.json` field reference.
+- [CONFIGURATION.md](CONFIGURATION.md) — Configuration hierarchy, environment variables, and the full `agent-config.json` field reference.
 - [FULL_FLOW.md](FULL_FLOW.md) — Canonical flow reference: architecture, startup, screening/management flows, learning, integrations.
 - [USAGE_GUIDE.md](USAGE_GUIDE.md) — Operational guide: how to run, REPL/Telegram/CLI commands, and decision flows.
 - [HIVEMIND.md](HIVEMIND.md) — HiveMind collective-learning sync: shared-lesson pull on startup + every 15 min, push, and prompt injection.

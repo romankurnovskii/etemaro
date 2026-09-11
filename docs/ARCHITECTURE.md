@@ -7,7 +7,7 @@ The codebase is a pnpm monorepo. Config and runtime data live at the repository 
 ```
   config/
     agents.json
-    user-config.json           # Active user configuration (generated via `pnpm cli init` or core defaults)
+    agent-config.json           # Active user configuration (generated via `pnpm cli init` or core defaults)
     templates/
       ecosystem.config.example.cjs # Multi-agent PM2 configuration template
     shared/
@@ -134,7 +134,7 @@ When `config.connection.dryRun` is `true` (resolved at config boundary, not via 
 5. **Zero `process.env` in Business Logic**:
    - `applyUserConfigToEnv()` was removed. The `config` object is the single source of truth.
    - Downstream adapters (TelegramAdapter, WalletAdapter, GmgnClient) read directly from `config` only — no `process.env` fallbacks.
-   - The only remaining `process.env` reads are infrastructure-tier (`USER_CONFIG_PATH`, `ETEMARO_DATA_DIR`, `ETEMARO_KEYSTORE_PASSPHRASE`, `HOME`, PM2 `pm_id`).
+   - The only remaining `process.env` reads are infrastructure-tier (`AGENT_CONFIG_PATH`, `ETEMARO_DATA_DIR`, `ETEMARO_KEYSTORE_PASSPHRASE`, `HOME`, PM2 `pm_id`).
 
 6. **Test Isolation**: Test suites that modify `process.env` or invoke config reloads must snapshot `process.env` in `beforeEach` and restore it in `afterEach` to prevent test pollution.
 
@@ -147,7 +147,7 @@ The wallet architecture separates public config metadata from the raw private ke
 ```
 ~/.config/etemaro/
 ├── config/
-│   └── user-config.json          # PUBLIC — references wallet by alias only:
+│   └── agent-config.json          # PUBLIC — references wallet by alias only:
 │                                  #   "connection": { "wallet": "main-scalp" }
 └── .credentials/                 # SECURE — gitignored, chmod 700
     └── wallets/
