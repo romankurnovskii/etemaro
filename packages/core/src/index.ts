@@ -14,6 +14,12 @@ import * as domain from './domain/index.js'
 export * from './adapters/blockchain/WalletAdapter.js'
 export * from './adapters/external/PriceProvider.js'
 export { OpenAiChatAdapter } from './adapters/llm/OpenAiChatAdapter.js'
+export {
+  getNotificationPort,
+  resetNotificationPort,
+  setNotificationPort,
+  telegramNotificationPort,
+} from './adapters/notifications/notificationPort.js'
 export * from './adapters/ToolDefinitions.js'
 // Resolve name collision by explicitly exporting AgentLoopResult from agent-loop.js
 export type { AgentLoopResult } from './application/agent-loop.js'
@@ -24,7 +30,20 @@ export * from './config/Config.js'
 export * from './config/config-validation.js'
 export * from './config/defaultUserConfig.js'
 export * from './domain/index.js'
-export type { ConfigPort, ConfigProvider, LlmChatRequest, LlmChatResponse, LlmPort } from './ports/index.js'
+export type {
+  CloseNotification,
+  ConfigPort,
+  ConfigProvider,
+  DeployNotification,
+  LiquidationAlertNotification,
+  LlmChatRequest,
+  LlmChatResponse,
+  LlmPort,
+  NotificationPort,
+  SwapErrorNotification,
+  SwapNotification,
+  TransactionErrorNotification,
+} from './ports/index.js'
 export * from './shared/constants.js'
 export * from './shared/ipc-protocol.js'
 export * from './shared/keystore.js'
