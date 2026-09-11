@@ -61,27 +61,12 @@ import type { AgentRole, PortfolioSummaryResult, SwapErrorCategory } from '../sh
 import { loadJsonFile, normalizeTimeframe, saveJsonFile, scaleScreeningToTimeframe } from '../shared/utils.js'
 import { ToolRegistry } from '../tools/ToolRegistry.js'
 import { sleep } from '../utils/time.js'
-import {
-  claimFees,
-  closePosition,
-  deployPosition,
-  getActiveBin,
-  getMyPositions,
-  getPositionPnl,
-  getWalletPositions,
-  searchPools,
-  swapDirectDlmm,
-} from './blockchain/MeteoraAdapter.js'
 // ─── Adapter imports ───────────────────────────────────────────
-import { discoverPools, getPoolDetail, getTopCandidates } from './blockchain/ScreeningAdapter.js'
-import { studyTopLPers } from './blockchain/StudyAdapter.js'
-import { getTokenHolders as get_token_holders, getTokenInfo, getTokenNarrative } from './blockchain/TokenDataAdapter.js'
-import { getWalletBalances, swapToken } from './blockchain/WalletAdapter.js'
 import { getNotificationPort } from './notifications/notificationPort.js'
 import { tools as toolDefinitions } from './ToolDefinitions.js'
-
 import { runSafetyChecks, validateDeployPoolThresholds } from './tooling/deploySafety.js'
 import { getToolConfig } from './tooling/toolConfig.js'
+import { getToolPorts } from './tooling/toolPorts.js'
 
 // ─── Cron restarter (registered by index.js) ───────────────────
 
@@ -171,8 +156,8 @@ function normalizeConfigValue(key: string, value: unknown): unknown {
  */
 export async function getPortfolioSummary(options?: { force?: boolean }): Promise<PortfolioSummaryResult> {
   const [walletBalances, myPositions] = await Promise.all([
-    getWalletBalances(options),
-    getMyPositions(options ? { force: options.force, silent: true } : { silent: true }),
+    getToolPorts().wallet.getWalletBalances(options),
+    getToolPorts().chain.getMyPositions(options ? { force: options.force, silent: true } : { silent: true }),
   ])
 
   let lpPositionsUsd = 0
@@ -225,23 +210,23 @@ function getActiveSmartWalletListIdOptional(): string | undefined {
 }
 
 const toolMap: Record<string, ToolFn> = {
-  discover_pools: discoverPools as unknown as ToolFn,
-  get_top_candidates: getTopCandidates as unknown as ToolFn,
-  get_pool_detail: getPoolDetail as unknown as ToolFn,
-  get_position_pnl: getPositionPnl as unknown as ToolFn,
-  get_active_bin: getActiveBin as unknown as ToolFn,
-  deploy_position: deployPosition as unknown as ToolFn,
-  get_my_positions: getMyPositions as unknown as ToolFn,
-  get_meteora_positions: getMyPositions as unknown as ToolFn,
-  get_wallet_positions: getWalletPositions as unknown as ToolFn,
-  search_pools: searchPools as unknown as ToolFn,
-  get_token_info: getTokenInfo as unknown as ToolFn,
+  discover_pools: getToolPorts().market.discoverPools as unknown as ToolFn,
+  get_top_candidates: getToolPorts().market.getTopCandidates as unknown as ToolFn,
+  get_pool_detail: getToolPorts().market.getPoolDetail as unknown as ToolFn,
+  get_position_pnl: getToolPorts().chain.getPositionPnl as unknown as ToolFn,
+  get_active_bin: getToolPorts().chain.getActiveBin as unknown as ToolFn,
+  deploy_position: getToolPorts().chain.deployPosition as unknown as ToolFn,
+  get_my_positions: getToolPorts().chain.getMyPositions as unknown as ToolFn,
+  get_meteora_positions: getToolPorts().chain.getMyPositions as unknown as ToolFn,
+  get_wallet_positions: getToolPorts().chain.getWalletPositions as unknown as ToolFn,
+  search_pools: getToolPorts().chain.searchPools as unknown as ToolFn,
+  get_token_info: getToolPorts().market.getTokenInfo as unknown as ToolFn,
   get_token_holders: ((args: Record<string, unknown>) =>
-    get_token_holders({
+    getToolPorts().market.getTokenHolders({
       ...args,
       smartWalletListId: getActiveSmartWalletListIdOptional(),
     } as any)) as unknown as ToolFn,
-  get_token_narrative: getTokenNarrative as unknown as ToolFn,
+  get_token_narrative: getToolPorts().market.getTokenNarrative as unknown as ToolFn,
   add_smart_wallet: (args) => addSmartWallet({ ...args, listId: getActiveSmartWalletListId() } as any),
   remove_smart_wallet: (args) => removeSmartWallet({ ...args, listId: getActiveSmartWalletListId() } as any),
   list_smart_wallets: () => listSmartWallets({ listId: getActiveSmartWalletListId() }),
@@ -255,13 +240,13 @@ const toolMap: Record<string, ToolFn> = {
     }
     return check_smart_wallets_on_pool({ ...args, listId } as any)
   },
-  claim_fees: claimFees as unknown as ToolFn,
-  close_position: closePosition as unknown as ToolFn,
+  claim_fees: getToolPorts().chain.claimFees as unknown as ToolFn,
+  close_position: getToolPorts().chain.closePosition as unknown as ToolFn,
   close_all_positions: ((args: Record<string, unknown> = {}) => {
     const skipSwap = Boolean(args.skipSwap || args.skip_swap)
     return closeAllPositionsUnlocked(skipSwap)
   }) as ToolFn,
-  get_wallet_balance: getWalletBalances as unknown as ToolFn,
+  get_wallet_balance: getToolPorts().wallet.getWalletBalances as unknown as ToolFn,
   get_portfolio_summary: getPortfolioSummary as unknown as ToolFn,
   swap_all_tokens_to_sol: ((args: Record<string, unknown> = {}) => {
     const skipMints = (args.skipMints as string[]) || (args.skip_mints as string[]) || []
@@ -275,9 +260,9 @@ const toolMap: Record<string, ToolFn> = {
     const status = args.status as any
     return { liquidations: getPendingLiquidations(status) }
   }) as ToolFn,
-  swap_token: swapToken as unknown as ToolFn,
-  get_top_lpers: studyTopLPers as unknown as ToolFn,
-  study_top_lpers: studyTopLPers as unknown as ToolFn,
+  swap_token: getToolPorts().wallet.swapToken as unknown as ToolFn,
+  get_top_lpers: getToolPorts().market.studyTopLPers as unknown as ToolFn,
+  study_top_lpers: getToolPorts().market.studyTopLPers as unknown as ToolFn,
   set_position_note: ({ position_address, instruction }: Record<string, unknown>) => {
     const ok = setPositionInstruction(position_address as string, (instruction as string) || null)
     if (!ok) return { error: `Position ${position_address} not found in state` }
@@ -707,7 +692,7 @@ export async function swapBaseToSolWithRetry(
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const balances = await getWalletBalances()
+      const balances = await getToolPorts().wallet.getWalletBalances()
       const token = balances.tokens?.find((t: any) => t.mint === baseMint)
       if (!token || token.balance <= 0) {
         return { swapped: attempt > 1, result: null, token: null }
@@ -724,7 +709,7 @@ export async function swapBaseToSolWithRetry(
         'executor',
         `Auto-swapping ${label} ${token.symbol || baseMint.slice(0, 8)}${usdDisplay} back to SOL (attempt ${attempt}/${attempts}${attemptDetails})`,
       )
-      let swapResult = await swapToken({
+      let swapResult = await getToolPorts().wallet.swapToken({
         input_mint: baseMint,
         output_mint: 'SOL',
         amount: amountToSwap,
@@ -739,7 +724,7 @@ export async function swapBaseToSolWithRetry(
           'executor',
           `Jupiter swap failed for ${token.symbol || baseMint.slice(0, 8)} (${sr?.error || 'no route'}); attempting direct DLMM pool swap fallback on ${poolAddress.slice(0, 8)}`,
         )
-        const dlmmRes = await swapDirectDlmm({
+        const dlmmRes = await getToolPorts().chain.swapDirectDlmm({
           pool_address: poolAddress,
           input_mint: baseMint,
           amount: amountToSwap,
@@ -912,7 +897,7 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
     if (Array.isArray(raw)) skipMints = raw
   }
 
-  const balances = await getWalletBalances()
+  const balances = await getToolPorts().wallet.getWalletBalances()
   if (!balances?.tokens) {
     return { total: 0, successful: 0, failed: 0, abandoned: 0, skipped: 0, results: [] }
   }
@@ -1084,7 +1069,7 @@ export async function swapAllTokensToSolUnlocked(skipMintsInput: string[] | { sk
     }
   }
 
-  const balances = await getWalletBalances()
+  const balances = await getToolPorts().wallet.getWalletBalances()
   if (!balances?.tokens) {
     return { total: 0, skipped: 0, successful: 0, failed: 0, results: [] }
   }
@@ -1177,7 +1162,7 @@ export async function closeAllPositionsUnlocked(
   } else if (skipSwapInput && typeof skipSwapInput === 'object') {
     skipSwap = Boolean((skipSwapInput as any).skipSwap || (skipSwapInput as any).skip_swap)
   }
-  const positionsRes = await getMyPositions({ force: true })
+  const positionsRes = await getToolPorts().chain.getMyPositions({ force: true })
   if (!positionsRes?.positions) {
     return { total: 0, successful: 0, failed: 0, results: [] }
   }
