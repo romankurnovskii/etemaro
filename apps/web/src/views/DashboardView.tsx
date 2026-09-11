@@ -21,9 +21,26 @@ export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) 
     )
   }
   const positions = snapshot.positions ?? []
+  const shortWallet = snapshot.walletAddress
+    ? `${snapshot.walletAddress.slice(0, 4)}…${snapshot.walletAddress.slice(-4)}`
+    : '—'
   return (
     <>
       <div className="metrics">
+        <div className="metric">
+          <div className="label">Wallet</div>
+          <div className="value small">{shortWallet}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Strategy</div>
+          <div className="value small">{snapshot.activeStrategyId ?? '—'}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Config</div>
+          <div className="value small">{snapshot.configPath ?? '—'}</div>
+        </div>
+      </div>
+      <div className="metrics mt">
         <div className="metric">
           <div className="label">Total PnL</div>
           <div className={`value ${Number(snapshot.totalPnlUsd) >= 0 ? 'pos' : 'neg'}`}>
