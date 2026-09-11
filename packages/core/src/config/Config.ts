@@ -11,12 +11,12 @@
 
 import fs from 'node:fs'
 import {
+  AGENT_CONFIG_PATH,
   DEFAULT_AGENT_ID,
   DEFAULT_LLM_BASE_URL,
   MIN_SAFE_BINS_BELOW,
   setMinSafeBinsBelowOverride,
   TOKEN_MINTS,
-  USER_CONFIG_PATH,
 } from '../shared/constants.js'
 import { setDryRun } from '../shared/flags.js'
 import type { AppConfig } from '../shared/types.js'
@@ -48,10 +48,10 @@ function buildConfig(): AppConfig {
         console.warn(`[config] Warning: using fallback defaults for info/init: ${err.message}`)
       }
     } else {
-      const explicitConfig = process.env.USER_CONFIG_PATH?.trim()
-      const resolvedConfigPath = err?.configPath ?? (explicitConfig ? explicitConfig : USER_CONFIG_PATH)
+      const explicitConfig = process.env.AGENT_CONFIG_PATH?.trim() || process.env.USER_CONFIG_PATH?.trim()
+      const resolvedConfigPath = err?.configPath ?? (explicitConfig ? explicitConfig : AGENT_CONFIG_PATH)
       const baseMessage = explicitConfig
-        ? `[config] Fatal: Failed to load explicit configuration from USER_CONFIG_PATH="${explicitConfig}": ${err.message}`
+        ? `[config] Fatal: Failed to load explicit configuration from AGENT_CONFIG_PATH="${explicitConfig}": ${err.message}`
         : `[config] Fatal: Failed to load configuration: ${err.message}`
       const formatted = formatConfigLoadError(err, resolvedConfigPath)
       const message = `${baseMessage}\n${formatted}`
@@ -307,8 +307,8 @@ export function computeDeployAmount(walletSol: number, minViableDeploy?: number)
 export function reloadScreeningThresholds(): void {
   try {
     // Dynamic reloading can just re-read the nested schema
-    if (!fs.existsSync(USER_CONFIG_PATH)) return
-    const raw = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'))
+    if (!fs.existsSync(AGENT_CONFIG_PATH)) return
+    const raw = JSON.parse(fs.readFileSync(AGENT_CONFIG_PATH, 'utf8'))
 
     // Partially parse just what we need or assume the structure
     // Since this is just screening thresholds, we can extract them directly.

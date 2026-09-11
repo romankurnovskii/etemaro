@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { USER_CONFIG_PATH } from '../shared/constants.js'
+import { AGENT_CONFIG_PATH } from '../shared/constants.js'
 
 export interface ConfigIssue {
   path?: Array<string | number>
@@ -22,8 +22,9 @@ export function formatConfigLoadError(err: any, fallbackPath?: string): string {
     err?.configPath ||
     err?.cause?.configPath ||
     fallbackPath ||
+    process.env.AGENT_CONFIG_PATH ||
     process.env.USER_CONFIG_PATH ||
-    USER_CONFIG_PATH ||
+    AGENT_CONFIG_PATH ||
     path.resolve(process.cwd(), 'config', 'user-config.json')
 
   const issues: ConfigIssue[] =

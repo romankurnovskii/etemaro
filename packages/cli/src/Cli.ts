@@ -79,7 +79,7 @@ let _log: CoreExports['log'] = null as any
 let dataPath: CoreExports['dataPath'] = null as any
 let _getDataDir: CoreExports['getDataDir'] = null as any
 let getEtemaroDir: CoreExports['getEtemaroDir'] = null as any
-let _USER_CONFIG_PATH: CoreExports['USER_CONFIG_PATH'] = null as any
+let _AGENT_CONFIG_PATH: CoreExports['AGENT_CONFIG_PATH'] = null as any
 let _DEFAULT_ENTRY_SOURCE: CoreExports['DEFAULT_ENTRY_SOURCE'] = null as any
 let _SMART_WALLETS_FILENAME: CoreExports['SMART_WALLETS_FILENAME'] = null as any
 let LESSONS_FILENAME: CoreExports['LESSONS_FILENAME'] = null as any
@@ -120,7 +120,7 @@ export async function loadCore(): Promise<void> {
   dataPath = coreMod.dataPath
   _getDataDir = coreMod.getDataDir
   getEtemaroDir = coreMod.getEtemaroDir
-  _USER_CONFIG_PATH = coreMod.USER_CONFIG_PATH
+  _AGENT_CONFIG_PATH = coreMod.AGENT_CONFIG_PATH
   _DEFAULT_ENTRY_SOURCE = coreMod.DEFAULT_ENTRY_SOURCE
   _SMART_WALLETS_FILENAME = coreMod.SMART_WALLETS_FILENAME
   LESSONS_FILENAME = coreMod.LESSONS_FILENAME
@@ -1071,7 +1071,7 @@ export class Cli {
     smartWalletScoreBonus?: number
   } {
     try {
-      const configPath = _USER_CONFIG_PATH
+      const configPath = _AGENT_CONFIG_PATH
       if (!configPath || !fs.existsSync(configPath)) return {}
       const raw = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
         strategy?: { activeStrategyId?: string | null }
@@ -1127,7 +1127,7 @@ export class Cli {
   private async handleConfig(argv: string[], sub2: string | undefined, flags: Record<string, any>): Promise<void> {
     if (sub2 === 'validate') {
       const explicit = argv.filter((a) => !a.startsWith('-')).slice(2)[0]
-      const file = explicit ? path.resolve(explicit) : _USER_CONFIG_PATH
+      const file = explicit ? path.resolve(explicit) : _AGENT_CONFIG_PATH
       if (!file || !fs.existsSync(file)) {
         const note = `No config file to validate at ${file || '(unset)'}`
         if (flags.json === true) process.stdout.write(`${JSON.stringify({ ok: true, reports: [], note }, null, 2)}\n`)
@@ -1228,10 +1228,10 @@ export class Cli {
             const result = this.adapters.wallet.generateNewWallet({ label })
             console.log(`Generated wallet ${result.publicKey} as "${label}"`)
             // Update config
-            const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
+            const configObj = JSON.parse(fs.readFileSync(_AGENT_CONFIG_PATH, 'utf8'))
             if (!configObj.connection) configObj.connection = {}
             configObj.connection.wallet = label
-            fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
+            fs.writeFileSync(_AGENT_CONFIG_PATH, JSON.stringify(configObj, null, 2))
             break
           }
           case '2': {
@@ -1242,10 +1242,10 @@ export class Cli {
             const key = await promptSecret('Enter Base58 private key: ')
             const result = this.adapters.wallet.importWallet({ label, privateKey: key })
             console.log(`Imported wallet ${result.publicKey} as "${label}"`)
-            const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
+            const configObj = JSON.parse(fs.readFileSync(_AGENT_CONFIG_PATH, 'utf8'))
             if (!configObj.connection) configObj.connection = {}
             configObj.connection.wallet = label
-            fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
+            fs.writeFileSync(_AGENT_CONFIG_PATH, JSON.stringify(configObj, null, 2))
             break
           }
           case '3': {
@@ -1253,10 +1253,10 @@ export class Cli {
             const filePath = await rl.question('Enter path to keypair file: ')
             const result = this.adapters.wallet.importWallet({ label, filePath })
             console.log(`Imported wallet ${result.publicKey} as "${label}"`)
-            const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
+            const configObj = JSON.parse(fs.readFileSync(_AGENT_CONFIG_PATH, 'utf8'))
             if (!configObj.connection) configObj.connection = {}
             configObj.connection.wallet = label
-            fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
+            fs.writeFileSync(_AGENT_CONFIG_PATH, JSON.stringify(configObj, null, 2))
             break
           }
           case '4': {
@@ -1299,10 +1299,10 @@ export class Cli {
               const idx = parseInt(choice, 10) - 1
               if (idx >= 0 && idx < availableWallets.length) {
                 const selected = availableWallets[idx]!
-                const configObj = JSON.parse(fs.readFileSync(_USER_CONFIG_PATH, 'utf8'))
+                const configObj = JSON.parse(fs.readFileSync(_AGENT_CONFIG_PATH, 'utf8'))
                 if (!configObj.connection) configObj.connection = {}
                 configObj.connection.wallet = selected.label
-                fs.writeFileSync(_USER_CONFIG_PATH, JSON.stringify(configObj, null, 2))
+                fs.writeFileSync(_AGENT_CONFIG_PATH, JSON.stringify(configObj, null, 2))
                 console.log(`Selected wallet "${selected.label}"`)
               } else {
                 console.log('Invalid selection')
@@ -1450,8 +1450,9 @@ export function formatConfigLoadError(err: any): string {
   const configFilePath =
     err?.configPath ||
     err?.cause?.configPath ||
+    process.env.AGENT_CONFIG_PATH ||
     process.env.USER_CONFIG_PATH ||
-    _USER_CONFIG_PATH ||
+    _AGENT_CONFIG_PATH ||
     path.resolve(process.cwd(), 'config', 'user-config.json')
 
   const issues: any[] =
@@ -1553,7 +1554,10 @@ async function main() {
 
   const configPathArg = resolveGlobalFlagValue(argv, '--config', '-c')
   const dataDirArg = resolveGlobalFlagValue(argv, '--data-dir', '-d')
-  if (configPathArg) process.env.USER_CONFIG_PATH = path.resolve(configPathArg)
+  if (configPathArg) {
+    process.env.AGENT_CONFIG_PATH = path.resolve(configPathArg)
+    process.env.USER_CONFIG_PATH = path.resolve(configPathArg) // legacy alias
+  }
   if (dataDirArg) process.env.ETEMARO_DATA_DIR = path.resolve(dataDirArg)
 
   // Validation commands must be able to report on a broken/invalid config, so let
