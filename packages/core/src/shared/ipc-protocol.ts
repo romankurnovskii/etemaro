@@ -155,7 +155,7 @@ export interface IpcStateSnapshot {
   walletAddress?: string | null
   /** Active LP strategy id, if any. */
   activeStrategyId?: string | null
-  /** Resolved user-config.json path. */
+  /** Resolved agent-config.json path. */
   configPath?: string
 }
 

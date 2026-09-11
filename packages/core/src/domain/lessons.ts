@@ -333,7 +333,7 @@ interface EvolutionResult {
 
 /**
  * Analyze closed position performance and evolve screening thresholds.
- * Writes changes to user-config.json and returns a summary.
+ * Writes changes to agent-config.json and returns a summary.
  */
 export function evolveThresholds(
   perfData: PerformanceRecord[],
@@ -418,7 +418,7 @@ export function evolveThresholds(
 
   if (Object.keys(changes).length === 0) return { changes: {}, rationale: {} }
 
-  // ── Persist changes to user-config.json ───────────────────────
+  // ── Persist changes to agent-config.json ───────────────────────
   const agentConfig = readStateFile<Record<string, unknown>>(targetConfigPath, {})
   if (!agentConfig.screening || typeof agentConfig.screening !== 'object' || Array.isArray(agentConfig.screening)) {
     agentConfig.screening = {}

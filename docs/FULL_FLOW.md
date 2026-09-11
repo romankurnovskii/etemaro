@@ -163,7 +163,7 @@ graph LR
 
 | File                                              | Role                                                           |
 | ------------------------------------------------- | -------------------------------------------------------------- |
-| `packages/core/src/config/Config.ts`              | Zod-validated config singleton from`user-config.json` + `.env` |
+| `packages/core/src/config/Config.ts`              | Zod-validated config singleton from`agent-config.json` + `.env` |
 | `packages/core/src/application/agent-loop.ts`     | Core ReAct loop: LLM → tool call → repeat                      |
 | `packages/core/src/application/prompt-builder.ts` | Builds role-specific system prompts                            |
 | `packages/core/src/adapters/ToolExecutor.ts`      | Dispatches tool calls to adapter implementations               |
@@ -191,7 +191,7 @@ sequenceDiagram
 
     User->>CLI: npm start / etemaro start
     CLI->>Config: loadConfig()
-    Note right of Config: Reads user-config.json<br/>Reads .env (secrets)<br/>Merges with defaults via Zod schema
+    Note right of Config: Reads agent-config.json<br/>Reads .env (secrets)<br/>Merges with defaults via Zod schema
 
     CLI->>Wallet: getWalletBalances()
     Wallet-->>CLI: { sol: 10.5, usd: 1800, tokens: [...] }
@@ -213,7 +213,7 @@ sequenceDiagram
 
 ### Startup Checklist
 
-1. **Config Load**: `user-config.json` + `.env` → Zod-validated `AppConfig` singleton
+1. **Config Load**: `agent-config.json` + `.env` → Zod-validated `AppConfig` singleton
 2. **Wallet Balance**: Fetch SOL + token balances from Solana RPC
 3. **State Sync**: Reconcile `state.json` with on-chain positions (auto-close orphans)
 4. **Telegram Bot**: Initialize polling (if `TELEGRAM_BOT_TOKEN` set)
@@ -228,7 +228,7 @@ sequenceDiagram
 graph TD
     subgraph "Configuration Sources"
         ENV[".env<br/>Secrets: keys, tokens, RPC URLs"]
-        USER["user-config.json<br/>Runtime settings: thresholds, strategy, GMGN API"]
+        USER["agent-config.json<br/>Runtime settings: thresholds, strategy, GMGN API"]
         DEFAULTS["DEFAULT_USER_CONFIG<br/>Typed core defaults in TypeScript"]
     end
 
@@ -612,7 +612,7 @@ The Strategy Library (`strategy-library.ts`) provides persistent storage for LP 
 
 ### Bin Range Configuration
 
-**Configurable in `user-config.json`:**
+**Configurable in `agent-config.json`:**
 
 ```json
 "strategy": {
@@ -721,7 +721,7 @@ sequenceDiagram
     Note right of Lessons: For each screening param:<br/>compare winner vs loser distributions<br/>Find optimal split point
 
     Lessons->>Config: reloadScreeningThresholds()
-    Note right of Config: Hot-reloads user-config.json<br/>New thresholds take effect immediately
+    Note right of Config: Hot-reloads agent-config.json<br/>New thresholds take effect immediately
 ```
 
 ---

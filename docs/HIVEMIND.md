@@ -12,7 +12,7 @@ HiveMind is enabled when `hiveMind.enabled` is `true` and both a URL and an API 
 
 - `isHiveMindEnabled()` checks `hiveMind.enabled`, `hiveMind.url`, and `hiveMind.apiKey` — `HivemindAdapter.ts:140-142`.
 - The canonical config uses nested `hiveMind.url` and `hiveMind.apiKey`, with an `HIVEMIND_API_KEY` environment fallback.
-- A unique `agentId` is generated automatically on first run (format `agt_<hex>`) if absent, and written back to `user-config.json` — `HivemindAdapter.ts:85-98`, `ensureAgentId()`.
+- A unique `agentId` is generated automatically on first run (format `agt_<hex>`) if absent, and written back to `agent-config.json` — `HivemindAdapter.ts:85-98`, `ensureAgentId()`.
 
 If HiveMind is disabled, every pull/push call short-circuits to `null` and the feature is a no-op.
 

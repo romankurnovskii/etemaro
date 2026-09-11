@@ -176,7 +176,7 @@ this.adapters.wallet.getWalletBalances({ force: false }) // Uses 30s TTL cache
 ```
 
 ### 4.3 PnL Polling Cadence & Risk Trade-Off (`pollIntervalSec` & `confirmTicks`)
-In `config/user-config.json` and template:
+In `config/agent-config.json` and template:
 ```json
 "pnl": {
   "source": "meteora_api",

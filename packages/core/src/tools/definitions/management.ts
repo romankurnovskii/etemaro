@@ -299,7 +299,7 @@ Returns details for each token including mint, symbol, amount, USD value, liquid
     function: {
       name: 'update_config',
       description: `Update any of your operating parameters at runtime.
-Changes persist to user-config.json and take effect immediately — no restart needed.
+Changes persist to agent-config.json and take effect immediately — no restart needed.
 
 VALID KEYS (use EXACTLY these key names, nothing else):
 Screening: minFeeActiveTvlRatio, minTvl, maxTvl, minVolume, minOrganic, minQuoteOrganic, minHolders, minMcap, maxMcap, minBinStep, maxBinStep, timeframe, category, minTokenFeesSol, excludeHighSupplyConcentration, allowedLaunchpads, blockedLaunchpads

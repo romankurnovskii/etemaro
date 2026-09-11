@@ -98,10 +98,10 @@ export function writeRuntimeSkeleton(
   }
 
   // Instance-first model: the default agent config is config/instances/agent-default.json.
-  // Existing flat config/user-config.json is left untouched (no migration).
+  // Existing flat config/agent-config.json is left untouched (no migration).
   const instancesDir = path.join(configDir, 'instances')
   const instanceConfigFile = path.join(instancesDir, 'agent-default.json')
-  const legacyUserConfigFile = path.join(configDir, 'user-config.json')
+  const legacyUserConfigFile = path.join(configDir, 'agent-config.json')
   let configFile: string
   let configCreated = false
   if (fs.existsSync(instanceConfigFile)) {

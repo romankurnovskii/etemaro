@@ -11,7 +11,7 @@ pnpm test
 # Validate config + strategy JSON before commit (single source of truth: the Etemaro CLI).
 # Config uses --env-optional so structural errors are caught without requiring deployment secrets.
 # The private strategy library gets --active so the active-strategy smartWalletListId gate is checked.
-if [ -f config/user-config.json ]; then
+if [ -f config/agent-config.json ]; then
   pnpm --silent run validate:config --env-optional || exit 1
 fi
 

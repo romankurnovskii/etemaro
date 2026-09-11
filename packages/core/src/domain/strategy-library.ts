@@ -259,7 +259,7 @@ export function setActiveStrategy({ id }: { id: string }): Record<string, unknow
   if (!mergedDb.strategies[id])
     return { error: `Strategy "${id}" not found`, available: Object.keys(mergedDb.strategies) }
 
-  const agentConfigPath = configPath('user-config.json')
+  const agentConfigPath = configPath('agent-config.json')
   try {
     const raw = readStateFile<{ strategy?: { activeStrategyId?: string } }>(agentConfigPath, {})
     if (!raw.strategy) raw.strategy = {}
@@ -305,7 +305,7 @@ export function removeStrategy({ id }: { id: string }): Record<string, unknown> 
       setActiveStrategy({ id: newActive })
     } else {
       // Clear the active strategy pointer if no strategies exist at all
-      const agentConfigPath = configPath('user-config.json')
+      const agentConfigPath = configPath('agent-config.json')
       try {
         const raw = readStateFile<{ strategy?: { activeStrategyId?: string | null } }>(agentConfigPath, {})
         if (!raw.strategy) raw.strategy = {}

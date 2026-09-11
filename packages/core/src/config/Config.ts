@@ -3,7 +3,7 @@
  * @description Single-source configuration loader, environment resolver, and runtime settings manager.
  *
  * @features
- * - Loads user-config.json and resolves env variable references
+ * - Loads agent-config.json and resolves env variable references
  * - Validates schema using Zod
  * - Exposes singleton `config` object and config mutation helpers
  *
@@ -302,7 +302,7 @@ export function computeDeployAmount(walletSol: number, minViableDeploy?: number)
 }
 
 /**
- * Dynamically reloads partial screening thresholds from user-config.json into the active config singleton.
+ * Dynamically reloads partial screening thresholds from agent-config.json into the active config singleton.
  */
 export function reloadScreeningThresholds(): void {
   try {

@@ -535,11 +535,11 @@ export class Cli {
       die(`Agent configuration already exists at ${targetConfigFile}. Use --force to overwrite.`)
     }
 
-    // Load template: prefer templates/user-config.example.json, fallback to instances/agent-default.json, then defaultAgentConfigStr
+    // Load template: prefer templates/agent-config.example.json, fallback to instances/agent-default.json, then defaultAgentConfigStr
     const templateCandidates = [
-      path.join(repoConfigDir, 'templates', 'user-config.example.json'),
+      path.join(repoConfigDir, 'templates', 'agent-config.example.json'),
       path.join(repoConfigDir, 'instances', 'agent-default.json'),
-      path.join(repoConfigDir, 'user-config.json'),
+      path.join(repoConfigDir, 'agent-config.json'),
     ]
 
     let templateContent: Record<string, any> | null = null
@@ -1178,9 +1178,9 @@ export class Cli {
 
     const candidates = [
       path.join(process.cwd(), 'config', 'instances', `${agentId}.json`),
-      path.join(process.cwd(), 'data', 'instances', agentId, 'user-config.json'),
-      path.join(process.cwd(), 'config', 'user-config.json'),
-      path.join(process.cwd(), 'user-config.json'),
+      path.join(process.cwd(), 'data', 'instances', agentId, 'agent-config.json'),
+      path.join(process.cwd(), 'config', 'agent-config.json'),
+      path.join(process.cwd(), 'agent-config.json'),
     ]
 
     for (const c of candidates) {
@@ -1458,7 +1458,7 @@ export function formatConfigLoadError(err: any): string {
     process.env.AGENT_CONFIG_PATH ||
     process.env.USER_CONFIG_PATH ||
     _AGENT_CONFIG_PATH ||
-    path.resolve(process.cwd(), 'config', 'user-config.json')
+    path.resolve(process.cwd(), 'config', 'agent-config.json')
 
   const issues: any[] =
     (Array.isArray(err?.issues) && err.issues) ||
