@@ -11,18 +11,18 @@
   "dependencies": {
     "@etemaro/rugcheck": "1.0.3",
     "@meteora-ag/dlmm": "1.9.14",
-    "@solana/web3.js": "^1.95.0",
+    "@solana/web3.js": "^1.99.0",
     "bn.js": "^5.2.1",
     "bs58": "^6.0.0",
     "dotenv": "^17.4.2",
     "jsonrepair": "^3.15.0",
     "node-cron": "^4.6.0",
-    "openai": "^7.10.0",
+    "openai": "^7.12.1",
     "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/bn.js": "^5.2.0",
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.5.0",
     "@types/node-cron": "^3.0.11",
     "typescript": "^7.0.2"
   }
