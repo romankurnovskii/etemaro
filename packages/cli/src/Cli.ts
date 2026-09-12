@@ -1099,16 +1099,36 @@ export class Cli {
     const React = await import('react')
     const { App } = await import('./ui/App.js')
 
-    const appInstance = render(
-      React.createElement(App, {
-        port,
-        token,
-        socketPath,
-        agentId,
-      }),
-    )
+    const isTty = process.stdout.isTTY === true
+    if (isTty) {
+      // Enter alternate screen buffer and reset cursor to home (top-left)
+      process.stdout.write('\x1b[?1049h\x1b[H')
+    }
 
-    await appInstance.waitUntilExit()
+    const restoreScreen = () => {
+      if (isTty) {
+        // Exit alternate screen buffer and ensure cursor is visible
+        process.stdout.write('\x1b[?1049l\x1b[?25h')
+      }
+    }
+
+    process.once('exit', restoreScreen)
+
+    try {
+      const appInstance = render(
+        React.createElement(App, {
+          port,
+          token,
+          socketPath,
+          agentId,
+        }),
+      )
+
+      await appInstance.waitUntilExit()
+    } finally {
+      restoreScreen()
+      process.removeListener('exit', restoreScreen)
+    }
   }
 
   private async handleStart(flags: Record<string, any> = {}): Promise<void> {
