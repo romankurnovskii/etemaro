@@ -20,11 +20,11 @@ validate config/shared/strategy-library.json
 ```
 
 ```text
-is this strategy valid? { "id": "my_strat", "name": "My Strat", "lp_strategy": "bid_ask" }
+is this strategy valid? { "id": "my_strat", "name": "My Strat", "lpStrategy": "bid_ask" }
 ```
 
 ```text
-why is my strategy's takeProfitPct ignored — check this strategy JSON
+check this strategy JSON schema: is takeProfitPct placed in exit correctly?
 ```
 
 ```text
@@ -72,12 +72,16 @@ Totals: 1 valid, 0 invalid
 
 Exit code `0` = valid, `1` = invalid. Use `--json` for machine-readable output.
 
-## Tips
+## Canonical Schema Rules
 
-- Prefer canonical camelCase. Snake_case keys (`lp_strategy`, `best_for`, `single_side`, ...)
-  do not throw — they are silently dropped, which is why the validator reports them as errors.
-- `--active` catches the "entrySource=smart_wallets but no smartWalletListId" failure before boot.
-- `config validate --env-optional` checks structure without requiring deployment secrets;
-  without the flag, unset `env.*` references are errors (matching boot).
-- "stored/descriptive" fields are valid but do not change deploy decisions.
-- Pre-commit (husky) already runs both validators; a blocked commit prints the same report.
+- All fields are strictly **camelCase**.
+- Required top-level keys: `id`, `name`.
+- Canonical top-level keys: `id`, `name`, `author`, `smartWalletListId`, `lpStrategy`, `tokenCriteria`, `entry`, `range`, `exit`, `bestFor`, `raw`, `addedAt`, `updatedAt`.
+- Canonical nested keys:
+  - `entry`: `condition`, `price_change_threshold_pct`, `singleSide`, `notes`
+  - `range`: `type`, `binsBelowPct`, `notes`
+  - `exit`: `takeProfitPct`, `notes`
+  - `tokenCriteria`: `min_mcap`, `min_age_days`, `requires_kol`, `notes`
+- `--active` enforces active strategy requirements (e.g. `smartWalletListId` when `screening.entrySource=smart_wallets`).
+- `config validate --env-optional` checks structure without requiring deployment secrets.
+- Pre-commit (husky) runs both validators; commits with invalid fields are blocked.
