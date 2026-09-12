@@ -797,7 +797,10 @@ Summarize the current portfolio health, total fees earned, and performance of al
 
     // TODO for interval review of shoulduse semaphore
     this.pnlPollInterval = setInterval(async () => {
-      if (getTrackedPositions(true).length === 0) return
+      if (getTrackedPositions(true).length === 0) {
+        this.broadcastIpcState()
+        return
+      }
       if (!this.acquireLock('pnlPoll')) return
       try {
         const result = await this.adapters.meteora.getMyPositions({ force: true, silent: true }).catch((err: any) => {
@@ -1169,6 +1172,7 @@ After evaluating, write a brief one-line result per position.
       if (positions.length === 0) {
         log('cron', 'No open positions — checking screening trigger')
         mgmtReport = 'No open positions.'
+        this.broadcastIpcState()
         if (Date.now() - this.screeningLastTriggered > screeningCooldownMs) {
           this.screeningLastTriggered = Date.now()
           log('cron', 'Triggering screening cycle')
@@ -1289,6 +1293,7 @@ After evaluating, write a brief one-line result per position.
       log('cron_error', `Management cycle failed: ${error.message}`)
       mgmtReport = `Management cycle failed: ${error.message}`
     } finally {
+      this.broadcastIpcState()
       this.releaseLock('management')
       if (!silent && this.adapters.telegram.isEnabled()) {
         if (mgmtReport) {
@@ -1786,6 +1791,7 @@ IMPORTANT:
       log('cron_error', `Screening cycle failed: ${error.message}`)
       screenReport = `Screening cycle failed: ${error.message}`
     } finally {
+      this.broadcastIpcState()
       this.releaseLock('screening')
       if (!silent && this.adapters.telegram.isEnabled()) {
         if (screenReport) {
@@ -2556,6 +2562,8 @@ IMPORTANT:
         }
       } catch (e: any) {
         await this.sendTelegramSafe(`Error: ${e.message}`)
+      } finally {
+        this.broadcastIpcState()
       }
       return
     }
@@ -2588,6 +2596,8 @@ IMPORTANT:
         await this.sendTelegramSafe(`Close-all finished.\n\n${results.join('\n')}`)
       } catch (e: any) {
         await this.sendTelegramSafe(`Error: ${e.message}`)
+      } finally {
+        this.broadcastIpcState()
       }
       return
     }
@@ -2781,6 +2791,128 @@ IMPORTANT:
 
     const lower = text.toLowerCase()
     const isCmd = (cmd: string) => lower === cmd || lower === `/${cmd}`
+
+    if (isCmd('stop')) {
+      const reply = '🛑 Shutting down agent...'
+      if (source === 'cli') {
+        log('agent_reply', `🤖 ${reply}`)
+        this.ipcServer?.broadcastChatReply(reply)
+      }
+      await this.shutdown(`${source} /stop`)
+      return reply
+    }
+
+    if (isCmd('pause')) {
+      this.stopCronJobs()
+      this.cronStarted = false
+      const reply = '⏸ Paused autonomous cycles. Use /resume to start again.'
+      if (source === 'cli') {
+        log('agent_reply', `🤖 ${reply}`)
+        this.ipcServer?.broadcastChatReply(reply)
+      }
+      this.broadcastIpcState()
+      return reply
+    }
+
+    if (isCmd('resume')) {
+      let reply = 'Autonomous cycles are already running.'
+      if (!this.cronStarted) {
+        this.cronStarted = true
+        this.managementLastRun = Date.now()
+        this.screeningLastRun = Date.now()
+        this.startCronJobs()
+        reply = '▶️ Autonomous cycles resumed.'
+      }
+      if (source === 'cli') {
+        log('agent_reply', `🤖 ${reply}`)
+        this.ipcServer?.broadcastChatReply(reply)
+      }
+      this.broadcastIpcState()
+      return reply
+    }
+
+    if (isCmd('closeall') || lower === '/closeall --skip-swap') {
+      try {
+        const skipSwap = lower.includes('--skip-swap')
+        const { positions } = await this.adapters.meteora.getMyPositions({ force: true })
+        if (!positions.length) {
+          const reply = 'No open positions.'
+          if (source === 'cli') {
+            log('agent_reply', `🤖 ${reply}`)
+            this.ipcServer?.broadcastChatReply(reply)
+          }
+          return reply
+        }
+        const results: string[] = []
+        for (const pos of positions) {
+          try {
+            const result = await this.adapters.toolExecutor.executeTool('close_position', {
+              position_address: pos.position,
+              skip_swap: skipSwap,
+              reason: `${source} /closeall command`,
+            })
+            const swapStatus = result.auto_swapped ? ' (swapped to SOL)' : ''
+            results.push(
+              `${pos.pair}: ${result.success ? `closed${swapStatus}` : `failed (${result.error || 'unknown'})`}`,
+            )
+          } catch (error: any) {
+            results.push(`${pos.pair}: failed (${error.message})`)
+          }
+        }
+        const reply = `Close-all finished:\n${results.join('\n')}`
+        if (source === 'cli') {
+          log('agent_reply', `🤖\n${reply}`)
+          this.ipcServer?.broadcastChatReply(reply)
+        }
+        return reply
+      } catch (e: any) {
+        const reply = `Close-all error: ${e.message}`
+        if (source === 'cli') {
+          log('agent_reply', `🤖 ${reply}`)
+          this.ipcServer?.broadcastChatReply(reply)
+        }
+        return reply
+      }
+    }
+
+    const closeMatch = text.match(/^\/close\s+(\d+)(\s+--skip-swap)?$/i)
+    if (closeMatch?.[1]) {
+      try {
+        const idx = parseInt(closeMatch[1], 10) - 1
+        const skipSwap = Boolean(closeMatch[2])
+        const { positions } = await this.adapters.meteora.getMyPositions({ force: true })
+        if (idx < 0 || idx >= positions.length) {
+          const reply = 'Invalid position number. Use /positions first.'
+          if (source === 'cli') {
+            log('agent_reply', `🤖 ${reply}`)
+            this.ipcServer?.broadcastChatReply(reply)
+          }
+          return reply
+        }
+        const pos = positions[idx]
+        const result = await this.adapters.toolExecutor.executeTool('close_position', {
+          position_address: pos.position,
+          skip_swap: skipSwap,
+          reason: `${source} /close command`,
+        })
+        const swapStatus = result.auto_swapped ? ' (swapped to SOL)' : ''
+        const reply = result.success
+          ? `✅ Closed ${pos.pair}${swapStatus}`
+          : `❌ Close failed: ${result.error || 'unknown'}`
+        if (source === 'cli') {
+          log('agent_reply', `🤖 ${reply}`)
+          this.ipcServer?.broadcastChatReply(reply)
+        }
+        return reply
+      } catch (e: any) {
+        const reply = `Close error: ${e.message}`
+        if (source === 'cli') {
+          log('agent_reply', `🤖 ${reply}`)
+          this.ipcServer?.broadcastChatReply(reply)
+        }
+        return reply
+      }
+    }
 
     if (isCmd('help') || isCmd('start')) {
       const reply = this.formatHelpText()
@@ -2977,12 +3109,28 @@ IMPORTANT:
     const text = prompt?.trim()
     if (!text) return
 
+    const lower = text.toLowerCase()
+    // Control commands bypass busy lock so operator can always stop or pause the agent
+    if (
+      lower === '/stop' ||
+      lower === 'stop' ||
+      lower === '/pause' ||
+      lower === 'pause' ||
+      lower === '/resume' ||
+      lower === 'resume'
+    ) {
+      await this.processCommandOrChat(text, 'cli')
+      this.broadcastIpcState()
+      return
+    }
+
     if (this.managementBusy || this.screeningBusy || this.pnlPollBusy || this.opportunityPollBusy || this.busy) {
       log('ipc_warn', 'Agent is currently busy with an active cycle. Please wait.')
       return
     }
 
     await this.processCommandOrChat(text, 'cli')
+    this.broadcastIpcState()
   }
 
   private async handleIpcAction(action: string, args?: unknown): Promise<void> {
@@ -3006,6 +3154,7 @@ IMPORTANT:
           } catch (e: any) {
             log('ipc_error', `Close position action failed: ${e.message}`)
           }
+          this.broadcastIpcState()
         } else {
           log('ipc_warn', 'Close action received without position_address in args')
         }
@@ -3025,6 +3174,10 @@ IMPORTANT:
     if (!this.ipcServer) return
     try {
       const tracked = getTrackedPositions(true)
+      const trackedSet = new Set(tracked.map((p: any) => p.position || p.position_address))
+      this.latestLivePositions = (this.latestLivePositions || []).filter((lp: any) =>
+        trackedSet.has(lp.position || lp.position_address),
+      )
       const positions: IpcPositionSummary[] = tracked.map((p: any) => {
         const live = this.latestLivePositions.find((lp: any) => lp.position === p.position || lp.pool === p.pool)
         const pnl = Number(live?.pnl_usd ?? p.pnl_usd ?? 0)
