@@ -53,7 +53,7 @@ export const App: React.FC<AppProps> = ({ socketPath, port = 8765, token, agentI
   const logChromeHeight = 3
   const buffer = 2
   const totalChrome = statusPaneHeight + chatInputHeight + logChromeHeight + buffer
-  const maxVisible = Math.max(4, terminalRows - totalChrome)
+  const maxVisible = Math.max(2, terminalRows - totalChrome)
 
   // Keyboard navigation & controls
   useInput((input, key) => {

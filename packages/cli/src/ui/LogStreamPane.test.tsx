@@ -38,14 +38,18 @@ describe('LogStreamPane', () => {
 
   it('renders platform-appropriate scroll and return hints', () => {
     const isMac = process.platform === 'darwin'
-    const liveOutput = renderToString(<LogStreamPane logs={sampleLogs} maxVisible={10} scrollOffset={0} />)
+    const liveOutput = renderToString(<LogStreamPane logs={sampleLogs} maxVisible={10} scrollOffset={0} />, {
+      columns: 100,
+    })
     if (isMac) {
       expect(liveOutput).toContain('[Ctrl+U/D or Shift+↑/↓] to scroll')
     } else {
       expect(liveOutput).toContain('[PgUp/PgDn] to scroll')
     }
 
-    const scrolledOutput = renderToString(<LogStreamPane logs={sampleLogs} maxVisible={10} scrollOffset={5} />)
+    const scrolledOutput = renderToString(<LogStreamPane logs={sampleLogs} maxVisible={10} scrollOffset={5} />, {
+      columns: 100,
+    })
     if (isMac) {
       expect(scrolledOutput).toContain('[End or Ctrl+D]')
     } else {
