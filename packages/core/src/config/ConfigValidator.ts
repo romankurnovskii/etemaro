@@ -20,6 +20,7 @@ let dotenvLoaded = false
 export function ensureDotenvLoaded(): void {
   if (dotenvLoaded) return
   dotenvLoaded = true
+  process.env.DOTENV_CONFIG_QUIET = 'true'
   if (process.env.NODE_ENV === 'test' || process.env.VITEST) return
 
   // 1. Load user-level env (~/.config/etemaro/.env)
