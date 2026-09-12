@@ -84,7 +84,7 @@ export const LogStreamPane: React.FC<LogStreamPaneProps> = ({
             <Box key={logKey} flexDirection="row">
               <Text dimColor>[{time}] </Text>
               <Text color={catColor}>[{entry.category}] </Text>
-              <Text>{entry.message}</Text>
+              <Text wrap="truncate-end">{entry.message}</Text>
             </Box>
           )
         })
