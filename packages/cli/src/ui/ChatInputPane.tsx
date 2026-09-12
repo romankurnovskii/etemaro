@@ -8,9 +8,31 @@ export interface ChatInputPaneProps {
   disabled?: boolean
 }
 
+import { isRecentWheelEvent } from './App.js'
+
 export const ChatInputPane: React.FC<ChatInputPaneProps> = ({ onSubmit, disabled = false }) => {
   const [value, setValue] = useState('')
   const [lastSubmitted, setLastSubmitted] = useState<string | null>(null)
+
+  const handleChange = (text: string) => {
+    // Strip ANSI and SGR mouse tracking escape sequences
+    // biome-ignore lint/complexity/useRegexLiterals: RegExp constructor required to avoid noControlCharactersInRegex on \x1b
+    const sgrPattern = new RegExp('\\x1b\\[<[0-9]+;[0-9]+;[0-9]+[Mm]', 'g')
+    // biome-ignore lint/complexity/useRegexLiterals: RegExp constructor required to avoid noControlCharactersInRegex on \x1b
+    const ansiPattern = new RegExp('\\x1b\\[[0-9;]*[a-zA-Z]', 'g')
+    let sanitized = text
+      .replace(sgrPattern, '')
+      .replace(/<[0-9]+;[0-9]+;[0-9]+[Mm]/g, '')
+      .replace(/\[<[0-9]+;[0-9]+;[0-9]+[Mm]/g, '')
+      .replace(ansiPattern, '')
+
+    // If mouse was scrolled within the last 600ms, strip any newly appended '[' artifact
+    if (isRecentWheelEvent(600) && sanitized.endsWith('[')) {
+      sanitized = sanitized.replace(/\[+$/g, '')
+    }
+
+    setValue(sanitized)
+  }
 
   const handleSubmit = (text: string) => {
     const trimmed = text.trim()
@@ -24,7 +46,9 @@ export const ChatInputPane: React.FC<ChatInputPaneProps> = ({ onSubmit, disabled
     <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1}>
       {lastSubmitted ? (
         <Box>
-          <Text dimColor>Last sent: {lastSubmitted.slice(0, 80)}</Text>
+          <Text dimColor wrap="wrap">
+            Last sent: {lastSubmitted}
+          </Text>
         </Box>
       ) : null}
       <Box flexDirection="row">
@@ -36,7 +60,7 @@ export const ChatInputPane: React.FC<ChatInputPaneProps> = ({ onSubmit, disabled
         ) : (
           <TextInput
             value={value}
-            onChange={setValue}
+            onChange={handleChange}
             onSubmit={handleSubmit}
             placeholder="Type command (/status, /screen, /help) or chat prompt..."
           />

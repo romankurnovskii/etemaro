@@ -42,9 +42,9 @@ describe('LogStreamPane', () => {
       columns: 100,
     })
     if (isMac) {
-      expect(liveOutput).toContain('[Ctrl+U/D or Shift+↑/↓] to scroll')
+      expect(liveOutput).toContain('[Scroll / ↑/↓ / Ctrl+U/D] to scroll')
     } else {
-      expect(liveOutput).toContain('[PgUp/PgDn] to scroll')
+      expect(liveOutput).toContain('[Scroll / ↑/↓ / PgUp/PgDn] to scroll')
     }
 
     const scrolledOutput = renderToString(<LogStreamPane logs={sampleLogs} maxVisible={10} scrollOffset={5} />, {
