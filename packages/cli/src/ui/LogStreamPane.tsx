@@ -33,11 +33,26 @@ export const LogStreamPane: React.FC<LogStreamPaneProps> = ({
   const totalLogs = logs.length
   const clampedOffset = Math.min(Math.max(0, scrollOffset), Math.max(0, totalLogs - maxVisible))
   const endIndex = totalLogs - clampedOffset
-  const startIndex = Math.max(0, endIndex - maxVisible)
+
+  // Dynamically slice backwards from endIndex so total rendered lines fit within maxVisible
+  let startIndex = endIndex
+  let accumulatedLines = 0
+  while (startIndex > 0) {
+    const entry = logs[startIndex - 1]
+    if (!entry) break
+    const msg = entry.message || ''
+    const msgLines = msg.split('\n').reduce((acc, line) => acc + Math.max(1, Math.ceil(line.length / 75)), 0)
+    if (accumulatedLines > 0 && accumulatedLines + msgLines > maxVisible) {
+      break
+    }
+    accumulatedLines += msgLines
+    startIndex--
+  }
+
   const visibleLogs = logs.slice(startIndex, endIndex)
   const isScrolled = clampedOffset > 0
   const isMac = process.platform === 'darwin'
-  const scrollHint = isMac ? '[Ctrl+U/D or Shift+↑/↓] to scroll' : '[PgUp/PgDn] to scroll'
+  const scrollHint = isMac ? '[Scroll / ↑/↓ / Ctrl+U/D] to scroll' : '[Scroll / ↑/↓ / PgUp/PgDn] to scroll'
   const returnLiveHint = isMac ? '[End or Ctrl+D] to return to live' : '[End or PgDn] to return to live'
 
   return (
@@ -73,18 +88,16 @@ export const LogStreamPane: React.FC<LogStreamPaneProps> = ({
           </Text>
         </Box>
       ) : (
-        visibleLogs.map((entry) => {
+        visibleLogs.map((entry, idx) => {
           const rawTs = entry.ts || ''
           const time = rawTs ? rawTs.slice(11, 19) : ''
           const catColor = getCategoryColor(entry.category)
-          const logKey = entry.correlationId
-            ? `${entry.correlationId}_${rawTs}`
-            : `${rawTs}_${entry.category}_${entry.message}`
+          const logKey = `${entry.correlationId ?? ''}_${rawTs}_${entry.category}_${startIndex + idx}`
           return (
             <Box key={logKey} flexDirection="row">
-              <Text dimColor>[{time}] </Text>
-              <Text color={catColor}>[{entry.category}] </Text>
-              <Text wrap="truncate-end">{entry.message}</Text>
+              <Text dimColor>[{time}]</Text>
+              <Text color={catColor}> [{entry.category}] </Text>
+              <Text wrap="wrap">{entry.message}</Text>
             </Box>
           )
         })

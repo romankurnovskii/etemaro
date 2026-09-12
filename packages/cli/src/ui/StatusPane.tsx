@@ -54,19 +54,9 @@ export const StatusPane: React.FC<StatusPaneProps> = ({
   let connStatus = <Text color="green">● Connected ({endpoint})</Text>
   if (!connected) {
     connStatus = connecting ? (
-      <Box flexDirection="row">
-        <Text color="yellow">
-          ○ Connecting to {endpoint} (attempt {reconnectAttempts}/30)...
-        </Text>
-        {reconnectAttempts >= 2 && (
-          <Text dimColor> (Ensure daemon is running via 'etemaro start' or 'pnpm run pm2:start')</Text>
-        )}
-      </Box>
+      <Text color="yellow">○ Connecting ({reconnectAttempts}/30)...</Text>
     ) : (
-      <Box flexDirection="row">
-        <Text color="red">✕ Disconnected ({endpoint})</Text>
-        <Text dimColor> (Start daemon via 'etemaro start' or 'pnpm run pm2:start')</Text>
-      </Box>
+      <Text color="red">✕ Disconnected ({endpoint})</Text>
     )
   }
 
@@ -119,7 +109,7 @@ export const StatusPane: React.FC<StatusPaneProps> = ({
         </Box>
       </Box>
 
-      <Box flexDirection="row" gap={2} marginTop={0}>
+      <Box flexDirection="row" gap={1} marginTop={0}>
         <Text>
           <Text dimColor>Positions: </Text>
           <Text bold>{positionsCount}</Text>
@@ -151,11 +141,11 @@ export const StatusPane: React.FC<StatusPaneProps> = ({
           </>
         )}
         <Text>
-          <Text dimColor>Next Manage: </Text>
+          <Text dimColor>Manage: </Text>
           <Text>{formatCountdown(state?.nextManageAt)}</Text>
         </Text>
         <Text>
-          <Text dimColor>Next Screen: </Text>
+          <Text dimColor>Screen: </Text>
           <Text>{formatCountdown(state?.nextScreenAt)}</Text>
         </Text>
       </Box>

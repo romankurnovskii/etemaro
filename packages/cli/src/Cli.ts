@@ -1101,14 +1101,15 @@ export class Cli {
 
     const isTty = process.stdout.isTTY === true
     if (isTty) {
-      // Enter alternate screen buffer and reset cursor to home (top-left)
-      process.stdout.write('\x1b[?1049h\x1b[H')
+      // Enter alternate screen buffer, enable alternate scroll mode for wheel, and reset cursor
+      // (Do NOT enable 1000h click capture so native mouse text selection works freely)
+      process.stdout.write('\x1b[?1049h\x1b[?1007h\x1b[H')
     }
 
     const restoreScreen = () => {
       if (isTty) {
-        // Exit alternate screen buffer and ensure cursor is visible
-        process.stdout.write('\x1b[?1049l\x1b[?25h')
+        // Disable alternate scroll, exit alternate screen, and ensure cursor is visible
+        process.stdout.write('\x1b[?1007l\x1b[?1049l\x1b[?25h')
       }
     }
 

@@ -18,6 +18,14 @@ const MAX_RECONNECT_ATTEMPTS = 30
 const INITIAL_RECONNECT_DELAY_MS = 100
 const MAX_RECONNECT_DELAY_MS = 10000
 
+let lastWheelTime = 0
+export function recordWheelEvent(): void {
+  lastWheelTime = Date.now()
+}
+export function isRecentWheelEvent(thresholdMs = 350): boolean {
+  return Date.now() - lastWheelTime < thresholdMs
+}
+
 export const App: React.FC<AppProps> = ({ socketPath, port = 8765, token, agentId = 'default' }) => {
   const { exit } = useApp()
   const { stdout } = useStdout()
@@ -51,9 +59,31 @@ export const App: React.FC<AppProps> = ({ socketPath, port = 8765, token, agentI
   const statusPaneHeight = 5 + activePoolLines
   const chatInputHeight = 4
   const logChromeHeight = 3
-  const buffer = 2
+  const buffer = 3
   const totalChrome = statusPaneHeight + chatInputHeight + logChromeHeight + buffer
   const maxVisible = Math.max(2, terminalRows - totalChrome)
+
+  // Mouse wheel tracking via SGR extended coordinates (\x1b[<64;... = Up, \x1b[<65;... = Down)
+  useEffect(() => {
+    const onData = (chunk: Buffer | string) => {
+      const str = chunk.toString()
+      if (str.includes('<64;')) {
+        recordWheelEvent()
+        setScrollOffset((prev) => {
+          const maxScroll = Math.max(0, logs.length - maxVisible)
+          return Math.min(maxScroll, prev + 3)
+        })
+      } else if (str.includes('<65;')) {
+        recordWheelEvent()
+        setScrollOffset((prev) => Math.max(0, prev - 3))
+      }
+    }
+
+    process.stdin.on('data', onData)
+    return () => {
+      process.stdin.off('data', onData)
+    }
+  }, [logs.length, maxVisible])
 
   // Keyboard navigation & controls
   useInput((input, key) => {
@@ -70,20 +100,20 @@ export const App: React.FC<AppProps> = ({ socketPath, port = 8765, token, agentI
       return
     }
 
-    // Scroll up (Page Up, Ctrl+U, Shift+Up)
-    if (key.pageUp || (key.ctrl && input === 'u') || (key.shift && key.upArrow)) {
+    // Scroll up (Up Arrow, Page Up, Ctrl+U, Shift+Up)
+    if (key.pageUp || (key.ctrl && input === 'u') || (key.shift && key.upArrow) || key.upArrow) {
       setScrollOffset((prev) => {
-        const pageSize = Math.max(3, Math.floor(maxVisible / 2))
+        const pageSize = key.pageUp ? Math.max(3, Math.floor(maxVisible / 2)) : 3
         const maxScroll = Math.max(0, logs.length - maxVisible)
         return Math.min(maxScroll, prev + pageSize)
       })
       return
     }
 
-    // Scroll down (Page Down, Ctrl+D, Shift+Down)
-    if (key.pageDown || (key.ctrl && input === 'd') || (key.shift && key.downArrow)) {
+    // Scroll down (Down Arrow, Page Down, Ctrl+D, Shift+Down)
+    if (key.pageDown || (key.ctrl && input === 'd') || (key.shift && key.downArrow) || key.downArrow) {
       setScrollOffset((prev) => {
-        const pageSize = Math.max(3, Math.floor(maxVisible / 2))
+        const pageSize = key.pageDown ? Math.max(3, Math.floor(maxVisible / 2)) : 3
         return Math.max(0, prev - pageSize)
       })
       return
@@ -162,7 +192,7 @@ export const App: React.FC<AppProps> = ({ socketPath, port = 8765, token, agentI
             } else if (msg.type === IpcMessageType.STATE_SNAPSHOT) {
               setState(msg.payload as IpcStateSnapshot)
             } else if (msg.type === IpcMessageType.ACK) {
-              const reply = (msg.payload as any)?.reply
+              const reply = (msg.payload as { reply?: string })?.reply
               if (reply) {
                 const replyEntry: IpcLogEntry = {
                   ts: new Date().toISOString(),
