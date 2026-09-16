@@ -185,7 +185,7 @@ services:
     restart: unless-stopped
 
   mongo:
-    image: mongo:7
+    image: mongo:8.3.11
     env_file: .env
     ports:
       - '27017:27017'
@@ -281,7 +281,7 @@ services:
     restart: always
 
   mongo:
-    image: mongo:7
+    image: mongo:8.3.11
     env_file: .env.prod
     expose:
       - '27017'
