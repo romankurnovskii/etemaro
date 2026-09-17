@@ -8,6 +8,7 @@ node_modules/
 .pnpm-store/
 tsconfig.tsbuildinfo
 **/tsconfig.tsbuildinfo
+__pycache__
 
 # Environment & secrets
 .env
