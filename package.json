@@ -54,7 +54,7 @@
     "node": ">=22.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.13",
+    "@biomejs/biome": "^2.5.14",
     "@types/bn.js": "^5.2.0",
     "@types/node": "^26.5.1",
     "@types/node-cron": "^3.0.11",
