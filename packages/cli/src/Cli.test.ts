@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import { wallet } from '@etemaro/core'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -172,6 +173,41 @@ describe('Cli handleNewAgent', () => {
       const parsed = JSON.parse(stdoutOutput)
       expect(parsed.agentId).toBe('custom_id_99')
       expect(parsed.configFile).toContain('custom_id_99.json')
+    } finally {
+      mockExit.mockRestore()
+      mockStdout.mockRestore()
+      mkdirSpy.mockRestore()
+      writeSpy.mockRestore()
+    }
+  })
+
+  it('honors --config-dir by writing the agent config under it', async () => {
+    await loadCore()
+    const adapters: any = { domain: {}, wallet: {}, meteora: {}, screening: {} }
+    const cli = new Cli(adapters)
+    const configDir = path.resolve('/tmp/etemaro-custom-config-dir')
+
+    let stdoutOutput = ''
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any)
+    const mockStdout = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: any) => {
+      stdoutOutput += String(chunk)
+      return true
+    })
+    const mkdirSpy = vi.spyOn(fs, 'mkdirSync').mockImplementation((() => {}) as any)
+    const writeSpy = vi.spyOn(fs, 'writeFileSync').mockImplementation((() => {}) as any)
+
+    try {
+      await (cli as any).handleNewAgent({ name: 'Dir Agent', id: 'dir_agent_1', 'config-dir': configDir })
+
+      const parsed = JSON.parse(stdoutOutput)
+      expect(parsed.configFile).toBe(path.join(configDir, 'instances', 'dir_agent_1.json'))
+      const writeCall = writeSpy.mock.calls.find((c) => String(c[0]).endsWith('dir_agent_1.json'))
+      expect(writeCall).toBeTruthy()
+      const writtenContent = JSON.parse(writeCall?.[1] as string)
+      expect(writtenContent.agentId).toBe('dir_agent_1')
+      // Config must be V5 (hiveMind nested under api), not the legacy top level.
+      expect(writtenContent.api?.hiveMind).toBeTruthy()
+      expect(writtenContent.hiveMind).toBeUndefined()
     } finally {
       mockExit.mockRestore()
       mockStdout.mockRestore()
