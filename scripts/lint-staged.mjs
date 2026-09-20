@@ -9,7 +9,7 @@
  */
 import { execFileSync } from 'node:child_process'
 
-const STAGED_EXT = /\.(ts|tsx|js|jsx|json|md|html|css|sh)$/
+const STAGED_EXT = /\.(ts|tsx|js|jsx|cjs|json|md|html|css|sh)$/
 
 const raw = execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'], {
   encoding: 'utf8',
