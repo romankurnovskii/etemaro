@@ -56,7 +56,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
     "@types/bn.js": "^5.2.0",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.1",
     "@types/node-cron": "^3.0.11",
     "husky": "^9.1.7",
     "tsx": "^4.23.15",
