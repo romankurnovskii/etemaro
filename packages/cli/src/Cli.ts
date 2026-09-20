@@ -30,6 +30,7 @@ import {
   out,
   promptSecret,
   resolveWalletImportSource,
+  validateWalletAlias,
 } from './cliUtils.js'
 import { SKILL_MD } from './skillMd.js'
 
@@ -574,7 +575,8 @@ export class Cli {
   }
 
   private handleGenerateWallet(flags: Record<string, any>): void {
-    const alias = flags.name || flags.label || 'default'
+    const rawAlias = flags.name || flags.label || 'default'
+    const alias = validateWalletAlias(rawAlias)
     const result = wallet.generateNewWallet({ label: alias })
     const payload: Record<string, unknown> = {
       success: true,
@@ -618,6 +620,7 @@ export class Cli {
     }
 
     if (!alias) die('Usage: etemaro wallet import --name <alias> [--file <path> | --prompt]')
+    alias = validateWalletAlias(alias)
     if (!privateKey && !filePath && !usePrompt) {
       die('Provide a source: --file <path> or --prompt, or run on a terminal for the guided flow')
     }
@@ -693,8 +696,9 @@ export class Cli {
   }
 
   private async handleWalletRemove(flags: Record<string, any>): Promise<void> {
-    const alias = flags.name || flags.label
-    if (!alias) die('Usage: etemaro wallet remove --name <alias> [--yes]')
+    const rawAlias = flags.name || flags.label
+    if (!rawAlias) die('Usage: etemaro wallet remove --name <alias> [--yes]')
+    const alias = validateWalletAlias(rawAlias)
 
     const credDirs = [
       path.join(getEtemaroDir(), '.credentials', 'wallets'),
@@ -734,8 +738,9 @@ export class Cli {
   }
 
   private async handleWalletExport(flags: Record<string, any>): Promise<void> {
-    const alias = flags.name || flags.label
-    if (!alias) die('Usage: etemaro wallet export --name <alias>')
+    const rawAlias = flags.name || flags.label
+    if (!rawAlias) die('Usage: etemaro wallet export --name <alias>')
+    const alias = validateWalletAlias(rawAlias)
 
     // Security: only allow export from an interactive TTY
     if (!process.stdout.isTTY) {
@@ -1154,7 +1159,8 @@ export class Cli {
         )
         switch (answer) {
           case '1': {
-            const label = (await rl.question('Enter wallet alias: ')) || 'default'
+            const rawLabel = (await rl.question('Enter wallet alias: ')) || 'default'
+            const label = validateWalletAlias(rawLabel)
             const result = this.adapters.wallet.generateNewWallet({ label })
             console.log(`Generated wallet ${result.publicKey} as "${label}"`)
             // Update config
@@ -1165,7 +1171,8 @@ export class Cli {
             break
           }
           case '2': {
-            const label = (await rl.question('Enter wallet alias: ')) || 'default'
+            const rawLabel = (await rl.question('Enter wallet alias: ')) || 'default'
+            const label = validateWalletAlias(rawLabel)
             // Close the outer readline interface before promptSecret so it stops listening
             // and does not compete with promptSecret on stdin, which would echo keystrokes to terminal.
             rl.close()
@@ -1179,7 +1186,8 @@ export class Cli {
             break
           }
           case '3': {
-            const label = (await rl.question('Enter wallet alias: ')) || 'default'
+            const rawLabel = (await rl.question('Enter wallet alias: ')) || 'default'
+            const label = validateWalletAlias(rawLabel)
             const filePath = await rl.question('Enter path to keypair file: ')
             const result = this.adapters.wallet.importWallet({ label, filePath })
             console.log(`Imported wallet ${result.publicKey} as "${label}"`)
