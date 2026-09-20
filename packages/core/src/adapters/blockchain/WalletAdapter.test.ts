@@ -513,6 +513,32 @@ describe('WalletAdapter', () => {
       expect(jupPriceCount).toBe(2)
     })
 
+    it('rejects invalid swap amount and identical mint addresses', async () => {
+      await expect(
+        swapToken({
+          input_mint: 'So11111111111111111111111111111111111111112',
+          output_mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          amount: Number.NaN,
+        }),
+      ).rejects.toThrow(/invalid swap amount/i)
+
+      await expect(
+        swapToken({
+          input_mint: 'So11111111111111111111111111111111111111112',
+          output_mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          amount: -1,
+        }),
+      ).rejects.toThrow(/invalid swap amount/i)
+
+      await expect(
+        swapToken({
+          input_mint: 'So11111111111111111111111111111111111111112',
+          output_mint: 'So11111111111111111111111111111111111111112',
+          amount: 1.0,
+        }),
+      ).rejects.toThrow(/cannot swap token to itself/i)
+    })
+
     describe('mint decimals caching and swapToken resolution', () => {
       const mockJupiterSwap = (onOrder?: (searchParams: URLSearchParams) => void) => {
         process.env.JUPITER_API_KEY = 'test-jup-key'

@@ -681,6 +681,13 @@ export async function swapToken({ input_mint, output_mint, amount, slippageBps }
   input_mint = normalizeMint(input_mint)
   output_mint = normalizeMint(output_mint)
 
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error(`Invalid swap amount: ${amount}. Must be a positive finite number.`)
+  }
+  if (input_mint === output_mint) {
+    throw new Error(`Cannot swap token to itself: input and output mint addresses are identical (${input_mint})`)
+  }
+
   if (config.connection.dryRun) {
     return {
       dry_run: true,
