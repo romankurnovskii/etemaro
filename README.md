@@ -10,6 +10,8 @@ An LLM-powered agent that autonomously manages liquidity positions on Meteora DL
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22284026.svg)](https://doi.org/10.5281/zenodo.22284026)
 [![SSRN](https://img.shields.io/badge/SSRN-7404538-brightgreen)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7404538)
+[![skills.sh](https://skills.sh/b/romankurnovskii/etemaro)](https://skills.sh/romankurnovskii/etemaro)
+[![PR Tests](https://github.com/romankurnovskii/etemaro/actions/workflows/on-pr.yml/badge.svg)](https://github.com/romankurnovskii/etemaro/actions/workflows/on-pr.yml)
 
 Etemaro runs continuous screening and management cycles, deploying capital into high-quality Meteora DLMM pools and closing positions based on live PnL, yield, and range data — all driven by an LLM reasoning over real on-chain state instead of following a fixed rule set.
 
@@ -20,6 +22,41 @@ Etemaro runs continuous screening and management cycles, deploying capital into 
 - **Dry-run safe simulation** — Test strategies against real on-chain data without spending gas; mock positions are tracked locally.
 - **Multi-surface interface** — CLI for one-shot commands, a Telegram bot for remote control, and a cross-platform desktop app.
 - **Strategy library + signal adaptation** — Preset LP strategies with configurable bin distribution; signal weights evolve based on closed-position performance.
+
+---
+
+## Architecture at a glance
+
+```mermaid
+flowchart LR
+    subgraph T["Telemetry"]
+        RPC["Solana RPC<br/>(blockhash, balances)"]
+        DATAPI["Meteora Datapi<br/>(positions, PnL, fees)"]
+        JUP["Jupiter Price API<br/>(token valuation)"]
+    end
+
+    subgraph M["Market Ingestion"]
+        DISC["Pool Discovery API"]
+        FILTER["Hard filters + 0–100 scoring"]
+        RESEARCH["Token research<br/>(holders, narrative, smart wallets, LP study)"]
+    end
+
+    subgraph D["Agent Decision Logic"]
+        REACT["LLM ReAct loop<br/>agent-loop.ts"]
+        TOOLS["Tool definitions + executor<br/>(safety checks)"]
+    end
+
+    subgraph E["Execution / RPC"]
+        DLMM["Meteora DLMM SDK<br/>(deploy / claim / close)"]
+        SWAP["Jupiter Swap<br/>(base → SOL)"]
+        STATE["State & decision logs<br/>(state.json, decision-log.json)"]
+    end
+
+    T --> M --> D --> E
+    E -->|"open positions / PnL"| DATAPI
+```
+
+> Deeper detail: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** (domain boundaries, adapters, state) and **[docs/FULL_FLOW.md](docs/FULL_FLOW.md)** (canonical screening/management flows).
 
 ---
 
@@ -163,6 +200,7 @@ Clone + PM2 / Docker is **[source setup](#developer--source-setup)** above.
 - 🚀 **[Getting Started Guide](docs/GETTING_STARTED.md)** — Step-by-step first-time setup, environment variables, strategy selection.
 - 📖 **[Usage Guide](docs/USAGE_GUIDE.md)** — Daily operations, CLI commands, Telegram bot controls, REPL, and decision flows.
 - 🏗️ **[Architecture Guide](docs/ARCHITECTURE.md)** — System layout, domain boundaries, adapter layer, and state management.
+- 📊 **[Performance & Reliability](docs/PERFORMANCE.md)** — Latency budget, RPC/cost footprint, memory, and fault-tolerance mechanisms.
 - ⚙️ **[Configuration Reference](docs/CONFIGURATION.md)** — Exhaustive configuration reference for `agent-config.json`.
 - 🧠 **[HiveMind Guide](docs/HIVEMIND.md)** — Fleet learning, lesson sharing, and shared presets.
 - 💻 **[Desktop App](apps/desktop)** — Tauri-based cross-platform desktop UI.
