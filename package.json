@@ -25,9 +25,9 @@
     "lint:boundaries": "node scripts/check-boundaries.mjs",
     "pm2:start": "pm2 start config/ecosystem.config.cjs",
     "pm2:restart": "pm2 restart config/ecosystem.config.cjs --update-env",
-    "pm2:stop": "pm2 stop etemaro",
-    "pm2:delete": "pm2 delete etemaro",
-    "pm2:logs": "pm2 logs etemaro --lines 100",
+    "pm2:stop": "pm2 stop config/ecosystem.config.cjs",
+    "pm2:delete": "pm2 delete config/ecosystem.config.cjs",
+    "pm2:logs": "pm2 logs --lines 100",
     "desktop": "pnpm --filter @etemaro/desktop tauri dev",
     "web": "pnpm --filter @etemaro/web dev",
     "prepare": "husky",
@@ -46,7 +46,7 @@
     "dotenv": "^17.4.2",
     "jsonrepair": "^3.15.0",
     "node-cron": "^3.0.3",
-    "openai": "^7.15.0",
+    "openai": "^7.20.0",
     "pm2": "^7.0.4",
     "zod": "^4.6.5"
   },
@@ -54,12 +54,12 @@
     "node": ">=22.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.13",
+    "@biomejs/biome": "^2.5.14",
     "@types/bn.js": "^5.2.0",
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.2",
     "@types/node-cron": "^3.0.11",
     "husky": "^9.1.7",
-    "tsx": "^4.23.13",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"
   }

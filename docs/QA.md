@@ -87,34 +87,27 @@
 3. **Configure Parameters**:
    Edit each JSON file to set your risk, deploy amount, and strategy settings. Use `"wallet": "agent-1"` (or your chosen alias) in `connection`. **Do not** use `walletPrivateKey` with env vars.
 4. **Set Up & Run PM2 Ecosystem**:
-   Copy `config/templates/ecosystem.config.example.cjs` to `config/ecosystem.config.cjs` (`cp config/templates/ecosystem.config.example.cjs config/ecosystem.config.cjs`). In `config/ecosystem.config.cjs`, pass `AGENT_CONFIG_PATH` per agent:
+   Copy `config/templates/ecosystem.config.example.cjs` to `config/ecosystem.config.cjs` (`cp config/templates/ecosystem.config.example.cjs config/ecosystem.config.cjs`). Add one entry per agent to the `const instances` array at the top of the file; the exported `apps` list is generated from it:
 
    ```javascript
-   module.exports = {
-     apps: [
-       {
-         name: 'agent-conservative',
-         script: 'packages/daemon/src/Daemon.ts',
-         node_args: '--import tsx',
-         cwd: '/path/to/etemaro',
-         env: {
-           AGENT_CONFIG_PATH: 'config/agt_my-agent-1.json',
-           // Optional: separate data root (default is <cwd>/data)
-           // ETEMARO_DATA_DIR: '/var/lib/etemaro/agent-1',
-         },
-       },
-       {
-         name: 'agent-degen',
-         script: 'packages/daemon/src/Daemon.ts',
-         node_args: '--import tsx',
-         cwd: '/path/to/etemaro',
-         env: {
-           AGENT_CONFIG_PATH: 'config/agt_my-agent-2.json',
-         },
-       },
-     ],
-   };
+   const instances = [
+     {
+       name: 'agent-conservative',
+       config: './config/agt_my-agent-1.json',
+       envFile: './.env.agent-conservative', // this agent's wallet/RPC/API keys
+     },
+     {
+       name: 'agent-degen',
+       config: './config/agt_my-agent-2.json',
+       envFile: './.env.agent-degen',
+       dataDir: './data-agent-degen', // optional, defaults to <repo>/data
+     },
+   ];
    ```
+
+   Each entry takes `name` (PM2 process name, unique), `config` (path to the agent JSON), and `envFile` (a repo-relative `.env` with that instance's wallet key/passphrase, RPC, and API keys). Optional `dataDir` and `env` (extra vars, highest precedence). Env is read per instance only — there is no shared repo `.env` fallback — so each agent can use a different wallet and endpoints.
+
+   Because the process names are no longer fixed, `npm run pm2:stop`, `pm2:delete`, and `pm2:logs` operate on the ecosystem file / all instances instead of a single `etemaro` process.
 
    **Note:** Each agent's wallet is resolved from the keystore at `~/.config/etemaro/.credentials/wallets/<alias>.json` based on the `wallet` alias in its config. The keystore is shared across agents, but each agent references a different alias.
 
