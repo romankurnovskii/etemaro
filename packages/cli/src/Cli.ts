@@ -278,6 +278,7 @@ export class Cli {
         'env-optional': { type: 'boolean' },
         limit: { type: 'string' },
         dir: { type: 'string' },
+        'config-dir': { type: 'string' },
         label: { type: 'string' },
         name: { type: 'string' },
         'private-key': { type: 'string' },
@@ -445,8 +446,15 @@ export class Cli {
     let description = ((flags.description || flags.desc) as string | undefined)?.trim()
     let agentId = ((flags.id || flags['agent-id']) as string | undefined)?.trim()
 
-    // Determine config directory root (repo-first, else CLI etemaroDir)
-    const repoConfigDir = _REPO_ROOT ? path.join(_REPO_ROOT, 'config') : path.join(this.etemaroDir, 'config')
+    // Determine config directory root. An explicit --config-dir/--dir wins so
+    // programmatic callers (e.g. the desktop app) can target their own config
+    // root; otherwise repo-first, else the CLI etemaroDir.
+    const explicitConfigDir = ((flags['config-dir'] || flags.dir) as string | undefined)?.trim()
+    const repoConfigDir = explicitConfigDir
+      ? path.resolve(explicitConfigDir)
+      : _REPO_ROOT
+        ? path.join(_REPO_ROOT, 'config')
+        : path.join(this.etemaroDir, 'config')
     const instancesDir = path.join(repoConfigDir, 'instances')
 
     // Interactive prompt if missing fields in a TTY environment
