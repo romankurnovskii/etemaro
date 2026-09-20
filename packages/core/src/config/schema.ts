@@ -26,6 +26,27 @@ const envString = z.string().transform((val, ctx) => {
   return val
 })
 
+// Helper for PnL RPC URL that falls back to RPC_URL or public Solana mainnet when unset
+const envPnlRpcUrl = z.string().transform((val, ctx) => {
+  if (val.startsWith('env.')) {
+    const envVar = val.slice(4)
+    const resolved = process.env[envVar]
+    if (resolved !== undefined && resolved.trim() !== '') {
+      return resolved.trim()
+    }
+    if (envVar === 'PNL_RPC_URL') {
+      return process.env.RPC_URL?.trim() || 'https://api.mainnet-beta.solana.com'
+    }
+    ctx.addIssue({
+      code: 'custom',
+      message: `Environment variable ${envVar} is not set but is referenced by configuration.\nSet ${envVar} in your .env file or environment.`,
+      params: { envVar, ref: val },
+    })
+    return z.NEVER
+  }
+  return val
+})
+
 // Helper for strings that can be null or empty string, resolving env references if applicable
 const envStringNullable = z
   .string()
@@ -359,7 +380,7 @@ export const AgentConfigSchema = z
     pnl: z
       .object({
         description: z.string().optional(),
-        rpcUrl: envString.default('https://pump.helius-rpc.com'),
+        rpcUrl: envPnlRpcUrl.default('https://api.mainnet-beta.solana.com'),
         source: envString.default(DEFAULT_PNL_SOURCE),
         pollIntervalSec: envNumber.default(15),
         depositCacheTtlSec: envNumber.default(300),

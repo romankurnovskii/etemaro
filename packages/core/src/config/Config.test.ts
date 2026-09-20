@@ -471,6 +471,22 @@ describe('DEFAULT_AGENT_CONFIG template parity and validation', () => {
       expect(parsed.llm.managementModel).toBe('openai/gpt-4o')
     })
 
+    it('falls back pnl.rpcUrl to RPC_URL or public Solana mainnet when PNL_RPC_URL is not set', async () => {
+      const { AgentConfigSchema } = await import('./schema.js')
+      const baseConfig = JSON.parse(defaultAgentConfigStr)
+      baseConfig.connection.rpcUrl = 'https://api.mainnet-beta.solana.com'
+      baseConfig.pnl.rpcUrl = 'env.PNL_RPC_URL'
+      delete process.env.PNL_RPC_URL
+      process.env.RPC_URL = 'https://custom-solana-rpc.com'
+
+      const parsed = AgentConfigSchema.parse(baseConfig)
+      expect(parsed.pnl.rpcUrl).toBe('https://custom-solana-rpc.com')
+
+      delete process.env.RPC_URL
+      const parsedDefault = AgentConfigSchema.parse(baseConfig)
+      expect(parsedDefault.pnl.rpcUrl).toBe('https://api.mainnet-beta.solana.com')
+    })
+
     it('formats config load error pointing to exact json file path and instructs user how to set env or edit directly', async () => {
       const { formatConfigLoadError } = await import('./formatConfigLoadError.js')
       const error = {
