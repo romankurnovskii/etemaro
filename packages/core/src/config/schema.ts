@@ -137,36 +137,63 @@ export const AgentConfigSchema = z
     screening: z
       .object({
         description: z.string().optional(),
-        entrySource: z.enum(['market', 'smart_wallets']).optional().default('market'),
-        excludeHighSupplyConcentration: envBoolean,
-        minFeeActiveTvlRatio: envNumber,
-        minTvl: envNumber,
-        maxTvl: envNumber,
-        minVolume: envNumber,
-        minOrganic: envNumber,
-        minQuoteOrganic: envNumber,
-        minHolders: envNumber,
-        minMcap: envNumber,
-        maxMcap: envNumber,
-        minBinStep: envNumber,
-        maxBinStep: envNumber,
-        timeframe: envString,
-        category: envString,
-        minTokenFeesSol: envNumber,
-        useDiscordSignals: envBoolean.optional().default(false),
-        discordSignalMode: z.string().optional().default('merge'),
-        avoidPvpSymbols: envBoolean,
-        blockPvpSymbols: envBoolean,
-        maxBotHoldersPct: envNumber,
-        maxTop10Pct: envNumber,
-        loneCandidateMinDegen: envNumber,
-        allowedLaunchpads: z.array(envString),
-        blockedLaunchpads: z.array(envString),
-        minTokenAgeHours: envNumber.nullable(),
-        maxTokenAgeHours: envNumber.nullable(),
-        smartWalletVetoRetryHours: envNumber,
+        // Gates shared by every entry source (getRawPoolScreeningRejectReason).
+        common: z
+          .object({
+            excludeHighSupplyConcentration: envBoolean,
+            minFeeActiveTvlRatio: envNumber,
+            minTvl: envNumber,
+            maxTvl: envNumber,
+            minVolume: envNumber,
+            minOrganic: envNumber,
+            minQuoteOrganic: envNumber,
+            minHolders: envNumber,
+            minMcap: envNumber,
+            maxMcap: envNumber,
+            minBinStep: envNumber,
+            maxBinStep: envNumber,
+            blockedLaunchpads: z.array(envString),
+            minTokenAgeHours: envNumber.nullable(),
+            maxTokenAgeHours: envNumber.nullable(),
+          })
+          .strict(),
+        // Exactly one source block must be enabled. The enabled block carries
+        // the full source schema; a disabled block is only { enabled: false }.
+        market: z.discriminatedUnion('enabled', [
+          z
+            .object({
+              enabled: z.literal(true),
+              timeframe: envString,
+              category: envString,
+              minTokenFeesSol: envNumber,
+              useDiscordSignals: envBoolean,
+              discordSignalMode: z.string(),
+              avoidPvpSymbols: envBoolean,
+              blockPvpSymbols: envBoolean,
+              maxBotHoldersPct: envNumber,
+              maxTop10Pct: envNumber,
+              loneCandidateMinDegen: envNumber,
+              allowedLaunchpads: z.array(envString),
+            })
+            .strict(),
+          z.object({ enabled: z.literal(false) }).strict(),
+        ]),
+        smartWallets: z.discriminatedUnion('enabled', [
+          z.object({ enabled: z.literal(true), smartWalletVetoRetryHours: envNumber }).strict(),
+          z.object({ enabled: z.literal(false) }).strict(),
+        ]),
       })
-      .strict(),
+      .strict()
+      .superRefine((value, ctx) => {
+        const enabledCount = [value.market.enabled, value.smartWallets.enabled].filter(Boolean).length
+        if (enabledCount !== 1) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['market', 'enabled'],
+            message: 'Exactly one of screening.market.enabled / screening.smartWallets.enabled must be true',
+          })
+        }
+      }),
     management: z
       .object({
         description: z.string().optional(),

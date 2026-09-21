@@ -2,7 +2,6 @@
   "_version": 5,
   "preset": "custom",
   "agentId": "",
-
   "connection": {
     "description": "Network endpoints, API credentials, wallet key, LLM provider settings, and runtime mode. These values are also propagated to environment variables on startup.",
     "rpcUrl": "env.RPC_URL",
@@ -16,45 +15,48 @@
     "telegramPolling": true,
     "dryRun": true
   },
-
   "risk": {
     "description": "Global capital limits that cap exposure regardless of how many positions look attractive.",
     "maxPositions": 1,
     "maxDeployAmount": 50
   },
-
   "screening": {
     "description": "Filters applied when scanning for new pool candidates. Tighten these to reduce noise; loosen them to explore more pools.",
-    "entrySource": "market",
-    "timeframe": "5m",
-    "category": "trending",
-    "excludeHighSupplyConcentration": true,
-    "minTvl": 10000,
-    "maxTvl": 150000,
-    "minVolume": 500,
-    "minOrganic": 60,
-    "minQuoteOrganic": 60,
-    "minHolders": 500,
-    "minMcap": 150000,
-    "maxMcap": 10000000,
-    "minBinStep": 50,
-    "maxBinStep": 201,
-    "minFeeActiveTvlRatio": 0.02,
-    "minTokenFeesSol": 30,
-    "useDiscordSignals": false,
-    "discordSignalMode": "merge",
-    "avoidPvpSymbols": true,
-    "blockPvpSymbols": false,
-    "maxBotHoldersPct": 30,
-    "maxTop10Pct": 60,
-    "loneCandidateMinDegen": 50,
-    "allowedLaunchpads": [],
-    "blockedLaunchpads": [],
-    "minTokenAgeHours": null,
-    "maxTokenAgeHours": null,
-    "smartWalletVetoRetryHours": 6
+    "common": {
+      "excludeHighSupplyConcentration": true,
+      "minFeeActiveTvlRatio": 0.02,
+      "minTvl": 10000,
+      "maxTvl": 150000,
+      "minVolume": 500,
+      "minOrganic": 60,
+      "minQuoteOrganic": 60,
+      "minHolders": 500,
+      "minMcap": 150000,
+      "maxMcap": 10000000,
+      "minBinStep": 50,
+      "maxBinStep": 201,
+      "blockedLaunchpads": [],
+      "minTokenAgeHours": null,
+      "maxTokenAgeHours": null
+    },
+    "market": {
+      "enabled": true,
+      "timeframe": "5m",
+      "category": "trending",
+      "minTokenFeesSol": 30,
+      "useDiscordSignals": false,
+      "discordSignalMode": "merge",
+      "avoidPvpSymbols": true,
+      "blockPvpSymbols": false,
+      "maxBotHoldersPct": 30,
+      "maxTop10Pct": 60,
+      "loneCandidateMinDegen": 50,
+      "allowedLaunchpads": []
+    },
+    "smartWallets": {
+      "enabled": false
+    }
   },
-
   "management": {
     "description": "Rules for managing open positions: claims, rebalances, stop-loss, take-profit, trailing stops, and cooldowns.",
     "minClaimAmount": 5,
@@ -88,7 +90,6 @@
     "pnlSanityMaxDiffPct": 5,
     "solMode": false
   },
-
   "strategy": {
     "description": "LP bin placement strategy. Determines how liquidity is distributed relative to the active price bin.",
     "activeStrategyId": "single_sided_reseed",
@@ -98,14 +99,12 @@
     "defaultBinsBelow": 69,
     "minSafeBinsBelow": 10
   },
-
   "schedule": {
     "description": "Cadence for background loops. Keep managementIntervalMin shorter than outOfRangeWaitMinutes so the agent can act in time.",
     "managementIntervalMin": 10,
     "screeningIntervalMin": 30,
     "healthCheckIntervalMin": 60
   },
-
   "llm": {
     "description": "LLM inference parameters and per-role model overrides. defaultModel (or model) can be set directly (e.g. 'anthropic/claude-3.5-sonnet') without needing an LLM_MODEL env var; role models default to defaultModel unless individually specified or overridden via env.",
     "baseUrl": "env.LLM_BASE_URL",
@@ -118,7 +117,6 @@
     "managementModel": "env.LLM_MODEL",
     "screeningModel": "env.LLM_MODEL"
   },
-
   "darwin": {
     "description": "Auto-evolution of signal weights based on closed-position outcomes. Weights are boosted for winning signals and decayed for losers.",
     "enabled": true,
@@ -130,7 +128,6 @@
     "weightCeiling": 2.5,
     "minSamples": 10
   },
-
   "api": {
     "description": "External API integrations. Enable only the services needed for research, position lookup, or relay execution.",
     "meridian": {
@@ -155,7 +152,6 @@
       "pullMode": "auto"
     }
   },
-
   "pnl": {
     "description": "PnL tracking source, RPC endpoint, and polling cadence for position valuation. Source options: 'meteora_api' (recommended default: free Meteora REST Datapi, 0 RPC credits, ~5-15s indexing lag) or 'rpc' (on-chain DLMM SDK via getProgramAccounts, real-time sub-second precision, ~100 Helius credits/call). Polling cadence: pollIntervalSec defines seconds between PnL checks (default 15s; reduce to e.g. 3s for risky pools where every second matters, though frequent polling drastically increases RPC credit usage when source is 'rpc'). confirmTicks defines consecutive confirming ticks required before exit execution (latency = pollIntervalSec * confirmTicks).",
     "source": "meteora_api",
@@ -164,7 +160,6 @@
     "depositCacheTtlSec": 300,
     "confirmTicks": 2
   },
-
   "opportunity": {
     "description": "Background opportunity poller that scans for new high-yield pools using smart-wallet and liquidity metrics.",
     "enabled": true,
@@ -177,7 +172,6 @@
     "targetFeeRatio": 0.2,
     "targetLiquidity": 20000
   },
-
   "gmgn": {
     "description": "Optional GMGN API integration used to provide the token-fee value for screening. Enable it only when GMGN_API_KEY is configured.",
     "enabled": false,
@@ -187,21 +181,21 @@
     "requestDelayMs": 2500,
     "maxRetries": 2
   },
-
   "jupiter": {
     "description": "Jupiter swap API credentials and referral settings.",
     "apiKey": "env.JUPITER_API_KEY",
     "referralAccount": "",
     "referralFeeBps": 50
   },
-
   "chartIndicators": {
     "description": "Technical analysis indicators (RSI, supertrend) used as entry/exit signals.",
     "enabled": false,
     "entryPreset": "supertrend_break",
     "exitPreset": "supertrend_break",
     "rsiLength": 2,
-    "intervals": ["5_MINUTE"],
+    "intervals": [
+      "5_MINUTE"
+    ],
     "candles": 298,
     "rsiOversold": 30,
     "rsiOverbought": 80,

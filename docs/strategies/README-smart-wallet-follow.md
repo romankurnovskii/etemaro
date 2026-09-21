@@ -17,7 +17,7 @@ silently skipped a whole class of pools the wallets actively LP in — e.g. HODL
 LEVERSTONK (all bin_step 200) were vetoed purely on bin_step, and PERPSPAD (bin_step 400) was outside
 the window entirely.
 
-This strategy widens `screening.minBinStep`/`maxBinStep` to **50–200** so the bot enters the same pools
+This strategy widens `screening.common.minBinStep`/`maxBinStep` to **50–200** so the bot enters the same pools
 the wallets do, while still refusing the illiquid 250+/400 tail.
 
 ## Measured smart-wallet pattern (grounding data)
@@ -46,14 +46,14 @@ Coverage pick: `50–200` ≈ 91% of the wallet's pools (vs 77% under the old 80
 - `bid_ask` shape, bins placed 1–30 below the active price (`defaultBinsBelow: 30`), single-sided SOL.
 - Quick take-profit scalp: `takeProfitPct: 0.2%`, trailing after +3%, OOR close after 10 bins / 20 min.
 - `maxPositions: 1`, `deployAmountSol: 0.1`, `positionSizePct: 0.35`.
-- Vetoed positions are retried after `screening.smartWalletVetoRetryHours` (required; no code default): a pool rejected for a transient reason (TVL, token age, volatility, fee/TVL) is re-evaluated instead of being permanently blacklisted.
+- Vetoed positions are retried after `screening.smartWallets.smartWalletVetoRetryHours` (required; no code default): a pool rejected for a transient reason (TVL, token age, volatility, fee/TVL) is re-evaluated instead of being permanently blacklisted.
 
 ## What changed vs `copy_trade_lag`
 
 | Field | copy_trade_lag | smart_wallet_follow |
 |---|---|---|
-| `screening.minBinStep` | 80 | **50** |
-| `screening.maxBinStep` | 125 | **200** |
+| `screening.common.minBinStep` | 80 | **50** |
+| `screening.common.maxBinStep` | 125 | **200** |
 | `strategy.activeStrategyId` | copy_trade_lag | **smart_wallet_follow** |
 | defaultBinsBelow / settings | unchanged | unchanged |
 | management / exit rules | unchanged | unchanged |

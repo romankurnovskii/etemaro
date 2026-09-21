@@ -123,7 +123,11 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
   },
 
   "risk": { "maxPositions": 1, "maxDeployAmount": 50 },
-  "screening": { "entrySource": "market", "timeframe": "5m", ... },
+  "screening": {
+    "common": { "minTvl": 1000, "maxTvl": 300000, "minBinStep": 50, "maxBinStep": 200, ... },
+    "market": { "enabled": true, "timeframe": "5m", "category": "trending", ... },
+    "smartWallets": { "enabled": false }
+  },
   "management": { "stopLossPct": -50, "takeProfitPct": 5, ... },
   "strategy": { "activeStrategyId": "single_sided_reseed", ... },
   "schedule": { "managementIntervalMin": 10, ... },
@@ -177,27 +181,52 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 
 #### Screening
 
-| Field                                         | Purpose                                           | Example / what to expect                                                                            |
-| --------------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `entrySource`                               | Entry universe source.                            | `"market"` → trending pool discovery. `"smart_wallets"` → copy-entry from tracked LP wallets. |
-| `timeframe`                                 | Candle timeframe for indicator scans.             | `"5m"` → 5-minute candles.                                                                       |
-| `category`                                  | Pool category filter from the discovery API.      | `"trending"` → trending pools. `"new"` → recently launched.                                   |
-| `excludeHighSupplyConcentration`            | Skip tokens with concentrated supply.             | `true` → filters out likely dumps.                                                               |
-| `minTvl` / `maxTvl`                       | Allowed total-value-locked window (USD).          | `10000`–`150000`                                                                               |
-| `minVolume`                                 | Minimum 24h volume (USD).                         | `500`                                                                                             |
-| `minOrganic` / `minQuoteOrganic`          | Minimum organic (non-bot) score 0–100.           | `60`                                                                                              |
-| `minHolders`                                | Minimum holder count.                             | `500`                                                                                             |
-| `minMcap` / `maxMcap`                     | Allowed market-cap window (USD).                  | `150000`–`10000000`                                                                            |
-| `minBinStep` / `maxBinStep`               | Allowed Meteora bin-step range.                   | `80`–`125`                                                                                     |
-| `minFeeActiveTvlRatio`                      | Yield-quality gate: fees ÷ active TVL.           | `0.05` → keep pools paying ≥5%.                                                                 |
-| `minTokenFeesSol`                           | Minimum lifetime fees the token has earned (SOL). | `30`                                                                                              |
-| `avoidPvpSymbols` / `blockPvpSymbols`     | Handle PvP tokens.                                | `avoidPvpSymbols: true` de-prioritizes; `blockPvpSymbols: true` hard-blocks.                    |
-| `maxBotHoldersPct`                          | Max % of holders that are bots.                   | `30`                                                                                              |
-| `maxTop10Pct`                               | Max % of supply held by top 10 wallets.           | `60`                                                                                              |
-| `loneCandidateMinDegen`                     | Min degen score for a lone (single) candidate.    | `50`                                                                                              |
-| `allowedLaunchpads` / `blockedLaunchpads` | Launchpad allow/deny lists.                       | `[]` → no restriction.                                                                           |
-| `minTokenAgeHours` / `maxTokenAgeHours`   | Token age window.`null` = no limit.             | `null`/`null` → any age.                                                                       |
-| `smartWalletVetoRetryHours`                 | **Required.** Hours a smart-wallet position stays suppressed after a filter veto (only affects `entrySource: "smart_wallets"`). No code default — the config fails to load if omitted. | `6` → a pool rejected for a transient reason (TVL, token age, volatility, fee/TVL) is retried after 6 h instead of being blacklisted forever. |
+Screening is split into a **shared `common` block** and **two mutually exclusive source blocks**. Exactly one of `screening.market.enabled` / `screening.smartWallets.enabled` must be `true`; the other block must be `{ "enabled": false }`. Every field is required — there are no code defaults, so a missing field fails startup validation.
+
+```json
+"screening": {
+  "common": { ... },
+  "market": { "enabled": true, "timeframe": "5m", "category": "trending", ... },
+  "smartWallets": { "enabled": false }
+}
+```
+
+**`screening.common` — applied by every entry source** (`getRawPoolScreeningRejectReason`)
+
+| Field | Purpose | Example |
+| --- | --- | --- |
+| `excludeHighSupplyConcentration` | Skip tokens with concentrated supply. | `true` → filters likely dumps. |
+| `minTvl` / `maxTvl` | Allowed total-value-locked window (USD). | `1000`–`300000` |
+| `minVolume` | Minimum 24h volume (USD). | `100` |
+| `minMcap` / `maxMcap` | Allowed market-cap window (USD). | `5000`–`50000000` |
+| `minHolders` | Minimum holder count. | `10` |
+| `minBinStep` / `maxBinStep` | Allowed Meteora bin-step range. | `50`–`200` |
+| `minFeeActiveTvlRatio` | Yield-quality gate: fees ÷ active TVL. | `0.01` |
+| `minOrganic` / `minQuoteOrganic` | Minimum organic (non-bot) score 0–100. | `10` |
+| `blockedLaunchpads` | Launchpad deny list. | `[]` → no restriction. |
+| `minTokenAgeHours` / `maxTokenAgeHours` | Token age window. `null` = no limit. | `5` / `null` |
+
+**`screening.market` — only when `market.enabled` is `true`** (discovery query + market candidate selection)
+
+| Field | Purpose | Example |
+| --- | --- | --- |
+| `timeframe` | Candle timeframe for discovery/indicators. | `"5m"` |
+| `category` | Pool category from the discovery API. | `"trending"` |
+| `minTokenFeesSol` | Minimum lifetime fees the token earned (SOL). | `30` |
+| `avoidPvpSymbols` / `blockPvpSymbols` | PvP token handling. | `true` / `false` |
+| `maxBotHoldersPct` | Max % of holders that are bots. | `30` |
+| `maxTop10Pct` | Max % of supply held by top 10 wallets. | `60` |
+| `loneCandidateMinDegen` | Min degen score for a lone candidate. | `50` |
+| `allowedLaunchpads` | Launchpad allow list. | `[]` |
+| `useDiscordSignals` / `discordSignalMode` | Discord signal ingestion (reserved). | `false` / `"merge"` |
+
+**`screening.smartWallets` — only when `smartWallets.enabled` is `true`** (copy-entry; the strategy's `smartWalletListId` lives in `config/shared/strategy-library.json`)
+
+| Field | Purpose | Example |
+| --- | --- | --- |
+| `smartWalletVetoRetryHours` | Hours a vetoed position stays suppressed before it is retried. | `6` |
+
+> Setting a `market` field while `market.enabled` is `false` (or a `smartWallets` field while it is disabled) is a validation error — no silently ignored knobs.
 
 #### Management & Exits
 
@@ -371,7 +400,8 @@ The `api` block contains two independent services.
 - **Startup validation**: `loadAndValidateConfig()` reads the config JSON and passes it through the Zod schema (`schema.ts`). Any missing or wrong-type field causes an immediate failure listing every offending path:
   ```
   Error: agent-config.json has invalid or missing fields:
-    - screening.minTvl: Required
+    - screening.common.minTvl: Required
+    - screening.market.enabled: Exactly one of screening.market.enabled / screening.smartWallets.enabled must be true
     - hiveMind.pullMode: Required
   ```
 - **No backward compatibility**: Version 5 is strict. Old V1/V2 keys (`darwinEnabled`, `hiveMindUrl`, `pnlSource`, `connection.*`, etc.) are not accepted — update your config to V5.
@@ -385,7 +415,8 @@ Use the `update_config` tool (Telegram `/setcfg` or agent self-tuning) to change
 
 ```json
 {
-  "screening.minOrganic": 70,
+  "screening.common.minOrganic": 70,
+  "screening.market.timeframe": "15m",
   "management.stopLossPct": -20
 }
 ```

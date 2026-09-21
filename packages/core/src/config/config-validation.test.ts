@@ -51,13 +51,55 @@ describe('config-validation', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
-  it('requires screening.smartWalletVetoRetryHours and has no code default', () => {
-    const screeningWithout = { ...base.screening }
-    delete screeningWithout.smartWalletVetoRetryHours
+  it('rejects a config where neither source block is enabled', () => {
+    const doc = {
+      ...base,
+      screening: { ...base.screening, market: { enabled: false }, smartWallets: { enabled: false } },
+    }
+    const report = validateConfigDocument(doc, { envOptional: true })
+    expect(report.ok).toBe(false)
+    expect(report.entries[0]?.errors.join('\n')).toMatch(/Exactly one of screening\.market\.enabled/)
+  })
 
-    const report = validateConfigDocument({ ...base, screening: screeningWithout }, { envOptional: true })
+  it('rejects a config where both source blocks are enabled', () => {
+    const doc = {
+      ...base,
+      screening: {
+        ...base.screening,
+        market: { ...base.screening.market, enabled: true },
+        smartWallets: { enabled: true, smartWalletVetoRetryHours: 6 },
+      },
+    }
+    const report = validateConfigDocument(doc, { envOptional: true })
+    expect(report.ok).toBe(false)
+    expect(report.entries[0]?.errors.join('\n')).toMatch(/Exactly one of screening\.market\.enabled/)
+  })
 
+  it('requires smartWalletVetoRetryHours when smartWallets is enabled', () => {
+    const doc = {
+      ...base,
+      screening: { ...base.screening, market: { enabled: false }, smartWallets: { enabled: true } },
+    }
+    const report = validateConfigDocument(doc, { envOptional: true })
     expect(report.ok).toBe(false)
     expect(report.entries[0]?.errors.join('\n')).toMatch(/smartWalletVetoRetryHours/)
+  })
+
+  it('rejects source-specific keys inside a disabled block', () => {
+    const doc = {
+      ...base,
+      screening: { ...base.screening, market: { enabled: false, category: 'trending' } },
+    }
+    const report = validateConfigDocument(doc, { envOptional: true })
+    expect(report.ok).toBe(false)
+  })
+
+  it('requires every common gate (no code default)', () => {
+    const commonWithout = { ...base.screening.common }
+    delete commonWithout.maxTvl
+    const doc = { ...base, screening: { ...base.screening, common: commonWithout } }
+    const report = validateConfigDocument(doc, { envOptional: true })
+    expect(report.ok).toBe(false)
+    expect(report.entries[0]?.errors.join('\n')).toMatch(/maxTvl/)
   })
 })
