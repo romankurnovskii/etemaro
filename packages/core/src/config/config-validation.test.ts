@@ -54,7 +54,11 @@ describe('config-validation', () => {
   it('rejects a config where neither source block is enabled', () => {
     const doc = {
       ...base,
-      screening: { ...base.screening, market: { enabled: false }, smartWallets: { enabled: false } },
+      screening: {
+        ...base.screening,
+        market: { ...base.screening.market, enabled: false },
+        smartWallets: { ...base.screening.smartWallets, enabled: false },
+      },
     }
     const report = validateConfigDocument(doc, { envOptional: true })
     expect(report.ok).toBe(false)
@@ -67,7 +71,7 @@ describe('config-validation', () => {
       screening: {
         ...base.screening,
         market: { ...base.screening.market, enabled: true },
-        smartWallets: { enabled: true, smartWalletVetoRetryHours: 6 },
+        smartWallets: { ...base.screening.smartWallets, enabled: true },
       },
     }
     const report = validateConfigDocument(doc, { envOptional: true })
@@ -75,27 +79,34 @@ describe('config-validation', () => {
     expect(report.entries[0]?.errors.join('\n')).toMatch(/Exactly one of screening\.market\.enabled/)
   })
 
-  it('requires smartWalletVetoRetryHours when smartWallets is enabled', () => {
+  it('requires the smartWallets field set even when the block is disabled', () => {
     const doc = {
       ...base,
-      screening: { ...base.screening, market: { enabled: false }, smartWallets: { enabled: true } },
+      screening: {
+        ...base.screening,
+        market: { ...base.screening.market, enabled: true },
+        smartWallets: { enabled: false },
+      },
     }
     const report = validateConfigDocument(doc, { envOptional: true })
     expect(report.ok).toBe(false)
     expect(report.entries[0]?.errors.join('\n')).toMatch(/smartWalletVetoRetryHours/)
   })
 
-  it('rejects source-specific keys inside a disabled block', () => {
+  it('accepts a disabled block that still carries its full field set', () => {
     const doc = {
       ...base,
-      screening: { ...base.screening, market: { enabled: false, category: 'trending' } },
+      screening: {
+        ...base.screening,
+        market: { ...base.screening.market, enabled: true },
+        smartWallets: { ...base.screening.smartWallets, enabled: false },
+      },
     }
-    const report = validateConfigDocument(doc, { envOptional: true })
-    expect(report.ok).toBe(false)
+    expect(validateConfigDocument(doc, { envOptional: true }).ok).toBe(true)
   })
 
-  it('rejects a config that is not schema version 6', () => {
-    const report = validateConfigDocument({ ...base, _version: 5 }, { envOptional: true })
+  it('rejects a config that is not schema version 7', () => {
+    const report = validateConfigDocument({ ...base, _version: 6 }, { envOptional: true })
     expect(report.ok).toBe(false)
   })
 

@@ -1,5 +1,5 @@
 {
-  "_version": 6,
+  "_version": 7,
   "preset": "custom",
   "agentId": "",
   "connection": {
@@ -54,7 +54,8 @@
       "allowedLaunchpads": []
     },
     "smartWallets": {
-      "enabled": false
+      "enabled": false,
+      "smartWalletVetoRetryHours": 6
     }
   },
   "management": {

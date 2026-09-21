@@ -90,30 +90,28 @@ function buildConfig(): AppConfig {
 
   const screeningConfig = (() => {
     const scr = u.screening
-    const market = scr.market.enabled ? scr.market : null
-    const smart = !scr.market.enabled && scr.smartWallets.enabled ? scr.smartWallets : null
+    // Both blocks are always fully populated, so every runtime value comes from
+    // the config file; nothing is invented in code for the inactive source.
     return {
       entrySource: scr.market.enabled ? 'market' : 'smart_wallets',
       ...scr.common,
-      // Fields belonging to the disabled source are inert placeholders so the
-      // runtime ScreeningConfig stays flat; they are never read on the active path.
-      timeframe: market?.timeframe ?? '5m',
-      category: market?.category ?? 'trending',
-      minTokenFeesSol: market?.minTokenFeesSol ?? 0,
-      avoidPvpSymbols: market?.avoidPvpSymbols ?? false,
-      blockPvpSymbols: market?.blockPvpSymbols ?? false,
-      maxBotHoldersPct: market?.maxBotHoldersPct ?? 0,
-      maxTop10Pct: market?.maxTop10Pct ?? 0,
-      loneCandidateMinDegen: market?.loneCandidateMinDegen ?? 0,
-      allowedLaunchpads: market?.allowedLaunchpads ?? [],
-      useDiscordSignals: market?.useDiscordSignals ?? false,
-      discordSignalMode: market?.discordSignalMode ?? 'merge',
-      smartWalletVetoRetryHours: smart?.smartWalletVetoRetryHours ?? 0,
+      timeframe: scr.market.timeframe,
+      category: scr.market.category,
+      minTokenFeesSol: scr.market.minTokenFeesSol,
+      avoidPvpSymbols: scr.market.avoidPvpSymbols,
+      blockPvpSymbols: scr.market.blockPvpSymbols,
+      maxBotHoldersPct: scr.market.maxBotHoldersPct,
+      maxTop10Pct: scr.market.maxTop10Pct,
+      loneCandidateMinDegen: scr.market.loneCandidateMinDegen,
+      allowedLaunchpads: scr.market.allowedLaunchpads,
+      useDiscordSignals: scr.market.useDiscordSignals,
+      discordSignalMode: scr.market.discordSignalMode,
+      smartWalletVetoRetryHours: scr.smartWallets.smartWalletVetoRetryHours,
     } as AppConfig['screening']
   })()
 
   return {
-    _version: u._version ?? 6,
+    _version: u._version ?? 7,
     agentId: u.agentId && u.agentId.length > 0 ? u.agentId : DEFAULT_AGENT_ID,
     connection: {
       rpcUrl: u.connection?.rpcUrl ?? '',
