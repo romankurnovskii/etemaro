@@ -1908,7 +1908,7 @@ IMPORTANT:
     }
 
     // 4. Calculate diff using pure domain helper
-    const vetoRetryHours = config.screening?.smartWalletVetoRetryHours ?? 6
+    const vetoRetryHours = config.screening.smartWalletVetoRetryHours
     const diff = domain.diffSmartWalletPositions(currentPositions, snapshot, {
       vetoRetryMs: vetoRetryHours * 3_600_000,
     })

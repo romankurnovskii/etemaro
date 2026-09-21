@@ -419,7 +419,7 @@ When this mode is enabled, the agent completely skips scraping public markets fo
 
 #### Veto retry TTL
 
-A smart-wallet position that reaches the deterministic filters but is rejected ("vetoed") is **not blacklisted forever**. The veto is recorded with a timestamp and reason, and the position is retried after `screening.smartWalletVetoRetryHours` (default `6`). This matters because the reasons that fire most often are transient — `maxTvl`, `minTokenAgeHours`, `fee_active_tvl_ratio`, `volatility` — and the same pool can become eligible later (TVL falls, the token ages past the minimum). Only positions that were actually deployed and the first-run baseline stay permanent; static rejects (bin-step out of range, high supply concentration) simply remain ineligible.
+A smart-wallet position that reaches the deterministic filters but is rejected ("vetoed") is **not blacklisted forever**. The veto is recorded with a timestamp and reason, and the position is retried after `screening.smartWalletVetoRetryHours` (a **required** field with no code default — the config fails to load if it is omitted). This matters because the reasons that fire most often are transient — `maxTvl`, `minTokenAgeHours`, `fee_active_tvl_ratio`, `volatility` — and the same pool can become eligible later (TVL falls, the token ages past the minimum). Only positions that were actually deployed and the first-run baseline stay permanent; static rejects (bin-step out of range, high supply concentration) simply remain ineligible.
 
 ---
 
