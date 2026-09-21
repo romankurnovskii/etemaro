@@ -2,7 +2,7 @@ import { DEFAULT_AGENT_ID } from '../shared/constants.js'
 import type { AgentConfigRaw } from './schema.js'
 
 export const DEFAULT_AGENT_CONFIG: AgentConfigRaw = {
-  _version: 6,
+  _version: 7,
   preset: 'custom',
   agentId: DEFAULT_AGENT_ID,
 
@@ -61,7 +61,7 @@ export const DEFAULT_AGENT_CONFIG: AgentConfigRaw = {
       loneCandidateMinDegen: 50,
       allowedLaunchpads: [],
     },
-    smartWallets: { enabled: false },
+    smartWallets: { enabled: false, smartWalletVetoRetryHours: 6 },
   },
 
   management: {

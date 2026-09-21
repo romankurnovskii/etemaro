@@ -1,6 +1,6 @@
 # Etemaro — Configuration Guide
 
-Etemaro uses a strict schema-validated configuration system (Version 6): every required field MUST be present in the active JSON configuration file. By default the application reads `config/instances/agent-default.json`; a custom path can be set via the `AGENT_CONFIG_PATH` environment variable.
+Etemaro uses a strict schema-validated configuration system (Version 7): every required field MUST be present in the active JSON configuration file. By default the application reads `config/instances/agent-default.json`; a custom path can be set via the `AGENT_CONFIG_PATH` environment variable.
 
 ```
               ┌────────────────────────┐
@@ -105,13 +105,13 @@ Optional:
 
 ## 3. Agent Configuration (`agent-config.json`)
 
-### Schema Version 6
+### Schema Version 7
 
 Configuration is a **nested JSON object**. The root contains `_version`, `preset`, `agentId`, and the `connection` block. All other settings are in named category objects.
 
 ```json
 {
-  "_version": 6,
+  "_version": 7,
   "preset": "custom",
   "agentId": "",
   "connection": {
@@ -152,7 +152,7 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 
 | Field          | Purpose                                                         | Example                    |
 | -------------- | --------------------------------------------------------------- | -------------------------- |
-| `_version`   | Schema version. Must be `6`.                                   | `6`                      |
+| `_version`   | Schema version. Must be `7`.                                   | `7`                      |
 | `preset`     | Informational label for the config profile.                     | `"custom"`               |
 | `agentId`    | Stable HiveMind instance ID.`""` = auto-assign.               | `""` or `"agt_abc123"` |
 | `connection` | Network, provider, wallet, runtime mode, and Telegram settings. | `{ ... }`                |
@@ -181,13 +181,13 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 
 #### Screening
 
-Screening is split into a **shared `common` block** and **two mutually exclusive source blocks**. Exactly one of `screening.market.enabled` / `screening.smartWallets.enabled` must be `true`; the other block must be `{ "enabled": false }`. Every field is required — there are no code defaults, so a missing field fails startup validation.
+Screening is split into a **shared `common` block** and **two source blocks**. Both source blocks always carry their full field set (even when disabled) — enabling a source never requires new fields and the runtime never invents values. Exactly one of `screening.market.enabled` / `screening.smartWallets.enabled` must be `true`. Every field is required; a missing field fails startup validation.
 
 ```json
 "screening": {
   "common": { ... },
   "market": { "enabled": true, "timeframe": "5m", "category": "trending", ... },
-  "smartWallets": { "enabled": false }
+  "smartWallets": { "enabled": false, "smartWalletVetoRetryHours": 6 }
 }
 ```
 
@@ -226,7 +226,7 @@ Screening is split into a **shared `common` block** and **two mutually exclusive
 | --- | --- | --- |
 | `smartWalletVetoRetryHours` | Hours a vetoed position stays suppressed before it is retried. | `6` |
 
-> Setting a `market` field while `market.enabled` is `false` (or a `smartWallets` field while it is disabled) is a validation error — no silently ignored knobs.
+> The disabled block is simply unused — its values are declared but not read. Because it is always complete, flipping `enabled` is the only change needed to switch sources.
 
 #### Management & Exits
 
@@ -404,7 +404,7 @@ The `api` block contains two independent services.
     - screening.market.enabled: Exactly one of screening.market.enabled / screening.smartWallets.enabled must be true
     - hiveMind.pullMode: Required
   ```
-- **No backward compatibility**: Version 6 is strict. Old V1–V5 keys (flat `screening.*`, `darwinEnabled`, `hiveMindUrl`, `pnlSource`, `connection.*`, etc.) are not accepted — update your config to V6.
+- **No backward compatibility**: Version 7 is strict. Old V1–V6 keys (flat `screening.*`, `darwinEnabled`, `hiveMindUrl`, `pnlSource`, `connection.*`, etc.) are not accepted — update your config to V7.
 - **Dynamic Reloading**: `reloadScreeningThresholds()` re-reads the config file at the start of every screening cycle and applies changes to the running singleton without restart.
 
 ---

@@ -96,7 +96,7 @@ const envBoolean = z.union([z.boolean(), z.string()]).transform((val, ctx) => {
 
 export const AgentConfigSchema = z
   .object({
-    _version: z.literal(6),
+    _version: z.literal(7),
     preset: z.string().optional(),
     name: z.string().optional(),
     description: z.string().optional(),
@@ -157,31 +157,31 @@ export const AgentConfigSchema = z
             maxTokenAgeHours: envNumber.nullable(),
           })
           .strict(),
-        // Exactly one source block must be enabled. The enabled block carries
-        // the full source schema; a disabled block is only { enabled: false }.
-        market: z.discriminatedUnion('enabled', [
-          z
-            .object({
-              enabled: z.literal(true),
-              timeframe: envString,
-              category: envString,
-              minTokenFeesSol: envNumber,
-              useDiscordSignals: envBoolean,
-              discordSignalMode: z.string(),
-              avoidPvpSymbols: envBoolean,
-              blockPvpSymbols: envBoolean,
-              maxBotHoldersPct: envNumber,
-              maxTop10Pct: envNumber,
-              loneCandidateMinDegen: envNumber,
-              allowedLaunchpads: z.array(envString),
-            })
-            .strict(),
-          z.object({ enabled: z.literal(false) }).strict(),
-        ]),
-        smartWallets: z.discriminatedUnion('enabled', [
-          z.object({ enabled: z.literal(true), smartWalletVetoRetryHours: envNumber }).strict(),
-          z.object({ enabled: z.literal(false) }).strict(),
-        ]),
+        // Exactly one source block may be enabled. Both blocks always carry
+        // their full field set so enabling a source never requires new fields
+        // and the runtime never invents values; a disabled block is just unused.
+        market: z
+          .object({
+            enabled: envBoolean,
+            timeframe: envString,
+            category: envString,
+            minTokenFeesSol: envNumber,
+            useDiscordSignals: envBoolean,
+            discordSignalMode: z.string(),
+            avoidPvpSymbols: envBoolean,
+            blockPvpSymbols: envBoolean,
+            maxBotHoldersPct: envNumber,
+            maxTop10Pct: envNumber,
+            loneCandidateMinDegen: envNumber,
+            allowedLaunchpads: z.array(envString),
+          })
+          .strict(),
+        smartWallets: z
+          .object({
+            enabled: envBoolean,
+            smartWalletVetoRetryHours: envNumber,
+          })
+          .strict(),
       })
       .strict()
       .superRefine((value, ctx) => {
