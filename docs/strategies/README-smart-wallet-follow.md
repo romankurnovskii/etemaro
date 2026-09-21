@@ -46,6 +46,7 @@ Coverage pick: `50–200` ≈ 91% of the wallet's pools (vs 77% under the old 80
 - `bid_ask` shape, bins placed 1–30 below the active price (`defaultBinsBelow: 30`), single-sided SOL.
 - Quick take-profit scalp: `takeProfitPct: 0.2%`, trailing after +3%, OOR close after 10 bins / 20 min.
 - `maxPositions: 1`, `deployAmountSol: 0.1`, `positionSizePct: 0.35`.
+- Vetoed positions are retried after `screening.smartWalletVetoRetryHours` (default `6` h): a pool rejected for a transient reason (TVL, token age, volatility, fee/TVL) is re-evaluated instead of being permanently blacklisted.
 
 ## What changed vs `copy_trade_lag`
 
@@ -72,7 +73,9 @@ feasible and intentional given `maxBinsBelow: 30`.
 3. **Match the wallet, not just its bins.** Biggest veto block was token age <5h (Tulip/TULIP ×8,
    TWINE) and TVL >300k (baton ×5). This strategy leaves those gates unchanged; if you want even closer
    reproduction, consider a variant with `minTokenAgeHours: 1–2` and/or `maxTvl: 500000`. Bias: TVL cap
-   is a real safety valve for wide-bin pools — don't raise it without surveillance.
+   is a real safety valve for wide-bin pools — don't raise it without surveillance. The veto retry TTL
+   (`smartWalletVetoRetryHours`) now re-checks these pools periodically, so a pool that was over the TVL
+   cap or too young at first sight can still be entered later.
 4. **maxPositions=1 remains the binding constraint.** The wallet cycles in/out on a ~10-min cadence; the
    single slot is what actually throttles deploy count, not the filters. If you want to ride several
    wallet positions at once, raise this to 2–3 first and watch risk.

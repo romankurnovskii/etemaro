@@ -51,7 +51,8 @@
     "allowedLaunchpads": [],
     "blockedLaunchpads": [],
     "minTokenAgeHours": null,
-    "maxTokenAgeHours": null
+    "maxTokenAgeHours": null,
+    "smartWalletVetoRetryHours": 6
   },
 
   "management": {
