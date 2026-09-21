@@ -96,7 +96,7 @@ const envBoolean = z.union([z.boolean(), z.string()]).transform((val, ctx) => {
 
 export const AgentConfigSchema = z
   .object({
-    _version: z.number().optional().default(5),
+    _version: z.literal(6),
     preset: z.string().optional(),
     name: z.string().optional(),
     description: z.string().optional(),

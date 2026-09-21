@@ -1,6 +1,6 @@
 # Etemaro — Configuration Guide
 
-Etemaro uses a strict schema-validated configuration system (Version 5): every required field MUST be present in the active JSON configuration file. By default the application reads `config/instances/agent-default.json`; a custom path can be set via the `AGENT_CONFIG_PATH` environment variable.
+Etemaro uses a strict schema-validated configuration system (Version 6): every required field MUST be present in the active JSON configuration file. By default the application reads `config/instances/agent-default.json`; a custom path can be set via the `AGENT_CONFIG_PATH` environment variable.
 
 ```
               ┌────────────────────────┐
@@ -105,13 +105,13 @@ Optional:
 
 ## 3. Agent Configuration (`agent-config.json`)
 
-### Schema Version 5
+### Schema Version 6
 
 Configuration is a **nested JSON object**. The root contains `_version`, `preset`, `agentId`, and the `connection` block. All other settings are in named category objects.
 
 ```json
 {
-  "_version": 5,
+  "_version": 6,
   "preset": "custom",
   "agentId": "",
   "connection": {
@@ -152,7 +152,7 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 
 | Field          | Purpose                                                         | Example                    |
 | -------------- | --------------------------------------------------------------- | -------------------------- |
-| `_version`   | Schema version. Must be `5`.                                   | `5`                      |
+| `_version`   | Schema version. Must be `6`.                                   | `6`                      |
 | `preset`     | Informational label for the config profile.                     | `"custom"`               |
 | `agentId`    | Stable HiveMind instance ID.`""` = auto-assign.               | `""` or `"agt_abc123"` |
 | `connection` | Network, provider, wallet, runtime mode, and Telegram settings. | `{ ... }`                |
@@ -404,7 +404,7 @@ The `api` block contains two independent services.
     - screening.market.enabled: Exactly one of screening.market.enabled / screening.smartWallets.enabled must be true
     - hiveMind.pullMode: Required
   ```
-- **No backward compatibility**: Version 5 is strict. Old V1/V2 keys (`darwinEnabled`, `hiveMindUrl`, `pnlSource`, `connection.*`, etc.) are not accepted — update your config to V5.
+- **No backward compatibility**: Version 6 is strict. Old V1–V5 keys (flat `screening.*`, `darwinEnabled`, `hiveMindUrl`, `pnlSource`, `connection.*`, etc.) are not accepted — update your config to V6.
 - **Dynamic Reloading**: `reloadScreeningThresholds()` re-reads the config file at the start of every screening cycle and applies changes to the running singleton without restart.
 
 ---
