@@ -113,7 +113,7 @@ function buildConfig(): AppConfig {
   })()
 
   return {
-    _version: u._version ?? 5,
+    _version: u._version ?? 6,
     agentId: u.agentId && u.agentId.length > 0 ? u.agentId : DEFAULT_AGENT_ID,
     connection: {
       rpcUrl: u.connection?.rpcUrl ?? '',

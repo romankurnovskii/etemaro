@@ -2,7 +2,7 @@ import { DEFAULT_AGENT_ID } from '../shared/constants.js'
 import type { AgentConfigRaw } from './schema.js'
 
 export const DEFAULT_AGENT_CONFIG: AgentConfigRaw = {
-  _version: 5,
+  _version: 6,
   preset: 'custom',
   agentId: DEFAULT_AGENT_ID,
 

@@ -1,6 +1,6 @@
 /**
  * @file ConfigValidator.ts
- * @description Zod schema based validator for runtime application configuration files (Version 5).
+ * @description Zod schema based validator for runtime application configuration files (Version 6).
  *
  * @features
  * - Uses nested Zod schema mapping directly to config shape
@@ -126,7 +126,7 @@ export function loadAndValidateConfig(): ValidatedAgentConfig {
     const errorMessages = issues.map((err: any) => `  - ${err.path.join('.')}: ${err.message}`).join('\n')
     const err: any = new Error(
       `${getConfigFileName()} has invalid or missing fields:\n${errorMessages}\n\n` +
-        'Please ensure you are using the Version 5 schema structure.',
+        'Please ensure you are using the Version 6 schema structure.',
       { cause: result.error },
     )
     err.issues = issues

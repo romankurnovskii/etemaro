@@ -94,6 +94,11 @@ describe('config-validation', () => {
     expect(report.ok).toBe(false)
   })
 
+  it('rejects a config that is not schema version 6', () => {
+    const report = validateConfigDocument({ ...base, _version: 5 }, { envOptional: true })
+    expect(report.ok).toBe(false)
+  })
+
   it('requires every common gate (no code default)', () => {
     const commonWithout = { ...base.screening.common }
     delete commonWithout.maxTvl
