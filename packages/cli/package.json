@@ -1,6 +1,6 @@
 {
   "name": "@etemaro/cli",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "type": "module",
   "main": "dist/Cli.cjs",
   "bin": {
