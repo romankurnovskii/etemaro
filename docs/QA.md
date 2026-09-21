@@ -417,6 +417,10 @@ You can change the `entrySource` under the `screening` section of your `config/a
 
 When this mode is enabled, the agent completely skips scraping public markets for trending pools. Instead, it regularly checks the LP positions of the tracked `lp` smart wallets and uses newly entered pools as candidate signals. If the candidate pool passes your configured deterministic screening filters (TVL, token age, warnings, organic score, etc.), the agent deploys into the pool using your own strategy, SOL deposit sizing, and management rules. (Note: This is candidate discovery driven by smart wallet signals; deploy sizing, bin strategies, and exit rules remain 100% your own).
 
+#### Veto retry TTL
+
+A smart-wallet position that reaches the deterministic filters but is rejected ("vetoed") is **not blacklisted forever**. The veto is recorded with a timestamp and reason, and the position is retried after `screening.smartWalletVetoRetryHours` (default `6`). This matters because the reasons that fire most often are transient — `maxTvl`, `minTokenAgeHours`, `fee_active_tvl_ratio`, `volatility` — and the same pool can become eligible later (TVL falls, the token ages past the minimum). Only positions that were actually deployed and the first-run baseline stay permanent; static rejects (bin-step out of range, high supply concentration) simply remain ineligible.
+
 ---
 
 ## Performance & PnL Metrics

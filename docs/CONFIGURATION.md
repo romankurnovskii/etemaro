@@ -197,6 +197,7 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 | `loneCandidateMinDegen`                     | Min degen score for a lone (single) candidate.    | `50`                                                                                              |
 | `allowedLaunchpads` / `blockedLaunchpads` | Launchpad allow/deny lists.                       | `[]` → no restriction.                                                                           |
 | `minTokenAgeHours` / `maxTokenAgeHours`   | Token age window.`null` = no limit.             | `null`/`null` → any age.                                                                       |
+| `smartWalletVetoRetryHours`                 | Hours a smart-wallet position stays suppressed after a filter veto (only affects `entrySource: "smart_wallets"`). | `6` → a pool rejected for a transient reason (TVL, token age, volatility, fee/TVL) is retried after 6 h instead of being blacklisted forever. |
 
 #### Management & Exits
 

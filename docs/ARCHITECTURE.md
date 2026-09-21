@@ -65,6 +65,7 @@ packages/
       token-blacklist.ts     # Token blacklist state manager
       dev-blocklist.ts       # Dev blocklist state manager
       smart-wallets.ts         # Smart wallets state manager
+      smart-wallets-screening.ts # Smart-wallet snapshot diffing + veto retry TTL
       signal-weights.ts        # Darwinian signal weight state manager
       signal-tracker.ts        # Signal performance tracker state manager
     config/
