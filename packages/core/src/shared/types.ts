@@ -666,6 +666,8 @@ export interface ScreeningConfig {
   blockedLaunchpads: string[]
   minTokenAgeHours: number | null
   maxTokenAgeHours: number | null
+  /** Hours a smart-wallet position vetoed for a transient reason stays suppressed before it is retried. */
+  smartWalletVetoRetryHours: number
 }
 
 export interface ManagementConfig {
