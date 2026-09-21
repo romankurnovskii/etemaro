@@ -46,7 +46,7 @@ Coverage pick: `50–200` ≈ 91% of the wallet's pools (vs 77% under the old 80
 - `bid_ask` shape, bins placed 1–30 below the active price (`defaultBinsBelow: 30`), single-sided SOL.
 - Quick take-profit scalp: `takeProfitPct: 0.2%`, trailing after +3%, OOR close after 10 bins / 20 min.
 - `maxPositions: 1`, `deployAmountSol: 0.1`, `positionSizePct: 0.35`.
-- Vetoed positions are retried after `screening.smartWalletVetoRetryHours` (default `6` h): a pool rejected for a transient reason (TVL, token age, volatility, fee/TVL) is re-evaluated instead of being permanently blacklisted.
+- Vetoed positions are retried after `screening.smartWalletVetoRetryHours` (required; no code default): a pool rejected for a transient reason (TVL, token age, volatility, fee/TVL) is re-evaluated instead of being permanently blacklisted.
 
 ## What changed vs `copy_trade_lag`
 

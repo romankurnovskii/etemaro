@@ -50,4 +50,14 @@ describe('config-validation', () => {
     expect(report.parseError).toMatch(/invalid JSON/)
     fs.rmSync(dir, { recursive: true, force: true })
   })
+
+  it('requires screening.smartWalletVetoRetryHours and has no code default', () => {
+    const screeningWithout = { ...base.screening }
+    delete screeningWithout.smartWalletVetoRetryHours
+
+    const report = validateConfigDocument({ ...base, screening: screeningWithout }, { envOptional: true })
+
+    expect(report.ok).toBe(false)
+    expect(report.entries[0]?.errors.join('\n')).toMatch(/smartWalletVetoRetryHours/)
+  })
 })

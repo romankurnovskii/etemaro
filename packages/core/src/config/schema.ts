@@ -164,7 +164,7 @@ export const AgentConfigSchema = z
         blockedLaunchpads: z.array(envString),
         minTokenAgeHours: envNumber.nullable(),
         maxTokenAgeHours: envNumber.nullable(),
-        smartWalletVetoRetryHours: envNumber.optional().default(6),
+        smartWalletVetoRetryHours: envNumber,
       })
       .strict(),
     management: z
