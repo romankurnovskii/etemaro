@@ -138,6 +138,7 @@ function buildConfig(): AppConfig {
       blockedLaunchpads: u.screening.blockedLaunchpads,
       minTokenAgeHours: u.screening.minTokenAgeHours,
       maxTokenAgeHours: u.screening.maxTokenAgeHours,
+      smartWalletVetoRetryHours: u.screening.smartWalletVetoRetryHours,
     },
     management: {
       minClaimAmount: u.management.minClaimAmount,
@@ -341,6 +342,8 @@ export function reloadScreeningThresholds(): void {
         s.minTokenAgeHours = resolveField('minTokenAgeHours', u.minTokenAgeHours) as number | null
       if (u.maxTokenAgeHours !== undefined)
         s.maxTokenAgeHours = resolveField('maxTokenAgeHours', u.maxTokenAgeHours) as number | null
+      if (u.smartWalletVetoRetryHours != null)
+        s.smartWalletVetoRetryHours = resolveField('smartWalletVetoRetryHours', u.smartWalletVetoRetryHours) as number
       if (u.avoidPvpSymbols !== undefined)
         s.avoidPvpSymbols = resolveField('avoidPvpSymbols', u.avoidPvpSymbols) as boolean
       if (u.blockPvpSymbols !== undefined)

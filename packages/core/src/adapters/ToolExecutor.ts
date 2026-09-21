@@ -382,6 +382,7 @@ const toolMap: Record<string, ToolFn> = {
       blockedLaunchpads: ['screening', 'blockedLaunchpads'],
       minTokenAgeHours: ['screening', 'minTokenAgeHours'],
       maxTokenAgeHours: ['screening', 'maxTokenAgeHours'],
+      smartWalletVetoRetryHours: ['screening', 'smartWalletVetoRetryHours'],
       minFeePerTvl24h: ['management', 'minFeePerTvl24h'],
       loneCandidateMinDegen: ['screening', 'loneCandidateMinDegen'],
       // management

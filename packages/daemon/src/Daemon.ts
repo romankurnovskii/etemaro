@@ -1908,7 +1908,10 @@ IMPORTANT:
     }
 
     // 4. Calculate diff using pure domain helper
-    const diff = domain.diffSmartWalletPositions(currentPositions, snapshot)
+    const vetoRetryHours = config.screening?.smartWalletVetoRetryHours ?? 6
+    const diff = domain.diffSmartWalletPositions(currentPositions, snapshot, {
+      vetoRetryMs: vetoRetryHours * 3_600_000,
+    })
 
     if (diff.isFirstRun) {
       saveJsonFile(snapshotPath, diff.nextSnapshot)
@@ -1934,7 +1937,13 @@ IMPORTANT:
     // 5. Deploy on candidate pools and track resolution
     let deployedCount = 0
     const deployedPools = new Set<string>()
-    const processedPositions: { position: string; resolved: boolean }[] = []
+    const processedPositions: Array<{
+      position: string
+      resolved: boolean
+      vetoed?: boolean
+      reason?: string
+      at?: number
+    }> = []
 
     for (const posItem of diff.newPositions) {
       const pool = posItem.pool
@@ -1968,7 +1977,13 @@ IMPORTANT:
         const rejectReason = screening.getRawPoolScreeningRejectReason(detail as any, config.screening)
         if (rejectReason) {
           log('cron', `[SmartWallets] Vetoed ${detail.name || pool}: ${rejectReason}`)
-          processedPositions.push({ position: posItem.position, resolved: true })
+          processedPositions.push({
+            position: posItem.position,
+            resolved: true,
+            vetoed: true,
+            reason: rejectReason,
+            at: Date.now(),
+          })
           continue
         }
 

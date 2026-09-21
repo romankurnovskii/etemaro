@@ -57,6 +57,7 @@ export const DEFAULT_AGENT_CONFIG: AgentConfigRaw = {
     blockedLaunchpads: [],
     minTokenAgeHours: null,
     maxTokenAgeHours: null,
+    smartWalletVetoRetryHours: 6,
   },
 
   management: {
