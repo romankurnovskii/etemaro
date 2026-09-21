@@ -88,7 +88,30 @@ function buildConfig(): AppConfig {
     chartIndicators: { ...defaultFallback.chartIndicators, ...loaded.chartIndicators },
   } as unknown as ValidatedAgentConfig
 
-  // The shape of u now closely matches AppConfig since Zod validates the nested structure.
+  const screeningConfig = (() => {
+    const scr = u.screening
+    const market = scr.market.enabled ? scr.market : null
+    const smart = !scr.market.enabled && scr.smartWallets.enabled ? scr.smartWallets : null
+    return {
+      entrySource: scr.market.enabled ? 'market' : 'smart_wallets',
+      ...scr.common,
+      // Fields belonging to the disabled source are inert placeholders so the
+      // runtime ScreeningConfig stays flat; they are never read on the active path.
+      timeframe: market?.timeframe ?? '5m',
+      category: market?.category ?? 'trending',
+      minTokenFeesSol: market?.minTokenFeesSol ?? 0,
+      avoidPvpSymbols: market?.avoidPvpSymbols ?? false,
+      blockPvpSymbols: market?.blockPvpSymbols ?? false,
+      maxBotHoldersPct: market?.maxBotHoldersPct ?? 0,
+      maxTop10Pct: market?.maxTop10Pct ?? 0,
+      loneCandidateMinDegen: market?.loneCandidateMinDegen ?? 0,
+      allowedLaunchpads: market?.allowedLaunchpads ?? [],
+      useDiscordSignals: market?.useDiscordSignals ?? false,
+      discordSignalMode: market?.discordSignalMode ?? 'merge',
+      smartWalletVetoRetryHours: smart?.smartWalletVetoRetryHours ?? 0,
+    } as AppConfig['screening']
+  })()
+
   return {
     _version: u._version ?? 5,
     agentId: u.agentId && u.agentId.length > 0 ? u.agentId : DEFAULT_AGENT_ID,
@@ -112,34 +135,7 @@ function buildConfig(): AppConfig {
       maxPositions: u.risk.maxPositions,
       maxDeployAmount: u.risk.maxDeployAmount,
     },
-    screening: {
-      entrySource: u.screening.entrySource,
-      excludeHighSupplyConcentration: u.screening.excludeHighSupplyConcentration,
-      minFeeActiveTvlRatio: u.screening.minFeeActiveTvlRatio,
-      minTvl: u.screening.minTvl,
-      maxTvl: u.screening.maxTvl,
-      minVolume: u.screening.minVolume,
-      minOrganic: u.screening.minOrganic,
-      minQuoteOrganic: u.screening.minQuoteOrganic,
-      minHolders: u.screening.minHolders,
-      minMcap: u.screening.minMcap,
-      maxMcap: u.screening.maxMcap,
-      minBinStep: u.screening.minBinStep,
-      maxBinStep: u.screening.maxBinStep,
-      timeframe: u.screening.timeframe,
-      category: u.screening.category,
-      minTokenFeesSol: u.screening.minTokenFeesSol,
-      avoidPvpSymbols: u.screening.avoidPvpSymbols,
-      blockPvpSymbols: u.screening.blockPvpSymbols,
-      maxBotHoldersPct: u.screening.maxBotHoldersPct,
-      maxTop10Pct: u.screening.maxTop10Pct,
-      loneCandidateMinDegen: u.screening.loneCandidateMinDegen,
-      allowedLaunchpads: u.screening.allowedLaunchpads,
-      blockedLaunchpads: u.screening.blockedLaunchpads,
-      minTokenAgeHours: u.screening.minTokenAgeHours,
-      maxTokenAgeHours: u.screening.maxTokenAgeHours,
-      smartWalletVetoRetryHours: u.screening.smartWalletVetoRetryHours,
-    },
+    screening: screeningConfig,
     management: {
       minClaimAmount: u.management.minClaimAmount,
       autoSwapAfterClaim: u.management.autoSwapAfterClaim,
@@ -314,48 +310,58 @@ export function reloadScreeningThresholds(): void {
     // Partially parse just what we need or assume the structure
     // Since this is just screening thresholds, we can extract them directly.
     if (raw?.screening) {
-      const u = raw.screening
+      const u = raw.screening as Record<string, any>
       const s = config.screening
+      const c = (u.common ?? {}) as Record<string, any>
+      const m = u.market?.enabled ? (u.market as Record<string, any>) : null
+      const sw = u.smartWallets?.enabled ? (u.smartWallets as Record<string, any>) : null
 
-      if (u.minFeeActiveTvlRatio != null)
-        s.minFeeActiveTvlRatio = resolveField('minFeeActiveTvlRatio', u.minFeeActiveTvlRatio) as number
-      if (u.minTokenFeesSol != null) s.minTokenFeesSol = resolveField('minTokenFeesSol', u.minTokenFeesSol) as number
-      if (u.maxTop10Pct != null) s.maxTop10Pct = resolveField('maxTop10Pct', u.maxTop10Pct) as number
-      if (u.excludeHighSupplyConcentration !== undefined)
+      // shared gates
+      if (c.minFeeActiveTvlRatio != null)
+        s.minFeeActiveTvlRatio = resolveField('minFeeActiveTvlRatio', c.minFeeActiveTvlRatio) as number
+      if (c.excludeHighSupplyConcentration !== undefined)
         s.excludeHighSupplyConcentration = resolveField(
           'excludeHighSupplyConcentration',
-          u.excludeHighSupplyConcentration,
+          c.excludeHighSupplyConcentration,
         ) as boolean
-      if (u.minOrganic != null) s.minOrganic = resolveField('minOrganic', u.minOrganic) as number
-      if (u.minQuoteOrganic != null) s.minQuoteOrganic = resolveField('minQuoteOrganic', u.minQuoteOrganic) as number
-      if (u.minHolders != null) s.minHolders = resolveField('minHolders', u.minHolders) as number
-      if (u.minMcap != null) s.minMcap = resolveField('minMcap', u.minMcap) as number
-      if (u.maxMcap != null) s.maxMcap = resolveField('maxMcap', u.maxMcap) as number
-      if (u.minTvl != null) s.minTvl = resolveField('minTvl', u.minTvl) as number
-      if (u.maxTvl !== undefined) s.maxTvl = resolveField('maxTvl', u.maxTvl) as number
-      if (u.minVolume != null) s.minVolume = resolveField('minVolume', u.minVolume) as number
-      if (u.minBinStep != null) s.minBinStep = resolveField('minBinStep', u.minBinStep) as number
-      if (u.maxBinStep != null) s.maxBinStep = resolveField('maxBinStep', u.maxBinStep) as number
-      if (u.timeframe != null) s.timeframe = resolveField('timeframe', u.timeframe) as string
-      if (u.category != null) s.category = resolveField('category', u.category) as string
-      if (u.minTokenAgeHours !== undefined)
-        s.minTokenAgeHours = resolveField('minTokenAgeHours', u.minTokenAgeHours) as number | null
-      if (u.maxTokenAgeHours !== undefined)
-        s.maxTokenAgeHours = resolveField('maxTokenAgeHours', u.maxTokenAgeHours) as number | null
-      if (u.smartWalletVetoRetryHours != null)
-        s.smartWalletVetoRetryHours = resolveField('smartWalletVetoRetryHours', u.smartWalletVetoRetryHours) as number
-      if (u.avoidPvpSymbols !== undefined)
-        s.avoidPvpSymbols = resolveField('avoidPvpSymbols', u.avoidPvpSymbols) as boolean
-      if (u.blockPvpSymbols !== undefined)
-        s.blockPvpSymbols = resolveField('blockPvpSymbols', u.blockPvpSymbols) as boolean
-      if (u.maxBotHoldersPct != null)
-        s.maxBotHoldersPct = resolveField('maxBotHoldersPct', u.maxBotHoldersPct) as number
-      if (u.allowedLaunchpads !== undefined)
-        s.allowedLaunchpads = resolveField('allowedLaunchpads', u.allowedLaunchpads) as string[]
-      if (u.blockedLaunchpads !== undefined)
-        s.blockedLaunchpads = resolveField('blockedLaunchpads', u.blockedLaunchpads) as string[]
-      if (u.loneCandidateMinDegen != null)
-        s.loneCandidateMinDegen = resolveField('loneCandidateMinDegen', u.loneCandidateMinDegen) as number
+      if (c.minOrganic != null) s.minOrganic = resolveField('minOrganic', c.minOrganic) as number
+      if (c.minQuoteOrganic != null) s.minQuoteOrganic = resolveField('minQuoteOrganic', c.minQuoteOrganic) as number
+      if (c.minHolders != null) s.minHolders = resolveField('minHolders', c.minHolders) as number
+      if (c.minMcap != null) s.minMcap = resolveField('minMcap', c.minMcap) as number
+      if (c.maxMcap != null) s.maxMcap = resolveField('maxMcap', c.maxMcap) as number
+      if (c.minTvl != null) s.minTvl = resolveField('minTvl', c.minTvl) as number
+      if (c.maxTvl !== undefined) s.maxTvl = resolveField('maxTvl', c.maxTvl) as number
+      if (c.minVolume != null) s.minVolume = resolveField('minVolume', c.minVolume) as number
+      if (c.minBinStep != null) s.minBinStep = resolveField('minBinStep', c.minBinStep) as number
+      if (c.maxBinStep != null) s.maxBinStep = resolveField('maxBinStep', c.maxBinStep) as number
+      if (c.minTokenAgeHours !== undefined)
+        s.minTokenAgeHours = resolveField('minTokenAgeHours', c.minTokenAgeHours) as number | null
+      if (c.maxTokenAgeHours !== undefined)
+        s.maxTokenAgeHours = resolveField('maxTokenAgeHours', c.maxTokenAgeHours) as number | null
+      if (c.blockedLaunchpads !== undefined)
+        s.blockedLaunchpads = resolveField('blockedLaunchpads', c.blockedLaunchpads) as string[]
+
+      // market-only
+      if (m) {
+        if (m.minTokenFeesSol != null) s.minTokenFeesSol = resolveField('minTokenFeesSol', m.minTokenFeesSol) as number
+        if (m.maxTop10Pct != null) s.maxTop10Pct = resolveField('maxTop10Pct', m.maxTop10Pct) as number
+        if (m.timeframe != null) s.timeframe = resolveField('timeframe', m.timeframe) as string
+        if (m.category != null) s.category = resolveField('category', m.category) as string
+        if (m.avoidPvpSymbols !== undefined)
+          s.avoidPvpSymbols = resolveField('avoidPvpSymbols', m.avoidPvpSymbols) as boolean
+        if (m.blockPvpSymbols !== undefined)
+          s.blockPvpSymbols = resolveField('blockPvpSymbols', m.blockPvpSymbols) as boolean
+        if (m.maxBotHoldersPct != null)
+          s.maxBotHoldersPct = resolveField('maxBotHoldersPct', m.maxBotHoldersPct) as number
+        if (m.allowedLaunchpads !== undefined)
+          s.allowedLaunchpads = resolveField('allowedLaunchpads', m.allowedLaunchpads) as string[]
+        if (m.loneCandidateMinDegen != null)
+          s.loneCandidateMinDegen = resolveField('loneCandidateMinDegen', m.loneCandidateMinDegen) as number
+      }
+
+      // smart-wallet-only
+      if (sw && sw.smartWalletVetoRetryHours != null)
+        s.smartWalletVetoRetryHours = resolveField('smartWalletVetoRetryHours', sw.smartWalletVetoRetryHours) as number
     }
 
     if (raw?.strategy) {

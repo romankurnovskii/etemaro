@@ -257,7 +257,7 @@ graph TD
 | Section      | Purpose                                                                                                       |
 | ------------ | ------------------------------------------------------------------------------------------------------------- |
 | `risk`       | Max positions, max deploy amount                                                                              |
-| `screening`  | Entry source (market vs smart_wallets), fee/TVL ratio, organic score, holder count, mcap, bin step thresholds, smart-wallet veto retry TTL |
+| `screening`  | Shared gates (`common`) + per-source blocks (`market` / `smartWallets`, exactly one enabled); fee/TVL, organic, holders, mcap, bin-step thresholds, smart-wallet veto retry TTL |
 | `management` | Deploy amount, stop loss, take profit, trailing TP, OOR wait time                                             |
 | `strategy`   | LP strategy (bid_ask/spot), bin range                                                                         |
 | `schedule`   | Management and screening interval (minutes)                                                                   |

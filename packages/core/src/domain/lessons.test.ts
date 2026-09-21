@@ -284,7 +284,7 @@ describe('evolveThresholds — config persistence & schema validity', () => {
     expect(savedConfig.minOrganic).toBeUndefined()
 
     // 2. Screening object MUST have the evolved value
-    expect(savedConfig.screening.minFeeActiveTvlRatio).toBe(result?.changes.minFeeActiveTvlRatio)
+    expect(savedConfig.screening.common.minFeeActiveTvlRatio).toBe(result?.changes.minFeeActiveTvlRatio)
 
     // 3. Root metadata fields MUST be present
     expect(typeof savedConfig._lastEvolved).toBe('string')

@@ -423,7 +423,11 @@ export function evolveThresholds(
   if (!agentConfig.screening || typeof agentConfig.screening !== 'object' || Array.isArray(agentConfig.screening)) {
     agentConfig.screening = {}
   }
-  Object.assign(agentConfig.screening as Record<string, unknown>, changes)
+  const screening = agentConfig.screening as Record<string, unknown>
+  if (!screening.common || typeof screening.common !== 'object' || Array.isArray(screening.common)) {
+    screening.common = {}
+  }
+  Object.assign(screening.common as Record<string, unknown>, changes)
   // Clean up legacy root-level keys if present from previous versions
   delete (agentConfig as Record<string, unknown>).minFeeActiveTvlRatio
   delete (agentConfig as Record<string, unknown>).minOrganic

@@ -359,32 +359,32 @@ const toolMap: Record<string, ToolFn> = {
     // Flat key → config section mapping (covers everything in config.js)
     const CONFIG_MAP: Record<string, any> = {
       // screening
-      minFeeActiveTvlRatio: ['screening', 'minFeeActiveTvlRatio'],
-      excludeHighSupplyConcentration: ['screening', 'excludeHighSupplyConcentration'],
-      minTvl: ['screening', 'minTvl'],
-      maxTvl: ['screening', 'maxTvl'],
-      minVolume: ['screening', 'minVolume'],
-      minOrganic: ['screening', 'minOrganic'],
-      minQuoteOrganic: ['screening', 'minQuoteOrganic'],
-      minHolders: ['screening', 'minHolders'],
-      minMcap: ['screening', 'minMcap'],
-      maxMcap: ['screening', 'maxMcap'],
-      minBinStep: ['screening', 'minBinStep'],
-      maxBinStep: ['screening', 'maxBinStep'],
-      timeframe: ['screening', 'timeframe'],
-      category: ['screening', 'category'],
-      minTokenFeesSol: ['screening', 'minTokenFeesSol'],
-      avoidPvpSymbols: ['screening', 'avoidPvpSymbols'],
-      blockPvpSymbols: ['screening', 'blockPvpSymbols'],
-      maxBotHoldersPct: ['screening', 'maxBotHoldersPct'],
-      maxTop10Pct: ['screening', 'maxTop10Pct'],
-      allowedLaunchpads: ['screening', 'allowedLaunchpads'],
-      blockedLaunchpads: ['screening', 'blockedLaunchpads'],
-      minTokenAgeHours: ['screening', 'minTokenAgeHours'],
-      maxTokenAgeHours: ['screening', 'maxTokenAgeHours'],
-      smartWalletVetoRetryHours: ['screening', 'smartWalletVetoRetryHours'],
+      minFeeActiveTvlRatio: ['screening', 'common', 'minFeeActiveTvlRatio'],
+      excludeHighSupplyConcentration: ['screening', 'common', 'excludeHighSupplyConcentration'],
+      minTvl: ['screening', 'common', 'minTvl'],
+      maxTvl: ['screening', 'common', 'maxTvl'],
+      minVolume: ['screening', 'common', 'minVolume'],
+      minOrganic: ['screening', 'common', 'minOrganic'],
+      minQuoteOrganic: ['screening', 'common', 'minQuoteOrganic'],
+      minHolders: ['screening', 'common', 'minHolders'],
+      minMcap: ['screening', 'common', 'minMcap'],
+      maxMcap: ['screening', 'common', 'maxMcap'],
+      minBinStep: ['screening', 'common', 'minBinStep'],
+      maxBinStep: ['screening', 'common', 'maxBinStep'],
+      timeframe: ['screening', 'market', 'timeframe'],
+      category: ['screening', 'market', 'category'],
+      minTokenFeesSol: ['screening', 'market', 'minTokenFeesSol'],
+      avoidPvpSymbols: ['screening', 'market', 'avoidPvpSymbols'],
+      blockPvpSymbols: ['screening', 'market', 'blockPvpSymbols'],
+      maxBotHoldersPct: ['screening', 'market', 'maxBotHoldersPct'],
+      maxTop10Pct: ['screening', 'market', 'maxTop10Pct'],
+      allowedLaunchpads: ['screening', 'market', 'allowedLaunchpads'],
+      blockedLaunchpads: ['screening', 'common', 'blockedLaunchpads'],
+      minTokenAgeHours: ['screening', 'common', 'minTokenAgeHours'],
+      maxTokenAgeHours: ['screening', 'common', 'maxTokenAgeHours'],
+      smartWalletVetoRetryHours: ['screening', 'smartWallets', 'smartWalletVetoRetryHours'],
       minFeePerTvl24h: ['management', 'minFeePerTvl24h'],
-      loneCandidateMinDegen: ['screening', 'loneCandidateMinDegen'],
+      loneCandidateMinDegen: ['screening', 'market', 'loneCandidateMinDegen'],
       // management
       minClaimAmount: ['management', 'minClaimAmount'],
       autoSwapAfterClaim: ['management', 'autoSwapAfterClaim'],
@@ -521,6 +521,30 @@ const toolMap: Record<string, ToolFn> = {
 
     const agentConfig = loadJsonFile<Record<string, unknown>>(AGENT_CONFIG_PATH, {}, { critical: true })
 
+    // Source-specific screening keys may only be written into the enabled block.
+    const SCREENING_BLOCK_BY_KEY: Record<string, 'market' | 'smartWallets'> = {
+      timeframe: 'market',
+      category: 'market',
+      minTokenFeesSol: 'market',
+      avoidPvpSymbols: 'market',
+      blockPvpSymbols: 'market',
+      maxBotHoldersPct: 'market',
+      maxTop10Pct: 'market',
+      allowedLaunchpads: 'market',
+      loneCandidateMinDegen: 'market',
+      smartWalletVetoRetryHours: 'smartWallets',
+    }
+    const screenRaw = (agentConfig.screening ?? {}) as Record<string, any>
+    for (const key of Object.keys(applied)) {
+      const block = SCREENING_BLOCK_BY_KEY[key]
+      if (block === 'market' && screenRaw.market?.enabled !== true) {
+        return { success: false, error: `${key} requires screening.market.enabled=true`, reason }
+      }
+      if (block === 'smartWallets' && screenRaw.smartWallets?.enabled !== true) {
+        return { success: false, error: `${key} requires screening.smartWallets.enabled=true`, reason }
+      }
+    }
+
     // Auto-scale fee/volume when timeframe changes (unless user set them explicitly in same call).
     if (applied.timeframe != null && applied.minFeeActiveTvlRatio == null && applied.minVolume == null) {
       const tf = normalizeTimeframe(applied.timeframe as string)
@@ -540,7 +564,7 @@ const toolMap: Record<string, ToolFn> = {
       if (key.startsWith('_')) continue
       const mapping = CONFIG_MAP[key]
       if (!mapping) continue
-      const livePath = mapping.slice(1).filter((part: unknown) => typeof part === 'string')
+      const livePath = mapping.filter((part: unknown) => typeof part === 'string')
       let target = getToolConfig() as any
       for (const part of livePath.slice(0, -1)) target = target[part]
       const field = livePath.at(-1)!
@@ -574,16 +598,20 @@ const toolMap: Record<string, ToolFn> = {
     for (const [key, val] of Object.entries(applied)) {
       if (key.startsWith('_')) continue
       const mapping = CONFIG_MAP[key]
-      const persistPath = mapping?.find((part: unknown) => Array.isArray(part))
-      if (Array.isArray(persistPath) && persistPath.length > 0) {
+      const explicitPersist = mapping?.find((part: unknown) => Array.isArray(part))
+      const persistPath: unknown[] =
+        Array.isArray(explicitPersist) && explicitPersist.length > 0
+          ? explicitPersist
+          : (mapping ?? []).filter((part: unknown) => typeof part === 'string')
+      if (persistPath.length > 0) {
         let target = agentConfig
-        for (const part of persistPath.slice(0, -1)) {
+        for (const part of persistPath.slice(0, -1) as string[]) {
           if (!target[part] || typeof target[part] !== 'object' || Array.isArray(target[part])) {
             target[part] = {}
           }
           target = target[part] as Record<string, unknown>
         }
-        target[persistPath.at(-1)!] = val
+        target[persistPath.at(-1)! as string] = val
       } else {
         agentConfig[key] = val
       }
