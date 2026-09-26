@@ -24,7 +24,7 @@
     "@types/node": "^26.6.1",
     "@types/react": "^19.2.18",
     "@types/ws": "^8.18.1",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.3",
     "tsup": "^8.5.1",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2"
