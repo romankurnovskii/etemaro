@@ -113,6 +113,16 @@ export function loadAndValidateConfig(): ValidatedAgentConfig {
     rawConnection.rpcUrl = process.env.RPC_URL
   }
 
+  // Fall back pnl.rpcUrl to RPC_URL or public Solana mainnet if PNL_RPC_URL is not set
+  const rawPnl = raw.pnl as { rpcUrl?: string } | undefined
+  if (
+    typeof raw?.pnl === 'object' &&
+    rawPnl?.rpcUrl === 'env.PNL_RPC_URL' &&
+    (!process.env.PNL_RPC_URL || process.env.PNL_RPC_URL.trim() === '')
+  ) {
+    rawPnl.rpcUrl = process.env.RPC_URL?.trim() || 'https://api.mainnet-beta.solana.com'
+  }
+
   // If running info commands, we can bypass strict parsing
   if (isHelpOrInfoCommand()) {
     return raw as unknown as ValidatedAgentConfig // Bypass validation
