@@ -2,9 +2,9 @@
   "name": "@etemaro/cli",
   "version": "4.2.0",
   "type": "module",
-  "main": "dist/Cli.cjs",
+  "main": "dist/Cli.js",
   "bin": {
-    "etemaro": "dist/Cli.cjs"
+    "etemaro": "dist/Cli.js"
   },
   "scripts": {
     "build": "tsup",
