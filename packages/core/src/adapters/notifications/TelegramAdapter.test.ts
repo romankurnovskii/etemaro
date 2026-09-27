@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../../config/Config.js'
 import { log } from '../../shared/logger.js'
@@ -16,6 +19,8 @@ import {
   notifyTransactionError,
   sendMessage,
   setChatId,
+  startPolling,
+  stopPolling,
   summarizeToolResult,
 } from './TelegramAdapter.js'
 
@@ -363,5 +368,112 @@ describe('TelegramAdapter notifications', () => {
     expect(sentText).not.toContain('undefined...')
     expect(sentText).toContain('Position: unknown')
     expect(sentText).toContain('Tx: unknown')
+  })
+})
+
+describe('TelegramAdapter reply_to_message parsing (#338)', () => {
+  let dir: string
+  let origDataDir: string | undefined
+  let origAllowedUserIds: string | null | undefined
+
+  function inboundUpdate(updateId: number, message: Record<string, unknown>): any {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        result: [{ update_id: updateId, message: { message_id: updateId * 10, ...message } }],
+      }),
+    }
+  }
+
+  async function captureFirstUpdate(update: any): Promise<any[]> {
+    const received: any[] = []
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(update)
+    startPolling(async (msg) => {
+      received.push(msg)
+      stopPolling()
+    })
+    for (let i = 0; i < 100 && received.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 5))
+    }
+    return received
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tg-reply-'))
+    origDataDir = process.env.ETEMARO_DATA_DIR
+    origAllowedUserIds = config.connection?.telegramAllowedUserIds
+    process.env.ETEMARO_DATA_DIR = dir
+    config.connection.telegramBotToken = 'test_token'
+    config.connection.telegramAllowedUserIds = ''
+    setChatId('123456')
+  })
+
+  afterEach(() => {
+    stopPolling()
+    vi.unstubAllGlobals()
+    config.connection.telegramAllowedUserIds = origAllowedUserIds ?? ''
+    if (origDataDir !== undefined) process.env.ETEMARO_DATA_DIR = origDataDir
+    else delete process.env.ETEMARO_DATA_DIR
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('normalizes reply_to_message text into replyToMessage on the inbound message', async () => {
+    const received = await captureFirstUpdate(
+      inboundUpdate(42, {
+        chat: { id: 123456, type: 'private' },
+        from: { id: 7, first_name: 'Roman' },
+        text: 'Why undefined?',
+        reply_to_message: {
+          message_id: 99,
+          from: { id: 1, first_name: 'Etemaro', username: 'etemaro_bot' },
+          text: '✅ Deployed JACK/SOL\nPosition: undefined',
+        },
+      }),
+    )
+
+    expect(received).toHaveLength(1)
+    expect(received[0].text).toBe('Why undefined?')
+    expect(received[0].replyToMessage).toEqual({
+      text: '✅ Deployed JACK/SOL\nPosition: undefined',
+      from: { id: 1, first_name: 'Etemaro', username: 'etemaro_bot' },
+      messageId: 99,
+    })
+  })
+
+  it('falls back to the replied message caption when text is absent', async () => {
+    const received = await captureFirstUpdate(
+      inboundUpdate(43, {
+        chat: { id: 123456, type: 'private' },
+        from: { id: 7, first_name: 'Roman' },
+        text: 'What was entry price?',
+        reply_to_message: { message_id: 100, caption: 'Position closed: JACK/SOL' },
+      }),
+    )
+
+    expect(received[0].replyToMessage?.text).toBe('Position closed: JACK/SOL')
+    expect(received[0].replyToMessage?.messageId).toBe(100)
+  })
+
+  it('leaves replyToMessage undefined for non-reply messages and blank quoted text', async () => {
+    const plain = await captureFirstUpdate(
+      inboundUpdate(44, {
+        chat: { id: 123456, type: 'private' },
+        from: { id: 7, first_name: 'Roman' },
+        text: 'Status?',
+      }),
+    )
+    expect(plain[0].replyToMessage).toBeUndefined()
+
+    const blankQuote = await captureFirstUpdate(
+      inboundUpdate(45, {
+        chat: { id: 123456, type: 'private' },
+        from: { id: 7, first_name: 'Roman' },
+        text: 'Hm?',
+        reply_to_message: { message_id: 101, text: '   ', from: { id: 1 } },
+      }),
+    )
+    expect(blankQuote[0].replyToMessage).toEqual({ text: undefined, from: { id: 1 }, messageId: 101 })
   })
 })

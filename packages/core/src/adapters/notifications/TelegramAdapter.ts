@@ -91,6 +91,11 @@ interface IncomingTelegramMessage {
   callbackQueryId?: string
   callbackData?: string
   messageId?: number
+  replyToMessage?: {
+    text?: string
+    from?: { id: number; first_name?: string; username?: string }
+    messageId?: number
+  }
 }
 
 function isAuthorizedIncomingMessage(msg: IncomingTelegramMessage): boolean {
@@ -504,6 +509,19 @@ export async function createLiveMessage(title: string, intro: string = 'Starting
 }
 
 // ─── Long polling ────────────────────────────────────────────────
+
+/**
+ * Normalize a Telegram `reply_to_message` payload (text or caption) into the
+ * inbound message shape used by the daemon. Returns undefined when there is
+ * nothing to quote.
+ */
+function normalizeReplyToMessage(reply: any): IncomingTelegramMessage['replyToMessage'] {
+  if (!reply) return undefined
+  const raw = typeof reply.text === 'string' ? reply.text : reply.caption
+  const text = typeof raw === 'string' && raw.trim() ? raw : undefined
+  return { text, from: reply.from, messageId: reply.message_id }
+}
+
 async function poll(onMessage: (msg: IncomingTelegramMessage) => Promise<void>): Promise<void> {
   while (_polling) {
     const base = getBase()
@@ -547,7 +565,10 @@ async function poll(onMessage: (msg: IncomingTelegramMessage) => Promise<void>):
         const msg = update.message
         if (!msg?.text) continue
         if (!isAuthorizedIncomingMessage(msg)) continue
-        await onMessage(msg)
+        await onMessage({
+          ...msg,
+          replyToMessage: normalizeReplyToMessage(msg.reply_to_message),
+        })
       }
       if (data.result?.length) saveOffsetState()
     } catch (e: any) {
