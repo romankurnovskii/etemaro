@@ -317,4 +317,51 @@ describe('TelegramAdapter notifications', () => {
 
     await live?.finalize('Done')
   })
+
+  it('notifyDeploy formats pool metrics and avoids undefined... when position or tx is missing', async () => {
+    config.connection.telegramBotToken = 'test_token'
+    config.connection.telegramChatId = '123456'
+    let sentText = ''
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url: any, init: any) => {
+      const body = JSON.parse(init?.body || '{}')
+      sentText = body.text || ''
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, result: { message_id: 112 } }),
+      } as any
+    })
+
+    // Case 1: All pool metrics provided
+    await notifyDeploy({
+      pair: 'JACK/SOL',
+      amountSol: 0.5,
+      position: '4xK9pLmN12345678',
+      tx: '3F242bcWa3Swdqiy12345678',
+      priceRange: { min: 0.0012, max: 0.0048 },
+      rangeCoverage: { downside_pct: 12.5, upside_pct: 25.0, width_pct: 37.5 },
+      binStep: 20,
+      baseFee: 0.25,
+    })
+
+    expect(sentText).toContain('✅ Deployed JACK/SOL')
+    expect(sentText).toContain('Amount: 0.5 SOL')
+    expect(sentText).toContain('Price range: 0.001200 – 0.004800')
+    expect(sentText).toContain('Range cover: 12.50% downside | 25.00% upside | 37.50% total')
+    expect(sentText).toContain('Bin step: 20  |  Base fee: 0.25%')
+    expect(sentText).toContain('Position: 4xK9pLmN...')
+    expect(sentText).toContain('Tx: 3F242bcWa3Swdqiy...')
+
+    // Case 2: position and tx undefined/falsy
+    await notifyDeploy({
+      pair: 'UNKNOWN/SOL',
+      amountSol: 0.1,
+      position: undefined as unknown as string,
+      tx: undefined as unknown as string,
+    })
+
+    expect(sentText).not.toContain('undefined...')
+    expect(sentText).toContain('Position: unknown')
+    expect(sentText).toContain('Tx: unknown')
+  })
 })

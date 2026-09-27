@@ -315,9 +315,7 @@ describe('runSmartWalletScreening — maxPositions enforcement', () => {
     mockGetPoolDetail.mockResolvedValue({ name: 'pool' })
     mockGetRawPoolScreeningRejectReason.mockReturnValue(null)
     mockRecordPositionSnapshot.mockImplementation(() => {})
-    mockDeployPosition.mockImplementation((opts: any) =>
-      Promise.resolve({ position: { position: `${opts.pool_address}_pos` } }),
-    )
+    mockDeployPosition.mockImplementation((opts: any) => Promise.resolve({ position: `${opts.pool_address}_pos` }))
     mockUpdateSnapshotPositions.mockImplementation((snap: any, processed: any) => ({
       ...snap,
       positions: [...(snap.positions || []), ...processed.map((p: any) => p.position)],
@@ -572,9 +570,7 @@ describe('runSmartWalletScreening — maxPositions enforcement', () => {
       return okDetail(m[o.pool_address] || 'x')
     })
     // First deploy fails, second succeeds
-    mockDeployPosition
-      .mockRejectedValueOnce(new Error('RPC timeout'))
-      .mockResolvedValueOnce({ position: { position: 'poolB_pos' } })
+    mockDeployPosition.mockRejectedValueOnce(new Error('RPC timeout')).mockResolvedValueOnce({ position: 'poolB_pos' })
 
     const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
 
@@ -739,6 +735,96 @@ describe('runSmartWalletScreening — maxPositions enforcement', () => {
     const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
     expect(result).toBe('No new positions detected by smart wallets.')
     expect(fsStore['/tmp/test-data/.smart-wallets-snapshot-agt_1.json']).toContain('legacy-p1')
+  })
+
+  // ── Case 16: Position address and pool metrics forwarded to notifications and snapshot ──
+  it('forwards position string and pool metrics to notifyDeploy and recordPositionSnapshot', async () => {
+    mockGetTrackedPositions.mockReturnValue([])
+    mockListSmartWallets.mockReturnValue({
+      wallets: [{ address: 'w1', type: 'lp' }],
+    })
+    mockGetWalletPositions.mockResolvedValue({
+      positions: [walletPos('sw_pos_1', 'poolA')],
+    })
+    mockDiffSmartWalletPositions.mockReturnValue({
+      isFirstRun: false,
+      newPositions: [{ position: 'sw_pos_1', pool: 'poolA', wallet: 'w1' }],
+      uniquePools: ['poolA'],
+      nextSnapshot: { initialized: true, positions: [] },
+    })
+    mockGetPoolDetail.mockResolvedValue({ name: 'JACK-SOL' })
+    mockDeployPosition.mockResolvedValueOnce({
+      success: true,
+      position: 'actual_pos_123',
+      pool: 'poolA',
+      pool_name: 'JACK-SOL',
+      price_range: { min: 0.001, max: 0.005 },
+      range_coverage: { downside_pct: 15, upside_pct: 25, width_pct: 40, active_price: 0.002 },
+      bin_step: 20,
+      base_fee: 0.25,
+      txs: ['tx_sig_789'],
+    })
+
+    await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 0.5 })
+
+    expect(mockRecordPositionSnapshot).toHaveBeenCalledWith('poolA', {
+      position: 'actual_pos_123',
+      pair: 'JACK-SOL',
+    })
+    expect(adapters.telegram.notifyDeploy).toHaveBeenCalledWith({
+      pair: 'JACK-SOL',
+      amountSol: 0.5,
+      position: 'actual_pos_123',
+      tx: 'tx_sig_789',
+      priceRange: { min: 0.001, max: 0.005 },
+      rangeCoverage: { downside_pct: 15, upside_pct: 25, width_pct: 40, active_price: 0.002 },
+      binStep: 20,
+      baseFee: 0.25,
+    })
+    expect(mockLog).toHaveBeenCalledWith(
+      'cron',
+      expect.stringContaining('[SmartWallets] Deployed actual_pos_123 on JACK-SOL'),
+    )
+  })
+
+  // ── Case 17: Backward-compatibility for legacy nested position object ──
+  it('handles legacy nested position object fallback gracefully', async () => {
+    mockGetTrackedPositions.mockReturnValue([])
+    mockListSmartWallets.mockReturnValue({
+      wallets: [{ address: 'w1', type: 'lp' }],
+    })
+    mockGetWalletPositions.mockResolvedValue({
+      positions: [walletPos('sw_pos_1', 'poolA')],
+    })
+    mockDiffSmartWalletPositions.mockReturnValue({
+      isFirstRun: false,
+      newPositions: [{ position: 'sw_pos_1', pool: 'poolA', wallet: 'w1' }],
+      uniquePools: ['poolA'],
+      nextSnapshot: { initialized: true, positions: [] },
+    })
+    mockGetPoolDetail.mockResolvedValue({ name: 'JACK-SOL' })
+    mockDeployPosition.mockResolvedValueOnce({
+      success: true,
+      position: { position: 'legacy_nested_pos_999' },
+      tx: 'tx_legacy',
+    })
+
+    await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 0.5 })
+
+    expect(mockRecordPositionSnapshot).toHaveBeenCalledWith('poolA', {
+      position: 'legacy_nested_pos_999',
+      pair: 'JACK-SOL',
+    })
+    expect(adapters.telegram.notifyDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        position: 'legacy_nested_pos_999',
+        pair: 'JACK-SOL',
+      }),
+    )
+    expect(mockLog).toHaveBeenCalledWith(
+      'cron',
+      expect.stringContaining('[SmartWallets] Deployed legacy_nested_pos_999 on JACK-SOL'),
+    )
   })
 })
 

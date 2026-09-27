@@ -2007,19 +2007,31 @@ IMPORTANT:
           strategy: config.strategy.strategyMeteora,
         })
 
-        domain.recordPositionSnapshot(pool, deployRes.position)
-        log('cron', `[SmartWallets] Deployed ${deployRes.position.position} on ${detail.name || pool}`)
+        const positionAddress =
+          typeof deployRes.position === 'string'
+            ? deployRes.position
+            : deployRes.position?.position || String(deployRes.position || '')
+        const pair = detail.name || (deployRes as any).pool_name || pool
+
+        this.adapters.domain.recordPositionSnapshot(pool, {
+          position: positionAddress,
+          pair,
+        })
+        log('cron', `[SmartWallets] Deployed ${positionAddress} on ${pair}`)
         deployedPools.add(pool)
         deployedCount++
         processedPositions.push({ position: posItem.position, resolved: true })
         // Notify deploy for Telegram after successful smart wallet deployment
         this.adapters.telegram
           .notifyDeploy({
-            pair: detail.name || pool,
+            pair,
             amountSol: deployAmount,
-            position: deployRes.position.position,
+            position: positionAddress,
             tx: deployRes.txs?.[0] || deployRes.tx,
-            // Other details from deployRes can be passed if available
+            priceRange: (deployRes as any).price_range,
+            rangeCoverage: (deployRes as any).range_coverage,
+            binStep: (deployRes as any).bin_step,
+            baseFee: (deployRes as any).base_fee,
           })
           .catch((err: any) => {
             log('telegram_warn', `Failed to send smart wallet deploy notification: ${err?.message || err}`)

@@ -694,7 +694,9 @@ export async function notifyDeploy({
     : ''
   const poolStr =
     binStep || baseFee ? `Bin step: ${binStep ?? '?'}  |  Base fee: ${baseFee != null ? `${baseFee}%` : '?'}\n` : ''
-  const body = `Amount: ${amountSol} SOL\n${priceStr}${coverageStr}${poolStr}Position: ${position?.slice(0, 8)}... | Tx: ${tx?.slice(0, 16)}...`
+  const posFormatted = position ? `${position.slice(0, 8)}...` : 'unknown'
+  const txFormatted = tx ? `${tx.slice(0, 16)}...` : 'unknown'
+  const body = `Amount: ${amountSol} SOL\n${priceStr}${coverageStr}${poolStr}Position: ${posFormatted} | Tx: ${txFormatted}`
   notify('deploy', '✅', `Deployed ${pair}`, body)
   await sendPlain(
     `✅ Deployed ${pair}\n` +
@@ -702,8 +704,8 @@ export async function notifyDeploy({
       priceStr +
       coverageStr +
       poolStr +
-      `Position: ${position?.slice(0, 8)}...\n` +
-      `Tx: ${tx?.slice(0, 16)}...`,
+      `Position: ${posFormatted}\n` +
+      `Tx: ${txFormatted}`,
   )
 }
 

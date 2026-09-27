@@ -317,7 +317,7 @@ export function getPoolMemory({ pool_address }: GetPoolMemoryOpts): Record<strin
   }
 }
 
-interface PositionSnapshotData {
+export interface PositionSnapshotData {
   position: string
   pair?: string
   pnl_pct?: number | null
