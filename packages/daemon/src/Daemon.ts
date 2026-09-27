@@ -160,6 +160,15 @@ export interface DaemonAdapters {
 
 // ─── Deterministic Close Rule ───────────────────────────────────
 
+/**
+ * Collapse a quoted Telegram reply into a single-line snippet so multi-line or
+ * oversized replies cannot distort the agent prompt.
+ */
+function formatQuotedReply(raw?: unknown): string {
+  if (typeof raw !== 'string') return ''
+  return raw.replace(/\s+/g, ' ').trim().slice(0, 500)
+}
+
 interface DeterministicCloseResult {
   action: 'CLOSE'
   rule: number
@@ -2779,18 +2788,33 @@ IMPORTANT:
         !hasCloseIntent && /\bdeploy\b|\bopen position\b|\blp into\b|\badd liquidity\b/i.test(text)
       const agentRole = isDeployRequest ? 'SCREENER' : 'GENERAL'
       const agentModel = agentRole === 'SCREENER' ? config.llm.screeningModel : config.llm.generalModel
-      liveMessage = await this.adapters.telegram.createLiveMessage('🤖 Live Update', `Request: ${text.slice(0, 240)}`)
-      const { content } = await agentLoop(text, config.llm.maxSteps, this.sessionHistory, agentRole, agentModel, null, {
-        deps: this.adapters.agentLoopDeps,
-        interactive: true,
-        onToolStart: async ({ name }: any) => {
-          await liveMessage?.toolStart(name)
+      const quotedText = formatQuotedReply(msg?.replyToMessage?.text)
+      const prompt = quotedText ? `[Replying to Telegram message: "${quotedText}"]\n\n${text}` : text
+      liveMessage = await this.adapters.telegram.createLiveMessage(
+        '🤖 Live Update',
+        quotedText
+          ? `Replying to: "${quotedText.slice(0, 140)}"\nRequest: ${text.slice(0, 140)}`
+          : `Request: ${text.slice(0, 240)}`,
+      )
+      const { content } = await agentLoop(
+        prompt,
+        config.llm.maxSteps,
+        this.sessionHistory,
+        agentRole,
+        agentModel,
+        null,
+        {
+          deps: this.adapters.agentLoopDeps,
+          interactive: true,
+          onToolStart: async ({ name }: any) => {
+            await liveMessage?.toolStart(name)
+          },
+          onToolFinish: async ({ name, result, success }: any) => {
+            await liveMessage?.toolFinish(name, result, success)
+          },
         },
-        onToolFinish: async ({ name, result, success }: any) => {
-          await liveMessage?.toolFinish(name, result, success)
-        },
-      })
-      this.appendHistory(text, content)
+      )
+      this.appendHistory(prompt, content)
       if (liveMessage) await liveMessage.finalize(stripThink(content))
       else await this.sendTelegramSafe(stripThink(content))
     } catch (e: any) {

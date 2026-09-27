@@ -989,3 +989,97 @@ describe('Telegram Queue Persistence & Safety Guards (#237 / #244)', () => {
     })
   })
 })
+
+describe('Telegram reply_to_message context injection (#338)', () => {
+  let adapters: DaemonAdapters
+  let daemon: Daemon
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    adapters = createMockAdapters()
+    adapters.telegram.isEnabled = () => true
+    daemon = new Daemon(adapters)
+  })
+
+  async function stubAgentLoop(content = 'Because the position address was missing.') {
+    const core = await import('@etemaro/core')
+    return vi.spyOn(core, 'agentLoop').mockResolvedValue({
+      content,
+      steps: [],
+      toolCalls: [],
+      finalAnswer: content,
+    } as any)
+  }
+
+  it('AC3: prefixes the agent prompt with the quoted reply and persists it to sessionHistory', async () => {
+    const loopSpy = await stubAgentLoop()
+
+    await (daemon as any).telegramHandler({
+      text: 'Why undefined?',
+      replyToMessage: {
+        text: '✅ Deployed JACK/SOL\nPosition: undefined',
+        from: { id: 1, first_name: 'Etemaro' },
+        messageId: 99,
+      },
+    })
+
+    const expectedPrompt =
+      '[Replying to Telegram message: "✅ Deployed JACK/SOL Position: undefined"]\n\nWhy undefined?'
+    expect(loopSpy).toHaveBeenCalledWith(
+      expectedPrompt,
+      expect.any(Number),
+      expect.any(Array),
+      'GENERAL',
+      expect.anything(),
+      null,
+      expect.any(Object),
+    )
+    expect((daemon as any).sessionHistory).toEqual([
+      { role: 'user', content: expectedPrompt },
+      { role: 'assistant', content: 'Because the position address was missing.' },
+    ])
+  })
+
+  it('AC4: live progress intro surfaces the replied snippet', async () => {
+    await stubAgentLoop('ok')
+    const live = {
+      toolStart: vi.fn().mockResolvedValue(undefined),
+      toolFinish: vi.fn().mockResolvedValue(undefined),
+      finalize: vi.fn().mockResolvedValue(undefined),
+      fail: vi.fn().mockResolvedValue(undefined),
+    }
+    adapters.telegram.createLiveMessage = vi.fn().mockResolvedValue(live)
+
+    await (daemon as any).telegramHandler({
+      text: 'Why did you close this?',
+      replyToMessage: { text: '🔒 Closed JACK/SOL PnL: -$3.20' },
+    })
+
+    expect(adapters.telegram.createLiveMessage).toHaveBeenCalledWith(
+      '🤖 Live Update',
+      expect.stringContaining('Replying to: "🔒 Closed JACK/SOL PnL: -$3.20"'),
+    )
+    expect(live.finalize).toHaveBeenCalledWith('ok')
+  })
+
+  it('passes the plain prompt and keeps history unchanged when the message is not a reply', async () => {
+    const loopSpy = await stubAgentLoop('plain')
+
+    await (daemon as any).telegramHandler({ text: 'Status?' })
+
+    expect(loopSpy.mock.calls[0]?.[0]).toBe('Status?')
+    expect((daemon as any).sessionHistory[0]).toEqual({ role: 'user', content: 'Status?' })
+    expect(adapters.telegram.createLiveMessage).toHaveBeenCalledWith('🤖 Live Update', 'Request: Status?')
+  })
+
+  it('collapses multi-line quoted replies into a single-line snippet', async () => {
+    const loopSpy = await stubAgentLoop()
+
+    await (daemon as any).telegramHandler({
+      text: 'Explain',
+      replyToMessage: { text: 'Line one\n\tLine   two' },
+    })
+
+    expect(loopSpy.mock.calls[0]?.[0]).toBe('[Replying to Telegram message: "Line one Line two"]\n\nExplain')
+  })
+})
