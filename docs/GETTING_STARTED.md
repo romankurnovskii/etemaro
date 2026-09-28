@@ -86,8 +86,10 @@ You will see:
 ## Quick health check
 
 ```bash
-etemaro balance
-etemaro positions
+etemaro config get                              # resolved runtime config
+etemaro wallet list                             # saved wallet aliases
+etemaro wallet-positions --wallet <address>     # open DLMM positions for a wallet
+etemaro pnl <position_address>                  # PnL for one position
 ```
 
 ---
