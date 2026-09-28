@@ -734,7 +734,7 @@ describe('runSmartWalletScreening — maxPositions enforcement', () => {
 
     const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 1 })
     expect(result).toBe('No new positions detected by smart wallets.')
-    expect(fsStore['/tmp/test-data/.smart-wallets-snapshot-agt_1.json']).toContain('legacy-p1')
+    expect(fsStore[path.join('/tmp/test-data', '.smart-wallets-snapshot-agt_1.json')]).toContain('legacy-p1')
   })
 
   // ── Case 16: Position address and pool metrics forwarded to notifications and snapshot ──
