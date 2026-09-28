@@ -10,6 +10,9 @@
 import { execFileSync } from 'node:child_process'
 
 const STAGED_EXT = /\.(ts|tsx|js|jsx|cjs|json|md|html|css|sh)$/
+// On Windows pnpm is a `.cmd` shim, which Node can only launch through a shell.
+const isWin = process.platform === 'win32'
+const pnpmBin = isWin ? 'pnpm.cmd' : 'pnpm'
 
 const raw = execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'], {
   encoding: 'utf8',
@@ -22,8 +25,12 @@ if (files.length === 0) {
 }
 
 try {
-  execFileSync('pnpm', ['exec', 'biome', 'check', '--write', '--unsafe', '--no-errors-on-unmatched', ...files], {
+  const biomeArgs = ['exec', 'biome', 'check', '--write', '--unsafe', '--no-errors-on-unmatched', ...files]
+  // With `shell: true` Node hands the line to cmd.exe, which re-parses it — a staged
+  // path containing a space would otherwise be split into extra arguments.
+  execFileSync(pnpmBin, isWin ? biomeArgs.map((arg) => `"${arg}"`) : biomeArgs, {
     stdio: 'inherit',
+    shell: isWin,
   })
 } catch (err) {
   process.exit(typeof err?.status === 'number' ? err.status : 1)

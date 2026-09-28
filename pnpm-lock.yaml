@@ -31,7 +31,7 @@ importers:
         version: 3.0.3
       openai:
         specifier: ^7.23.0
-        version: 7.23.0(ws@8.21.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.5)
+        version: 7.23.0(ws@7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.5)
       pm2:
         specifier: ^7.0.4
         version: 7.0.4(bufferutil@4.1.0)(utf-8-validate@6.0.6)
@@ -159,8 +159,8 @@ importers:
         specifier: ^4.6.0
         version: 4.6.0
       openai:
-        specifier: ^7.12.1
-        version: 7.15.0(ws@7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.5)
+        specifier: ^7.23.0
+        version: 7.23.0(ws@8.21.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.5)
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -1986,30 +1986,6 @@ packages:
   onetime@5.1.2:
     resolution: {integrity: sha512-kbpaSSGJTWdAY5KPVeMOKXSrPtr8C8C7wodJbcsd51jRnmD+GZu8Y0VoU6Dm5Z4vWr0Ig/1NKuWRKf7j5aaYSg==}
     engines: {node: '>=6'}
-
-  openai@7.15.0:
-    resolution: {integrity: sha512-2DIwesnPSduw68MFx7nAdgvshrgvS8WOan5W8+tgUMlAy/tY+Q41g80Pa+w/v64rHA6rtn+dketa8QvMVxU96w==}
-    engines: {node: '>=22.0.0'}
-    peerDependencies:
-      '@aws-sdk/credential-provider-node': '>=3.972.0 <4'
-      '@smithy/hash-node': '>=4.3.0 <5'
-      '@smithy/signature-v4': '>=5.4.0 <6'
-      undici: '>=5 <9'
-      ws: ^8.21.0
-      zod: ^3.25 || ^4.0
-    peerDependenciesMeta:
-      '@aws-sdk/credential-provider-node':
-        optional: true
-      '@smithy/hash-node':
-        optional: true
-      '@smithy/signature-v4':
-        optional: true
-      undici:
-        optional: true
-      ws:
-        optional: true
-      zod:
-        optional: true
 
   openai@7.23.0:
     resolution: {integrity: sha512-0ecOXnFSMNWZq6cUBcTV6Lf93y+fm8BH/+QzFvpoP1UGNOE5pnytRa6HAPGCw+3IS9SIAW7rc1M8yyzN1PiBAQ==}
@@ -4069,7 +4045,7 @@ snapshots:
     dependencies:
       mimic-fn: 2.1.0
 
-  openai@7.15.0(ws@7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.5):
+  openai@7.23.0(ws@7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.5):
     optionalDependencies:
       ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       zod: 4.6.5
