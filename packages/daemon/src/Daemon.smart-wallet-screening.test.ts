@@ -826,6 +826,69 @@ describe('runSmartWalletScreening — maxPositions enforcement', () => {
       expect.stringContaining('[SmartWallets] Deployed legacy_nested_pos_999 on JACK-SOL'),
     )
   })
+
+  // ── Case 18: a guarded deploy is a skip, not a fake success ─────────────
+  // deployPosition short-circuits on pool/base-mint cooldown and returns
+  // `{ success: false, error }` with no `position`. Reading it blind threw
+  // `Cannot read properties of undefined (reading 'position')`; the tolerant
+  // read then counted the skip as a deploy with an empty address.
+  it('treats a cooldown guard rejection as a skipped deploy, not a success', async () => {
+    mockGetTrackedPositions.mockReturnValue([])
+    mockListSmartWallets.mockReturnValue({
+      wallets: [{ address: 'w1', type: 'lp' }],
+    })
+    mockGetWalletPositions.mockResolvedValue({
+      positions: [walletPos('sw_pos_1', 'poolA')],
+    })
+    mockDiffSmartWalletPositions.mockReturnValue({
+      isFirstRun: false,
+      newPositions: [{ position: 'sw_pos_1', pool: 'poolA', wallet: 'w1' }],
+      uniquePools: ['poolA'],
+      nextSnapshot: { initialized: true, positions: [] },
+    })
+    mockGetPoolDetail.mockResolvedValue({ name: 'JACK-SOL' })
+    mockDeployPosition.mockResolvedValueOnce({
+      success: false,
+      error: 'Token on cooldown — recently closed out-of-range too many times. Try a different token.',
+    })
+
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 0.5 })
+
+    expect(result).toContain('Deployed to 0 new pools')
+    expect(mockRecordPositionSnapshot).not.toHaveBeenCalled()
+    expect(adapters.telegram.notifyDeploy).not.toHaveBeenCalled()
+    expect(mockLog).not.toHaveBeenCalledWith('cron', expect.stringContaining('Deployed undefined'))
+    expect(mockLog).toHaveBeenCalledWith('deploy', expect.stringContaining('Deploy skipped for pool poolA'))
+    expect(mockLog).toHaveBeenCalledWith('deploy', expect.stringContaining('on cooldown'))
+    expect(mockLog).not.toHaveBeenCalledWith('cron_error', expect.any(String))
+    // Unresolved => the pool is re-derived and retried on the next tick.
+    expect(mockUpdateSnapshotPositions.mock.calls[0]?.[1]).toEqual([{ position: 'sw_pos_1', resolved: false }])
+  })
+
+  // ── Case 19: an undefined deploy response must not abort the cycle ──────
+  it('does not crash on an undefined deploy response', async () => {
+    mockGetTrackedPositions.mockReturnValue([])
+    mockListSmartWallets.mockReturnValue({
+      wallets: [{ address: 'w1', type: 'lp' }],
+    })
+    mockGetWalletPositions.mockResolvedValue({
+      positions: [walletPos('sw_pos_1', 'poolA')],
+    })
+    mockDiffSmartWalletPositions.mockReturnValue({
+      isFirstRun: false,
+      newPositions: [{ position: 'sw_pos_1', pool: 'poolA', wallet: 'w1' }],
+      uniquePools: ['poolA'],
+      nextSnapshot: { initialized: true, positions: [] },
+    })
+    mockGetPoolDetail.mockResolvedValue({ name: 'JACK-SOL' })
+    mockDeployPosition.mockResolvedValueOnce(undefined)
+
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 0.5 })
+
+    expect(result).toContain('Deployed to 0 new pools')
+    expect(mockLog).not.toHaveBeenCalledWith('cron_error', expect.any(String))
+    expect(mockUpdateSnapshotPositions.mock.calls[0]?.[1]).toEqual([{ position: 'sw_pos_1', resolved: false }])
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

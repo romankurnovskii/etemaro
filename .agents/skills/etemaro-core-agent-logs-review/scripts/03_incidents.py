@@ -40,8 +40,10 @@ from _dialects import (
     component_census,
     coverage as log_coverage,
     cron_cycles,
+    deploy_outcomes,
     failed_actions,
     structured_errors,
+    sweeper_retries,
 )
 from _logger import get_logger
 
@@ -142,6 +144,42 @@ def group_errors(records: list):
     return out
 
 
+def sweeper_accounting(instance_dir: str, config: dict) -> dict:
+    """Persisted sweeper retry counts, separated from the configured budget.
+
+    The audit report claimed a dead token was *"correctly marked dead after 3
+    retries"*. The persisted record said ``attempts: 1`` and the log said
+    *"abandoning immediately without further retries"*. ``sweeperMaxAttempts`` is a
+    budget, not an observation, so it is carried in its own key and never merged
+    into the observed counts.
+    """
+    state = read_json(os.path.join(instance_dir, 'state.json'), {}) or {}
+    pending = state.get('pendingLiquidations') if isinstance(state, dict) else None
+    items = []
+    if isinstance(pending, dict):
+        for mint, item in pending.items():
+            if not isinstance(item, dict):
+                continue
+            items.append(
+                {
+                    'symbol': item.get('symbol') or (mint[:8] if isinstance(mint, str) else None),
+                    'mint': item.get('mint') or mint,
+                    'status': item.get('status'),
+                    'attempts': item.get('attempts'),
+                    'last_error_code': item.get('last_error_code'),
+                }
+            )
+    observed = [i['attempts'] for i in items if isinstance(i.get('attempts'), int)]
+    management = (config or {}).get('management') or {}
+    return {
+        'configured_max_attempts': management.get('sweeperMaxAttempts'),
+        'abandon_window_hours': management.get('sweeperAbandonWindowHours'),
+        'items': items,
+        'max_persisted_attempts': max(observed) if observed else None,
+        'snapshot_note': 'state.json is a report-time snapshot, not windowed to the review period',
+    }
+
+
 def analyse_instance(instance_dir: str, frm, to, cycle_gap: int, repo_root: str) -> dict:
     cov = log_coverage(instance_dir, window=(frm, to) if (frm or to) else None)
     census = component_census(instance_dir, window=(frm, to) if (frm or to) else None)
@@ -153,10 +191,14 @@ def analyse_instance(instance_dir: str, frm, to, cycle_gap: int, repo_root: str)
 
     cycle_starts, cycle_gaps = cron_cycles(instance_dir, gap_seconds=cycle_gap, window=(frm, to) if (frm or to) else None)
 
+    deploys = deploy_outcomes(instance_dir, window=(frm, to) if (frm or to) else None)
+    sweeper = sweeper_retries(instance_dir, window=(frm, to) if (frm or to) else None)
+
     config_path = locate_config(instance_dir, repo_root)
     config = read_json(config_path, {}) if config_path else {}
     schedule = config_schedule(config)
     expected_min = schedule.get('managementIntervalMin')
+    sweeper_state = sweeper_accounting(instance_dir, config)
 
     stall_threshold = None
     stall_count = None
@@ -197,6 +239,12 @@ def analyse_instance(instance_dir: str, frm, to, cycle_gap: int, repo_root: str)
         warnings.append(f'{cov["skipped"]} line(s) matched no known core-agent dialect')
     if 'jsonl_unclassified' in (cov.get('dialects') or {}):
         warnings.append('an unhandled JSONL dialect is present — counts may be incomplete')
+    unexplained = (deploys.get('causes') or {}).get('unexplained')
+    if unexplained:
+        warnings.append(
+            f'{unexplained} deploy failure(s) have no guard record and no timeout token — '
+            'the cause is not in the log; do not name one'
+        )
 
     return {
         'id': os.path.basename(instance_dir.rstrip('/')),
@@ -215,6 +263,11 @@ def analyse_instance(instance_dir: str, frm, to, cycle_gap: int, repo_root: str)
             'failed_actions_total': len(failures),
             'error_categories_present': sorted({r['category'] for r in structured}),
         },
+        # Deploy causes are attributed from the guard record that precedes the
+        # failure, never from the failure's shape. `causes` is the only sanctioned
+        # source for a cause sentence in the report.
+        'deploys': deploys,
+        'sweeper': {'observed': sweeper, 'persisted': sweeper_state},
         'liveness': {
             'cycle_gap_threshold_sec': cycle_gap,
             'cycles': len(cycle_starts),
@@ -293,6 +346,26 @@ def main() -> int:
         )
         for category, info in inst['errors']['structured'].items():
             print(f'      {category}: {info["count"]}  top: {info["fingerprints"][0]["pattern"][:80] if info["fingerprints"] else ""}')
+        dep = inst.get('deploys') or {}
+        print(
+            f'   deploys: attempts={dep.get("attempts")} confirmed={dep.get("confirmed")} '
+            f'skipped={dep.get("skipped")} failed={dep.get("failed")} causes={dep.get("causes")}'
+        )
+        if dep.get('empty_address_logs'):
+            print(
+                f'      note: {dep["empty_address_logs"]} "Deployed <empty>" log line(s) — a logging artefact, not a failed deploy'
+            )
+        print(
+            f'      timeout tokens in window: {dep.get("timeout_evidence", 0)} '
+            f'by component {dep.get("timeout_by_component") or "{}"}'
+        )
+        sw = inst.get('sweeper') or {}
+        obs, per = sw.get('observed') or {}, sw.get('persisted') or {}
+        print(
+            f'   sweeper: immediate_abandons={obs.get("immediate_abandons")} '
+            f'max_persisted_attempts={per.get("max_persisted_attempts")} '
+            f'bucket={obs.get("reported_attempts")} configured_budget={per.get("configured_max_attempts")} (budget, not observed)'
+        )
         print(
             f'   liveness: cycles={live["cycles"]} median={live["gap_minutes"]["median"]}min '
             f'max={live["gap_minutes"]["max"]}min configured={live["configured_management_interval_min"]}min '

@@ -118,6 +118,26 @@ Recipes and the per-position veto forensic workflow: `references/smart-wallets-v
 - **Never print secrets.** Render any `*Key` / `*Token` / `*Secret` as `***`, keep
   `env.*` references literal, and never open `.env*`, `*.prod` or
   `.credentials/*`.
+- **Attribute a deploy cause from the record, never from the failure's shape.**
+  `[deploy] … is on cooldown — skipping` is a **local guard short-circuit**: the
+  venue was never contacted and no order was submitted. It is *not* a network
+  failure, and `[cron_error] … Deploy failed` does not imply an RPC problem. Take
+  every cause from `03-incidents.json` → `deploys.causes`; and only ever write
+  "RPC timeout" / "network failure" when `deploys.timeout_by_component` shows a
+  timeout token on a deploy record. A report that said *"8 occurrences of
+  undefined deploy response on RPC timeout"* about 8 cooldown short-circuits is
+  the exact failure this rule exists to prevent — the count was right, the cause
+  was invented, and `grep -icE "timeout|timed out"` over the window returned 0.
+- **Retry counts come from persisted state, never from the configured budget.**
+  Read `state.json` → `pendingLiquidations[].attempts` and the
+  `Liquidation abandoned for … (immediately | after N attempts)` line. Quote those.
+  `management.sweeperMaxAttempts` is a **budget** (default 10); reporting it as the
+  observed retry count is how *"marked dead after 3 retries"* was written about a
+  record holding `attempts: 1` and a log line reading *"abandoning immediately
+  without further retries"*.
+- **An empty deploy address is a logging artefact, not a failed deploy.**
+  `Deployed  on <pair>` (`deploys.empty_address_logs`) coexists with `SUCCESS — N
+  tx(s)` and is a caller-side bug, not a transient error.
 
 ## Output
 

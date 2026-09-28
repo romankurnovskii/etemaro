@@ -382,6 +382,8 @@ def build_recommendations(perf_inst, incidents_inst):
     liveness = (incidents_inst or {}).get('liveness') or {}
     tools = (incidents_inst or {}).get('tools') or {}
     warnings = (incidents_inst or {}).get('coverage_warnings') or []
+    deploys = (incidents_inst or {}).get('deploys') or {}
+    sweeper = (incidents_inst or {}).get('sweeper') or {}
 
     realized = by_status.get('realized') or {}
     pending = by_status.get('closed_pending_swap') or {}
@@ -430,6 +432,45 @@ def build_recommendations(perf_inst, incidents_inst):
                 f'{fmt(integrity.get("accounting_tolerance_usd"), 3)} USD rounding tolerance. Investigate before trusting any PnL figure.',
             )
         )
+    causes = deploys.get('causes') or {}
+    guard_fails = sum(n for cause, n in causes.items() if str(cause).startswith('local_guard:'))
+    if guard_fails:
+        timeout_note = (
+            f'the window contains {deploys.get("timeout_evidence") or 0} timeout token(s) in total '
+            f'({esc(deploys.get("timeout_by_component") or {})}), none of them a deploy request'
+        )
+        empty_note = (
+            f' {deploys["empty_address_logs"]} <code>Deployed&nbsp;&nbsp;on</code> line(s) were logged on the '
+            '<i>successful</i> deploys — the caller read an address it never checked and counted the skip as a deploy.'
+            if deploys.get('empty_address_logs')
+            else ''
+        )
+        message = (
+            f'<b>{guard_fails} deploy failure(s) were local guard short-circuits, not network failures.</b> '
+            f'Each was preceded by an <code>[deploy] &hellip; is on cooldown &mdash; skipping</code> line, so the venue was '
+            f'never contacted and no order was submitted ({timeout_note}).{empty_note} '
+            'Do not label these RPC timeouts — the logs disprove it.'
+        )
+        recs.append(('A', message))
+    if causes.get('unexplained'):
+        message = (
+            f'<b>{causes["unexplained"]} deploy failure(s) carry no guard record and no timeout token.</b> '
+            'The cause is not in the log; report the raw error and name no cause.'
+        )
+        recs.append(('B', message))
+    sw_obs = sweeper.get('observed') or {}
+    sw_per = sweeper.get('persisted') or {}
+    if sw_obs.get('immediate_abandons'):
+        persisted = sw_per.get('max_persisted_attempts')
+        budget = sw_per.get('configured_max_attempts')
+        message = (
+            f'<b>{sw_obs["immediate_abandons"]} sweeper abandon(s) were <i>immediate</i>.</b> '
+            '<code>liquidation-queue</code> marked the token dead on the first failed quote — no retry loop ran. '
+            f'Persisted <code>attempts</code> max is {persisted if persisted is not None else "absent"}; the configured '
+            f'<code>sweeperMaxAttempts</code>={budget if budget is not None else "default"} is a budget. '
+            'Quoting the budget as the observed retry count is wrong.'
+        )
+        recs.append(('B', message))
     if liveness.get('stall_count'):
         recs.append(
             (
@@ -947,6 +988,8 @@ def section_incidents(incidents):
     liveness = (incidents or {}).get('liveness') or {}
     tools = (incidents or {}).get('tools') or {}
     warnings = (incidents or {}).get('coverage_warnings') or []
+    deploys = (incidents or {}).get('deploys') or {}
+    sweeper = (incidents or {}).get('sweeper') or {}
 
     if structured:
         parts.append('<div style="font-size:13px;font-weight:700;color:#101828;margin-top:14px;">Classified errors (from <code>structured-*.jsonl</code>)</div>')
@@ -987,6 +1030,63 @@ def section_incidents(incidents):
             for f in failed[:15]
         )
         parts.append('</ul>')
+
+    causes = deploys.get('causes') or {}
+    if deploys.get('attempts'):
+        parts.append(
+            '<div style="font-size:13px;font-weight:700;color:#101828;margin-top:16px;">'
+            'Deploy outcomes &mdash; cause from the record, not from the failure shape</div>'
+        )
+        parts.append(
+            '<div style="font-size:12px;color:#5b7286;margin-top:4px;">'
+            f'{deploys.get("attempts")} deploy attempt(s): {deploys.get("confirmed")} confirmed, '
+            f'{deploys.get("skipped")} guard-skipped, {deploys.get("failed")} failed. '
+            'A <code>[deploy] &hellip; is on cooldown &mdash; skipping</code> line is a <b>local guard short-circuit</b>: '
+            'the venue was never contacted and no order was submitted.</div>'
+        )
+        parts.append(
+            '<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12px;">'
+            '<tr style="background:#101828;color:#fff;">'
+            f'<th {TH}>Attributed cause</th><th {THR}>Count</th></tr>'
+        )
+        for i, (cause, count) in enumerate(sorted(causes.items(), key=lambda kv: -kv[1])):
+            parts.append(
+                ROW.format(bg='#f9fafc' if i % 2 == 0 else '#ffffff')
+                + f'<td {TD}><code>{esc(cause)}</code></td><td {TDR}>{count}</td></tr>'
+            )
+        parts.append('</table>')
+        by_component = deploys.get('timeout_by_component') or {}
+        parts.append(
+            '<div style="font-size:12px;color:#5b7286;margin-top:8px;">'
+            f'Timeout tokens in the window: <b>{deploys.get("timeout_evidence") or 0}</b> '
+            f'(by component <code>{esc(by_component)}</code>). '
+            'A local guard rejection must never be reported as an RPC timeout &mdash; the tokens decide, not the failure shape.</div>'
+        )
+        if deploys.get('empty_address_logs'):
+            parts.append(
+                banner(
+                    'warn',
+                    '&#9888; Empty deploy address logged',
+                    f'{deploys["empty_address_logs"]} <code>[cron] &hellip; Deployed&nbsp;&nbsp;on &hellip;</code> line(s) sit alongside '
+                    'deploys the adapter reported as <code>SUCCESS</code>. The caller logged an address it never checked.',
+                )
+            )
+    obs = sweeper.get('observed') or {}
+    per = sweeper.get('persisted') or {}
+    if obs.get('abandon_events') or obs.get('immediate_abandons') or per.get('items'):
+        parts.append(
+            '<div style="font-size:13px;font-weight:700;color:#101828;margin-top:16px;">Sweeper retry accounting</div>'
+        )
+        parts.append(
+            '<div style="font-size:12px;color:#33424f;line-height:1.7;margin-top:6px;">'
+            f'{obs.get("immediate_abandons") or 0} token(s) abandoned <b>immediately</b> (unroutable/dead), '
+            f'no retries attempted. Persisted <code>attempts</code> max '
+            f'<b>{per.get("max_persisted_attempts") if per.get("max_persisted_attempts") is not None else "&mdash;"}</b>; '
+            f'configured <code>sweeperMaxAttempts</code>='
+            f'<b>{per.get("configured_max_attempts") if per.get("configured_max_attempts") is not None else "&mdash;"}</b> '
+            'is a <i>budget</i>, not an observation. Quote the persisted counter, never the budget.'
+            f'<br><span style="color:#5b7286;">{esc(per.get("snapshot_note") or "")}</span></div>'
+        )
 
     gaps = liveness.get('gap_minutes') or {}
     parts.append(

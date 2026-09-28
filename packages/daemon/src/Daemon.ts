@@ -2016,10 +2016,25 @@ IMPORTANT:
           strategy: config.strategy.strategyMeteora,
         })
 
+        // A guarded deploy (pool / base-mint cooldown) resolves to
+        // `{ success: false, error }` with no `position` field. Reading the address
+        // blind used to throw `Cannot read properties of undefined (reading
+        // 'position')`; counting the skip as a deploy also logged an empty address
+        // and marked the pool resolved, so the guard rejection was never retried.
         const positionAddress =
-          typeof deployRes.position === 'string'
+          typeof deployRes?.position === 'string'
             ? deployRes.position
-            : deployRes.position?.position || String(deployRes.position || '')
+            : deployRes?.position?.position || String(deployRes?.position || '')
+
+        if (deployRes?.success === false || !positionAddress) {
+          log(
+            'deploy',
+            `[SmartWallets] Deploy skipped for pool ${pool}: ${deployRes?.error || 'deploy response carried no position'}`,
+          )
+          processedPositions.push({ position: posItem.position, resolved: false })
+          continue
+        }
+
         const pair = detail.name || (deployRes as any).pool_name || pool
 
         this.adapters.domain.recordPositionSnapshot(pool, {

@@ -465,3 +465,215 @@ def cron_cycles(instance_dir: str, gap_seconds: int = 30, window=None):
             starts.append(stamps[i])
     gaps = [round((starts[i + 1] - starts[i]).total_seconds() / 60.0, 2) for i in range(len(starts) - 1)]
     return [s.isoformat().replace('+00:00', 'Z') for s in starts], gaps
+
+
+# --------------------------------------------------------------------------- #
+# deploy outcome classification
+# --------------------------------------------------------------------------- #
+#: A network/RPC timeout is only ever claimed when the record itself says so.
+#: "RPC timeout" is **not** a synonym for "the deploy did not happen".
+TIMEOUT_RE = re.compile(r'timeout|timed out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|socket hang up|fetch failed', re.IGNORECASE)
+#: ``MeteoraAdapter.deployPosition`` short-circuits before it touches the venue.
+COOLDOWN_RE = re.compile(r'is on cooldown\s*[—\-]\s*skipping', re.IGNORECASE)
+#: the same short-circuit, reported by the caller once it checks the response shape.
+SKIPPED_RE = re.compile(r'\[SmartWallets\]\s+Deploy skipped for pool\s+(\S+?):\s*(.*)$')
+#: the caller's blanket catch — the only place a deploy failure lands.
+DEPLOY_FAILED_RE = re.compile(r'\[SmartWallets\]\s+Deploy failed for pool\s+(\S+?):\s*(.*)$')
+#: the caller's success log; an empty or ``undefined`` address is a logging artefact.
+DEPLOYED_RE = re.compile(r'\[SmartWallets\]\s+Deployed\s+(?P<addr>\S*)\s+on\s')
+#: the adapter's own success line.
+SWAP_SUCCESS_RE = re.compile(r'SUCCESS\s*[—\-]\s*\d+\s+tx\(s\)')
+#: a guard rejection can only explain a failure logged within this many seconds.
+GUARD_PAIRING_SECONDS = 10
+
+
+def _guard_cause(msg: str) -> str:
+    """Name the local guard that produced a skip — never a network cause."""
+    low = (msg or '').lower()
+    if 'base mint' in low:
+        return 'local_guard:base_mint_cooldown'
+    if 'pool' in low:
+        return 'local_guard:pool_cooldown'
+    return 'local_guard:cooldown'
+
+
+def deploy_outcomes(instance_dir: str, window=None):
+    """Attribute every smart-wallet deploy attempt in *window* to a cause.
+
+    The audit report this reader exists to prevent claimed *"8 occurrences of
+    undefined deploy response on RPC timeout"*. The **8 was right**; the cause was
+    not. All eight were ``[deploy] … is on cooldown — skipping`` guard
+    short-circuits, in a window whose logs contain **zero** timeout strings. The
+    cause is therefore read from the guard record that immediately precedes the
+    failure — never inferred from the *shape* of the failure.
+
+    Returns ``causes`` (counts keyed by attributed cause), ``attempts``,
+    ``skipped``, ``failed``, ``confirmed``, ``timeout_evidence`` (occurrences of a
+    real timeout token in the window, broken down by component so an unrelated
+    Telegram ``fetch failed`` cannot be read as an RPC timeout) and
+    ``empty_address_logs`` (the ``Deployed `` / ``Deployed undefined`` artefact).
+    ``causes`` is the only sanctioned source for a cause sentence in a report.
+    """
+    causes = collections.Counter()
+    timeout_by_component = collections.Counter()
+    events = []
+    out = {
+        'attempts': 0,
+        'confirmed': 0,
+        'skipped': 0,
+        'failed': 0,
+        'timeout_evidence': 0,
+        'timeout_by_component': {},
+        'empty_address_logs': 0,
+        'causes': {},
+        'events': events,
+    }
+    guard = None
+    for ev in iter_events(instance_dir, window=window):
+        if ev.dialect != 'coreagent_runtime':
+            continue
+        msg = ev.msg or ''
+        if TIMEOUT_RE.search(msg):
+            out['timeout_evidence'] += 1
+            timeout_by_component[ev.component or '?'] += 1
+
+        # 1. the guard short-circuit itself
+        if ev.component == 'deploy' and COOLDOWN_RE.search(msg):
+            guard = {'ts': ev.ts, 'source': ev.source, 'line_no': ev.line_no, 'msg': msg}
+            continue
+
+        # 2. an explicit skip reported by the caller (post-guard-check behaviour)
+        if ev.component == 'deploy':
+            m = SKIPPED_RE.search(msg)
+            if m:
+                reason = (m.group(2) or '').strip()
+                cause = _guard_cause(reason) if 'cooldown' in reason.lower() else 'skip:other'
+                causes[cause] += 1
+                out['skipped'] += 1
+                events.append({'ts': ev.ts, 'pool': m.group(1), 'outcome': 'skipped', 'cause': cause, 'detail': reason[:200]})
+                guard = None
+                continue
+            # 3. the adapter's own success line
+            if SWAP_SUCCESS_RE.search(msg):
+                out['confirmed'] += 1
+                continue
+
+        # 4. the success log — an empty address is an artefact, not a deploy
+        if ev.component == 'cron':
+            m = DEPLOYED_RE.search(msg)
+            if m and m.group('addr') in ('', 'undefined'):
+                out['empty_address_logs'] += 1
+                continue
+
+        # 5. the blanket catch
+        if ev.component == 'cron_error':
+            m = DEPLOY_FAILED_RE.search(msg)
+            if not m:
+                continue
+            reason = (m.group(2) or '').strip()
+            paired = guard is not None and _same_guard(guard, ev)
+            if paired:
+                cause = _guard_cause(guard['msg'])
+            elif TIMEOUT_RE.search(reason):
+                cause = 'network_timeout'
+            else:
+                cause = 'unexplained'
+            causes[cause] += 1
+            out['failed'] += 1
+            events.append(
+                {
+                    'ts': ev.ts,
+                    'pool': m.group(1),
+                    'outcome': 'failed',
+                    'cause': cause,
+                    'detail': reason[:200],
+                    'guard_line': guard['line_no'] if paired and guard else None,
+                }
+            )
+            guard = None
+
+    out['attempts'] = out['confirmed'] + out['skipped'] + out['failed']
+    out['causes'] = dict(causes.most_common())
+    out['timeout_by_component'] = dict(timeout_by_component.most_common())
+    return out
+
+
+def _same_guard(guard: dict, failure: Event) -> bool:
+    """True when *guard* is the short-circuit the *failure* immediately followed."""
+    if guard.get('source') != failure.source:
+        return False
+    a, b = ts_key(guard.get('ts')), ts_key(failure.ts)
+    if a is None or b is None:
+        return True
+    delta = (b - a).total_seconds()
+    return 0 <= delta <= GUARD_PAIRING_SECONDS
+
+
+# --------------------------------------------------------------------------- #
+# sweeper retry accounting
+# --------------------------------------------------------------------------- #
+#: ``liquidation-queue.ts`` — the authoritative abandon record: mode + attempts.
+LIQUIDATION_ABANDONED_RE = re.compile(
+    r'Liquidation abandoned for\s+(?P<symbol>\S+?)\s+'
+    r'(?P<mode>immediately|after\s+(?P<attempts>\d+)\s+attempts?)',
+)
+#: ``ToolExecutor`` — the immediate-abandon path; it never retries.
+SWEEPER_ILLIQUID_RE = re.compile(
+    r'Auto-swap sweeper permanently illiquid for\s+(?P<symbol>\S+?)\s*\((?P<code>[^)]*)\)',
+)
+#: per-cycle totals
+SWEEPER_CYCLE_RE = re.compile(
+    r'Sweeper cycle complete:\s*(?P<swapped>\d+)\s+swapped,\s*(?P<failed>\d+)\s+failed,\s*'
+    r'(?P<abandoned>\d+)\s+abandoned',
+)
+
+
+def sweeper_retries(instance_dir: str, window=None):
+    """Observed sweeper retry counts, read from the record.
+
+    The audit report claimed a dead token was *"marked dead after 3 retries"*; the
+    persisted ``pendingLiquidations`` record said ``attempts: 1`` and the log said
+    *"abandoning immediately without further retries"*. The configured
+    ``management.sweeperMaxAttempts`` is a **budget**, never an observation — and
+    on this repo's default it is 10, not 3. Only ``attempts`` parsed here (and the
+    persisted counter) may be quoted as a retry count.
+    """
+    abandons = []
+    immediate = 0
+    illiquid = []
+    attempts_reported = []
+    cycles = {'swapped': 0, 'failed': 0, 'abandoned': 0, 'cycles': 0}
+    for ev in iter_events(instance_dir, window=window):
+        if ev.dialect != 'coreagent_runtime':
+            continue
+        msg = ev.msg or ''
+        m = SWEEPER_CYCLE_RE.search(msg)
+        if m:
+            cycles['swapped'] += int(m.group('swapped'))
+            cycles['failed'] += int(m.group('failed'))
+            cycles['abandoned'] += int(m.group('abandoned'))
+            cycles['cycles'] += 1
+            continue
+        m = LIQUIDATION_ABANDONED_RE.search(msg)
+        if m:
+            mode = 'immediate' if m.group('mode') == 'immediately' else 'budget'
+            attempts = int(m.group('attempts')) if m.group('attempts') else 0
+            if mode == 'immediate':
+                immediate += 1
+            else:
+                attempts_reported.append(attempts)
+            abandons.append(
+                {'ts': ev.ts, 'symbol': m.group('symbol'), 'mode': mode, 'attempts': attempts}
+            )
+            continue
+        m = SWEEPER_ILLIQUID_RE.search(msg)
+        if m:
+            illiquid.append({'ts': ev.ts, 'symbol': m.group('symbol'), 'error_code': m.group('code')})
+    return {
+        'abandon_events': abandons,
+        'immediate_abandons': immediate,
+        'reported_attempts': attempts_reported,
+        'max_reported_attempts': max(attempts_reported, default=None),
+        'illiquid_immediate': illiquid,
+        'cycles': cycles,
+    }
