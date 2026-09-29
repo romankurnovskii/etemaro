@@ -19,5 +19,5 @@ jobs:
         id: combine-prs
         uses: github/combine-prs@v5.2.0
         with:
-          github_token: ${{ secrets.TOKEN_PR }}
+          github_token: ${{ secrets.GH_TOKEN }}
           labels: combined-pr
