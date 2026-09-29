@@ -56,7 +56,7 @@ if (typeof __filename === 'string' && __filename.length > 0) {
 } else if (typeof import.meta?.url === 'string' && import.meta.url.startsWith('file:')) {
   currentFilePath = fileURLToPath(import.meta.url)
 } else {
-  currentFilePath = path.join(process.cwd(), 'dist', 'Cli.cjs')
+  currentFilePath = path.join(process.cwd(), 'dist', 'Cli.js')
 }
 const currentFileDir = path.dirname(currentFilePath)
 // Resolve our own package.json relative to the CLI's actual location, not cwd
