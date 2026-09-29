@@ -866,13 +866,26 @@ export class Cli {
 
   private async handleDeploy(argv: string[], flags: Record<string, any>): Promise<void> {
     if (!flags.pool) die('Usage: etemaro deploy --pool <addr> --amount <sol>')
-    const amountX = flags['amount-x'] ? parseFloat(flags['amount-x']) : undefined
-    if (!flags.amount && !amountX) die('--amount or --amount-x is required')
+    let amountX: number | undefined
+    if (flags['amount-x']) {
+      amountX = parseFloat(flags['amount-x'])
+      if (!Number.isFinite(amountX) || amountX <= 0) {
+        die(`Invalid amount-x: "${flags['amount-x']}". Must be a positive number.`)
+      }
+    }
+    let amountY: number | undefined
+    if (flags.amount) {
+      amountY = parseFloat(flags.amount)
+      if (!Number.isFinite(amountY) || amountY <= 0) {
+        die(`Invalid amount: "${flags.amount}". Must be a positive number.`)
+      }
+    }
+    if (amountY === undefined && amountX === undefined) die('--amount or --amount-x is required')
 
     out(
       await this.adapters.toolExecutor.executeTool('deploy_position', {
         pool_address: flags.pool,
-        amount_y: flags.amount ? parseFloat(flags.amount) : undefined,
+        amount_y: amountY,
         amount_x: amountX,
         strategy: flags.strategy,
         single_sided_x: argv.includes('--single-sided-x'),
@@ -934,11 +947,18 @@ export class Cli {
 
   private async handleSwap(flags: Record<string, any>): Promise<void> {
     if (!flags.from || !flags.to || !flags.amount) die('Usage: etemaro swap --from <mint> --to <mint> --amount <n>')
+    if (flags.from === flags.to) {
+      die('Cannot swap token to itself: --from and --to mint addresses are identical')
+    }
+    const swapAmount = parseFloat(flags.amount)
+    if (!Number.isFinite(swapAmount) || swapAmount <= 0) {
+      die(`Invalid swap amount: "${flags.amount}". Must be a positive number.`)
+    }
     out(
       await this.adapters.toolExecutor.executeTool('swap_token', {
         input_mint: flags.from,
         output_mint: flags.to,
-        amount: parseFloat(flags.amount),
+        amount: swapAmount,
       }),
     )
   }
