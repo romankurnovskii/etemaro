@@ -10,8 +10,6 @@
 import { execFileSync } from 'node:child_process'
 
 const STAGED_EXT = /\.(ts|tsx|js|jsx|cjs|json|md|html|css|sh)$/
-const isWin = process.platform === 'win32'
-const pnpmBin = isWin ? 'pnpm.cmd' : 'pnpm'
 
 const raw = execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'], {
   encoding: 'utf8',
@@ -24,9 +22,8 @@ if (files.length === 0) {
 }
 
 try {
-  execFileSync(pnpmBin, ['exec', 'biome', 'check', '--write', '--unsafe', '--no-errors-on-unmatched', ...files], {
+  execFileSync('pnpm', ['exec', 'biome', 'check', '--write', '--unsafe', '--no-errors-on-unmatched', ...files], {
     stdio: 'inherit',
-    shell: isWin,
   })
 } catch (err) {
   process.exit(typeof err?.status === 'number' ? err.status : 1)

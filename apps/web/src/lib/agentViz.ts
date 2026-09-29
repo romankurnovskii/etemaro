@@ -18,8 +18,9 @@ export function logSeverity(entry: LogEntry): LogSeverity {
   return 'info'
 }
 
+/** Per-agent log lines only — never fold empty/default/global agentId into every card. */
 export function agentLogs(logs: LogEntry[], agentId: string): LogEntry[] {
-  return logs.filter((l) => !l.agentId || l.agentId === agentId || l.agentId === 'default')
+  return logs.filter((l) => l.agentId === agentId)
 }
 
 export function lastHeartbeat(logs: LogEntry[], agentId: string): string | null {
@@ -31,6 +32,11 @@ export function lastHeartbeat(logs: LogEntry[], agentId: string): string | null 
   return null
 }
 
+/**
+ * Heuristic only: StateSnapshot has no agent-loop phase field, so we derive
+ * Idle → Evaluating → Rebalancing → Settled from `busy`, open positions, and
+ * recent per-agent log text. Prefer a daemon-side phase when one exists.
+ */
 export function inferPhase(agent: ManagedAgent, snapshot: StateSnapshot | null, logs: LogEntry[]): AgentPhase {
   if (!agent.running) return 'idle'
   const recent = agentLogs(logs, agent.id).slice(-40)
