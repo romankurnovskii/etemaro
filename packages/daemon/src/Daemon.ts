@@ -2025,6 +2025,12 @@ IMPORTANT:
           typeof deployRes?.position === 'string'
             ? deployRes.position
             : deployRes?.position?.position || String(deployRes?.position || '')
+        const txSignature =
+          typeof deployRes?.txs?.[0] === 'string'
+            ? deployRes.txs[0]
+            : typeof deployRes?.tx === 'string'
+              ? deployRes.tx
+              : ''
 
         if (deployRes?.success === false || !positionAddress) {
           log(
@@ -2045,21 +2051,32 @@ IMPORTANT:
         deployedPools.add(pool)
         deployedCount++
         processedPositions.push({ position: posItem.position, resolved: true })
-        // Notify deploy for Telegram after successful smart wallet deployment
-        this.adapters.telegram
-          .notifyDeploy({
-            pair,
-            amountSol: deployAmount,
-            position: positionAddress,
-            tx: deployRes.txs?.[0] || deployRes.tx,
-            priceRange: (deployRes as any).price_range,
-            rangeCoverage: (deployRes as any).range_coverage,
-            binStep: (deployRes as any).bin_step,
-            baseFee: (deployRes as any).base_fee,
-          })
-          .catch((err: any) => {
-            log('telegram_warn', `Failed to send smart wallet deploy notification: ${err?.message || err}`)
-          })
+        // A deploy notification claims an on-chain position exists. Without the tx
+        // signature that claim is unprovable, so suppress the notification and raise
+        // an incident instead of fabricating "Position: unknown / Tx: unknown". The
+        // position is still committed so a real deploy is not retried (no duplicate
+        // capital), but it is never announced as a success.
+        if (txSignature) {
+          this.adapters.telegram
+            .notifyDeploy({
+              pair,
+              amountSol: deployAmount,
+              position: positionAddress,
+              tx: txSignature,
+              priceRange: (deployRes as any).price_range,
+              rangeCoverage: (deployRes as any).range_coverage,
+              binStep: (deployRes as any).bin_step,
+              baseFee: (deployRes as any).base_fee,
+            })
+            .catch((err: any) => {
+              log('telegram_warn', `Failed to send smart wallet deploy notification: ${err?.message || err}`)
+            })
+        } else {
+          log(
+            'cron_error',
+            `[SmartWallets] Deployed ${positionAddress} on ${pair} without a tx signature — deploy notification suppressed as unproven`,
+          )
+        }
       } catch (e: any) {
         log('cron_error', `[SmartWallets] Deploy failed for pool ${pool}: ${e.message}`)
         processedPositions.push({ position: posItem.position, resolved: false })
