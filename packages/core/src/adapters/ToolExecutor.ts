@@ -1318,29 +1318,40 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
             log('telegram_warn', `Failed to send swap notification: ${err?.message || err}`)
           })
       } else if (name === 'deploy_position') {
-        const isSuccess = (result as any)?.success !== false && !(result as any)?.error && !(result as any)?.blocked
-        if (!isSuccess) {
-          getNotificationPort()
-            .notifyTransactionError({
-              type: 'deploy',
-              pair:
-                (result as any)?.pool_name || (args as any)?.pool_name || (args.pool_address as string)?.slice(0, 8),
-              reason: (result as any)?.error || (result as any)?.reason || 'Deployment execution failed',
+        const r = result as any
+        const isSuccess = r?.success !== false && !r?.error && !r?.blocked
+        const position = typeof r?.position === 'string' && r.position ? r.position : ''
+        const tx = typeof r?.txs?.[0] === 'string' ? r.txs[0] : typeof r?.tx === 'string' ? r.tx : ''
+        const pair = r?.pool_name || (args as any)?.pool_name || (args.pool_address as string)?.slice(0, 8)
+        if (!isSuccess || !position || !tx) {
+          // A "success" that carries no position or no tx is unproven, not a deploy:
+          // never emit a Deployed notification for it. Surface it as an incident.
+          if (isSuccess && (!position || !tx)) {
+            logStructured({
+              category: 'tx_error',
+              message: `deploy_position reported success without proof-of-execution (position=${position ? 'set' : 'missing'}, tx=${tx ? 'set' : 'missing'})`,
+              metadata: { pair },
             })
+          }
+          const reason = isSuccess
+            ? 'Deploy reported success without proof-of-execution (missing position or tx)'
+            : r?.error || r?.reason || 'Deployment execution failed'
+          getNotificationPort()
+            .notifyTransactionError({ type: 'deploy', pair, reason })
             .catch((err: any) => {
               log('telegram_warn', `Failed to send deploy error notification: ${err?.message || err}`)
             })
         } else {
           getNotificationPort()
             .notifyDeploy({
-              pair: (result as any).pool_name || (args as any).pool_name || (args.pool_address as string)?.slice(0, 8),
+              pair,
               amountSol: (args.amount_y as number) ?? (args.amount_sol as number) ?? 0,
-              position: (result as any).position,
-              tx: (result as any).txs?.[0] ?? (result as any).tx,
-              priceRange: (result as any).price_range,
-              rangeCoverage: (result as any).range_coverage,
-              binStep: (result as any).bin_step,
-              baseFee: (result as any).base_fee,
+              position,
+              tx,
+              priceRange: r.price_range,
+              rangeCoverage: r.range_coverage,
+              binStep: r.bin_step,
+              baseFee: r.base_fee,
             })
             .catch((err: any) => {
               log('telegram_warn', `Failed to send deploy notification: ${err?.message || err}`)

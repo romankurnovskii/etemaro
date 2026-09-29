@@ -13,6 +13,7 @@
 
 import fs from 'node:fs'
 import { config } from '../../config/Config.js'
+import type { DeployNotification } from '../../ports/notifications.js'
 import { AGENT_CONFIG_PATH, dataPath } from '../../shared/constants.js'
 import { log } from '../../shared/logger.js'
 import { loadJsonFile, saveJsonFile } from '../../shared/utils.js'
@@ -686,15 +687,18 @@ export function stopPolling(): void {
 }
 
 // ─── Notification helpers ────────────────────────────────────────
-interface NotifyDeployArgs {
-  pair: string
-  amountSol: number
-  position: string
-  tx: string
-  priceRange?: { min: number; max: number }
-  rangeCoverage?: { downside_pct: number; upside_pct: number; width_pct: number }
-  binStep?: number
-  baseFee?: number
+/**
+ * Proof-of-execution guard. A deploy notification asserts that an on-chain
+ * position exists; the position address and the tx signature are the proof.
+ * Both are always present on a genuine success, so a missing one means there
+ * was no transaction — never render it as a "Deployed" message.
+ */
+function assertDeployProof(position: string, tx: string): void {
+  if (!position || !tx) {
+    throw new Error(
+      'notifyDeploy called without proof-of-execution: position and tx are both required (an unconfirmed deploy must not be reported as Deployed)',
+    )
+  }
 }
 
 export async function notifyDeploy({
@@ -706,7 +710,8 @@ export async function notifyDeploy({
   rangeCoverage,
   binStep,
   baseFee,
-}: NotifyDeployArgs): Promise<void> {
+}: DeployNotification): Promise<void> {
+  assertDeployProof(position, tx)
   const priceStr = priceRange
     ? `Price range: ${priceRange.min < 0.0001 ? priceRange.min.toExponential(3) : priceRange.min.toFixed(6)} – ${priceRange.max < 0.0001 ? priceRange.max.toExponential(3) : priceRange.max.toFixed(6)}\n`
     : ''
@@ -715,8 +720,8 @@ export async function notifyDeploy({
     : ''
   const poolStr =
     binStep || baseFee ? `Bin step: ${binStep ?? '?'}  |  Base fee: ${baseFee != null ? `${baseFee}%` : '?'}\n` : ''
-  const posFormatted = position ? `${position.slice(0, 8)}...` : 'unknown'
-  const txFormatted = tx ? `${tx.slice(0, 16)}...` : 'unknown'
+  const posFormatted = `${position.slice(0, 8)}...`
+  const txFormatted = `${tx.slice(0, 16)}...`
   const body = `Amount: ${amountSol} SOL\n${priceStr}${coverageStr}${poolStr}Position: ${posFormatted} | Tx: ${txFormatted}`
   notify('deploy', '✅', `Deployed ${pair}`, body)
   await sendPlain(

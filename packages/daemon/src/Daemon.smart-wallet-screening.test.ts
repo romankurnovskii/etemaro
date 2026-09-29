@@ -865,6 +865,45 @@ describe('runSmartWalletScreening — maxPositions enforcement', () => {
     expect(mockUpdateSnapshotPositions.mock.calls[0]?.[1]).toEqual([{ position: 'sw_pos_1', resolved: false }])
   })
 
+  // ── Case 18b: success without a tx signature is unproven, never announced ──
+  // A deploy notification is a claim that an on-chain position exists. If the
+  // response carries a position but no tx signature, the claim is unprovable:
+  // suppress the notification and raise an incident. The position is still
+  // committed so a real deploy is not retried (no duplicate capital).
+  it('suppresses the Deploy notification when a success carries no tx signature', async () => {
+    mockGetTrackedPositions.mockReturnValue([])
+    mockListSmartWallets.mockReturnValue({
+      wallets: [{ address: 'w1', type: 'lp' }],
+    })
+    mockGetWalletPositions.mockResolvedValue({
+      positions: [walletPos('sw_pos_1', 'poolA')],
+    })
+    mockDiffSmartWalletPositions.mockReturnValue({
+      isFirstRun: false,
+      newPositions: [{ position: 'sw_pos_1', pool: 'poolA', wallet: 'w1' }],
+      uniquePools: ['poolA'],
+      nextSnapshot: { initialized: true, positions: [] },
+    })
+    mockGetPoolDetail.mockResolvedValue({ name: 'JACK-SOL' })
+    mockDeployPosition.mockResolvedValueOnce({
+      success: true,
+      position: 'actual_pos_123',
+      pool: 'poolA',
+      pool_name: 'JACK-SOL',
+    })
+
+    const result = await daemon.runSmartWalletScreening({ liveMessage: null, deployAmount: 0.5 })
+
+    expect(result).toContain('Deployed to 1 new pools')
+    expect(mockRecordPositionSnapshot).toHaveBeenCalledWith('poolA', {
+      position: 'actual_pos_123',
+      pair: 'JACK-SOL',
+    })
+    expect(adapters.telegram.notifyDeploy).not.toHaveBeenCalled()
+    expect(mockLog).toHaveBeenCalledWith('cron_error', expect.stringContaining('without a tx signature'))
+    expect(mockUpdateSnapshotPositions.mock.calls[0]?.[1]).toEqual([{ position: 'sw_pos_1', resolved: true }])
+  })
+
   // ── Case 19: an undefined deploy response must not abort the cycle ──────
   it('does not crash on an undefined deploy response', async () => {
     mockGetTrackedPositions.mockReturnValue([])

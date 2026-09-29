@@ -323,7 +323,7 @@ describe('TelegramAdapter notifications', () => {
     await live?.finalize('Done')
   })
 
-  it('notifyDeploy formats pool metrics and avoids undefined... when position or tx is missing', async () => {
+  it('notifyDeploy formats pool metrics and fails closed when position/tx proof is missing', async () => {
     config.connection.telegramBotToken = 'test_token'
     config.connection.telegramChatId = '123456'
     let sentText = ''
@@ -357,17 +357,17 @@ describe('TelegramAdapter notifications', () => {
     expect(sentText).toContain('Position: 4xK9pLmN...')
     expect(sentText).toContain('Tx: 3F242bcWa3Swdqiy...')
 
-    // Case 2: position and tx undefined/falsy
-    await notifyDeploy({
-      pair: 'UNKNOWN/SOL',
-      amountSol: 0.1,
-      position: undefined as unknown as string,
-      tx: undefined as unknown as string,
-    })
-
-    expect(sentText).not.toContain('undefined...')
-    expect(sentText).toContain('Position: unknown')
-    expect(sentText).toContain('Tx: unknown')
+    // Case 2: a missing proof-of-execution must fail closed — never fabricate "unknown"
+    sentText = ''
+    await expect(
+      notifyDeploy({
+        pair: 'UNKNOWN/SOL',
+        amountSol: 0.1,
+        position: undefined as unknown as string,
+        tx: undefined as unknown as string,
+      }),
+    ).rejects.toThrow(/proof-of-execution/i)
+    expect(sentText).toBe('')
   })
 })
 

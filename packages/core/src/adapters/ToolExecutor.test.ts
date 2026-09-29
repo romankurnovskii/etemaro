@@ -7,6 +7,7 @@ import { getPendingLiquidation } from '../domain/liquidation-queue.js'
 import { __setStateFilePath, getConsecutiveSwapFailures, resetConsecutiveSwapFailures } from '../domain/state.js'
 import * as MeteoraAdapter from './blockchain/MeteoraAdapter.js'
 import * as WalletAdapter from './blockchain/WalletAdapter.js'
+import { notifyDeploy, notifyTransactionError } from './notifications/TelegramAdapter.js'
 import { tools } from './ToolDefinitions.js'
 import {
   closeAllPositions,
@@ -551,6 +552,26 @@ describe('ToolExecutor - deploy_position serialization', () => {
       success: true,
     })
     expect(MeteoraAdapter.deployPosition).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not emit a Deployed notification when a successful deploy response lacks proof of execution', async () => {
+    vi.mocked(MeteoraAdapter.deployPosition).mockResolvedValue({
+      success: true,
+      position: 'position-without-tx',
+      pool: 'pool-one',
+      pool_name: 'JACK-SOL',
+    } as any)
+
+    const result = await executeTool('deploy_position', {
+      pool_address: 'pool-one',
+      amount_y: 0.5,
+      bins_below: 35,
+      bins_above: 0,
+    })
+
+    expect(result).toMatchObject({ success: true })
+    expect(notifyDeploy).not.toHaveBeenCalled()
+    expect(notifyTransactionError).toHaveBeenCalledWith(expect.objectContaining({ type: 'deploy' }))
   })
 
   it('defines WRITE_TOOLS containing all mutating tools and locks writeToolsMutex during execution', async () => {
