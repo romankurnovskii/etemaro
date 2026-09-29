@@ -132,6 +132,19 @@ describe('WalletAdapter', () => {
       expect(p1.publicKey).toBe(w1.publicKey)
       expect(p2.publicKey).toBe(w2.publicKey)
     })
+
+    it('rejects path traversal and directory separators in wallet label', () => {
+      expect(() => generateNewWallet({ credentialsDir: tempDir, label: '../../traversal_key' })).toThrow(
+        /path traversal or path separators are not permitted/i,
+      )
+      expect(() => generateNewWallet({ credentialsDir: tempDir, label: 'sub/wallet' })).toThrow(
+        /path traversal or path separators are not permitted/i,
+      )
+      expect(() => generateNewWallet({ credentialsDir: tempDir, label: 'sub\\wallet' })).toThrow(
+        /path traversal or path separators are not permitted/i,
+      )
+      expect(() => generateNewWallet({ credentialsDir: tempDir, label: '' })).toThrow(/cannot be empty/i)
+    })
   })
 
   describe('getWalletBalances caching and fallback', () => {

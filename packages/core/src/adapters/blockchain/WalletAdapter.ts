@@ -33,11 +33,23 @@ export interface GeneratedWallet {
   savedTo?: string
 }
 
+export function validateWalletLabel(label: string): string {
+  const trimmed = String(label || '').trim()
+  if (!trimmed) {
+    throw new Error('Wallet label cannot be empty')
+  }
+  if (trimmed.includes('..') || trimmed.includes('/') || trimmed.includes('\\') || path.basename(trimmed) !== trimmed) {
+    throw new Error(`Invalid wallet label "${label}": path traversal or path separators are not permitted`)
+  }
+  return trimmed
+}
+
 /**
  * Import a wallet from a Base58 private key and store it with a label.
  * If a file path is provided, reads a Solana CLI keypair JSON array.
  */
 export function importWallet(opts: { label: string; privateKey?: string; filePath?: string }): GeneratedWallet {
+  const label = validateWalletLabel(opts.label)
   let key: string | undefined = opts.privateKey
   if (!key && opts.filePath) {
     const raw = JSON.parse(fs.readFileSync(opts.filePath, 'utf8'))
@@ -54,12 +66,12 @@ export function importWallet(opts: { label: string; privateKey?: string; filePat
     throw new Error('No private key provided for import')
   }
   const kp = Keypair.fromSecretKey(bs58.decode(key))
-  const credFile = credentialsPath(`${opts.label}.json`)
+  const credFile = credentialsPath(`${label}.json`)
   const wallet: GeneratedWallet = {
     publicKey: kp.publicKey.toBase58(),
     privateKey: key,
     createdAt: new Date().toISOString(),
-    label: opts.label,
+    label,
     savedTo: credFile,
   }
 
@@ -78,7 +90,7 @@ export function importWallet(opts: { label: string; privateKey?: string; filePat
     throw new Error(`Failed to persist wallet keystore at ${credFile}: ${err?.message || err}`)
   }
 
-  log('wallet', `Imported wallet ${wallet.publicKey} as ${opts.label}`)
+  log('wallet', `Imported wallet ${wallet.publicKey} as ${label}`)
   return wallet
 }
 
@@ -95,7 +107,8 @@ export function generateNewWallet(opts?: {
   const kp = Keypair.generate()
   const publicKey = kp.publicKey.toBase58()
   const privateKey = bs58.encode(kp.secretKey)
-  const label = opts?.label || 'Generated Keypair'
+  const rawLabel = opts?.label !== undefined ? opts.label : 'Generated Keypair'
+  const label = validateWalletLabel(rawLabel)
   const credFile = opts?.credentialsDir
     ? path.join(opts.credentialsDir, `${label}.json`)
     : credentialsPath(`${label}.json`)

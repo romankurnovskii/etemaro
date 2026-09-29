@@ -61,6 +61,17 @@ export function expandHome(input: string): string {
   return value
 }
 
+export function validateWalletAlias(input: string): string {
+  const value = String(input ?? '').trim()
+  if (!value) {
+    die('Wallet name is required.')
+  }
+  if (value.includes('..') || value.includes('/') || value.includes('\\') || path.basename(value) !== value) {
+    die(`Invalid wallet name: "${input}". Path traversal or directory separators are not allowed.`)
+  }
+  return value
+}
+
 export interface WalletImportSource {
   alias?: string
   filePath?: string
