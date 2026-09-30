@@ -93,7 +93,7 @@ Meteora provides a dedicated, highly reliable, low-latency REST API indexed dire
    GET https://pool-discovery-api.datapi.meteora.ag/pools   # undocumented — see below
    ```
 
-   **Undocumented dependency:** `pool-discovery-api.datapi.meteora.ag` is **not** part of the published DLMM Data API (it appears in neither the docs index nor the OpenAPI spec) and its schema differs from the documented `/pools` — it alone exposes `organic_score`, `pvp_rival_holders` and `active_tvl`, while the documented endpoint uses `address` (not `pool_address`), `token_x.holders` and `pool_config.bin_step`. Treat it as an unversioned internal API: it can change without notice, so it is isolated in `ScreeningAdapter` / `deploySafety` and worth revisiting deliberately rather than opportunistically.
+   **Undocumented dependency:** `pool-discovery-api.datapi.meteora.ag` is **not** part of the published DLMM Data API (it appears in neither the docs index nor the OpenAPI spec) and its schema differs from the documented `/pools` — it alone exposes `organic_score`, `pvp_rival_holders` and `active_tvl`, while the documented endpoint uses `address` (not `pool_address`), `token_x.holders` and `pool_config.bin_step`. Treat it as an unversioned internal API: it can change without notice, so it is isolated in `ScreeningAdapter` / `deploySafety` and worth revisiting deliberately rather than opportunistically. Listed as a known risk in §7.4.
 
 *Rate limit*: **30 requests/second** across the DLMM Data API (documented), with no API key requirement. Our observed 429s on 2026-09-30 were not quota-driven — the instance made ~197 portfolio calls for the whole day — so they are treated as transient and retried with backoff.
 *Environments*: production `https://dlmm.datapi.meteora.ag`, development `https://dlmm.dev.metdev.io`, both with a Swagger UI.
@@ -220,6 +220,8 @@ Exported across `@etemaro/core`:
 
 ## 5. Expected Performance & Cost Impact
 
+> **These figures are modelled, not measured.** They come from the calling-frequency arithmetic in §1.1 and were not validated against provider billing. Measured values from production logs are given in §7.
+
 | Metric | Before Optimization | After Optimization | Improvement |
 | :--- | :--- | :--- | :--- |
 | **Monthly Helius Credits** | **1,000,000 – 10,000,000+** | **0** (Balance queries) / **< 10,000** (Tx simulation & broadcast only) | **> 99% Savings** |
@@ -237,7 +239,7 @@ Verified against the upstream documentation and live endpoints. Dependency versi
 
 | Capability | Why it matters here | Reference |
 | :--- | :--- | :--- |
-| **Priority Fee API** | We currently attach **no** compute-budget instruction, so every transaction goes out with the default priority fee. Six priority levels, real-time estimates. | https://www.helius.dev/docs/priority-fee-api |
+| **Priority Fee API** | We attach no compute-unit *price*, so our transactions pay no priority fee. Note `@meteora-ag/dlmm` already sets the compute-unit *limit* on every DLMM instruction it builds (10 call sites), which is the part that prevents CU-exceeded failures; only the congestion-priced price is missing. Six priority levels, real-time estimates. | https://www.helius.dev/docs/priority-fee-api |
 | **Sender** | Credit-free transaction submission (`https://sender.helius-rpc.com/fast`) that routes across Helius/Jito/Harmonic/Rakurai simultaneously. Two tiers: Sender Max (0.001 SOL minimum tip, priority buffer) and SWQOS-only (0.000005 SOL). Replaces plain `sendAndConfirmTransaction` for latency-sensitive closes. | https://www.helius.dev/docs/sending-transactions/sender |
 | **Preconfirmations** | `preconfSubscribe` gives sub-second confirmation signals — directly relevant to exit latency, which today is bounded by `pollIntervalSec × confirmTicks`. | https://www.helius.dev/docs/pre-confirmations/overview |
 | **LaserStream / Parsed Streams** | Event-driven position and pool tracking instead of our polling cycles. | https://www.helius.dev/docs/laserstream |
@@ -251,3 +253,60 @@ Notes: RPC endpoints are `mainnet.` / `beta.` / `devnet.helius-rpc.com`; paid pl
 Documented endpoints we do not consume yet: `/positions/{address}/historical` (exact add/remove/claim-fee events — a stronger basis for fee accounting than derived values), `/wallets/{wallet}/pools/{pool_address}/total_claims` (exact claimed fees and rewards), `/portfolio/total` (all-time PnL), `/stats/protocol_metrics`, `/pools/{address}/ohlcv` and `/pools/{address}/volume/history`, and the limit-order endpoints (the program now supports limit orders and `collect_fee_mode`).
 
 SDK guidance from the 0.12.0 changelog: v2 liquidity operations (`addLiquidity2`, `removeLiquidity2`, `claimFee2`) and `getBinArraysRequiredByPositionRange2` are the forward path; we currently use the v1 helpers (`addLiquidityByStrategyChunkable`, `removeLiquidity`, `claimSwapFee`), which remain valid and manage their own bin arrays. Swap quote math changed with 0.12.0 and the per-instruction bin cap dropped from 280 to 260 — both handled inside the pinned SDK.
+
+---
+
+## 7. Verified Operational Facts and Known Risks (2026-09-30)
+
+Everything below was checked against the code, the pinned dependency internals, provider documentation and production logs (`data/remote-server/data/instances/*/logs`, 2026-09-12 → 09-30). Where a number is measured, the source is named.
+
+### 7.1 What is genuinely mandatory
+
+Checked by parsing the shipped default config through `AgentConfigSchema` with one variable removed at a time:
+
+| Env var | Status |
+| :--- | :--- |
+| `RPC_URL` | **Required** — the shipped config now carries a literal public default, so this only fails if you point `connection.rpcUrl` at `env.RPC_URL` and leave it empty |
+| `LLM_MODEL` | **Required** while `llm.defaultModel` is an env ref |
+| `JUPITER_API_KEY` | Not needed to start, **required to execute a swap** (live mode). `swapToken` throws without it; dry-run is unaffected |
+| `HELIUS_API_KEY` | **Never required** — optional price/symbol enrichment and a balance fallback only |
+| `RPC_URL_2`, Telegram, HiveMind, Meridian | Optional |
+
+Per transaction the protocol requires only the base fee (5,000 lamports per signature), a recent blockhash and a valid signature. A priority fee is optional.
+
+### 7.2 Priority fees: not required
+
+Measured over ~10 days of production logs:
+
+| Signal | Count |
+| :--- | :--- |
+| Deploy transactions succeeded | ~162 |
+| Close transactions succeeded | ~162 |
+| `has expired: block height exceeded` (the symptom a priority fee mitigates) | **3** |
+
+Those runs paid no priority fee and landed. The clustered "deploy failed" lines on 09-24 and 09-26 (3 and 15) were `Cannot read properties of undefined (reading 'position')` — a response-shape bug fixed by #339; the signature has not recurred since 09-26.
+
+Cost if we ever want the insurance: ~10,000 µLamports/CU × ~400k CU ≈ 4,000 lamports ≈ **0.000004 SOL (~$0.0005) per transaction**, against a base fee of 5,000 lamports/signature. This is not a material spend. Note that **Helius Sender Max is a different proposition** — a 0.001 SOL minimum tip per transaction is ~$0.12, which is a real cost and not justified by the current landing rate.
+
+### 7.3 Provider tiers versus measured usage
+
+**Helius free tier: 1M credits/month, no card, 10 RPS RPC, 2 RPS Enhanced/DAS, Wallet API included** (`docs/billing/plans`, checked 2026-09-30; no LaserStream gRPC, no Preconfirmations).
+
+| Cost driver | Weight | Observed |
+| :--- | :--- | :--- |
+| Wallet API `balances` | 100 credits/call | attempted **once** in the whole log history |
+| Position fallback via `getProgramAccounts` | ~100 credits/call | 18 occurrences in ~19 days |
+| Standard RPC reads / send / confirm | 1 credit/call | dominant, but bounded |
+
+Measured cycle rates on 09-30 (6.85 h window, `agent-config.smart-wallet-follow.v260928-004` → per 24 h): management ~480, smart-wallet screening ~287, sweeper ~98, Datapi portfolio fetches ~690 (0 credits). Even at a generous 3 RPC calls per cycle that is ~2,600 credits/day ≈ 78k/month per instance — roughly 10× headroom inside the free tier, and 2–3 instances still fit under one key (credits and 10 RPS are shared per account).
+
+This holds only while two conditions do, both now covered by tests: `pnl.source` stays `meteora_api`, and the Wallet API call stays conditional on unpriced tokens.
+
+**Jupiter**: keyless access is 0.5 RPS and explicitly aimed at prototyping; a free key gives 1 RPS, which is far above our swap volume (`/swap/v2/execute` has its own, much higher bucket). No paid tier is needed.
+
+### 7.4 Known risks
+
+1. **Undocumented Meteora dependency.** `pool-discovery-api.datapi.meteora.ag` (used by `ScreeningAdapter`, `deploySafety` and the close path) appears in neither the Meteora docs index nor the published OpenAPI. Its schema is not interchangeable with the documented `/pools`: it alone exposes `organic_score`, `pvp_rival_holders` and `active_tvl`, while the documented endpoint uses `address` (not `pool_address`), `token_x.holders` and `pool_config.bin_step`. **Impact:** screening signals depend on an unversioned internal API that can change without notice; a silent schema change would degrade candidate scoring rather than fail loudly. **Mitigation:** isolated in two modules, flagged here, and a deliberate migration decision is still open.
+2. **Cost/performance figures are modelled.** The §5 table is arithmetic from §1.1, not provider billing. Treat only §7.3's measured numbers as evidence.
+3. **No priority fee.** Exposure is limited to congestion spikes (measured: 3 blockhash expiries in ~10 days); see §7.2 for the trade-off and the negligible cost of adding a small one.
+4. **Screening quality depends on LLM output** for candidate ranking, with mechanical rules only for exits. A degraded LLM changes what gets deployed, though not how open positions are managed.
