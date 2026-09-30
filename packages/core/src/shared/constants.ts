@@ -342,6 +342,12 @@ export const DEFAULT_ENTRY_SOURCE = 'market'
 export const DEFAULT_PNL_SOURCE = 'meteora_api'
 export const DEFAULT_GMGN_FEE_SOURCE = 'gmgn'
 
+// RPC endpoints referenced by configuration defaults and legacy migration.
+// `pump.helius-rpc.com` is a retired host (NXDOMAIN) that used to ship as a hardcoded
+// default; it is recognised only so existing configs heal on load.
+export const LEGACY_HARDCODED_RPC_URL = 'https://pump.helius-rpc.com'
+export const PUBLIC_SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com'
+
 // Default preset names
 export const DEFAULT_ACTIVE_STRATEGY_ID = 'single_sided_reseed'
 export const DEFAULT_STRATEGY_TYPE = 'bid_ask'

@@ -180,7 +180,7 @@ In `config/agent-config.json` and template:
 ```json
 "pnl": {
   "source": "meteora_api",
-  "rpcUrl": "https://pump.helius-rpc.com",
+  "rpcUrl": "env.PNL_RPC_URL",
   "pollIntervalSec": 15,
   "depositCacheTtlSec": 300,
   "confirmTicks": 2

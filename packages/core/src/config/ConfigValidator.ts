@@ -12,7 +12,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import dotenv from 'dotenv'
-import { AGENT_CONFIG_PATH, getEtemaroDir, REPO_ROOT } from '../shared/constants.js'
+import { AGENT_CONFIG_PATH, getEtemaroDir, LEGACY_HARDCODED_RPC_URL, REPO_ROOT } from '../shared/constants.js'
 import { defaultAgentConfigStr } from './defaultAgentConfig.js'
 import { AgentConfigSchema, type ValidatedAgentConfig } from './schema.js'
 
@@ -102,7 +102,7 @@ export function loadAndValidateConfig(): ValidatedAgentConfig {
   }
 
   // Migrate legacy hardcoded RPC defaults to .env values when an override is present
-  const legacyPrimaryRpc = 'https://pump.helius-rpc.com'
+  const legacyPrimaryRpc = LEGACY_HARDCODED_RPC_URL
   const rawConnection = raw.connection as { rpcUrl?: string } | undefined
   if (
     typeof raw?.connection === 'object' &&

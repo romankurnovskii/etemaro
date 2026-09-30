@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { DEFAULT_PNL_SOURCE } from '../shared/constants.js'
+import { DEFAULT_PNL_SOURCE, LEGACY_HARDCODED_RPC_URL, PUBLIC_SOLANA_RPC_URL } from '../shared/constants.js'
 
 export function resolveEnvString(val: string): string | null {
   if (!val.startsWith('env.')) return val
@@ -25,6 +25,40 @@ const envString = z.string().transform((val, ctx) => {
   }
   return val
 })
+
+// Resolves the PnL RPC endpoint. The field is only consumed when `pnl.source === 'rpc'`;
+// the shipped default (`meteora_api`) never reads it. Precedence: explicit PNL_RPC_URL,
+// then the primary RPC (RPC_URL), then a public Solana endpoint. A retired hardcoded
+// default is treated as "not configured" so existing configs heal on load.
+function resolvePnlRpcUrl(val: string): string {
+  const fallback = () => {
+    const primary = process.env.RPC_URL?.trim()
+    return primary && primary !== LEGACY_HARDCODED_RPC_URL ? primary : PUBLIC_SOLANA_RPC_URL
+  }
+  if (val === LEGACY_HARDCODED_RPC_URL) return fallback()
+  if (!val.startsWith('env.')) return val
+  const envVar = val.slice(4)
+  const resolved = process.env[envVar]
+  if (resolved !== undefined && resolved.trim() !== '') return resolved.trim()
+  return envVar === 'PNL_RPC_URL' ? fallback() : ''
+}
+
+const envPnlRpcUrl = z
+  .string()
+  .default('env.PNL_RPC_URL')
+  .transform((val, ctx) => {
+    const resolved = resolvePnlRpcUrl(val)
+    if (resolved === '') {
+      const envVar = val.slice(4)
+      ctx.addIssue({
+        code: 'custom',
+        message: `Environment variable ${envVar} is not set but is referenced by configuration.\nSet ${envVar} in your .env file or environment.`,
+        params: { envVar, ref: val },
+      })
+      return z.NEVER
+    }
+    return resolved
+  })
 
 // Helper for strings that can be null or empty string, resolving env references if applicable
 const envStringNullable = z
@@ -387,7 +421,7 @@ export const AgentConfigSchema = z
     pnl: z
       .object({
         description: z.string().optional(),
-        rpcUrl: envString.default('https://pump.helius-rpc.com'),
+        rpcUrl: envPnlRpcUrl,
         source: envString.default(DEFAULT_PNL_SOURCE),
         pollIntervalSec: envNumber.default(15),
         depositCacheTtlSec: envNumber.default(300),
