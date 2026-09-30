@@ -268,6 +268,21 @@ describe('Daemon — Concurrency & Mutex Guards', () => {
     expect((daemon as any).screeningBusy).toBe(false)
   })
 
+  it('runScreeningCycle aborts without screening when the position fetch is degraded', async () => {
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({
+      positions: [],
+      total_positions: 0,
+      error: 'Portfolio API 429: Too many requests',
+      degraded: true,
+    })
+
+    const res = await daemon.runScreeningCycle({ silent: true })
+
+    expect(res).toContain('Position state unknown')
+    expect(adapters.screening.getTopCandidates).not.toHaveBeenCalled()
+    expect((daemon as any).screeningBusy).toBe(false)
+  })
+
   it('parses and persists structured rejected candidate rationales on NO DEPLOY screening decision', async () => {
     adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ total_positions: 0, positions: [] })
     adapters.wallet.getWalletBalances = vi.fn().mockResolvedValue({ sol: 10, tokens: [] })
@@ -324,12 +339,57 @@ REJECTED
     )
   })
 
-  it('logs cron_error when getMyPositions fails in runManagementCycle', async () => {
+  it('logs cron_error and reports unknown state when getMyPositions fails in runManagementCycle', async () => {
+    const screenSpy = vi.spyOn(daemon as any, 'runScreeningCycle').mockResolvedValue(null)
     adapters.meteora.getMyPositions = vi.fn().mockRejectedValue(new Error('RPC rate limited'))
 
     const res = await daemon.runManagementCycle({ silent: true })
-    expect(res).toBe('No open positions.')
+
+    expect(res).toBe('Position state unknown — management cycle skipped.')
+    expect(screenSpy).not.toHaveBeenCalled()
     expect((daemon as any).managementBusy).toBe(false)
+  })
+
+  it('skips management and screening when the portfolio fetch degrades', async () => {
+    const screenSpy = vi.spyOn(daemon as any, 'runScreeningCycle').mockResolvedValue(null)
+    ;(daemon as any).screeningLastTriggered = 0
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({
+      positions: [],
+      total_positions: 0,
+      error: 'Portfolio API 429: Too many requests',
+      degraded: true,
+    })
+
+    const res = await daemon.runManagementCycle({ silent: true })
+
+    expect(res).toBe('Position state unknown — management cycle skipped.')
+    expect(screenSpy).not.toHaveBeenCalled()
+    expect((daemon as any).screeningLastTriggered).toBe(0)
+  })
+
+  it('keeps the last known positions when a fetch degrades instead of treating the wallet as flat', async () => {
+    const known = [{ position: 'PosKnown', pool: 'PoolKnown', pair: 'KNOWN-SOL' }]
+    ;(daemon as any).latestLivePositions = known
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({
+      positions: [],
+      total_positions: 0,
+      error: 'Portfolio API 429: Too many requests',
+      degraded: true,
+    })
+
+    await daemon.runManagementCycle({ silent: true })
+
+    expect((daemon as any).latestLivePositions).toBe(known)
+  })
+
+  it('still reports no open positions when the portfolio is genuinely empty', async () => {
+    const screenSpy = vi.spyOn(daemon as any, 'runScreeningCycle').mockResolvedValue(null)
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ positions: [], total_positions: 0 })
+
+    const res = await daemon.runManagementCycle({ silent: true })
+
+    expect(res).toBe('No open positions.')
+    expect(screenSpy).toHaveBeenCalled()
   })
 
   it('logs telegram_warn and handles error gracefully when sendTelegramSafe fails', async () => {
