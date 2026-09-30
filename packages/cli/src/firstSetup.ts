@@ -65,7 +65,7 @@ export function formatInitMessage(opts: { directory: string; firstRun: boolean; 
     `Runtime: ${directory}`,
     '',
     `  [${mark(status.llm)}] LLM      LLM_API_KEY`,
-    `  [${mark(status.jupiter)}] Jupiter  JUPITER_API_KEY  (live swaps only)`,
+    `  [${mark(status.jupiter)}] Jupiter  JUPITER_API_KEY  (required for live swaps — free key)`,
     '',
   ]
   if (status.readyForDryRun) {

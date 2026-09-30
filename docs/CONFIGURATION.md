@@ -73,7 +73,7 @@ This keeps secrets out of the JSON file — ideal for API keys (`jupiter.apiKey`
 
 Conventional environment variables the daemon reads:
 
-- `RPC_URL`: Optional override for `connection.rpcUrl`.
+- `RPC_URL`: Optional override for `connection.rpcUrl`. The generated config already carries a working public default, so this is only needed to point at your own endpoint (e.g. Helius).
 - `RPC_URL_2`: Optional override for `connection.rpcUrl2` (fallback RPC URL on errors / rate limits).
 - `HELIUS_API_KEY`: Helius API key used for wallet balances and token valuations. Required for normal wallet operation.
 - `LLM_API_KEY`: API key for LLM provider.
@@ -88,7 +88,7 @@ Conventional environment variables the daemon reads:
 Required for normal operation:
 
 - `HELIUS_API_KEY`: wallet balance and USD valuation requests.
-- `JUPITER_API_KEY`: Jupiter swap operations.
+- `JUPITER_API_KEY`: **Required for live swaps** (liquidating unsold tokens after a close); not needed in dry-run. Keyless Jupiter access exists at 0.5 RPS for prototyping only — a free key gives 1 RPS.
 
 Required only when the related integration is enabled:
 
@@ -115,7 +115,7 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
   "preset": "custom",
   "agentId": "",
   "connection": {
-    "rpcUrl": "env.RPC_URL",
+    "rpcUrl": "https://api.mainnet-beta.solana.com",
     "dryRun": true,
     "telegramEnabled": true,
     "telegramPolling": true,
@@ -161,7 +161,7 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 
 | Field                      | Purpose                                                                                      | Example                             |
 | -------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------- |
-| `rpcUrl`                 | Primary Solana RPC endpoint for chain reads and transactions.                                | `"env.RPC_URL"`                   |
+| `rpcUrl`                 | Primary Solana RPC endpoint for chain reads and transactions. Defaults to the free public endpoint; a non-empty `RPC_URL` in `.env` overrides it. | `"https://api.mainnet-beta.solana.com"` |
 | `rpcUrl2`                | Fallback Solana RPC endpoint on errors/rate-limits (optional).                               | `"env.RPC_URL_2"`                 |
 | `wallet`                 | Alias of a wallet in the keystore (`~/.config/etemaro/.credentials/wallets/<alias>.json`). | `"main-scalp"`                    |
 | `heliusApiKey`           | Helius Wallet API key.                                                                       | `"env.HELIUS_API_KEY"`            |
@@ -375,7 +375,7 @@ The `api` block contains two independent services.
 
 | Field               | Purpose                       | Example                                      |
 | ------------------- | ----------------------------- | -------------------------------------------- |
-| `apiKey`          | Jupiter API key.              | `"env.JUPITER_API_KEY"`                    |
+| `apiKey`          | Jupiter API key. Required for live swaps (not needed in dry-run). | `"env.JUPITER_API_KEY"`                    |
 | `referralAccount` | Referral wallet address.      | `""` or `"env.JUPITER_REFERRAL_ACCOUNT"` |
 | `referralFeeBps`  | Referral fee in basis points. | `50` → 0.5%                               |
 
