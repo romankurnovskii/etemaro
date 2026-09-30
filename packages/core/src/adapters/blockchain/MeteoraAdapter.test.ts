@@ -399,8 +399,19 @@ describe('MeteoraAdapter — Datapi portfolio resilience', () => {
     vi.restoreAllMocks()
   })
 
-  function okPortfolio(pools: any[] = []): any {
-    return { ok: true, json: async () => ({ pools }) }
+  function okPortfolio(pools: any[] = [], extra: Record<string, any> = {}): any {
+    return {
+      ok: true,
+      json: async () => ({
+        pools,
+        page: 1,
+        pageSize: 50,
+        hasNext: false,
+        totalCount: pools.length,
+        totalPositions: pools.reduce((sum, p) => sum + (p.listPositions?.length ?? 0), 0),
+        ...extra,
+      }),
+    }
   }
 
   function rateLimited(): any {
@@ -467,5 +478,100 @@ describe('MeteoraAdapter — Datapi portfolio resilience', () => {
 
     expect(res.degraded).toBe(true)
     expect(res.error).toBe('Invalid wallet address')
+  })
+})
+
+describe('MeteoraAdapter — Datapi pagination', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    config.pnl.source = 'meteora_api'
+    config.pnl.rpcUrl = 'https://mock.rpc'
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function page(pools: any[], extra: Record<string, any> = {}): any {
+    return {
+      ok: true,
+      json: async () => ({
+        pools,
+        page: 1,
+        pageSize: 50,
+        hasNext: false,
+        totalCount: pools.length,
+        totalPositions: pools.reduce((sum, p) => sum + (p.listPositions?.length ?? 0), 0),
+        ...extra,
+      }),
+    }
+  }
+
+  const fetchUrl = (spy: any, call: number) => String(spy.mock.calls[call]?.[0])
+
+  it('sends page_size, not pageSize, on the portfolio endpoint', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(page([]))
+
+    await getMyPositions({ force: true, silent: true })
+
+    expect(fetchUrl(fetchSpy, 0)).toContain('page_size=50')
+    expect(fetchUrl(fetchSpy, 0)).not.toContain('pageSize')
+  })
+
+  it('follows hasNext and merges pools from every page', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(page([{ poolAddress: 'Pool1', listPositions: ['pos1'] }], { hasNext: true, page: 1 }))
+      .mockResolvedValueOnce(page([{ poolAddress: 'Pool2', listPositions: ['pos2'] }], { hasNext: false, page: 2 }))
+
+    const res = await getMyPositions({ force: true, silent: true })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchUrl(fetchSpy, 1)).toContain('page=2')
+    expect(res.total_positions).toBe(2)
+    expect(res.positions.map((p: any) => p.position).sort()).toEqual(['pos1', 'pos2'])
+  })
+
+  it('stops after a bounded number of pages instead of following hasNext forever', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(page([], { hasNext: true }))
+
+    await getMyPositions({ force: true, silent: true })
+
+    expect(fetchSpy.mock.calls.length).toBe(10)
+  })
+
+  it('warns when the API reports more positions than the pages delivered', async () => {
+    const { log } = await import('../../shared/logger.js')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      page([{ poolAddress: 'Pool1', listPositions: ['pos1'] }], { hasNext: false, totalPositions: 3 }),
+    )
+
+    const res = await getMyPositions({ force: true, silent: true })
+
+    expect(res.total_positions).toBe(1)
+    const warnings = vi.mocked(log).mock.calls.map((call) => `${call[0]} ${call[1]}`)
+    expect(warnings.some((w) => w.includes('positions_warn') && w.includes('totalPositions=3'))).toBe(true)
+  })
+
+  it('does not warn when the reported and assembled position counts agree', async () => {
+    const { log } = await import('../../shared/logger.js')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      page([{ poolAddress: 'Pool1', listPositions: ['pos1'] }], { hasNext: false, totalPositions: 1 }),
+    )
+
+    await getMyPositions({ force: true, silent: true })
+
+    const warnings = vi.mocked(log).mock.calls.map((call) => `${call[0]} ${call[1]}`)
+    expect(warnings.some((w) => w.includes('totalPositions'))).toBe(false)
+  })
+
+  it('builds the closed-PnL lookup URL with page_size', async () => {
+    const { meteoraClosedPnlUrl } = await import('./MeteoraAdapter.js')
+
+    const url = meteoraClosedPnlUrl('Pool1', 'Wallet1')
+
+    expect(url).toContain('status=closed')
+    expect(url).toContain('page_size=50')
+    expect(url).not.toContain('pageSize')
   })
 })

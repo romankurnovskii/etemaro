@@ -1214,32 +1214,62 @@ function parseRetryAfterMs(header: string | null | undefined): number | null {
   return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null
 }
 
+/** Datapi page size for the portfolio endpoint (default 20, documented maximum 50). */
+const PORTFOLIO_PAGE_SIZE = 50
+/** Hard cap on followed portfolio pages, so a stuck `hasNext` cannot loop forever. */
+const PORTFOLIO_MAX_PAGES = 10
+
 /**
- * Reads the Meteora Datapi portfolio endpoint, retrying transient failures (including
- * 429) instead of dropping straight to the RPC fallback. The thrown error carries
- * `status` (so `isTransientRpcError` classifies it) and `retryAfterMs` when advertised.
+ * Reads every page of the Meteora Datapi portfolio endpoint, retrying transient failures
+ * (including 429) instead of dropping straight to the RPC fallback. The thrown error
+ * carries `status` (so `isTransientRpcError` classifies it) and `retryAfterMs` when advertised.
+ *
+ * The endpoint paginates (`page_size` defaults to 20) and reports `hasNext` plus
+ * `totalPositions`; both are honoured so a wallet with more positions than one page
+ * cannot be silently under-counted.
  */
-async function fetchPortfolioOpen(walletAddress: string): Promise<any> {
-  return withRpcRetry(
-    async () => {
-      const res = await fetch(`https://dlmm.datapi.meteora.ag/portfolio/open?user=${walletAddress}`)
-      if (!res.ok) {
-        const body = await res.text().catch(() => '')
-        const err: any = new Error(`Portfolio API ${res.status}: ${body}`)
-        err.status = res.status
-        const retryAfterMs = parseRetryAfterMs(res.headers?.get?.('retry-after'))
-        if (retryAfterMs) err.retryAfterMs = retryAfterMs
-        throw err
-      }
-      return res.json()
-    },
-    {
-      label: 'Meteora portfolio API',
-      logTag: 'positions_warn',
-      respectRetryAfter: true,
-      maxRetries: 3,
-    },
-  )
+async function fetchPortfolioOpen(walletAddress: string): Promise<{ pools: any[]; totalPositions: number | null }> {
+  const pools: any[] = []
+  let totalPositions: number | null = null
+
+  for (let page = 1; page <= PORTFOLIO_MAX_PAGES; page++) {
+    const data: any = await withRpcRetry(
+      async () => {
+        const res = await fetch(
+          `https://dlmm.datapi.meteora.ag/portfolio/open?user=${walletAddress}&page=${page}&page_size=${PORTFOLIO_PAGE_SIZE}`,
+        )
+        if (!res.ok) {
+          const body = await res.text().catch(() => '')
+          const err: any = new Error(`Portfolio API ${res.status}: ${body}`)
+          err.status = res.status
+          const retryAfterMs = parseRetryAfterMs(res.headers?.get?.('retry-after'))
+          if (retryAfterMs) err.retryAfterMs = retryAfterMs
+          throw err
+        }
+        return res.json()
+      },
+      {
+        label: 'Meteora portfolio API',
+        logTag: 'positions_warn',
+        respectRetryAfter: true,
+        maxRetries: 3,
+      },
+    )
+
+    pools.push(...(data?.pools || []))
+    if (page === 1) {
+      const reported = Number(data?.totalPositions)
+      totalPositions = Number.isFinite(reported) ? reported : null
+    }
+    if (!data?.hasNext) break
+  }
+
+  return { pools, totalPositions }
+}
+
+/** Closed-position PnL lookup URL. The Datapi paginates via `page_size`, not `pageSize`. */
+export function meteoraClosedPnlUrl(poolAddress: string, walletAddress: string): string {
+  return `https://dlmm.datapi.meteora.ag/positions/${poolAddress}/pnl?user=${walletAddress}&status=closed&page_size=50&page=1`
 }
 
 /**
@@ -1461,6 +1491,13 @@ export async function getMyPositions({
             instruction: tracked?.instruction ?? null,
           })
         }
+      }
+
+      if (portfolio.totalPositions != null && portfolio.totalPositions > positions.length) {
+        log(
+          'positions_warn',
+          `Portfolio API reported totalPositions=${portfolio.totalPositions} but only ${positions.length} were assembled — response may be truncated (page_size=${PORTFOLIO_PAGE_SIZE}, pages=${PORTFOLIO_MAX_PAGES})`,
+        )
       }
 
       const result = {
@@ -1860,7 +1897,7 @@ export async function closePosition({ position_address, reason }: { position_add
           let initialUsd = 0
           let feesUsd = tracked.total_fees_claimed_usd || 0
           try {
-            const closedUrl = `https://dlmm.datapi.meteora.ag/positions/${poolAddress}/pnl?user=${wallet.publicKey.toString()}&status=closed&pageSize=50&page=1`
+            const closedUrl = meteoraClosedPnlUrl(poolAddress, wallet.publicKey.toString())
             for (let attempt = 0; attempt < 6; attempt++) {
               const res = await fetch(closedUrl)
               if (res.ok) {
@@ -2130,7 +2167,7 @@ export async function closePosition({ position_address, reason }: { position_add
       let initialUsd = 0
       let feesUsd = tracked.total_fees_claimed_usd || 0
       try {
-        const closedUrl = `https://dlmm.datapi.meteora.ag/positions/${poolAddress}/pnl?user=${wallet.publicKey.toString()}&status=closed&pageSize=50&page=1`
+        const closedUrl = meteoraClosedPnlUrl(poolAddress, wallet.publicKey.toString())
         for (let attempt = 0; attempt < 6; attempt++) {
           const res = await fetch(closedUrl)
           if (res.ok) {
