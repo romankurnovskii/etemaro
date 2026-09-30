@@ -229,6 +229,56 @@ let _solPriceCache: number | null = null
 let _solPriceCacheAt = 0
 const SOL_PRICE_CACHE_TTL = 60_000
 
+interface HeliusWalletBalance {
+  mint: string
+  symbol?: string
+  balance: number
+  pricePerToken?: number
+  usdValue?: number
+}
+
+/** Helius Wallet API page size (the endpoint defaults `limit` to 100). */
+const HELIUS_BALANCES_PAGE_SIZE = 100
+/** Hard cap on followed pages, so a stuck `hasMore` cannot loop forever. */
+const HELIUS_BALANCES_MAX_PAGES = 5
+
+/**
+ * Reads Helius wallet balances (Wallets API, beta), following `pagination.hasMore`.
+ * Each request costs 100 credits and only returns `limit` tokens (default 100), so the
+ * page size is explicit and every page is fetched up to a hard cap.
+ */
+async function fetchHeliusBalances(
+  apiKey: string,
+  walletAddress: string,
+): Promise<{ balances: HeliusWalletBalance[]; totalUsdValue: number }> {
+  const balances: HeliusWalletBalance[] = []
+  let totalUsdValue = 0
+
+  for (let page = 1; page <= HELIUS_BALANCES_MAX_PAGES; page++) {
+    const data = await withRpcRetry(
+      async () => {
+        const url = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${apiKey}&limit=${HELIUS_BALANCES_PAGE_SIZE}&page=${page}`
+        const res = await fetch(url)
+        if (!res.ok) {
+          throw new Error(`Helius API error: ${res.status} ${res.statusText}`)
+        }
+        return (await res.json()) as {
+          balances?: HeliusWalletBalance[]
+          totalUsdValue?: number
+          pagination?: { hasMore?: boolean }
+        }
+      },
+      { label: 'Helius wallet balances', logTag: 'wallet_warn' },
+    )
+
+    balances.push(...(data.balances || []))
+    if (page === 1) totalUsdValue = Number(data.totalUsdValue) || 0
+    if (!data.pagination?.hasMore) break
+  }
+
+  return { balances, totalUsdValue }
+}
+
 /**
  * Fetch current SOL/USD price. Delegates to the Binance provider (primary)
  * and Coinbase provider (fallback) via the shared price-provider abstraction.
@@ -394,35 +444,22 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
       const hasUnpricedTokens = tokensList.some((t) => t.usd === null)
       if (HELIUS_API_KEY && hasUnpricedTokens) {
         try {
-          const url = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_API_KEY}`
-          const res = await fetch(url)
-          if (res.ok) {
-            const data = (await res.json()) as {
-              balances?: Array<{
-                mint: string
-                symbol?: string
-                balance: number
-                pricePerToken?: number
-                usdValue?: number
-              }>
-            }
-            const heliusBalances = data.balances || []
-            const heliusMap = new Map(heliusBalances.map((b) => [b.mint, b]))
-            tokenUsdSum = 0
-            for (const t of tokensList) {
-              const h = heliusMap.get(t.mint)
-              if (t.usd === null && h) {
-                if (h.usdValue != null) {
-                  t.usd = Math.round(h.usdValue * 100) / 100
-                } else if (h.pricePerToken != null) {
-                  t.usd = Math.round(t.balance * h.pricePerToken * 100) / 100
-                }
+          const { balances: heliusBalances } = await fetchHeliusBalances(HELIUS_API_KEY, walletAddress)
+          const heliusMap = new Map(heliusBalances.map((b) => [b.mint, b]))
+          tokenUsdSum = 0
+          for (const t of tokensList) {
+            const h = heliusMap.get(t.mint)
+            if (t.usd === null && h) {
+              if (h.usdValue != null) {
+                t.usd = Math.round(h.usdValue * 100) / 100
+              } else if (h.pricePerToken != null) {
+                t.usd = Math.round(t.balance * h.pricePerToken * 100) / 100
               }
-              if ((!t.symbol || t.symbol === t.mint.slice(0, 8)) && h?.symbol) {
-                t.symbol = h.symbol
-              }
-              if (t.usd) tokenUsdSum += t.usd
             }
+            if ((!t.symbol || t.symbol === t.mint.slice(0, 8)) && h?.symbol) {
+              t.symbol = h.symbol
+            }
+            if (t.usd) tokenUsdSum += t.usd
           }
         } catch (enrichErr: unknown) {
           log('wallet_warn', `Helius token enrichment failed: ${(enrichErr as Error)?.message || enrichErr}`)
@@ -460,27 +497,8 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
 
     if (HELIUS_API_KEY) {
       try {
-        const url = `https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_API_KEY}`
-        const data = await withRpcRetry(
-          async () => {
-            const res = await fetch(url)
-            if (!res.ok) {
-              throw new Error(`Helius API error: ${res.status} ${res.statusText}`)
-            }
-            return (await res.json()) as {
-              balances?: Array<{
-                mint: string
-                symbol?: string
-                balance: number
-                pricePerToken?: number
-                usdValue?: number
-              }>
-              totalUsdValue?: number
-            }
-          },
-          { label: 'Helius getWalletBalances' },
-        )
-        const balances = data.balances || []
+        const data = await fetchHeliusBalances(HELIUS_API_KEY, walletAddress)
+        const balances = data.balances
 
         const solEntry = balances.find((b) => b.mint === config.tokens.SOL || b.symbol === 'SOL')
         const usdcEntry = balances.find((b) => b.mint === config.tokens.USDC || b.symbol === 'USDC')

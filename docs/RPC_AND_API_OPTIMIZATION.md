@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Continuous autonomous LP trading requires regular state synchronization: wallet balance checks, position tracking, PnL evaluation, screening, and transaction execution. When these read loops query paid RPC endpoints or Enhanced API endpoints (such as Helius `/v1/wallet/.../balances` or on-chain `getProgramAccounts`) without caching, API credit consumption explodes.
+Continuous autonomous LP trading requires regular state synchronization: wallet balance checks, position tracking, PnL evaluation, screening, and transaction execution. When these read loops query paid RPC endpoints or metered REST APIs (such as the Helius Wallet API `/v1/wallet/.../balances`, billed at **100 credits per request**, or on-chain `getProgramAccounts`) without caching, API credit consumption explodes.
 
 Running an agent that polls every 15–45 seconds can consume **1,000,000+ Helius credits in a few days**, even with very few actual trades executed.
 
@@ -17,7 +17,7 @@ This guide details:
 ## 1. Credit Consumption Audit & Root Cause Analysis
 
 ### 1.1 The Uncached Balance Polling Problem
-In `packages/core/src/adapters/blockchain/WalletAdapter.ts:getWalletBalances()`, wallet balances (SOL, USDC, and SPL tokens with USD valuation) are fetched via Helius's proprietary Enhanced Wallet API:
+In `packages/core/src/adapters/blockchain/WalletAdapter.ts:getWalletBalances()`, wallet balances (SOL, USDC, and SPL tokens with USD valuation) are fetched via the Helius Wallet API (beta):
 ```text
 https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_API_KEY}
 ```
@@ -32,13 +32,13 @@ https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_API_
 
 #### Total API Requests:
 A standard 3-agent setup makes **~10,000 to 25,000 calls per day**. Over 30 days, that is **300,000 to 750,000 HTTP requests**.
-Because Helius Enhanced APIs are weighted at higher credit costs per request (10–50 credits/call vs 1 credit for standard RPC), this burns **1,000,000 to 10,000,000+ Helius credits monthly** with zero trade volume.
+Because the Helius Wallet API `balances` endpoint is billed at **100 credits per request** (versus 1 credit for a standard RPC call), a 3-agent setup making ~10,000–25,000 calls/day would burn **1–2.5 million Helius credits per day** with zero trade volume. That is the cost this guide exists to avoid: the default `meteora_api` PnL source and the cached/deferred balance paths below mean those calls are not made at all, and the Wallet API is only reached as a conditional fallback.
 
 ### 1.2 The Two PnL Source Options (`meteora_api` vs `rpc`)
 Etemaro supports two explicit PnL tracking and position valuation modes under `config.pnl.source`:
 
 1. **`meteora_api` (Default & Recommended)**:
-   - Queries the official Meteora REST Datapi (`https://dlmm.datapi.meteora.ag/portfolio/open` and `/pool/{poolAddress}/pnl/{walletAddress}`).
+   - Queries the official Meteora REST Datapi (`https://dlmm.datapi.meteora.ag/portfolio/open` and `/positions/{poolAddress}/pnl?user={walletAddress}&status=open|closed`).
    - **Cost**: **0 Solana RPC credits** (100% free).
    - **Latency**: ~5–15s indexing lag behind real-time blocks.
    - **Resilience**: Automatically falls back to on-chain RPC computation if Meteora REST API experiences a network outage.
@@ -74,23 +74,30 @@ Meteora provides a dedicated, highly reliable, low-latency REST API indexed dire
 
 1. **Open Positions & Range Status**:
    ```http
-   GET https://dlmm.datapi.meteora.ag/portfolio/open?user={walletAddress}
+   GET https://dlmm.datapi.meteora.ag/portfolio/open?user={walletAddress}&page={page}&page_size=50
    ```
-   *Returns*: Active pools, list of position addresses, out-of-range flags (`outOfRange`, `positionsOutOfRange`), token mints, bin dimensions.
+   *Returns*: Active pools, list of position addresses, out-of-range flags (`outOfRange`, `positionsOutOfRange`), token mints, bin dimensions, plus `hasNext`, `total`/`totalCount` and `totalPositions`.
+   *Pagination*: `page_size` defaults to **20** (maximum 50) and the parameter is **snake_case** — `pageSize` is silently ignored. Follow `hasNext` and cross-check the assembled position count against `totalPositions`.
 
 2. **Real-time Position PnL & Unclaimed Fees**:
    ```http
-   GET https://dlmm.datapi.meteora.ag/pool/{poolAddress}/pnl/{walletAddress}
+   GET https://dlmm.datapi.meteora.ag/positions/{poolAddress}/pnl?user={walletAddress}&status={open|closed}&page={page}&page_size=100
    ```
-   *Returns*: Exact lower/upper/active bins, unclaimed fees in both tokens (and USD/SOL converted), realized PnL, unrealized PnL, total yield percentage.
+   *Returns*: Exact lower/upper/active bins, unclaimed fees in both tokens (and USD/SOL converted), realized PnL, unrealized PnL, total yield percentage. Same pagination rules as above (`page_size` default **20**).
+   *Note*: the closed-position list is sorted most-recent-first, so a just-closed position appears on page 1 — this is why the close path polls page 1 rather than walking pages.
 
 3. **Pool Candidate Metrics & Discovery**:
    ```http
    GET https://dlmm.datapi.meteora.ag/pools/{poolAddress}
-   GET https://pool-discovery-api.datapi.meteora.ag/pools
+   GET https://dlmm.datapi.meteora.ag/pools?page_size=100&timeframe=5m&sort_by=tvl:desc
+   GET https://pool-discovery-api.datapi.meteora.ag/pools   # undocumented — see below
    ```
 
-*Reliability*: Hosted directly on Cloudflare and Meteora's dedicated indexing infrastructure. Handles high throughput with no API key requirement.
+   **Undocumented dependency:** `pool-discovery-api.datapi.meteora.ag` is **not** part of the published DLMM Data API (it appears in neither the docs index nor the OpenAPI spec) and its schema differs from the documented `/pools` — it alone exposes `organic_score`, `pvp_rival_holders` and `active_tvl`, while the documented endpoint uses `address` (not `pool_address`), `token_x.holders` and `pool_config.bin_step`. Treat it as an unversioned internal API: it can change without notice, so it is isolated in `ScreeningAdapter` / `deploySafety` and worth revisiting deliberately rather than opportunistically.
+
+*Rate limit*: **30 requests/second** across the DLMM Data API (documented), with no API key requirement. Our observed 429s on 2026-09-30 were not quota-driven — the instance made ~197 portfolio calls for the whole day — so they are treated as transient and retried with backoff.
+*Environments*: production `https://dlmm.datapi.meteora.ag`, development `https://dlmm.dev.metdev.io`, both with a Swagger UI.
+*Reliability*: Hosted directly on Cloudflare and Meteora's dedicated indexing infrastructure, with no API key requirement.
 
 ---
 
@@ -206,7 +213,7 @@ Instead of polling wallet balances unconditionally on every 45-second poller tic
 
 ### 4.6 Strict Typed Interfaces
 Exported across `@etemaro/core`:
-- `GetMyPositionsResult`: `{ wallet: string | null; total_positions: number; positions: OnChainPosition[]; error?: string; }`
+- `GetMyPositionsResult`: `{ wallet: string | null; total_positions: number; positions: OnChainPosition[]; source?: 'rpc' | 'meteora_api'; error?: string; degraded?: boolean; }` — `degraded: true` means the position set could not be determined (Datapi and RPC fallback both failed); callers must fail closed rather than treat the wallet as flat.
 - `WalletBalancesResult`: `{ wallet: string | null; sol: number; sol_price: number; sol_usd: number; usdc: number; tokens: Array<{ mint: string; symbol: string; balance: number; usd: number | null }>; total_usd: number; error?: string; }`
 
 ---
@@ -220,3 +227,27 @@ Exported across `@etemaro/core`:
 | **Daemon Event Loop Latency** | High (waiting on un-cached HTTP on every tick) | Instantaneous (served from memory) | **~10x Faster Polling Cycle** |
 | **Free Tier Feasibility** | Exceeds free Helius plan in 2–3 days | Operates indefinitely within free tiers | **100% Free-tier Sustainable** |
 
+---
+
+## 6. Upstream Capability Review (2026-09-30)
+
+Verified against the upstream documentation and live endpoints. Dependency versions are current (`@meteora-ag/dlmm` `1.9.14` = npm `latest`, DLMM program `0.12.0`); the items below are capabilities we do not use yet, not defects. Listed so the next optimisation pass starts from facts.
+
+### Helius
+
+| Capability | Why it matters here | Reference |
+| :--- | :--- | :--- |
+| **Priority Fee API** | We currently attach **no** compute-budget instruction, so every transaction goes out with the default priority fee. Six priority levels, real-time estimates. | https://www.helius.dev/docs/priority-fee-api |
+| **Sender** | Credit-free transaction submission (`https://sender.helius-rpc.com/fast`) that routes across Helius/Jito/Harmonic/Rakurai simultaneously. Two tiers: Sender Max (0.001 SOL minimum tip, priority buffer) and SWQOS-only (0.000005 SOL). Replaces plain `sendAndConfirmTransaction` for latency-sensitive closes. | https://www.helius.dev/docs/sending-transactions/sender |
+| **Preconfirmations** | `preconfSubscribe` gives sub-second confirmation signals — directly relevant to exit latency, which today is bounded by `pollIntervalSec × confirmTicks`. | https://www.helius.dev/docs/pre-confirmations/overview |
+| **LaserStream / Parsed Streams** | Event-driven position and pool tracking instead of our polling cycles. | https://www.helius.dev/docs/laserstream |
+| **Gatekeeper (beta)** | `https://beta.helius-rpc.com/?api-key=…` — lower latency on the same key. | https://www.helius.dev/docs/gatekeeper/overview |
+| **Admin API** | `get-project-usage` for credit monitoring. | https://www.helius.dev/docs/api-reference/admin |
+
+Notes: RPC endpoints are `mainnet.` / `beta.` / `devnet.helius-rpc.com`; paid plans use staked connections by default. The **Enhanced Transactions API is legacy/maintenance-mode** (we use neither it nor its replacement, Parsed Events). The Wallet API is its own beta product: 100 credits per request, `limit` defaults to 100 (we now send it explicitly and follow `pagination.hasMore`), `showNative` defaults to `true`.
+
+### Meteora
+
+Documented endpoints we do not consume yet: `/positions/{address}/historical` (exact add/remove/claim-fee events — a stronger basis for fee accounting than derived values), `/wallets/{wallet}/pools/{pool_address}/total_claims` (exact claimed fees and rewards), `/portfolio/total` (all-time PnL), `/stats/protocol_metrics`, `/pools/{address}/ohlcv` and `/pools/{address}/volume/history`, and the limit-order endpoints (the program now supports limit orders and `collect_fee_mode`).
+
+SDK guidance from the 0.12.0 changelog: v2 liquidity operations (`addLiquidity2`, `removeLiquidity2`, `claimFee2`) and `getBinArraysRequiredByPositionRange2` are the forward path; we currently use the v1 helpers (`addLiquidityByStrategyChunkable`, `removeLiquidity`, `claimSwapFee`), which remain valid and manage their own bin arrays. Swap quote math changed with 0.12.0 and the per-instruction bin cap dropped from 280 to 260 — both handled inside the pinned SDK.
