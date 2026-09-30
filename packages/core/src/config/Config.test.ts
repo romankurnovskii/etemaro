@@ -440,6 +440,42 @@ describe('DEFAULT_AGENT_CONFIG template parity and validation', () => {
 
       expect(result.connection?.rpcUrl).toBe('https://pump.helius-rpc.com')
     })
+
+    it('ships a literal public RPC default so onboarding works with RPC_URL unset', async () => {
+      delete process.env.RPC_URL
+
+      const cfg = JSON.parse(defaultAgentConfigStr)
+
+      expect(cfg.connection.rpcUrl).toBe('https://api.mainnet-beta.solana.com')
+      const res = AgentConfigSchema.safeParse(cfg)
+      expect(res.success).toBe(true)
+    })
+
+    it('still lets an explicit RPC_URL override the shipped public default', async () => {
+      const { loadAndValidateConfig } = await import('./ConfigValidator.js')
+      const tmpPath = `/tmp/etemaro-test-config-${Date.now()}.json`
+      const fullConfig = JSON.parse(defaultAgentConfigStr)
+      fs.writeFileSync(tmpPath, JSON.stringify(fullConfig))
+      process.env.AGENT_CONFIG_PATH = tmpPath
+      process.env.RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=test-key'
+
+      const result = loadAndValidateConfig()
+
+      expect(result.connection?.rpcUrl).toBe('https://mainnet.helius-rpc.com/?api-key=test-key')
+    })
+
+    it('keeps the public default when RPC_URL is set to the same value', async () => {
+      const { loadAndValidateConfig } = await import('./ConfigValidator.js')
+      const tmpPath = `/tmp/etemaro-test-config-${Date.now()}.json`
+      const fullConfig = JSON.parse(defaultAgentConfigStr)
+      fs.writeFileSync(tmpPath, JSON.stringify(fullConfig))
+      process.env.AGENT_CONFIG_PATH = tmpPath
+      process.env.RPC_URL = 'https://api.mainnet-beta.solana.com'
+
+      const result = loadAndValidateConfig()
+
+      expect(result.connection?.rpcUrl).toBe('https://api.mainnet-beta.solana.com')
+    })
   })
 
   describe('pnl RPC resolution', () => {

@@ -4,7 +4,7 @@
   "agentId": "",
   "connection": {
     "description": "Network endpoints, API credentials, wallet key, LLM provider settings, and runtime mode. These values are also propagated to environment variables on startup.",
-    "rpcUrl": "env.RPC_URL",
+    "rpcUrl": "https://api.mainnet-beta.solana.com",
     "rpcUrl2": "env.RPC_URL_2",
     "wallet": "default",
     "heliusApiKey": "env.HELIUS_API_KEY",

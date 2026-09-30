@@ -1,4 +1,4 @@
-import { DEFAULT_AGENT_ID } from '../shared/constants.js'
+import { DEFAULT_AGENT_ID, PUBLIC_SOLANA_RPC_URL } from '../shared/constants.js'
 import type { AgentConfigRaw } from './schema.js'
 
 export const DEFAULT_AGENT_CONFIG: AgentConfigRaw = {
@@ -9,7 +9,9 @@ export const DEFAULT_AGENT_CONFIG: AgentConfigRaw = {
   connection: {
     description:
       'Network endpoints, API credentials, wallet key, LLM provider settings, and runtime mode. These values are also propagated to environment variables on startup.',
-    rpcUrl: 'env.RPC_URL',
+    // Literal default, not `env.RPC_URL`: onboarding must not fail when RPC_URL is unset.
+    // A non-empty RPC_URL in .env still overrides it (see ConfigValidator).
+    rpcUrl: PUBLIC_SOLANA_RPC_URL,
     rpcUrl2: 'env.RPC_URL_2',
     wallet: 'default',
     heliusApiKey: 'env.HELIUS_API_KEY',
