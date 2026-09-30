@@ -206,6 +206,7 @@ passphrase. Put the passphrase wherever the process reads its environment
 Etemaro separates state-read workflows from transaction-write workflows to prevent runaway RPC credit usage:
 
 - **Free REST Datapis for Monitoring**: Active DLMM positions, range status, and real-time PnL/fees are monitored through Meteora's REST Datapi (`dlmm.datapi.meteora.ag`), avoiding expensive on-chain `getProgramAccounts` RPC calls.
+- **Undocumented pool host**: candidate/detail metrics additionally come from `pool-discovery-api.datapi.meteora.ag`, which is not part of Meteora's published Data API (`dlmm.datapi.meteora.ag`). It is the only source for `organic_score`, `pvp_rival_holders` and `active_tvl`, so treat its field names as an unversioned contract; see `docs/RPC_AND_API_OPTIMIZATION.md` §7.4 for the per-field failure behaviour.
 - **Jupiter for Valuation**: Token prices and USD conversions use Jupiter Free Price API v2 (`api.jup.ag/price/v2`) and Token list (`tokens.jup.ag`).
 - **RPC Exclusivity**: On-chain RPC calls (`simulateTransaction`, `sendAndConfirmTransaction`, `getLatestBlockhash`) are reserved strictly for pre-flight transaction simulations and execution.
 - See [RPC_AND_API_OPTIMIZATION.md](RPC_AND_API_OPTIMIZATION.md) for the complete decision matrix and caching blueprint.

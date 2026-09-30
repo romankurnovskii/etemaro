@@ -93,7 +93,7 @@ Meteora provides a dedicated, highly reliable, low-latency REST API indexed dire
    GET https://pool-discovery-api.datapi.meteora.ag/pools   # undocumented — see below
    ```
 
-   **Undocumented dependency:** `pool-discovery-api.datapi.meteora.ag` is **not** part of the published DLMM Data API (it appears in neither the docs index nor the OpenAPI spec) and its schema differs from the documented `/pools` — it alone exposes `organic_score`, `pvp_rival_holders` and `active_tvl`, while the documented endpoint uses `address` (not `pool_address`), `token_x.holders` and `pool_config.bin_step`. Treat it as an unversioned internal API: it can change without notice, so it is isolated in `ScreeningAdapter` / `deploySafety` and worth revisiting deliberately rather than opportunistically. Listed as a known risk in §7.4.
+   **Undocumented dependency:** `pool-discovery-api.datapi.meteora.ag` is **not** part of the published DLMM Data API (it appears in neither the docs index nor the OpenAPI spec) and its schema differs from the documented `/pools` — it alone exposes `organic_score`, `pvp_rival_holders` and `active_tvl`, while the documented endpoint uses `address` (not `pool_address`), `token_x.holders` and `pool_config.bin_step`. Treat it as an unversioned internal API: it can change without notice, so it is isolated in `ScreeningAdapter` / `deploySafety` and worth revisiting deliberately rather than opportunistically. Listed as a known risk in §7.4, with the per-field fail-loud / fail-open behaviour spelled out.
 
 *Rate limit*: **30 requests/second** across the DLMM Data API (documented), with no API key requirement. Our observed 429s on 2026-09-30 were not quota-driven — the instance made ~197 portfolio calls for the whole day — so they are treated as transient and retried with backoff.
 *Environments*: production `https://dlmm.datapi.meteora.ag`, development `https://dlmm.dev.metdev.io`, both with a Swagger UI.
@@ -306,7 +306,17 @@ This holds only while two conditions do, both now covered by tests: `pnl.source`
 
 ### 7.4 Known risks
 
-1. **Undocumented Meteora dependency.** `pool-discovery-api.datapi.meteora.ag` (used by `ScreeningAdapter`, `deploySafety` and the close path) appears in neither the Meteora docs index nor the published OpenAPI. Its schema is not interchangeable with the documented `/pools`: it alone exposes `organic_score`, `pvp_rival_holders` and `active_tvl`, while the documented endpoint uses `address` (not `pool_address`), `token_x.holders` and `pool_config.bin_step`. **Impact:** screening signals depend on an unversioned internal API that can change without notice; a silent schema change would degrade candidate scoring rather than fail loudly. **Mitigation:** isolated in two modules, flagged here, and a deliberate migration decision is still open.
+1. **Undocumented Meteora dependency.** `pool-discovery-api.datapi.meteora.ag` (used by `ScreeningAdapter`, `deploySafety` and the close path) appears in neither the Meteora docs index nor the published OpenAPI, and its schema is not interchangeable with the documented `/pools`: it alone exposes `organic_score`, `pvp_rival_holders` and `active_tvl`, while the documented endpoint uses `address` (not `pool_address`), `token_x.holders` and `pool_config.bin_step`. **Impact is field-specific, not uniform:**
+
+   | Field class | Behaviour if the field disappears | Verdict |
+   | :--- | :--- | :--- |
+   | Numeric gates — `tvl`, `volume`, `base_token_holders`, `dlmm_params.bin_step`, `market_cap`, `fee_active_tvl_ratio`, `organic_score` | Candidate is rejected with an explicit reason (`holders unknown below minHolders 60`, `base organic unknown below minOrganic 10`; `ScreeningAdapter.ts:337`, `:355`) | fails **loud** |
+   | Safety booleans — `base_token_has_critical_warnings`, `base_token_has_high_supply_concentration`, `base_token_has_high_single_ownership` (`:326-331`) | Guard is `=== true`, so it is **skipped** when the field is absent | fails **open** |
+   | `pool_type` DLMM guard (`:332`) | `pool?.pool_type &&` is falsy, so the guard is **skipped** | fails **open** |
+   | `pvp_rival_*` (`:587-589`) | Written for LLM context only; no decision reads them | negligible |
+
+   So candidate *scoring* does not degrade quietly — the numeric gates veto visibly. The real exposure is that **the rug/ownership guards fail open**: a schema change would stop applying them without any log line. Empirical proof that the loud path works as described: real vetoes in production read `Vetoed ARTHUR-SOL: windowed fee/TVL (5m) 0 < min 0.01` and `Vetoed SI-SOL: TVL 639119 above maxTvl 500000`.
+   **Current mitigation:** precise comments at all three call sites (`ScreeningAdapter.ts:27`, `deploySafety.ts:13`, `MeteoraAdapter.ts` `POOL_DISCOVERY_BASE`), this register entry, and the decision to keep the host. **Open by choice:** the fail-open guards are *not* yet made fail-closed, and there is no contract test pinning these field names — a fixture test that breaks on schema drift is the remaining work.
 2. **Cost/performance figures are modelled.** The §5 table is arithmetic from §1.1, not provider billing. Treat only §7.3's measured numbers as evidence.
 3. **No priority fee.** Exposure is limited to congestion spikes (measured: 3 blockhash expiries in ~10 days); see §7.2 for the trade-off and the negligible cost of adding a small one.
 4. **Screening quality depends on LLM output** for candidate ranking, with mechanical rules only for exits. A degraded LLM changes what gets deployed, though not how open positions are managed.
