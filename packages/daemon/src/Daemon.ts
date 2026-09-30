@@ -82,7 +82,7 @@ export interface DaemonAdapters {
     getMyPositions: (opts?: {
       force?: boolean
       silent?: boolean
-    }) => Promise<{ positions: any[]; total_positions: number }>
+    }) => Promise<{ positions: any[]; total_positions: number; error?: string; degraded?: boolean }>
     closePosition: (opts: { position_address: string }) => Promise<any>
     getActiveBin: (opts: { pool_address: string }) => Promise<any>
   }
@@ -816,6 +816,10 @@ Summarize the current portfolio health, total fees earned, and performance of al
           log('cron_error', `PnL poller failed to fetch positions: ${err?.message || err}`)
           return null
         })
+        if (result?.degraded) {
+          log('cron_error', `PnL poller position state unknown (${result.error}) — skipping this tick`)
+          return
+        }
         if (result?.positions) {
           this.latestLivePositions = result.positions
         }
@@ -883,7 +887,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
             log('cron_error', `Opportunity poller failed to fetch positions: ${err?.message || err}`)
             return null
           })
-          if (!positions || (positions.total_positions ?? 0) >= config.risk.maxPositions) return
+          if (!positions || positions.degraded || (positions.total_positions ?? 0) >= config.risk.maxPositions) return
 
           const top = await this.adapters.screening
             .getTopCandidates({ limit: config.opportunity.limit })
@@ -1173,10 +1177,18 @@ After evaluating, write a brief one-line result per position.
         log('cron_error', `Failed to fetch live positions in management cycle: ${err?.message || err}`)
         return null
       })
-      if (livePositions?.positions) {
+      // Unknown position state must fail closed: never treat it as flat, or screening
+      // could deploy while real positions are unmanaged.
+      if (!livePositions || livePositions.degraded) {
+        const detail = livePositions?.error || 'position fetch failed'
+        log('cron_error', `Position state unknown (${detail}) — skipping management and screening for this cycle`)
+        mgmtReport = 'Position state unknown — management cycle skipped.'
+        return mgmtReport
+      }
+      if (livePositions.positions) {
         this.latestLivePositions = livePositions.positions
       }
-      positions = livePositions?.positions || []
+      positions = livePositions.positions || []
 
       if (positions.length === 0) {
         log('cron', 'No open positions — checking screening trigger')
@@ -1382,6 +1394,10 @@ After evaluating, write a brief one-line result per position.
     let screenReport: string | null = null
     try {
       prePositions = await this.adapters.meteora.getMyPositions({ force: true })
+      if (prePositions?.degraded) {
+        log('cron_error', `Position state unknown (${prePositions.error}) — screening aborted`)
+        return 'Position state unknown — screening aborted.'
+      }
       if (prePositions.total_positions >= config.risk.maxPositions) {
         log(
           'cron',

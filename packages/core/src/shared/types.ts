@@ -135,6 +135,12 @@ export interface GetMyPositionsResult {
   positions: OnChainPosition[]
   source?: 'rpc' | 'meteora_api'
   error?: string
+  /**
+   * Set when the position set could not be determined (API and RPC fallback both failed).
+   * `positions: []` is NOT authoritative in that case — callers must not treat the wallet
+   * as flat, or they will deploy while open positions are unmanaged.
+   */
+  degraded?: boolean
 }
 
 // ─── Wallet / Token ────────────────────────────────────────────

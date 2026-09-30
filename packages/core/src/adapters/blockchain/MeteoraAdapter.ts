@@ -42,6 +42,7 @@ import { getConnection, getWalletKeypair as getWallet, withRpcFailover } from '.
 import { getMinSafeBinsBelow } from '../../shared/constants.js'
 import { log, logStructured } from '../../shared/logger.js'
 import type { GetMyPositionsResult } from '../../shared/types.js'
+import { withRpcRetry } from '../../shared/utils.js'
 import { agentMeridianJson, getAgentIdForRequests, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js'
 import { computePositions, fetchDlmmPnlForPool } from '../PnLAdapter.js'
 import {
@@ -1205,6 +1206,43 @@ export async function getPositionPnl({
 
 // ─── Get My Positions ──────────────────────────────────────────
 /**
+ * Parses a numeric `Retry-After` header (seconds) into milliseconds.
+ * HTTP-date form is ignored — the exponential backoff still applies.
+ */
+function parseRetryAfterMs(header: string | null | undefined): number | null {
+  const seconds = Number(header)
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null
+}
+
+/**
+ * Reads the Meteora Datapi portfolio endpoint, retrying transient failures (including
+ * 429) instead of dropping straight to the RPC fallback. The thrown error carries
+ * `status` (so `isTransientRpcError` classifies it) and `retryAfterMs` when advertised.
+ */
+async function fetchPortfolioOpen(walletAddress: string): Promise<any> {
+  return withRpcRetry(
+    async () => {
+      const res = await fetch(`https://dlmm.datapi.meteora.ag/portfolio/open?user=${walletAddress}`)
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        const err: any = new Error(`Portfolio API ${res.status}: ${body}`)
+        err.status = res.status
+        const retryAfterMs = parseRetryAfterMs(res.headers?.get?.('retry-after'))
+        if (retryAfterMs) err.retryAfterMs = retryAfterMs
+        throw err
+      }
+      return res.json()
+    },
+    {
+      label: 'Meteora portfolio API',
+      logTag: 'positions_warn',
+      respectRetryAfter: true,
+      maxRetries: 3,
+    },
+  )
+}
+
+/**
  * Fetches open DLMM positions for the wallet.
  * Uses Meteora REST Datapi by default (config.pnl.source === 'meteora_api') for 0 Solana RPC credit consumption.
  * Uses on-chain DLMM RPC when config.pnl.source === 'rpc'.
@@ -1227,6 +1265,7 @@ export async function getMyPositions({
       total_positions: 0,
       positions: [],
       error: 'Invalid wallet address',
+      degraded: true,
     }
   }
 
@@ -1269,10 +1308,7 @@ export async function getMyPositions({
       }
 
       if (!silent) log('positions', 'Fetching portfolio via Meteora portfolio API...')
-      const portfolioUrl = `https://dlmm.datapi.meteora.ag/portfolio/open?user=${walletAddress}`
-      const res = await fetch(portfolioUrl)
-      if (!res.ok) throw new Error(`Portfolio API ${res.status}: ${await res.text().catch(() => '')}`)
-      const portfolio = (await res.json()) as any
+      const portfolio = await fetchPortfolioOpen(walletAddress)
 
       const pools = portfolio.pools || []
       log('positions', `Found ${pools.length} pool(s) with open positions (source: Meteora Datapi)`)
@@ -1462,6 +1498,7 @@ export async function getMyPositions({
         total_positions: 0,
         positions: [],
         error: error.message,
+        degraded: true,
       }
     } finally {
       if (useLocalWallet) _positionsInflight = null
