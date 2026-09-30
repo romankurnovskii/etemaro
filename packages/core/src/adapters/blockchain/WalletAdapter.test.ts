@@ -229,6 +229,67 @@ describe('WalletAdapter', () => {
       expect(res.total_usd).toBe(200.0)
     })
 
+    it('requests an explicit limit and follows Helius balances pagination', async () => {
+      config.connection = { ...config.connection, heliusApiKey: 'page-helius-key' }
+      vi.spyOn(Connection.prototype, 'getBalance').mockRejectedValue(new Error('Solana RPC rate limited 429'))
+
+      const heliusUrls: string[] = []
+      const balance = (mint: string, usd: number) => ({
+        mint,
+        symbol: mint.slice(0, 4),
+        balance: 1,
+        pricePerToken: usd,
+        usdValue: usd,
+      })
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        const urlStr = String(url)
+        if (!urlStr.includes('api.helius.xyz')) return { ok: false, status: 404, headers: new Headers() } as any
+        heliusUrls.push(urlStr)
+        const isSecondPage = urlStr.includes('page=2')
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => ({
+            balances: isSecondPage ? [balance('MintSecondPage11111111111111111111111111111', 5)] : [],
+            totalUsdValue: 5,
+            pagination: { page: isSecondPage ? 2 : 1, limit: 100, hasMore: !isSecondPage },
+          }),
+        } as any
+      })
+
+      const res = await getWalletBalances({ force: true })
+
+      expect(heliusUrls[0]).toContain('limit=100')
+      expect(heliusUrls[0]).toContain('page=1')
+      expect(heliusUrls).toHaveLength(2)
+      expect(heliusUrls[1]).toContain('page=2')
+      expect(res.tokens.map((t) => t.mint)).toContain('MintSecondPage11111111111111111111111111111')
+    })
+
+    it('stops after a bounded number of Helius pages', async () => {
+      config.connection = { ...config.connection, heliusApiKey: 'cap-helius-key' }
+      vi.spyOn(Connection.prototype, 'getBalance').mockRejectedValue(new Error('Solana RPC rate limited 429'))
+
+      let heliusCalls = 0
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        const urlStr = String(url)
+        if (!urlStr.includes('api.helius.xyz')) return { ok: false, status: 404, headers: new Headers() } as any
+        heliusCalls++
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => ({ balances: [], totalUsdValue: 0, pagination: { hasMore: true } }),
+        } as any
+      })
+
+      await getWalletBalances({ force: true })
+
+      expect(heliusCalls).toBe(5)
+    })
+
     it('queries both standard SPL Token and Token-2022 programs concurrently and discovers Token-2022 accounts', async () => {
       const getParsedTokenAccountsSpy = vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner')
       getParsedTokenAccountsSpy.mockImplementation(async (_owner, filter: any) => {
