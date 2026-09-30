@@ -115,7 +115,7 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
   "preset": "custom",
   "agentId": "",
   "connection": {
-    "rpcUrl": "https://pump.helius-rpc.com",
+    "rpcUrl": "env.RPC_URL",
     "dryRun": true,
     "telegramEnabled": true,
     "telegramPolling": true,
@@ -161,7 +161,7 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 
 | Field                      | Purpose                                                                                      | Example                             |
 | -------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------- |
-| `rpcUrl`                 | Primary Solana RPC endpoint for chain reads and transactions.                                | `"https://pump.helius-rpc.com"`   |
+| `rpcUrl`                 | Primary Solana RPC endpoint for chain reads and transactions.                                | `"env.RPC_URL"`                   |
 | `rpcUrl2`                | Fallback Solana RPC endpoint on errors/rate-limits (optional).                               | `"env.RPC_URL_2"`                 |
 | `wallet`                 | Alias of a wallet in the keystore (`~/.config/etemaro/.credentials/wallets/<alias>.json`). | `"main-scalp"`                    |
 | `heliusApiKey`           | Helius Wallet API key.                                                                       | `"env.HELIUS_API_KEY"`            |
@@ -339,7 +339,7 @@ The `api` block contains two independent services.
 | Field                  | Purpose                      | Example                                                                                                         |
 | ---------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `source`             | PnL data source.             | `"meteora_api"` (Recommended default: free Meteora Datapi, 0 RPC credits) or `"rpc"` (On-chain DLMM reads). |
-| `rpcUrl`             | RPC used for PnL reads.      | `"https://pump.helius-rpc.com"` or `"env.PNL_RPC_URL"`                                                      |
+| `rpcUrl`             | RPC used for PnL reads (only when `source` is `"rpc"`). Falls back to `RPC_URL`. | `"env.PNL_RPC_URL"`                                                                                          |
 | `pollIntervalSec`    | Poll interval (seconds).     | `15`                                                                                                          |
 | `depositCacheTtlSec` | Deposit cache TTL (seconds). | `300`                                                                                                         |
 | `confirmTicks`       | Confirm ticks for PnL calc.  | `2`                                                                                                           |

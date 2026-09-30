@@ -4,7 +4,7 @@ import { getMinSafeBinsBelow } from '../shared/constants.js'
 import { scaleScreeningToTimeframe } from '../shared/utils.js'
 import { config } from './Config.js'
 import { DEFAULT_AGENT_CONFIG, defaultAgentConfigStr } from './defaultAgentConfig.js'
-import { AgentConfigSchema } from './schema.js'
+import { type AgentConfigRaw, AgentConfigSchema } from './schema.js'
 
 // Pool febu-SOL (2CVn...) fee/active-TVL from the Meteora Pool Discovery API.
 const FEE_ACTIVE_TVL_RATIO_5M = 0.02540134632532999
@@ -410,7 +410,7 @@ describe('DEFAULT_AGENT_CONFIG template parity and validation', () => {
       const result = loadAndValidateConfig()
 
       expect(result.connection?.rpcUrl).toBe('https://mainnet.helius-rpc.com/?api-key=test-key')
-      expect(result.pnl?.rpcUrl).toBe('https://pump.helius-rpc.com')
+      expect(result.pnl?.rpcUrl).toBe('https://mainnet.helius-rpc.com/?api-key=test-key')
     })
 
     it('does not migrate when .env RPC_URL matches legacy default', async () => {
@@ -439,6 +439,121 @@ describe('DEFAULT_AGENT_CONFIG template parity and validation', () => {
       const result = loadAndValidateConfig()
 
       expect(result.connection?.rpcUrl).toBe('https://pump.helius-rpc.com')
+    })
+  })
+
+  describe('pnl RPC resolution', () => {
+    const originalEnv = { ...process.env }
+    const LEGACY_RPC = 'https://pump.helius-rpc.com'
+    const PUBLIC_RPC = 'https://api.mainnet-beta.solana.com'
+
+    // Pin connection.rpcUrl to a literal so these cases exercise pnl resolution only.
+    type MutableConfig = AgentConfigRaw & { connection: NonNullable<AgentConfigRaw['connection']> }
+    function baseConfig(): MutableConfig {
+      const fullConfig = JSON.parse(defaultAgentConfigStr) as MutableConfig
+      fullConfig.connection.rpcUrl = 'https://primary.example-rpc.com'
+      return fullConfig
+    }
+
+    afterEach(() => {
+      process.env = { ...originalEnv }
+    })
+
+    it('resolves env.PNL_RPC_URL when PNL_RPC_URL is set', () => {
+      const fullConfig = baseConfig()
+      expect(fullConfig.pnl.rpcUrl).toBe('env.PNL_RPC_URL')
+      process.env.PNL_RPC_URL = 'https://pnl.example-rpc.com'
+
+      const parsed = AgentConfigSchema.parse(fullConfig)
+
+      expect(parsed.pnl.rpcUrl).toBe('https://pnl.example-rpc.com')
+    })
+
+    it('falls back to RPC_URL when PNL_RPC_URL is unset', () => {
+      const fullConfig = baseConfig()
+      delete process.env.PNL_RPC_URL
+      process.env.RPC_URL = 'https://primary.example-rpc.com'
+
+      const parsed = AgentConfigSchema.parse(fullConfig)
+
+      expect(parsed.pnl.rpcUrl).toBe('https://primary.example-rpc.com')
+    })
+
+    it('falls back to the public endpoint when neither PNL_RPC_URL nor RPC_URL is set', () => {
+      const fullConfig = baseConfig()
+      delete process.env.PNL_RPC_URL
+      delete process.env.RPC_URL
+
+      const parsed = AgentConfigSchema.parse(fullConfig)
+
+      expect(parsed.pnl.rpcUrl).toBe(PUBLIC_RPC)
+    })
+
+    it('replaces a legacy hardcoded pnl RPC with the public endpoint when no override exists', () => {
+      const fullConfig = baseConfig()
+      fullConfig.pnl.rpcUrl = LEGACY_RPC
+      delete process.env.PNL_RPC_URL
+      delete process.env.RPC_URL
+
+      const parsed = AgentConfigSchema.parse(fullConfig)
+
+      expect(parsed.pnl.rpcUrl).toBe(PUBLIC_RPC)
+    })
+
+    it('ignores a legacy RPC_URL value when falling back', () => {
+      const fullConfig = baseConfig()
+      delete process.env.PNL_RPC_URL
+      process.env.RPC_URL = LEGACY_RPC
+
+      const parsed = AgentConfigSchema.parse(fullConfig)
+
+      expect(parsed.pnl.rpcUrl).toBe(PUBLIC_RPC)
+    })
+
+    it('leaves an explicitly configured pnl rpcUrl untouched', () => {
+      const fullConfig = baseConfig()
+      fullConfig.pnl.rpcUrl = 'https://dedicated.example-rpc.com'
+
+      const parsed = AgentConfigSchema.parse(fullConfig)
+
+      expect(parsed.pnl.rpcUrl).toBe('https://dedicated.example-rpc.com')
+    })
+
+    it('resolves a missing pnl.rpcUrl through the same precedence', () => {
+      const omitted = baseConfig()
+      delete omitted.pnl.rpcUrl
+      delete process.env.PNL_RPC_URL
+      process.env.RPC_URL = 'https://primary.example-rpc.com'
+
+      expect(AgentConfigSchema.parse(omitted).pnl.rpcUrl).toBe('https://primary.example-rpc.com')
+
+      delete process.env.RPC_URL
+      expect(AgentConfigSchema.parse(omitted).pnl.rpcUrl).toBe(PUBLIC_RPC)
+    })
+  })
+
+  describe('shipped defaults never reference a dead RPC host', () => {
+    const DEAD_HOST = 'pump.helius-rpc.com'
+    const repoRoot = new URL('../../../../', import.meta.url)
+
+    it('default agent config points pnl at env.PNL_RPC_URL', () => {
+      expect(defaultAgentConfigStr).not.toContain(DEAD_HOST)
+      expect(JSON.parse(defaultAgentConfigStr).pnl.rpcUrl).toBe('env.PNL_RPC_URL')
+    })
+
+    it('example template points pnl at env.PNL_RPC_URL', () => {
+      const templatePath = new URL('config/templates/agent-config.example.json', repoRoot)
+      const raw = fs.readFileSync(templatePath, 'utf8')
+
+      expect(raw).not.toContain(DEAD_HOST)
+      expect(JSON.parse(raw).pnl.rpcUrl).toBe('env.PNL_RPC_URL')
+    })
+
+    it('.env.example documents PNL_RPC_URL', () => {
+      const raw = fs.readFileSync(new URL('.env.example', repoRoot), 'utf8')
+
+      expect(raw).not.toContain(DEAD_HOST)
+      expect(raw).toMatch(/^PNL_RPC_URL=/m)
     })
   })
 
