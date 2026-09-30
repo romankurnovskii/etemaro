@@ -1214,6 +1214,22 @@ function parseRetryAfterMs(header: string | null | undefined): number | null {
   return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null
 }
 
+// ── Undocumented Meteora host — no public schema contract ──────────────────
+// `pool-discovery-api.datapi.meteora.ag` appears in neither the Meteora docs index
+// nor the published OpenAPI (only `dlmm.datapi.meteora.ag` is documented), and its
+// schema is not interchangeable with the documented `/pools`. Fields this module
+// depends on and has no documented equivalent for: `organic_score`,
+// `pvp_rival_holders`, `active_tvl`, `dlmm_params`.
+//
+// Failure behaviour if a field disappears (see docs/RPC_AND_API_OPTIMIZATION.md §7.4):
+//   - numeric gates (tvl, volume, holders, bin_step, mcap, fee/TVL, organic) reject
+//     with an explicit "unknown below min…" reason -> fails loud;
+//   - the `*_has_critical_warnings`, `*_has_high_supply_concentration`,
+//     `*_has_high_single_ownership` and `pool_type` checks are `=== true` / truthy
+//     guards, so they are skipped when the field is absent -> FAILS OPEN.
+// Adding a field here without a fallback inherits the second behaviour.
+const POOL_DISCOVERY_BASE = 'https://pool-discovery-api.datapi.meteora.ag'
+
 /** Datapi page size for the portfolio endpoint (default 20, documented maximum 50). */
 const PORTFOLIO_PAGE_SIZE = 50
 /** Hard cap on followed portfolio pages, so a stuck `hasNext` cannot loop forever. */
@@ -1933,7 +1949,7 @@ export async function closePosition({ position_address, reason }: { position_add
           let exitMarket: any = {}
           try {
             const exitDetail = await fetch(
-              `https://pool-discovery-api.datapi.meteora.ag/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=${encodeURIComponent(config.screening?.timeframe || '5m')}`,
+              `${POOL_DISCOVERY_BASE}/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=${encodeURIComponent(config.screening?.timeframe || '5m')}`,
             )
               .then((r: any) => r.json())
               .catch(() => null)
@@ -2244,7 +2260,7 @@ export async function closePosition({ position_address, reason }: { position_add
       let exitMarket: any = {}
       try {
         const exitDetail = await fetch(
-          `https://pool-discovery-api.datapi.meteora.ag/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=${encodeURIComponent(config.screening?.timeframe || '5m')}`,
+          `${POOL_DISCOVERY_BASE}/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=${encodeURIComponent(config.screening?.timeframe || '5m')}`,
         )
           .then((r) => r.json() as any)
           .catch(() => null)
