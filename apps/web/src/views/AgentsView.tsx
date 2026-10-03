@@ -1,101 +1,127 @@
-import { useState } from 'react'
-import type { ManagedAgent, StrategySummary } from '../lib/ipc'
+import { useEffect, useState } from 'react'
+import { AgentCard } from '../components/AgentCard'
+import type { AgentsController } from '../hooks/useAgents'
+import type { AgentTelemetry } from '../hooks/useAgentTelemetry'
+import type { StrategySummary } from '../lib/ipc'
+import { type LogStore, logsForAgent } from '../lib/logs'
+
+const CLOCK_TICK_MS = 5000
 
 interface Props {
-  agents: ManagedAgent[]
-  busy: Record<string, boolean>
+  controller: AgentsController
+  telemetry: Readonly<Record<string, AgentTelemetry>>
+  logs: LogStore
+  writeTools: ReadonlySet<string>
   strategies: StrategySummary[]
-  onCreate: (name: string) => Promise<void>
-  onStart: (id: string) => Promise<void>
-  onStop: (id: string) => Promise<void>
-  onSetStrategy: (id: string, strategyId: string) => Promise<void>
+  token: string
   onCreateStrategy: () => void
 }
 
-export function AgentsView(props: Props) {
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs)
+    return () => window.clearInterval(id)
+  }, [intervalMs])
+  return now
+}
+
+export function AgentsView({ controller, telemetry, logs, writeTools, strategies, token, onCreateStrategy }: Props) {
   const [name, setName] = useState('')
+  const [createError, setCreateError] = useState<string | null>(null)
+  const now = useNow(CLOCK_TICK_MS)
+  const { agents } = controller
+  const running = agents.filter((a) => a.running).length
 
   const submit = () => {
     const value = name.trim()
     if (!value) return
-    void props.onCreate(value).then(() => setName(''))
+    setCreateError(null)
+    controller
+      .create(value)
+      .then(() => setName(''))
+      .catch((e: unknown) => setCreateError(e instanceof Error ? e.message : String(e)))
   }
 
   return (
-    <>
-      <section className="card">
-        <h2>New agent</h2>
-        <div className="row">
-          <input
-            value={name}
-            placeholder="Agent name"
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') submit()
-            }}
-          />
-          <button type="button" className="primary" onClick={submit}>
-            Create agent
-          </button>
+    <div className="stack">
+      <section className="section-head">
+        <div>
+          <h2>Agents</h2>
+          <p className="muted">
+            {agents.length} configured · {running} running. Live data is read from each running agent's own IPC port;
+            loop phase is inferred from that agent's logs.
+          </p>
         </div>
-        <p className="muted small">Creates an agent configured for dry-run. Start it with one click below.</p>
+        <form
+          className="create-agent"
+          onSubmit={(e) => {
+            e.preventDefault()
+            submit()
+          }}
+        >
+          <label htmlFor="new-agent-name" className="field-label">
+            New agent (dry-run)
+          </label>
+          <div className="row nowrap">
+            <input
+              id="new-agent-name"
+              value={name}
+              placeholder="Agent name"
+              onChange={(e) => setName(e.target.value)}
+            />
+            <button type="submit" className="btn btn-primary" disabled={!name.trim()}>
+              Create
+            </button>
+            <button type="button" className="btn btn-quiet" onClick={onCreateStrategy}>
+              New strategy
+            </button>
+          </div>
+          {createError ? (
+            <p className="msg msg-error" role="alert">
+              {createError}
+            </p>
+          ) : null}
+        </form>
       </section>
 
-      {props.agents.length === 0 ? (
-        <section className="card">
-          <p className="muted">No agents yet — create one above.</p>
-        </section>
+      {controller.loadError ? (
+        <div className="msg msg-error" role="alert">
+          Could not load agents: {controller.loadError}{' '}
+          <button type="button" className="btn btn-sm" onClick={controller.reload}>
+            Retry
+          </button>
+        </div>
+      ) : null}
+
+      {!controller.loaded ? (
+        <p className="muted">Loading agents…</p>
+      ) : agents.length === 0 && !controller.loadError ? (
+        <div className="empty">
+          <p>No agents configured yet.</p>
+          <p className="muted small">Create one above — it starts in dry-run mode.</p>
+        </div>
       ) : (
-        props.agents.map((agent) => (
-          <section className="card" key={agent.id}>
-            <div className="agent-row">
-              <span className={`status-dot ${agent.running ? 'status-connected' : 'status-disconnected'}`} />
-              <div className="grow">
-                <div>
-                  <strong>{agent.name}</strong>{' '}
-                  <span className="muted small">{agent.running ? 'running' : 'stopped'}</span>
-                </div>
-                {agent.strategyId ? <div className="muted small">{agent.strategyId}</div> : null}
-              </div>
-              {agent.running ? (
-                <button
-                  type="button"
-                  className="danger"
-                  disabled={props.busy[agent.id]}
-                  onClick={() => void props.onStop(agent.id)}
-                >
-                  Stop
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={props.busy[agent.id]}
-                  onClick={() => void props.onStart(agent.id)}
-                >
-                  Start
-                </button>
-              )}
-            </div>
-            <div className="row mt">
-              <span className="muted small">Strategy</span>
-              <select
-                value={agent.strategyId ?? ''}
-                onChange={(e) => void props.onSetStrategy(agent.id, e.target.value)}
-              >
-                {props.strategies.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name ?? s.id}
-                  </option>
-                ))}
-              </select>
-              <button type="button" className="ghost" onClick={props.onCreateStrategy}>
-                Create strategy
-              </button>
-            </div>
-          </section>
-        ))
+        <div className="agent-grid">
+          {agents.map((agent) => (
+            <AgentCard
+              key={agent.id}
+              agent={agent}
+              telemetry={telemetry[agent.id]}
+              logs={logsForAgent(logs, agent.id)}
+              writeTools={writeTools}
+              strategies={strategies}
+              token={token}
+              busy={Boolean(controller.busy[agent.id])}
+              error={controller.errors[agent.id]}
+              now={now}
+              onStart={controller.start}
+              onStop={controller.stop}
+              onSetStrategy={controller.setStrategy}
+            />
+          ))}
+        </div>
       )}
-    </>
+    </div>
   )
 }
