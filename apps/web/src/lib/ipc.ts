@@ -1,6 +1,9 @@
 /**
  * Browser-safe IPC protocol mirror of packages/core/src/shared/ipc-protocol.ts.
  * Kept local so the browser bundle never pulls Node-only core modules.
+ *
+ * Extended in #342 to mirror the new optional telemetry fields added in
+ * feat(daemon): expose per-agent telemetry for the web console (#342).
  */
 export const IpcMessageType = {
   SUBSCRIBE_LOGS: 'subscribe:logs',
@@ -33,6 +36,7 @@ export interface LogEntry {
   metadata?: Record<string, unknown>
 }
 
+/** Minimal position summary for state snapshots. Extended with bin-range data. */
 export interface PositionSummary {
   positionAddress: string
   poolAddress: string
@@ -40,18 +44,38 @@ export interface PositionSummary {
   pnlUsd?: number
   pnlPct?: number
   valueUsd?: number
+  unclaimedFeesUsd?: number
   deployedAt?: string
+  /** Real bin data from MeteoraAdapter — optional, absent on older daemons. */
+  lowerBin?: number
+  upperBin?: number
+  activeBin?: number
+  inRange?: boolean
+  minutesOutOfRange?: number
 }
 
 export interface StateSnapshot {
   positions: PositionSummary[]
   totalPnlUsd: number
+  /** Lifetime realized PnL across all closed positions. */
+  totalRealizedPnlUsd?: number
+  /** Realized PnL achieved during the current daemon session. */
+  sessionPnlUsd?: number
+  /** Aggregate unclaimed fees across all open positions. */
+  unclaimedFeesUsd?: number
   nextScreenAt?: string
   nextManageAt?: string
   busy: boolean
   walletAddress?: string | null
   activeStrategyId?: string | null
   configPath?: string
+  dryRun?: boolean
+  /** Authoritative phase from the daemon's own busy flags. Optional — absent on older daemons. */
+  phase?: 'idle' | 'screening' | 'managing' | 'chat'
+  /** Agent instance id, populated by the daemon. */
+  agentId?: string
+  /** ISO timestamp when the current daemon session started. */
+  startedAt?: string
 }
 
 export interface JsonSchema {
@@ -80,6 +104,10 @@ export interface ManagedAgent {
   pid: number | null
   configPath: string
   dataDir: string
+  /** TCP port the agent's own IpcServer listens on. Available after Commit 1. */
+  ipcPort?: number | null
+  /** ISO timestamp when this agent was last started. */
+  startedAt?: string | null
 }
 
 export interface StrategySummary {
@@ -92,4 +120,20 @@ export interface ChatMessage {
   id: string
   sender: 'user' | 'agent' | 'system'
   text: string
+}
+
+/** HTTP 200 domain-error payloads from ToolExecutor. */
+export interface ToolResultError {
+  error: string
+  blocked?: boolean
+}
+
+export interface AckPayload {
+  id: string
+  reply?: string
+}
+
+export interface ErrorPayload {
+  code: string
+  message: string
 }
