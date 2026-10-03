@@ -24,10 +24,10 @@ part of the workspace. The root `pre-commit` hook builds before running tests.
 
 ## Views
 
-- **Agents** — one-click create, start, stop, and re-target an agent's strategy. Backed by `/api/agents*`.
+- **Agents (Visualizer)** — fleet cards per agent: status (running / idle / stopped / error), strategy, last heartbeat, PID, active pool, an inferred Idle → Evaluating → Rebalancing → Settled pipeline, positions and PnL, last tool and decision. Start/stop, and strategy switching with a field-level diff preview (`get_strategy`) before applying. Backed by `/api/agents*`, the WebSocket snapshot and log stream.
 - **Dashboard** — live state snapshot (PnL, positions, cycle timers).
 - **Tools** — the full agent tool catalog with JSON-Schema-driven forms; protected tools require an explicit confirm.
-- **Logs / Chat** — live log stream and a direct line to the agent.
+- **Logs / Chat** — live log stream with severity, category and agent filters, and a direct line to the agent.
 
 ## HTTP API (served by IpcServer)
 
