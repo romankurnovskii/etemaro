@@ -27,7 +27,6 @@ function ConfigField({ name, value, onChange }: { name: string; value: unknown; 
             onChange(JSON.parse(e.target.value))
           } catch {}
         }}
-        style={{ width: '100%', minHeight: '80px', fontFamily: 'monospace', fontSize: '12px' }}
       />
     )
   } else {
@@ -121,7 +120,7 @@ export function ConfigView({ agents, token }: ConfigViewProps) {
 
   return (
     <div className="card">
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="row between">
         <div>
           <h2>{selectedAgent.name}</h2>
           <p className="muted small">{selectedAgent.configPath}</p>
