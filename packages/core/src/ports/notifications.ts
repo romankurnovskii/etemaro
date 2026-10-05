@@ -36,6 +36,14 @@ export interface SwapErrorNotification {
   inputSymbol: string
   outputSymbol: string
   reason?: string
+  /** Where the failed swap originated, e.g. `sweeper`, `after close`. */
+  source?: string
+  /** Base-token amount that failed to swap. */
+  amount?: number
+  /** Attempts actually made (1 when abandoned immediately). */
+  attempts?: number
+  /** True when the token was abandoned and will not be retried. */
+  abandoned?: boolean
 }
 
 export interface LiquidationAlertNotification {

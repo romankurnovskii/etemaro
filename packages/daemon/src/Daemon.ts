@@ -995,10 +995,10 @@ Summarize the current portfolio health, total fees earned, and performance of al
     try {
       log('cron', 'Starting unsold token sweeper cycle')
       const result = await this.adapters.toolExecutor.executeTool('sweep_unsold_tokens', {})
-      if (result && (result.successful > 0 || result.failed > 0 || result.abandoned > 0)) {
+      if (result && (result.successful > 0 || result.failed > 0 || result.abandoned > 0 || result.skipped > 0)) {
         log(
           'cron',
-          `Sweeper cycle complete: ${result.successful} swapped, ${result.failed} failed, ${result.abandoned} abandoned out of ${result.total}`,
+          `Sweeper cycle complete: ${result.successful} swapped, ${result.failed} failed, ${result.abandoned} abandoned, ${result.skipped} skipped out of ${result.total}`,
         )
       }
       return result

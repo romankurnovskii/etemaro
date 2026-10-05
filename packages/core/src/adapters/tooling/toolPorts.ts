@@ -34,6 +34,8 @@ export interface MarketDataPort {
 export interface WalletPort {
   getWalletBalances: typeof Wallet.getWalletBalances
   swapToken: typeof Wallet.swapToken
+  /** Cached mint decimals, populated as a side effect of `getWalletBalances`. */
+  getMintDecimals: typeof Wallet.getCachedMintDecimals
 }
 
 export interface ToolPorts {
@@ -66,6 +68,7 @@ const defaultToolPorts: ToolPorts = {
   wallet: {
     getWalletBalances: Wallet.getWalletBalances,
     swapToken: Wallet.swapToken,
+    getMintDecimals: Wallet.getCachedMintDecimals,
   },
 }
 

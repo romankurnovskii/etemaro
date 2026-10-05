@@ -155,6 +155,17 @@ describe('Liquidation Queue Domain', () => {
     expect(getPendingLiquidation('MintE')).toBeNull()
   })
 
+  it('preserves abandoned tombstones for mints still held in the wallet', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintH', symbol: 'HELD', amount: 1, usd: 1, status: 'abandoned' })
+    await enqueuePendingLiquidation({ mint: 'MintI', symbol: 'GONE', amount: 1, usd: 1, status: 'abandoned' })
+
+    const pruned = await pruneSettledLiquidations(0, { preserveAbandonedMints: new Set(['MintH']) })
+
+    expect(pruned).toBe(1)
+    expect(getPendingLiquidation('MintH')?.status).toBe('abandoned')
+    expect(getPendingLiquidation('MintI')).toBeNull()
+  })
+
   it('persists last_error_code and custom status in enqueuePendingLiquidation', async () => {
     const item = await enqueuePendingLiquidation({
       mint: 'MintF',

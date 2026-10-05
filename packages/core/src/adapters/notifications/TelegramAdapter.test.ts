@@ -125,6 +125,25 @@ describe('TelegramAdapter notifications', () => {
     )
   })
 
+  it('notifySwapError includes source, amount, attempts and abandoned context when provided', async () => {
+    await notifySwapError({
+      inputSymbol: 'JubJub',
+      outputSymbol: 'SOL',
+      reason: 'Failed to get quotes',
+      source: 'sweeper',
+      amount: 0.000001,
+      attempts: 1,
+      abandoned: true,
+    })
+
+    expect(NotificationSink.notify).toHaveBeenCalledWith(
+      'swap_error',
+      '⚠️',
+      'Auto-swap failed: JubJub → SOL',
+      expect.stringMatching(/Source: sweeper[\s\S]*Amount: 0\.000001[\s\S]*Attempts: 1[\s\S]*no further retries/i),
+    )
+  })
+
   it('notifyTransactionError formats failure alert for failed transaction execution', async () => {
     await notifyTransactionError({
       type: 'deploy',
