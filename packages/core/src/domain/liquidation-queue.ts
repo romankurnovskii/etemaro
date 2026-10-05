@@ -213,17 +213,31 @@ export async function markLiquidationAttempt(
 
 /**
  * Prune old settled (liquidated or abandoned) entries from the liquidation queue.
+ *
+ * `preserveAbandonedMints` keeps `abandoned` tombstones alive for mints that are
+ * still present in the wallet. Without it, the retention window deletes the only
+ * record that a token was already abandoned, reconciliation re-enqueues it as
+ * `pending`, and the sweeper re-attempts + re-alerts every retention period.
  */
-export async function pruneSettledLiquidations(retentionHours = 24): Promise<number> {
+export async function pruneSettledLiquidations(
+  retentionHours = 24,
+  opts: { preserveAbandonedMints?: Iterable<string> } = {},
+): Promise<number> {
+  const preserve = new Set(opts.preserveAbandonedMints ?? [])
   return withStateLock(() => {
     const state = loadState()
     if (!state.pendingLiquidations) return 0
 
     const cutoff = Date.now() - retentionHours * 60 * 60 * 1000
     let pruned = 0
+    let preserved = 0
 
     for (const [mint, item] of Object.entries(state.pendingLiquidations)) {
       if (item.status === 'pending') continue
+      if (item.status === 'abandoned' && preserve.has(mint)) {
+        preserved++
+        continue
+      }
       const lastAction = item.last_attempt_at ? new Date(item.last_attempt_at).getTime() : 0
       if (lastAction > 0 && lastAction <= cutoff) {
         delete state.pendingLiquidations[mint]
@@ -231,9 +245,13 @@ export async function pruneSettledLiquidations(retentionHours = 24): Promise<num
       }
     }
 
-    if (pruned > 0) {
-      saveState(state)
-      log('state', `Pruned ${pruned} settled liquidation entries older than ${retentionHours}h`)
+    if (pruned > 0 || preserved > 0) {
+      if (pruned > 0) saveState(state)
+      log(
+        'state',
+        `Pruned ${pruned} settled liquidation entries older than ${retentionHours}h` +
+          (preserved > 0 ? ` (preserved ${preserved} abandoned tombstone(s) for tokens still held)` : ''),
+      )
     }
     return pruned
   })

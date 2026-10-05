@@ -3,8 +3,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../config/Config.js'
-import { getPendingLiquidation } from '../domain/liquidation-queue.js'
+import { enqueuePendingLiquidation, getPendingLiquidation } from '../domain/liquidation-queue.js'
 import { __setStateFilePath, getConsecutiveSwapFailures, resetConsecutiveSwapFailures } from '../domain/state.js'
+import { log } from '../shared/logger.js'
 import * as MeteoraAdapter from './blockchain/MeteoraAdapter.js'
 import * as WalletAdapter from './blockchain/WalletAdapter.js'
 import { notifyDeploy, notifyTransactionError } from './notifications/TelegramAdapter.js'
@@ -35,6 +36,7 @@ afterAll(() => {
 vi.mock('./blockchain/WalletAdapter.js', () => ({
   getWalletBalances: vi.fn(),
   swapToken: vi.fn(),
+  getCachedMintDecimals: vi.fn(),
 }))
 
 vi.mock('./blockchain/MeteoraAdapter.js', () => ({
@@ -463,6 +465,103 @@ describe('ToolExecutor - swapBaseToSolWithRetry', () => {
     const item = getPendingLiquidation(deadMint)
     expect(item?.status).toBe('abandoned')
     expect(item?.last_error_code).toBe('Failed to get quotes')
+  })
+
+  it('reports the actual attempt count (1) when abandoning immediately (AC3)', async () => {
+    const baseMint = 'ACTUAL_ATTEMPTS_MINT_111111111111111111'
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      tokens: [{ mint: baseMint, symbol: 'ONEATTEMPT', balance: 500, usd: 1.5 }],
+    } as any)
+    vi.mocked(WalletAdapter.swapToken).mockResolvedValue({
+      success: false,
+      error: 'Failed to get quotes',
+      error_code: 'Failed to get quotes',
+      error_category: 'liquidity.unavailable',
+    } as any)
+
+    await swapBaseToSolWithRetry(baseMint, 'sweeper', 0.05, null, null, { affectsCircuit: false })
+
+    const messages = vi.mocked(log).mock.calls.map((c) => String(c[1]))
+    expect(messages.some((m) => m.includes('after 1 attempt'))).toBe(true)
+    expect(messages.some((m) => m.includes('after 3 attempts'))).toBe(false)
+  })
+
+  it('swap-error alert carries source, amount, attempts and abandoned status (AC4)', async () => {
+    const TelegramAdapter = await import('./notifications/TelegramAdapter.js')
+    const baseMint = 'ALERT_CONTEXT_MINT_1111111111111111111'
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      tokens: [{ mint: baseMint, symbol: 'CTX', balance: 0.000001, usd: null }],
+    } as any)
+    vi.mocked(WalletAdapter.swapToken).mockResolvedValue({
+      success: false,
+      error: 'Failed to get quotes',
+      error_code: 'Failed to get quotes',
+      error_category: 'liquidity.unavailable',
+    } as any)
+
+    await swapBaseToSolWithRetry(baseMint, 'sweeper', 0.05, null, null, { affectsCircuit: false })
+
+    expect(TelegramAdapter.notifySwapError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputSymbol: 'CTX',
+        outputSymbol: 'SOL',
+        source: 'sweeper',
+        amount: 0.000001,
+        attempts: 1,
+        abandoned: true,
+      }),
+    )
+  })
+
+  it('sweeper skips unpriceable 1-atomic-unit remnants without a swap or alert (AC2)', async () => {
+    const TelegramAdapter = await import('./notifications/TelegramAdapter.js')
+    const dustMint = 'JUBJUB_DUST_MINT_111111111111111111111'
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      tokens: [{ mint: dustMint, symbol: 'JubJub', balance: 0.000001, usd: null }],
+    } as any)
+    vi.mocked(WalletAdapter.getCachedMintDecimals).mockImplementation((mint: string) =>
+      mint === dustMint ? 6 : undefined,
+    )
+
+    const result = await sweepUnsoldTokens()
+
+    expect(WalletAdapter.swapToken).not.toHaveBeenCalled()
+    expect(TelegramAdapter.notifySwapError).not.toHaveBeenCalled()
+    const row = result.results.find((r: any) => r.mint === dustMint)
+    expect(row?.reason).toContain('dust')
+    expect(result.skipped).toBeGreaterThanOrEqual(1)
+  })
+
+  it('does not re-enqueue or re-alert an abandoned mint still held in the wallet (AC1)', async () => {
+    const TelegramAdapter = await import('./notifications/TelegramAdapter.js')
+    const { loadState, saveState } = await import('../domain/state.js')
+    const heldMint = 'HELD_ABANDONED_MINT_111111111111111111'
+    const goneMint = 'GONE_ABANDONED_MINT_111111111111111111'
+    await enqueuePendingLiquidation({ mint: heldMint, symbol: 'HELDAB', amount: 1000, usd: 5.0, status: 'abandoned' })
+    await enqueuePendingLiquidation({ mint: goneMint, symbol: 'GONEAB', amount: 1000, usd: 5.0, status: 'abandoned' })
+
+    // Age both tombstones past the 24h retention window.
+    const aged = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
+    const state = loadState()
+    const pending = state.pendingLiquidations ?? {}
+    const heldEntry = pending[heldMint]
+    const goneEntry = pending[goneMint]
+    if (heldEntry) heldEntry.last_attempt_at = aged
+    if (goneEntry) goneEntry.last_attempt_at = aged
+    saveState(state)
+
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      tokens: [{ mint: heldMint, symbol: 'HELDAB', balance: 1000, usd: 5.0 }],
+    } as any)
+
+    await sweepUnsoldTokens()
+
+    // Held tombstone survives; the token that left the wallet is pruned.
+    expect(getPendingLiquidation(heldMint)?.status).toBe('abandoned')
+    expect(getPendingLiquidation(goneMint)).toBeNull()
+    // No futile retry and no recurrence alert for the held dead token.
+    expect(WalletAdapter.swapToken).not.toHaveBeenCalled()
+    expect(TelegramAdapter.notifySwapError).not.toHaveBeenCalled()
   })
 })
 

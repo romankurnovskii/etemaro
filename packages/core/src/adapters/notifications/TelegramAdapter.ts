@@ -787,12 +787,25 @@ export async function notifySwapError({
   inputSymbol,
   outputSymbol,
   reason,
+  source,
+  amount,
+  attempts,
+  abandoned,
 }: {
   inputSymbol: string
   outputSymbol: string
   reason?: string
+  source?: string
+  amount?: number
+  attempts?: number
+  abandoned?: boolean
 }): Promise<void> {
-  const body = `Reason: ${reason || 'Unknown error'}`
+  const lines = [`Reason: ${reason || 'Unknown error'}`]
+  if (source) lines.push(`Source: ${source}`)
+  if (typeof amount === 'number') lines.push(`Amount: ${amount}`)
+  if (typeof attempts === 'number') lines.push(`Attempts: ${attempts}`)
+  if (abandoned) lines.push('Status: abandoned — no further retries')
+  const body = lines.join('\n')
   notify('swap_error', '⚠️', `Auto-swap failed: ${inputSymbol} → ${outputSymbol}`, body)
   await sendPlain(`⚠️ Auto-swap failed: ${inputSymbol} → ${outputSymbol}\n${body}`)
 }

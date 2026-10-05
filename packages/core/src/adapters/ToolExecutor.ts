@@ -681,6 +681,29 @@ export async function withWriteToolsLock<T>(operation: () => Promise<T>): Promis
   return writeToolsMutex.runExclusive(operation)
 }
 
+/** An amount of at most this many atomic units cannot be routed and cannot be split further. */
+export const UNPRICEABLE_RAW_UNIT_DUST_FLOOR = 1
+
+/**
+ * A token with no USD price and a raw balance at or below `UNPRICEABLE_RAW_UNIT_DUST_FLOOR`
+ * atomic units is unsellable dust. Treating `usd: null` as "maybe valuable" sent
+ * 0.000001-unit remnants (1 raw unit at 6 decimals) to Jupiter, which answered
+ * `liquidity.unavailable`, abandoned them, and alerted every retention window.
+ */
+export function isUnpriceableRawUnitDust(token: {
+  mint: string
+  balance?: number | null
+  usd?: number | null
+}): boolean {
+  if (typeof token.usd === 'number') return false
+  const balance = Number(token.balance)
+  if (!Number.isFinite(balance) || balance <= 0) return false
+  const decimals = getToolPorts().wallet.getMintDecimals?.(token.mint)
+  if (typeof decimals !== 'number' || decimals < 0) return false
+  const rawUnits = balance * 10 ** decimals
+  return Number.isFinite(rawUnits) && rawUnits <= UNPRICEABLE_RAW_UNIT_DUST_FLOOR
+}
+
 /**
  * Swap a base token back to SOL with retry. Jupiter can transiently fail (no route,
  * quote error) and a single attempt silently leaves the token unsold — this retries
@@ -714,12 +737,14 @@ export async function swapBaseToSolWithRetry(
   let amountMultiplier = 1.0
   let currentSlippageBps: number | undefined
   let abandonImmediately = false
+  let attemptsMade = 0
   // Best-effort cleanup swaps (sweeper, batch cleanup) must not trip the deploy
   // circuit breaker: dead/dust tokens legitimately have no route and would
   // otherwise block new deploys.
   const affectsCircuit = opts.affectsCircuit !== false
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    attemptsMade = attempt
     try {
       const balances = await getToolPorts().wallet.getWalletBalances()
       const token = balances.tokens?.find((t: any) => t.mint === baseMint)
@@ -837,7 +862,7 @@ export async function swapBaseToSolWithRetry(
   }
   log(
     'executor_warn',
-    `Auto-swap ${label} failed after ${attempts} attempts — base token left unsold (${baseMint.slice(0, 8)})`,
+    `Auto-swap ${label} failed after ${attemptsMade} attempt(s) — base token left unsold (${baseMint.slice(0, 8)})`,
   )
   if (affectsCircuit) recordSwapFailure({ maxFailedSwapsBeforeHalt, haltOnSwapFailure })
   const symbol = lastToken?.symbol || baseMint.slice(0, 8)
@@ -852,7 +877,7 @@ export async function swapBaseToSolWithRetry(
     usd: tokenUsd,
     pool_address: poolAddress || null,
     position: position || null,
-    error: lastErr || `Failed after ${attempts} attempts`,
+    error: lastErr || `Failed after ${attemptsMade} attempt(s)`,
     errorCode: lastErrorCode || lastErrorCategory || null,
     status: abandonImmediately ? 'abandoned' : 'pending',
   }).catch((err: any) => {
@@ -867,8 +892,8 @@ export async function swapBaseToSolWithRetry(
         mint: baseMint,
         amount: lastToken?.balance ?? 0,
         usd: tokenUsd,
-        reason: lastErr || `Failed after ${attempts} attempts`,
-        attempts,
+        reason: lastErr || `Failed after ${attemptsMade} attempt(s)`,
+        attempts: attemptsMade,
       })
       .catch((err: any) => {
         log('telegram_warn', `Failed to send liquidation alert notification: ${err?.message || err}`)
@@ -878,7 +903,11 @@ export async function swapBaseToSolWithRetry(
       .notifySwapError({
         inputSymbol: symbol,
         outputSymbol: 'SOL',
-        reason: lastErr || `Failed after ${attempts} attempts`,
+        reason: lastErr || `Failed after ${attemptsMade} attempt(s)`,
+        source: label,
+        amount: lastToken?.balance ?? 0,
+        attempts: attemptsMade,
+        abandoned: abandonImmediately,
       })
       .catch((err: any) => {
         log('telegram_warn', `Failed to send swap error notification: ${err?.message || err}`)
@@ -995,14 +1024,23 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
     }
 
     const isDust = typeof currentToken.usd === 'number' && currentToken.usd >= 0 && currentToken.usd < minUsd
-    if (isDust) {
+    const isRawDust = !isDust && isUnpriceableRawUnitDust(currentToken)
+    if (isDust || isRawDust) {
       skipped++
       results.push({
         mint: item.mint,
         symbol: item.symbol,
         success: false,
-        reason: `skipped dust (< $${minUsd.toFixed(2)})`,
+        reason: isRawDust
+          ? `skipped unpriceable raw-unit dust (<= ${UNPRICEABLE_RAW_UNIT_DUST_FLOOR} atomic unit)`
+          : `skipped dust (< $${minUsd.toFixed(2)})`,
       })
+      if (isRawDust) {
+        log(
+          'executor',
+          `Skipping unpriceable raw-unit dust ${item.symbol || item.mint.slice(0, 8)} (${currentToken.balance} units, usd unknown) — unsellable remnant, not attempting swap`,
+        )
+      }
       continue
     }
 
@@ -1054,8 +1092,10 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
     }
   }
 
-  // Prune older settled entries (settled > 24h ago)
-  await pruneSettledLiquidations(24).catch(() => {})
+  // Prune older settled entries, but keep abandoned tombstones for tokens still
+  // held in the wallet so reconciliation cannot re-enqueue and re-alert them.
+  const heldMints = new Set((balances.tokens as any[]).filter((t) => (t.balance ?? 0) > 0).map((t) => t.mint as string))
+  await pruneSettledLiquidations(24, { preserveAbandonedMints: heldMints }).catch(() => {})
 
   // Reconcile any closed_pending_swap performance records whose mint is no longer
   // actively pending in the liquidation queue. Catches swaps that completed inline
