@@ -357,6 +357,41 @@ describe('WalletAdapter', () => {
       expect(token2022Item?.balance).toBe(1397.91)
       expect(token2022Item?.usd).toBe(27.96)
       expect(token2022Item?.program).toBe('token-2022')
+      expect(balances.scan_incomplete).toBe(false)
+    })
+
+    it('sets scan_incomplete=true if Token-2022 scan fails', async () => {
+      const getParsedTokenAccountsSpy = vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner')
+      getParsedTokenAccountsSpy.mockImplementation(async (_owner, filter: any) => {
+        if (filter.programId.equals(TOKEN_PROGRAM_ID)) {
+          return {
+            value: [
+              {
+                account: {
+                  data: {
+                    parsed: {
+                      info: {
+                        mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+                        tokenAmount: { uiAmount: 10.5, decimals: 6 },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          } as any
+        }
+        if (filter.programId.equals(TOKEN_2022_PROGRAM_ID)) {
+          throw new Error('RPC Node timeout on Token-2022 query')
+        }
+        return { value: [] } as any
+      })
+
+      const balances = await getWalletBalances({ force: true })
+      expect(balances.scan_incomplete).toBe(true)
+      // Standard token still returns
+      expect(balances.tokens.length).toBe(1)
+      expect(balances.tokens[0]?.mint).toBe('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
     })
 
     it('aggregates multiple token accounts for the same mint across programs', async () => {

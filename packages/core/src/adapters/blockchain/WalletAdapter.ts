@@ -340,6 +340,8 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
   }
 
   const fetchBalances = async (): Promise<WalletBalancesResult> => {
+    let token2022Failed = false
+
     // ─── 1. Primary Method: Standard Solana RPC + composite price provider ─
     try {
       const [solLamports, tokenAccounts, token2022Accounts] = await Promise.all([
@@ -351,6 +353,7 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
           (conn) => conn.getParsedTokenAccountsByOwner(walletPubkey, { programId: TOKEN_2022_PROGRAM_ID }),
           { label: 'getParsedTokenAccountsByOwner(Token-2022)' },
         ).catch((err: unknown) => {
+          token2022Failed = true
           const e = err as { message?: string }
           log('wallet_warn', `Token-2022 scan failed (${e.message || err}); continuing with standard tokens`)
           return { value: [] }
@@ -476,6 +479,7 @@ export async function getWalletBalances(options?: { force?: boolean }): Promise<
         usdc: Math.round(usdcBalance * 100) / 100,
         tokens: tokensList,
         total_usd: totalUsd,
+        scan_incomplete: token2022Failed,
       }
 
       _balanceCache = result
