@@ -99,6 +99,11 @@ interface RecordPoolDeployData {
  * Record a closed deploy into pool-memory.json.
  * Called automatically from recordPerformance() in lessons.js.
  */
+function deriveDeployedAt(closedAt?: string | null, minutesHeld?: number | null): string | null {
+  if (!closedAt || minutesHeld == null || !Number.isFinite(Number(minutesHeld))) return null
+  return new Date(new Date(closedAt).getTime() - Number(minutesHeld) * 60_000).toISOString()
+}
+
 export function recordPoolDeploy(poolAddress: string, deployData: RecordPoolDeployData): void {
   if (!poolAddress) return
 
@@ -123,7 +128,7 @@ export function recordPoolDeploy(poolAddress: string, deployData: RecordPoolDepl
   const entry = db[poolAddress]
 
   const deploy: PoolMemoryDeploy = {
-    deployed_at: deployData.deployed_at || null,
+    deployed_at: deployData.deployed_at || deriveDeployedAt(deployData.closed_at, deployData.minutes_held),
     closed_at: deployData.closed_at || new Date().toISOString(),
     pnl_pct: deployData.pnl_pct ?? null,
     pnl_usd: deployData.pnl_usd ?? null,
