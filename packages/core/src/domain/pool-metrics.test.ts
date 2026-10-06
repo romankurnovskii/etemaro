@@ -97,4 +97,21 @@ describe('pool-metrics domain', () => {
     expect(metrics).toHaveLength(1)
     expect(metrics[0]?.pair).toBe('FOO/SOL')
   })
+
+  it('caps metric rows at 288 to prevent unbounded growth', () => {
+    for (let i = 0; i < 300; i++) {
+      recordPoolMetric('pool_limit', {
+        position: 'pos_limit',
+        pair: 'LIMIT/SOL',
+        pnl_pct: i,
+      })
+    }
+
+    const metrics = readPoolMetrics('pool_limit', 'pos_limit')
+    expect(metrics).toHaveLength(288)
+    // The oldest 12 should be removed (0 to 11). The first one left should be 12.
+    expect(metrics[0]?.pnl_pct).toBe(12)
+    // The last one should be 299.
+    expect(metrics[metrics.length - 1]?.pnl_pct).toBe(299)
+  })
 })

@@ -89,6 +89,12 @@ export function recordPoolMetric(poolAddress: string, input: PoolMetricSnapshotI
     }
 
     existing.push(snapshot)
+
+    // Cap at 288 rows (24h of 5m intervals) to prevent unbounded O(n²) rewrite (D1 fix)
+    if (existing.length > 288) {
+      existing.splice(0, existing.length - 288)
+    }
+
     writeStateFile(filePath, existing)
     log(
       'pool-metrics',
