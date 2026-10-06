@@ -243,19 +243,26 @@ describe('TASK-03: Realistic PnL Accounting & Mark-to-Market', () => {
     })
 
     // Token drops 50% to $0.0475
-    const updatedCount = updatePendingTradesMarkToMarket({
-      'mint-meme-4': 0.0475,
-    })
+    const updatedCount = updatePendingTradesMarkToMarket(
+      {
+        'mint-meme-4': 0.0475,
+      },
+      [{ mint: 'mint-meme-4', balance: 500 }],
+    ) // Simulated user sold half manually
     expect(updatedCount).toBe(1)
 
     const data = JSON.parse(fs.readFileSync(lessonsFile, 'utf-8'))
     const rec = data.performance[0]
-    expect(rec.unrealized_residual_usd).toBeCloseTo(47.5, 2)
-    // finalValue = $15 (cash) + $47.5 (residual) = $62.5
-    expect(rec.final_value_usd).toBeCloseTo(62.5, 2)
-    // Net PnL = $62.5 - $100 = -$37.5 (-37.5%)
-    expect(rec.net_pnl_usd).toBeCloseTo(-37.5, 2)
-    expect(rec.pnl_pct).toBeCloseTo(-37.5, 2)
+
+    // Verify D7 fix: amount refreshed to 500 before marking
+    expect(rec.unrealized_tokens_amount).toBe(500)
+    // 500 tokens * 0.0475 = $23.75 residual
+    expect(rec.unrealized_residual_usd).toBeCloseTo(23.75, 2)
+    // finalValue = $15 (cash) + $23.75 (residual) = $38.75
+    expect(rec.final_value_usd).toBeCloseTo(38.75, 2)
+    // Net PnL = $38.75 - $100 = -$61.25 (-61.25%)
+    expect(rec.net_pnl_usd).toBeCloseTo(-61.25, 2)
+    expect(rec.pnl_pct).toBeCloseTo(-61.25, 2)
   })
 
   it('AC5: liquidation-queue markLiquidationSuccess automatically settles trade in lessons.json', async () => {
