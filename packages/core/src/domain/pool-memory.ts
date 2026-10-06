@@ -425,9 +425,17 @@ export function recallForPool(poolAddress: string): string | null {
     const first = snaps[0]!
     const last = snaps[snaps.length - 1]!
     const pnlTrend = last.pnl_pct != null && first.pnl_pct != null ? (last.pnl_pct - first.pnl_pct).toFixed(2) : null
-    const oorCount = snaps.filter((s) => s.in_range === false).length
+    // Unknown in_range (null) is not evidence of being in range: exclude it from the
+    // denominator and surface it separately so OOR drift is not understated (D5).
+    const knownRange = snaps.filter((s) => s.in_range != null)
+    const oorCount = knownRange.filter((s) => s.in_range === false).length
+    const unknownRangeCount = snaps.length - knownRange.length
+    const oorSummary =
+      knownRange.length > 0
+        ? `OOR in ${oorCount}/${knownRange.length} known cycles${unknownRangeCount > 0 ? ` (${unknownRangeCount} unknown)` : ''}`
+        : `OOR unknown for all ${snaps.length} cycles`
     lines.push(
-      `RECENT TREND: PnL drift ${pnlTrend !== null ? `${(Number(pnlTrend) >= 0 ? '+' : '') + pnlTrend}%` : 'unknown'} over last ${snaps.length} cycles, OOR in ${oorCount}/${snaps.length} cycles`,
+      `RECENT TREND: PnL drift ${pnlTrend !== null ? `${(Number(pnlTrend) >= 0 ? '+' : '') + pnlTrend}%` : 'unknown'} over last ${snaps.length} cycles, ${oorSummary}`,
     )
   }
 

@@ -9,6 +9,7 @@ import {
   isPoolOnCooldown,
   recallForPool,
   recordPoolDeploy,
+  recordPositionSnapshot,
 } from '../domain/pool-memory.js'
 
 const TMP_POOL_MEMORY = path.join(os.tmpdir(), `etemaro-pool-memory-test-${process.pid}.json`)
@@ -46,6 +47,16 @@ describe('pool-memory — stop-loss cooldown', () => {
 
     const memory = getPoolMemory({ pool_address: 'PoolD' }) as any
     expect(memory.last_deployed_at).toBe('2026-10-01T00:00:00.000Z')
+  })
+
+  it('excludes unknown in_range snapshots from the OOR share', () => {
+    recordPositionSnapshot('PoolOOR', { position: 'p1', pnl_pct: 1, in_range: true })
+    recordPositionSnapshot('PoolOOR', { position: 'p1', pnl_pct: 2, in_range: false })
+    recordPositionSnapshot('PoolOOR', { position: 'p1', pnl_pct: 3, in_range: null })
+
+    const recall = recallForPool('PoolOOR')
+    expect(recall).toContain('OOR in 1/2 known cycles')
+    expect(recall).toContain('(1 unknown)')
   })
 
   it('sets pool + base-mint cooldown on stop-loss close', () => {
