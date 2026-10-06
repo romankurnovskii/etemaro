@@ -734,7 +734,7 @@ export interface PendingLiquidation {
   added_at: string
   last_attempt_at: string | null
   attempts: number
-  status: 'pending' | 'liquidated' | 'abandoned'
+  status: 'pending' | 'liquidated' | 'abandoned' | 'dust'
   last_error?: string | null
   last_error_code?: string | null
 }

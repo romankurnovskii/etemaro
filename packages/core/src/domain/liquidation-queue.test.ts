@@ -7,6 +7,7 @@ import {
   getPendingLiquidation,
   getPendingLiquidations,
   markLiquidationAttempt,
+  markLiquidationDust,
   markLiquidationSuccess,
   pruneSettledLiquidations,
 } from './liquidation-queue.js'
@@ -63,6 +64,18 @@ describe('Liquidation Queue Domain', () => {
     // A real value (including 0) still overwrites.
     await enqueuePendingLiquidation({ mint: 'MintKeep', amount: 100, usd: 0 })
     expect(getPendingLiquidation('MintKeep')?.usd).toBe(0)
+  })
+
+  it('marks a dust-skipped entry with a terminal dust status', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintDust', symbol: 'DUST', amount: 1, usd: 0.001 })
+    expect(getPendingLiquidation('MintDust')?.status).toBe('pending')
+
+    const ok = await markLiquidationDust('MintDust', { reason: 'skipped dust (< $0.02)' })
+    expect(ok).toBe(true)
+
+    const item = getPendingLiquidation('MintDust')
+    expect(item?.status).toBe('dust')
+    expect(item?.last_error).toContain('dust')
   })
 
   it('re-enqueuing an existing token updates details and resets status to pending', async () => {

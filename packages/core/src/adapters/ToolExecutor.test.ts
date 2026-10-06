@@ -530,6 +530,7 @@ describe('ToolExecutor - swapBaseToSolWithRetry', () => {
     const row = result.results.find((r: any) => r.mint === dustMint)
     expect(row?.reason).toContain('dust')
     expect(result.skipped).toBeGreaterThanOrEqual(1)
+    expect(getPendingLiquidation(dustMint)?.status).toBe('dust')
   })
 
   it('does not re-enqueue or re-alert an abandoned mint still held in the wallet (AC1)', async () => {
