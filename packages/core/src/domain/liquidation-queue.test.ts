@@ -54,6 +54,17 @@ describe('Liquidation Queue Domain', () => {
     expect(all.length).toBe(1)
   })
 
+  it('does not overwrite a known usd with null on a failed re-enqueue', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintKeep', symbol: 'KEEP', amount: 100, usd: 12.5 })
+
+    await enqueuePendingLiquidation({ mint: 'MintKeep', amount: 100, usd: null, error: 'swap failed' })
+    expect(getPendingLiquidation('MintKeep')?.usd).toBe(12.5)
+
+    // A real value (including 0) still overwrites.
+    await enqueuePendingLiquidation({ mint: 'MintKeep', amount: 100, usd: 0 })
+    expect(getPendingLiquidation('MintKeep')?.usd).toBe(0)
+  })
+
   it('re-enqueuing an existing token updates details and resets status to pending', async () => {
     await enqueuePendingLiquidation({
       mint: 'MintB',

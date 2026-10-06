@@ -64,7 +64,8 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
         ...existing,
         symbol: opts.symbol || existing.symbol,
         amount: opts.amount > 0 ? opts.amount : existing.amount,
-        usd: opts.usd !== undefined ? opts.usd : existing.usd,
+        // Keep a previously known price when a failed attempt reports null (unknown) (Part1-6).
+        usd: opts.usd != null ? opts.usd : existing.usd,
         pool_address: opts.pool_address || existing.pool_address,
         position: opts.position || existing.position || null,
         last_attempt_at: now,
