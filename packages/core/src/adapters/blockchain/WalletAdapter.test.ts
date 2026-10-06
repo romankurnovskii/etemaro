@@ -460,6 +460,51 @@ describe('WalletAdapter', () => {
       expect(item?.usd).toBe(150)
     })
 
+    it('does not consult the Helius balances API when every token is priced (Q4 precedence)', async () => {
+      config.connection = { ...config.connection, heliusApiKey: 'unused-helius-key' }
+      const pricedMint = 'PRICED_TOKEN_MINT_11111111111111111111111'
+      vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner').mockImplementation(
+        async (_owner: any, filter: any) => {
+          if (filter.programId.equals(TOKEN_PROGRAM_ID)) {
+            return {
+              value: [
+                {
+                  account: {
+                    data: { parsed: { info: { mint: pricedMint, tokenAmount: { uiAmount: 10, decimals: 6 } } } },
+                  },
+                },
+              ],
+            } as any
+          }
+          return { value: [] } as any
+        },
+      )
+
+      const heliusCalls: string[] = []
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        const urlStr = String(url)
+        if (urlStr.includes('api.helius.xyz')) heliusCalls.push(urlStr)
+        if (urlStr.includes('jup.ag/price/v2')) {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            json: async () => ({
+              data: {
+                [pricedMint]: { price: '2.0' },
+                So11111111111111111111111111111111111111112: { price: '150.0' },
+              },
+            }),
+          } as any
+        }
+        return { ok: false, status: 404, headers: new Headers() } as any
+      })
+
+      const balances = await getWalletBalances({ force: true })
+      expect(balances.tokens.find((t) => t.mint === pricedMint)?.usd).toBe(20)
+      expect(heliusCalls).toHaveLength(0)
+    })
+
     it('enriches unpriced tokens with Helius balances API when heliusApiKey is present', async () => {
       config.connection = {
         ...config.connection,
