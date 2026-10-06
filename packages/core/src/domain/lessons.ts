@@ -1013,8 +1013,12 @@ export async function reconcileOrphanedPendingSwaps(pendingMints: Set<string>): 
 
 /**
  * Continuously mark unswapped token inventory to market spot prices.
+ * Optionally refreshes unrealized_tokens_amount if live balances are provided.
  */
-export function updatePendingTradesMarkToMarket(priceMap: Record<string, number>): number {
+export function updatePendingTradesMarkToMarket(
+  priceMap: Record<string, number>,
+  liveBalances?: Array<{ mint?: string; balance?: number } | any>,
+): number {
   const data = load()
   let updated = 0
 
@@ -1022,6 +1026,16 @@ export function updatePendingTradesMarkToMarket(priceMap: Record<string, number>
     if (rec.status !== 'closed_pending_swap') continue
     const mint = rec.liquidation_mint || rec.base_mint
     if (!mint) continue
+
+    // Refresh from live balances if provided (D7 fix)
+    if (liveBalances) {
+      const liveToken = liveBalances.find((b) => b.mint === mint)
+      if (liveToken && typeof liveToken.balance === 'number') {
+        rec.unrealized_tokens_amount = liveToken.balance
+      } else if (!liveToken) {
+        rec.unrealized_tokens_amount = 0
+      }
+    }
 
     // Only revalue records with a real, recorded token inventory. When the close
     // returned 100% SOL there are no tokens to mark; recomputing from amount * price

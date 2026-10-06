@@ -989,7 +989,7 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
   if (Object.keys(priceMap).length > 0) {
     try {
       const { updatePendingTradesMarkToMarket } = await import('../domain/lessons.js')
-      updatePendingTradesMarkToMarket(priceMap)
+      updatePendingTradesMarkToMarket(priceMap, balances.tokens)
     } catch {
       // ignore
     }
