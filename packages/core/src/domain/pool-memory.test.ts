@@ -87,6 +87,36 @@ describe('pool-memory — stop-loss cooldown', () => {
     expect(recall).toContain('over last 2 cycles')
   })
 
+  it('cools the pool and base mint after repeated fee-generating deploys (S5)', () => {
+    for (let i = 0; i < 3; i++) {
+      recordPoolDeploy('PoolRepeat', {
+        pool_name: 'REPEAT/SOL',
+        base_mint: 'RepeatMint',
+        pnl_pct: 1,
+        fees_earned_usd: 1,
+        fee_earned_pct: 1,
+        close_reason: 'take profit',
+      })
+    }
+
+    expect(isPoolOnCooldown('PoolRepeat')).toBe(true)
+    expect(isBaseMintOnCooldown('RepeatMint')).toBe(true)
+  })
+
+  it('derives deployed_at from closed_at and minutes_held when absent (R4)', () => {
+    recordPoolDeploy('PoolR4', {
+      pool_name: 'R4/SOL',
+      base_mint: 'R4Mint',
+      pnl_pct: 1,
+      closed_at: '2026-10-02T00:30:00.000Z',
+      minutes_held: 10,
+      close_reason: 'agent decision',
+    })
+
+    const memory = getPoolMemory({ pool_address: 'PoolR4' }) as any
+    expect(memory.history[0].deployed_at).toBe('2026-10-02T00:20:00.000Z')
+  })
+
   it('sets pool + base-mint cooldown on stop-loss close', () => {
     recordPoolDeploy('PoolA', {
       pool_name: 'GOBLIN-SOL',
