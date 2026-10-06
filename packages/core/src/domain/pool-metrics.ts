@@ -110,5 +110,5 @@ export function recordPoolMetric(poolAddress: string, input: PoolMetricSnapshotI
  */
 export function readPoolMetrics(poolAddress: string, positionAddress: string): PoolMetricSnapshot[] {
   const filePath = getPoolMetricFile(poolAddress, positionAddress)
-  return readStateFile<PoolMetricSnapshot[]>(filePath, [])
+  return readStateFile<PoolMetricSnapshot[]>(filePath, [], { label: 'pool-metrics', backupOnCorrupt: true })
 }

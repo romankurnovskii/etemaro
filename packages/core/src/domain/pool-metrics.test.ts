@@ -24,6 +24,15 @@ describe('pool-metrics domain', () => {
     }
   })
 
+  it('backs up corrupt pool-metrics state instead of silently resetting it', () => {
+    const file = getPoolMetricFile('pool_corrupt', 'pos_corrupt')
+    fs.writeFileSync(file, '{ corrupt metrics')
+    expect(readPoolMetrics('pool_corrupt', 'pos_corrupt')).toEqual([])
+    expect(fs.existsSync(file)).toBe(false)
+    const backups = fs.readdirSync(path.dirname(file)).filter((f) => f.startsWith(`${path.basename(file)}.corrupt-`))
+    expect(backups.length).toBeGreaterThanOrEqual(1)
+  })
+
   it('creates the pool_metrics directory automatically on first write', () => {
     expect(fs.existsSync(tempDir)).toBe(true)
     recordPoolMetric('pool_A', {

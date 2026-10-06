@@ -8,6 +8,8 @@ export interface StateStoreReadOptions {
   label?: string
   warnOnCorrupt?: boolean
   critical?: boolean
+  /** When true, move a corrupt file to `<file>.corrupt-<ts>` before returning the fallback. */
+  backupOnCorrupt?: boolean
 }
 
 export interface StateStorePort {

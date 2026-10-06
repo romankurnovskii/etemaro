@@ -37,6 +37,14 @@ describe('lessons domain — Price PnL vs Net PnL disambiguation', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
+  it('backs up corrupt lessons state instead of silently resetting it', () => {
+    fs.writeFileSync(lessonsFile, '{ corrupt lessons')
+    expect(() => getPerformanceSummary()).not.toThrow()
+    expect(fs.existsSync(lessonsFile)).toBe(false)
+    const backups = fs.readdirSync(tmpDir).filter((f) => f.startsWith('lessons.json.corrupt-'))
+    expect(backups.length).toBeGreaterThanOrEqual(1)
+  })
+
   it('correctly calculates price_pnl_usd, price_pnl_pct, net_pnl_usd when Price Loss is offset by Fee Yield', async () => {
     // Initial value: $100
     // Final value: $90 (price dropped by $10)

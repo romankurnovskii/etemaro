@@ -24,6 +24,16 @@ describe('pool-memory — stop-loss cooldown', () => {
     if (fs.existsSync(TMP_POOL_MEMORY)) fs.unlinkSync(TMP_POOL_MEMORY)
   })
 
+  it('backs up corrupt pool-memory state instead of silently resetting it', () => {
+    fs.writeFileSync(TMP_POOL_MEMORY, '{ corrupt pool memory')
+    expect(recallForPool('PoolCorrupt')).toBeNull()
+    expect(fs.existsSync(TMP_POOL_MEMORY)).toBe(false)
+    const backups = fs
+      .readdirSync(path.dirname(TMP_POOL_MEMORY))
+      .filter((f) => f.startsWith(`${path.basename(TMP_POOL_MEMORY)}.corrupt-`))
+    expect(backups.length).toBeGreaterThanOrEqual(1)
+  })
+
   it('sets pool + base-mint cooldown on stop-loss close', () => {
     recordPoolDeploy('PoolA', {
       pool_name: 'GOBLIN-SOL',
