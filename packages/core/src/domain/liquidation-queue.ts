@@ -20,11 +20,37 @@ export interface EnqueueLiquidationOpts {
   symbol?: string
   amount: number
   usd?: number | null
+  priced?: boolean
   pool_address?: string | null
   position?: string | null
   error?: string
   errorCode?: string | null
   status?: 'pending' | 'liquidated' | 'abandoned' | 'dust'
+}
+
+/**
+ * Refresh live `amount`/`usd`/`priced` on a still-pending entry without touching
+ * status or attempts (Part1-3). A null/undefined `usd` leaves a known price intact.
+ */
+export async function refreshPendingLiquidation(
+  mint: string,
+  opts: { amount?: number; usd?: number | null; priced?: boolean },
+): Promise<boolean> {
+  return withStateLock(() => {
+    const state = loadState()
+    const item = state.pendingLiquidations?.[mint]
+    if (item?.status !== 'pending') return false
+
+    if (opts.amount != null && opts.amount > 0) item.amount = opts.amount
+    if (opts.usd !== undefined) {
+      item.usd = opts.usd
+      item.priced = opts.priced ?? opts.usd != null
+    } else if (opts.priced !== undefined) {
+      item.priced = opts.priced
+    }
+    saveState(state)
+    return true
+  })
 }
 
 /**
@@ -66,6 +92,7 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
         amount: opts.amount > 0 ? opts.amount : existing.amount,
         // Keep a previously known price when a failed attempt reports null (unknown) (Part1-6).
         usd: opts.usd != null ? opts.usd : existing.usd,
+        priced: opts.usd != null ? true : (opts.priced ?? existing.priced),
         pool_address: opts.pool_address || existing.pool_address,
         position: opts.position || existing.position || null,
         last_attempt_at: now,
@@ -79,6 +106,7 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
         symbol: opts.symbol,
         amount: opts.amount,
         usd: opts.usd ?? null,
+        priced: opts.priced ?? opts.usd != null,
         pool_address: opts.pool_address || null,
         position: opts.position || null,
         added_at: now,

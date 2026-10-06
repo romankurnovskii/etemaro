@@ -10,6 +10,7 @@ import {
   markLiquidationDust,
   markLiquidationSuccess,
   pruneSettledLiquidations,
+  refreshPendingLiquidation,
 } from './liquidation-queue.js'
 import { __setStateFilePath } from './state.js'
 
@@ -157,6 +158,28 @@ describe('Liquidation Queue Domain', () => {
     await enqueuePendingLiquidation({ mint: 'MintGone', symbol: 'GONE', amount: 1, usd: 1 })
     await markLiquidationSuccess('MintGone', { reason: 'wallet_empty' })
     expect(getPendingLiquidation('MintGone')?.reason).toBe('wallet_empty')
+  })
+
+  it('records priced=false for unpriced entries and priced=true for a $0 price', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintUnpriced', amount: 1, usd: null })
+    expect(getPendingLiquidation('MintUnpriced')?.priced).toBe(false)
+
+    await enqueuePendingLiquidation({ mint: 'MintZero', amount: 1, usd: 0 })
+    expect(getPendingLiquidation('MintZero')?.priced).toBe(true)
+  })
+
+  it('refreshes pending amount/usd without touching status or erasing a known price', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintRefresh', symbol: 'REF', amount: 10, usd: 1 })
+
+    await refreshPendingLiquidation('MintRefresh', { amount: 5, usd: 2 })
+    const item = getPendingLiquidation('MintRefresh')
+    expect(item?.amount).toBe(5)
+    expect(item?.usd).toBe(2)
+    expect(item?.status).toBe('pending')
+
+    // An unknown (undefined) live price must not erase the known value (Part1-6).
+    await refreshPendingLiquidation('MintRefresh', { usd: undefined })
+    expect(getPendingLiquidation('MintRefresh')?.usd).toBe(2)
   })
 
   it('marks liquidation as successful', async () => {

@@ -37,6 +37,7 @@ import {
   markLiquidationDust,
   markLiquidationSuccess,
   pruneSettledLiquidations,
+  refreshPendingLiquidation,
 } from '../domain/liquidation-queue.js'
 import { addPoolNote, getPoolMemory } from '../domain/pool-memory.js'
 import {
@@ -1023,6 +1024,13 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
       skipped++
       continue
     }
+
+    // Refresh the frozen enqueue-time snapshot with the live balance (Part1-3). A null
+    // live price leaves the previously known value intact (Part1-6).
+    await refreshPendingLiquidation(item.mint, {
+      amount: currentToken.balance,
+      usd: currentToken.usd != null ? currentToken.usd : undefined,
+    }).catch(() => {})
 
     const isDust = typeof currentToken.usd === 'number' && currentToken.usd >= 0 && currentToken.usd < minUsd
     const isRawDust = !isDust && isUnpriceableRawUnitDust(currentToken)
