@@ -68,6 +68,25 @@ describe('pool-memory — stop-loss cooldown', () => {
     expect(recallForPool('PoolNull2')).toContain('RECENT TREND')
   })
 
+  it('computes PnL drift from non-null endpoints (R1)', () => {
+    recordPositionSnapshot('PoolR1', { position: 'p1', pnl_pct: null, in_range: true })
+    recordPositionSnapshot('PoolR1', { position: 'p1', pnl_pct: 2, in_range: true })
+    recordPositionSnapshot('PoolR1', { position: 'p1', pnl_pct: 5, in_range: true })
+
+    expect(recallForPool('PoolR1')).toContain('PnL drift +3.00%')
+  })
+
+  it('scopes the recent trend to the most recent position (R2)', () => {
+    recordPositionSnapshot('PoolR2', { position: 'p-old', pnl_pct: 100, in_range: true })
+    recordPositionSnapshot('PoolR2', { position: 'p-old', pnl_pct: 200, in_range: true })
+    recordPositionSnapshot('PoolR2', { position: 'p-new', pnl_pct: 1, in_range: true })
+    recordPositionSnapshot('PoolR2', { position: 'p-new', pnl_pct: 3, in_range: true })
+
+    const recall = recallForPool('PoolR2')
+    expect(recall).toContain('PnL drift +2.00%')
+    expect(recall).toContain('over last 2 cycles')
+  })
+
   it('sets pool + base-mint cooldown on stop-loss close', () => {
     recordPoolDeploy('PoolA', {
       pool_name: 'GOBLIN-SOL',

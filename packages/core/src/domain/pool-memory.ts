@@ -431,12 +431,17 @@ export function recallForPool(poolAddress: string): string | null {
     )
   }
 
-  // Recent snapshot trend (last 6 = ~30min)
-  const snaps = (entry.snapshots || []).slice(-6)
+  // Recent snapshot trend (last 6 = ~30min). Scope to the most recent position so a
+  // rapid redeploy cannot mix two positions' trajectories (R2).
+  const allSnaps = entry.snapshots || []
+  const latestPosition = allSnaps.length > 0 ? allSnaps[allSnaps.length - 1]?.position : undefined
+  const scopedSnaps = latestPosition ? allSnaps.filter((s) => s.position === latestPosition) : allSnaps
+  const snaps = scopedSnaps.slice(-6)
   if (snaps.length >= 2) {
-    const first = snaps[0]!
-    const last = snaps[snaps.length - 1]!
-    const pnlTrend = last.pnl_pct != null && first.pnl_pct != null ? (last.pnl_pct - first.pnl_pct).toFixed(2) : null
+    // Drift uses the first/last non-null PnL so one null deploy marker does not blank
+    // the trend (R1).
+    const pnlValues = snaps.map((s) => s.pnl_pct).filter((v): v is number => v != null)
+    const pnlTrend = pnlValues.length >= 2 ? (pnlValues[pnlValues.length - 1]! - pnlValues[0]!).toFixed(2) : null
     // Unknown in_range (null) is not evidence of being in range: exclude it from the
     // denominator and surface it separately so OOR drift is not understated (D5).
     const knownRange = snaps.filter((s) => s.in_range != null)
