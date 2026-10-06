@@ -29,7 +29,11 @@ import { getSharedLessonsForPrompt, pushHiveLesson, pushHivePerformanceEvent } f
 const LESSONS_FILE = dataPath('lessons.json')
 
 function load(): LessonsData {
-  return readStateFile<LessonsData>(LESSONS_FILE, { lessons: [], performance: [] })
+  return readStateFile<LessonsData>(
+    LESSONS_FILE,
+    { lessons: [], performance: [] },
+    { label: 'lessons', backupOnCorrupt: true },
+  )
 }
 
 function save(data: LessonsData): void {

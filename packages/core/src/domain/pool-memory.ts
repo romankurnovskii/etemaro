@@ -30,7 +30,7 @@ type PoolMemoryDb = Record<string, PoolMemoryEntry>
 
 function load(): PoolMemoryDb {
   const file = _poolMemoryFilePath || POOL_MEMORY_FILE
-  return readStateFile<PoolMemoryDb>(file, {})
+  return readStateFile<PoolMemoryDb>(file, {}, { label: 'pool-memory', backupOnCorrupt: true })
 }
 
 function save(data: PoolMemoryDb): void {
