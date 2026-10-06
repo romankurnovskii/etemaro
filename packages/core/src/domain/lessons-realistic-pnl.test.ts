@@ -679,4 +679,41 @@ describe('REGRESSION: reconcileOrphanedPendingSwaps clears stale closed_pending_
     expect(summaryAfter.pending_swaps_count).toBe(1) // only STILL_PENDING_MINT
     expect(summaryAfter.unrealized_residual_usd).toBe(40)
   })
+
+  it('records the orphan write-down loss into pool-memory deploys[] exactly once', async () => {
+    const { reconcileOrphanedPendingSwaps } = await import('./lessons.js')
+    await recordPerformance({
+      position: 'pos-pm-1',
+      pool: 'pool-pm-1',
+      pool_name: 'PM-SOL',
+      base_mint: 'mint-pm-1',
+      liquidation_mint: 'mint-pm-1',
+      strategy: 'spot',
+      bin_range: 20,
+      bin_step: 10,
+      volatility: 0.5,
+      fee_tvl_ratio: 0.1,
+      organic_score: 50,
+      amount_sol: 1.0,
+      initial_value_usd: 100,
+      final_value_usd: 50,
+      fees_earned_usd: 0,
+      minutes_in_range: 20,
+      minutes_held: 40,
+      close_reason: 'agent decision',
+      status: 'closed_pending_swap',
+      cash_realized_sol: 0.3,
+      cash_realized_usd: 30,
+      unrealized_residual_usd: 20,
+      unrealized_tokens_amount: 3000,
+    })
+
+    await reconcileOrphanedPendingSwaps(new Set())
+    await reconcileOrphanedPendingSwaps(new Set())
+
+    const pm = JSON.parse(fs.readFileSync(path.join(tmpDir, 'pool-memory.json'), 'utf-8'))
+    expect(pm['pool-pm-1'].deploys).toHaveLength(1)
+    expect(pm['pool-pm-1'].deploys[0].pnl_pct).toBeLessThan(0)
+    expect(pm['pool-pm-1'].win_rate).toBe(0)
+  })
 })
