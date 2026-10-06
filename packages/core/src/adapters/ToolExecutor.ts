@@ -1019,7 +1019,7 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
     total++
     const currentToken = (balances.tokens as any[])?.find((t: any) => t.mint === item.mint)
     if (!currentToken || (currentToken.balance ?? 0) <= 0) {
-      await markLiquidationSuccess(item.mint).catch(() => {})
+      await markLiquidationSuccess(item.mint, { reason: 'wallet_empty' }).catch(() => {})
       skipped++
       continue
     }

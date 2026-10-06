@@ -737,6 +737,12 @@ export interface PendingLiquidation {
   status: 'pending' | 'liquidated' | 'abandoned' | 'dust'
   last_error?: string | null
   last_error_code?: string | null
+  /** Settlement details for terminal entries (Part1-1). */
+  liquidated_at?: string | null
+  tx?: string | null
+  amount_out_sol?: number | null
+  /** Why the token left the wallet: swapped out or already absent (Part1-2). */
+  reason?: 'swapped' | 'wallet_empty' | null
 }
 
 export interface StrategyConfig {

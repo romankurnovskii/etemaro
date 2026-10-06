@@ -142,6 +142,23 @@ describe('Liquidation Queue Domain', () => {
     expect(item?.last_error).toBe('Zero pool liquidity')
   })
 
+  it('persists settlement details and the swapped reason on success', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintSettle', symbol: 'SET', amount: 10, usd: 5 })
+    await markLiquidationSuccess('MintSettle', { tx: 'tx-settle-1', amountOutSol: 0.25, reason: 'swapped' })
+
+    const item = getPendingLiquidation('MintSettle')
+    expect(item?.liquidated_at).toBeTruthy()
+    expect(item?.tx).toBe('tx-settle-1')
+    expect(item?.amount_out_sol).toBe(0.25)
+    expect(item?.reason).toBe('swapped')
+  })
+
+  it('records wallet_empty as the reason when the token is already gone', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintGone', symbol: 'GONE', amount: 1, usd: 1 })
+    await markLiquidationSuccess('MintGone', { reason: 'wallet_empty' })
+    expect(getPendingLiquidation('MintGone')?.reason).toBe('wallet_empty')
+  })
+
   it('marks liquidation as successful', async () => {
     await enqueuePendingLiquidation({
       mint: 'MintD',

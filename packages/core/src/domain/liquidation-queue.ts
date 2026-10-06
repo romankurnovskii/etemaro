@@ -108,7 +108,7 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
 export async function markLiquidationSuccess(
   mint: string,
   /** @param opts.amountOutSol — Amount received in SOL (human-readable, NOT lamports). */
-  opts: { tx?: string; amountOutSol?: number } = {},
+  opts: { tx?: string; amountOutSol?: number; reason?: 'swapped' | 'wallet_empty' } = {},
 ): Promise<boolean> {
   let position: string | null = null
   const success = await withStateLock(() => {
@@ -120,6 +120,11 @@ export async function markLiquidationSuccess(
     item.status = 'liquidated'
     item.last_attempt_at = new Date().toISOString()
     item.last_error = null
+    // Persist settlement details + why the token left the wallet (Part1-1/2).
+    item.liquidated_at = item.last_attempt_at
+    item.tx = opts.tx ?? null
+    item.amount_out_sol = opts.amountOutSol ?? null
+    item.reason = opts.reason ?? 'swapped'
     saveState(state)
 
     log(
