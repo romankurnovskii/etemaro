@@ -34,6 +34,7 @@ import {
   getPendingLiquidation,
   getPendingLiquidations,
   markLiquidationAttempt,
+  markLiquidationDust,
   markLiquidationSuccess,
   pruneSettledLiquidations,
 } from '../domain/liquidation-queue.js'
@@ -1026,6 +1027,11 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
     const isDust = typeof currentToken.usd === 'number' && currentToken.usd >= 0 && currentToken.usd < minUsd
     const isRawDust = !isDust && isUnpriceableRawUnitDust(currentToken)
     if (isDust || isRawDust) {
+      await markLiquidationDust(item.mint, {
+        reason: isRawDust
+          ? `skipped unpriceable raw-unit dust (<= ${UNPRICEABLE_RAW_UNIT_DUST_FLOOR} atomic unit)`
+          : `skipped dust (< $${minUsd.toFixed(2)})`,
+      }).catch(() => {})
       skipped++
       results.push({
         mint: item.mint,

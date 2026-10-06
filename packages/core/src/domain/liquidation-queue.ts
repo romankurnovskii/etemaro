@@ -24,13 +24,13 @@ export interface EnqueueLiquidationOpts {
   position?: string | null
   error?: string
   errorCode?: string | null
-  status?: 'pending' | 'liquidated' | 'abandoned'
+  status?: 'pending' | 'liquidated' | 'abandoned' | 'dust'
 }
 
 /**
  * Retrieve all tracked liquidations, optionally filtered by status.
  */
-export function getPendingLiquidations(filter?: 'pending' | 'liquidated' | 'abandoned'): PendingLiquidation[] {
+export function getPendingLiquidations(filter?: 'pending' | 'liquidated' | 'abandoned' | 'dust'): PendingLiquidation[] {
   const state = loadState()
   const list = Object.values(state.pendingLiquidations || {})
   if (!filter) return list
@@ -213,6 +213,26 @@ export async function markLiquidationAttempt(
 }
 
 /**
+ * Mark a dust-skipped entry with a terminal `dust` status so it no longer sits
+ * in `pending` forever (Part1-5).
+ */
+export async function markLiquidationDust(mint: string, opts: { reason?: string } = {}): Promise<boolean> {
+  return withStateLock(() => {
+    const state = loadState()
+    const item = state.pendingLiquidations?.[mint]
+    if (!item) return false
+
+    item.status = 'dust'
+    item.last_attempt_at = new Date().toISOString()
+    item.last_error = opts.reason || 'skipped as dust'
+    saveState(state)
+
+    log('state', `Marked dust: ${item.symbol || mint.slice(0, 8)} (${item.last_error})`)
+    return true
+  })
+}
+
+/**
  * Prune old settled (liquidated or abandoned) entries from the liquidation queue.
  *
  * `preserveAbandonedMints` keeps `abandoned` tombstones alive for mints that are
@@ -235,7 +255,7 @@ export async function pruneSettledLiquidations(
 
     for (const [mint, item] of Object.entries(state.pendingLiquidations)) {
       if (item.status === 'pending') continue
-      if (item.status === 'abandoned' && preserve.has(mint)) {
+      if ((item.status === 'abandoned' || item.status === 'dust') && preserve.has(mint)) {
         preserved++
         continue
       }
