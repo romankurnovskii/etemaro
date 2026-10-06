@@ -4,8 +4,10 @@ import path from 'node:path'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   __setPoolMemoryFilePath,
+  getPoolMemory,
   isBaseMintOnCooldown,
   isPoolOnCooldown,
+  recallForPool,
   recordPoolDeploy,
 } from '../domain/pool-memory.js'
 
@@ -55,5 +57,13 @@ describe('pool-memory — stop-loss cooldown', () => {
     })
 
     expect(isPoolOnCooldown('PoolC')).toBe(true)
+  })
+
+  it('reports win rate as percent (1 win + 1 loss = 50%) in recall and getPoolMemory', () => {
+    recordPoolDeploy('PoolW', { pool_name: 'W/SOL', base_mint: 'WMint', pnl_pct: 5, close_reason: 'agent decision' })
+    recordPoolDeploy('PoolW', { pool_name: 'W/SOL', base_mint: 'WMint', pnl_pct: -5, close_reason: 'agent decision' })
+
+    expect(recallForPool('PoolW')).toContain('win rate 50%')
+    expect((getPoolMemory({ pool_address: 'PoolW' }) as any).win_rate_pct).toBe(50)
   })
 })
