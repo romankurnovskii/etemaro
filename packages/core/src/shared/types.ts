@@ -729,6 +729,8 @@ export interface PendingLiquidation {
   symbol?: string
   amount: number
   usd?: number | null
+  /** True when `usd` came from a price lookup (0 is a real price); false when unpriced (Part1-4). */
+  priced?: boolean
   pool_address?: string | null
   position?: string | null
   added_at: string
