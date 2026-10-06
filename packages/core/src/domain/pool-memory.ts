@@ -304,6 +304,7 @@ export function getPoolMemory({ pool_address }: GetPoolMemoryOpts): Record<strin
     total_deploys: entry.total_deploys,
     avg_pnl_pct: entry.avg_pnl_pct,
     win_rate: entry.win_rate,
+    win_rate_pct: Math.round((entry.win_rate ?? 0) * 100),
     adjusted_win_rate: entry.adjusted_win_rate ?? 0,
     adjusted_win_rate_sample_count: entry.adjusted_win_rate_sample_count ?? 0,
     last_deployed_at: entry.last_deployed_at,
@@ -402,7 +403,7 @@ export function recallForPool(poolAddress: string): string | null {
   // Deploy history summary
   if (entry.total_deploys > 0) {
     lines.push(
-      `POOL MEMORY [${entry.name}]: ${entry.total_deploys} past deploy(s), avg PnL ${entry.avg_pnl_pct}%, win rate ${entry.win_rate}%, last outcome: ${entry.last_outcome}`,
+      `POOL MEMORY [${entry.name}]: ${entry.total_deploys} past deploy(s), avg PnL ${entry.avg_pnl_pct}%, win rate ${Math.round((entry.win_rate ?? 0) * 100)}%, last outcome: ${entry.last_outcome}`,
     )
   }
 
