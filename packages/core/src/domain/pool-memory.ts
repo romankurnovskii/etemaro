@@ -336,6 +336,18 @@ export interface PositionSnapshotData {
  */
 export function recordPositionSnapshot(poolAddress: string, snapshot: PositionSnapshotData): void {
   if (!poolAddress) return
+
+  // Deploy-time markers ({ position, pair } only) carry no measurements. Skipping them
+  // keeps the 48-snapshot ring buffer and pool_metrics free of all-null rows (Part 2, option 2).
+  const hasMetrics =
+    snapshot.pnl_pct != null ||
+    snapshot.pnl_usd != null ||
+    snapshot.in_range != null ||
+    snapshot.unclaimed_fees_usd != null ||
+    snapshot.minutes_out_of_range != null ||
+    snapshot.age_minutes != null
+  if (!hasMetrics) return
+
   const db = load()
 
   if (!db[poolAddress]) {
