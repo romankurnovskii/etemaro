@@ -1000,6 +1000,36 @@ export async function reconcileOrphanedPendingSwaps(pendingMints: Set<string>): 
     rec.pnl_usd = Math.round(pnl_usd * 100) / 100
     rec.pnl_pct = Math.round(pnl_pct * 100) / 100
 
+    // Pending records skip recordPoolDeploy at close; without this the loss never
+    // reaches pool-memory deploys[] (survivorship bias in win rate / recall).
+    // Idempotent: the record leaves closed_pending_swap on this pass.
+    if (rec.pool) {
+      try {
+        const { recordPoolDeploy } = await import('./pool-memory.js')
+        recordPoolDeploy(rec.pool, {
+          pool_name: rec.pool_name,
+          base_mint: rec.base_mint,
+          deployed_at: rec.deployed_at,
+          closed_at: now,
+          price_pnl_usd: rec.price_pnl_usd,
+          price_pnl_pct: rec.price_pnl_pct,
+          net_pnl_usd: rec.net_pnl_usd,
+          pnl_pct: rec.pnl_pct,
+          pnl_usd: rec.pnl_usd,
+          range_efficiency: rec.range_efficiency,
+          minutes_held: rec.minutes_held,
+          fees_earned_usd: rec.fees_earned_usd,
+          fees_earned_sol: rec.fees_earned_sol,
+          fee_earned_pct: rec.initial_value_usd > 0 ? ((rec.fees_earned_usd || 0) / rec.initial_value_usd) * 100 : null,
+          close_reason: rec.close_reason || 'abandoned_liquidation (orphaned write-down)',
+          strategy: rec.strategy,
+          volatility: rec.volatility,
+        })
+      } catch {
+        // pool-memory is best-effort
+      }
+    }
+
     reconciled++
   }
 
