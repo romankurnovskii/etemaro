@@ -34,6 +34,20 @@ describe('pool-memory — stop-loss cooldown', () => {
     expect(backups.length).toBeGreaterThanOrEqual(1)
   })
 
+  it('stores the deploy time (not the close time) in last_deployed_at', () => {
+    recordPoolDeploy('PoolD', {
+      pool_name: 'D/SOL',
+      base_mint: 'DMint',
+      pnl_pct: 1,
+      deployed_at: '2026-10-01T00:00:00.000Z',
+      closed_at: '2026-10-02T00:00:00.000Z',
+      close_reason: 'agent decision',
+    })
+
+    const memory = getPoolMemory({ pool_address: 'PoolD' }) as any
+    expect(memory.last_deployed_at).toBe('2026-10-01T00:00:00.000Z')
+  })
+
   it('sets pool + base-mint cooldown on stop-loss close', () => {
     recordPoolDeploy('PoolA', {
       pool_name: 'GOBLIN-SOL',
