@@ -59,6 +59,15 @@ describe('pool-memory — stop-loss cooldown', () => {
     expect(recall).toContain('(1 unknown)')
   })
 
+  it('skips all-nullish deploy-marker snapshots', () => {
+    recordPositionSnapshot('PoolNull', { position: 'p1', pair: 'NULL/SOL' })
+    recordPositionSnapshot('PoolNull2', { position: 'p1', pnl_pct: 1, in_range: true })
+    recordPositionSnapshot('PoolNull2', { position: 'p1', pnl_pct: 2, in_range: true })
+
+    expect(recallForPool('PoolNull')).toBeNull()
+    expect(recallForPool('PoolNull2')).toContain('RECENT TREND')
+  })
+
   it('sets pool + base-mint cooldown on stop-loss close', () => {
     recordPoolDeploy('PoolA', {
       pool_name: 'GOBLIN-SOL',
