@@ -160,6 +160,8 @@ export interface WalletBalancesResult {
   }>
   total_usd: number
   error?: string
+  /** True when a token-program scan (e.g. Token-2022) failed, so tokens may be incomplete. */
+  scan_incomplete?: boolean
 }
 
 export interface PortfolioSummaryResult {

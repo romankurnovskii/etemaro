@@ -1094,18 +1094,29 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
 
   // Prune older settled entries, but keep abandoned tombstones for tokens still
   // held in the wallet so reconciliation cannot re-enqueue and re-alert them.
-  const heldMints = new Set((balances.tokens as any[]).filter((t) => (t.balance ?? 0) > 0).map((t) => t.mint as string))
-  await pruneSettledLiquidations(24, { preserveAbandonedMints: heldMints }).catch(() => {})
+  const scanIncomplete = balances.scan_incomplete === true
+  if (scanIncomplete) {
+    log('executor_warn', 'Wallet scan incomplete (Token-2022) — preserving tombstones, skipping prune')
+  } else {
+    const heldMints = new Set(
+      (balances.tokens as any[]).filter((t) => (t.balance ?? 0) > 0).map((t) => t.mint as string),
+    )
+    await pruneSettledLiquidations(24, { preserveAbandonedMints: heldMints }).catch(() => {})
+  }
 
   // Reconcile any closed_pending_swap performance records whose mint is no longer
   // actively pending in the liquidation queue. Catches swaps that completed inline
   // at position-close time but left sibling records stuck in closed_pending_swap.
-  try {
-    const { reconcileOrphanedPendingSwaps } = await import('../domain/lessons.js')
-    const activePendingMints = new Set(getPendingLiquidations('pending').map((item) => item.mint))
-    await reconcileOrphanedPendingSwaps(activePendingMints)
-  } catch (err: any) {
-    log('state_warn', `reconcileOrphanedPendingSwaps failed: ${err?.message || err}`)
+  if (scanIncomplete) {
+    log('executor_warn', 'Wallet scan incomplete (Token-2022) — skipping orphaned swap reconciliation')
+  } else {
+    try {
+      const { reconcileOrphanedPendingSwaps } = await import('../domain/lessons.js')
+      const activePendingMints = new Set(getPendingLiquidations('pending').map((item) => item.mint))
+      await reconcileOrphanedPendingSwaps(activePendingMints)
+    } catch (err: any) {
+      log('state_warn', `reconcileOrphanedPendingSwaps failed: ${err?.message || err}`)
+    }
   }
 
   logAction({
