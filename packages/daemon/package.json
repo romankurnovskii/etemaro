@@ -12,11 +12,11 @@
   "dependencies": {
     "@etemaro/core": "workspace:*",
     "dotenv": "^18.0.4",
-    "ws": "^8.21.3"
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
-    "@types/ws": "^8.18.1",
+    "@types/ws": "^8.18.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
