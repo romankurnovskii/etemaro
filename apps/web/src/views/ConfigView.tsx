@@ -5,6 +5,15 @@ import type { ManagedAgent } from '../lib/ipc'
 function ConfigField({ name, value, onChange }: { name: string; value: unknown; onChange: (v: unknown) => void }) {
   const type = typeof value
   const inputId = `config-field-${name}`
+  // Local draft keeps intermediate invalid JSON edits without discarding user input
+  const [draft, setDraft] = useState(() => (type === 'object' && value !== null ? JSON.stringify(value, null, 2) : ''))
+  const [jsonError, setJsonError] = useState<string | null>(null)
+
+  // Sync draft when value changes from outside (e.g. on Reset)
+  useEffect(() => {
+    if (type === 'object' && value !== null) setDraft(JSON.stringify(value, null, 2))
+  }, [value, type])
+
   let input: ReactNode
   if (type === 'boolean') {
     input = <input id={inputId} type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />
@@ -19,16 +28,23 @@ function ConfigField({ name, value, onChange }: { name: string; value: unknown; 
     )
   } else if (type === 'object' && value !== null) {
     input = (
-      <textarea
-        id={inputId}
-        value={JSON.stringify(value, null, 2)}
-        onChange={(e) => {
-          try {
-            onChange(JSON.parse(e.target.value))
-          } catch {}
-        }}
-        style={{ width: '100%', minHeight: '80px', fontFamily: 'monospace', fontSize: '12px' }}
-      />
+      <>
+        <textarea
+          id={inputId}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            try {
+              onChange(JSON.parse(e.target.value))
+              setJsonError(null)
+            } catch {
+              setJsonError('Invalid JSON — fix before saving')
+            }
+          }}
+          style={{ width: '100%', minHeight: '80px', fontFamily: 'monospace', fontSize: '12px' }}
+        />
+        {jsonError && <div className="error small">{jsonError}</div>}
+      </>
     )
   } else {
     input = <input id={inputId} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
