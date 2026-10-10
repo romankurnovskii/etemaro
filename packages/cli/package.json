@@ -13,7 +13,7 @@
   },
   "files": ["dist"],
   "dependencies": {
-    "ink": "^7.1.1",
+    "ink": "^8.0.0",
     "ink-text-input": "^6.0.0",
     "react": "^19.3.0",
     "ws": "^8.21.3"
