@@ -1,5 +1,5 @@
 import { type IpcLogEntry, type IpcMessage, IpcMessageType, type IpcStateSnapshot } from '@etemaro/core'
-import { Box, useApp, useInput, useStdout } from 'ink'
+import { Box, useApp, useInput, useWindowSize } from 'ink'
 import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
 import WebSocket from 'ws'
@@ -28,8 +28,7 @@ export function isRecentWheelEvent(thresholdMs = 350): boolean {
 
 export const App: React.FC<AppProps> = ({ socketPath, port = 8765, token, agentId = 'default' }) => {
   const { exit } = useApp()
-  const { stdout } = useStdout()
-  const [terminalRows, setTerminalRows] = useState(stdout?.rows || 24)
+  const { rows: terminalRows } = useWindowSize()
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(true)
   const [reconnectAttempts, setReconnectAttempts] = useState(0)
@@ -41,16 +40,6 @@ export const App: React.FC<AppProps> = ({ socketPath, port = 8765, token, agentI
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const attemptsRef = useRef(0)
   const isUnmountedRef = useRef(false)
-
-  // Track terminal window resize
-  useEffect(() => {
-    if (!stdout) return
-    const onResize = () => setTerminalRows(stdout.rows)
-    stdout.on('resize', onResize)
-    return () => {
-      stdout.off('resize', onResize)
-    }
-  }, [stdout])
 
   // Calculate visible log rows based on terminal height and actual chrome lines
   // to ensure total rendered lines never exceed terminalRows (preventing terminal scrolling/header overlap)
