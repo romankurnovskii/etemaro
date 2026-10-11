@@ -530,6 +530,7 @@ describe('ToolExecutor - swapBaseToSolWithRetry', () => {
     const row = result.results.find((r: any) => r.mint === dustMint)
     expect(row?.reason).toContain('dust')
     expect(result.skipped).toBeGreaterThanOrEqual(1)
+    expect(getPendingLiquidation(dustMint)?.status).toBe('dust')
   })
 
   it('does not re-enqueue or re-alert an abandoned mint still held in the wallet (AC1)', async () => {
@@ -1309,6 +1310,32 @@ describe('ToolExecutor - Unsold Token Lifecycle & Sweeper', () => {
         input_mint: dustMint,
       }),
     )
+  })
+
+  it('sweep_unsold_tokens skips prune and orphan reconcile when scan_incomplete is true', async () => {
+    vi.mocked(WalletAdapter.getWalletBalances).mockResolvedValue({
+      sol_price: 150,
+      tokens: [],
+      scan_incomplete: true,
+    } as any)
+
+    // Using sweepUnsoldTokensUnlocked directly since it's exported and contains the logic
+    const { sweepUnsoldTokensUnlocked } = await import('./ToolExecutor.js')
+
+    // We expect log warnings and no calls to pruneSettledLiquidations/reconcileOrphanedPendingSwaps
+    // But since they are internally imported/called in ToolExecutor, we verify it finishes without error
+    const lessonsModule = await import('../domain/lessons.js')
+    const queueModule = await import('../domain/liquidation-queue.js')
+    const reconcileSpy = vi.spyOn(lessonsModule, 'reconcileOrphanedPendingSwaps')
+    const pruneSpy = vi.spyOn(queueModule, 'pruneSettledLiquidations')
+
+    await sweepUnsoldTokensUnlocked()
+
+    expect(reconcileSpy).not.toHaveBeenCalled()
+    expect(pruneSpy).not.toHaveBeenCalled()
+
+    reconcileSpy.mockRestore()
+    pruneSpy.mockRestore()
   })
 
   it('get_pending_liquidations tool inspects queue via executeTool', async () => {

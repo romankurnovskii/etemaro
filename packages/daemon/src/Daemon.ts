@@ -48,6 +48,7 @@ import {
   loadJsonFileWithInfo,
   log,
   meteora,
+  REPO_ROOT,
   registerExitSignal,
   repoPath,
   resetConsecutiveSwapFailures,
@@ -69,6 +70,7 @@ import {
   updatePnlAndCheckExits,
 } from '@etemaro/core'
 import cron from 'node-cron'
+import { resolveBuildId } from './buildInfo.js'
 import { createDaemonAdapters } from './composition.js'
 
 export { createAgentLoopDeps, createDaemonAdapters } from './composition.js'
@@ -428,6 +430,7 @@ export class Daemon {
   async start(options: { tty?: boolean } = {}): Promise<void> {
     log('startup', 'DLMM LP Agent starting...')
     log('startup', `Repo: ${process.cwd()}`)
+    log('startup', `Build: ${resolveBuildId(REPO_ROOT)}`)
 
     // === Config Source & Mode ===
     const dataDir = getDataDir()

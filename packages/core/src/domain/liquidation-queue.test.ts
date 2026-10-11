@@ -7,8 +7,10 @@ import {
   getPendingLiquidation,
   getPendingLiquidations,
   markLiquidationAttempt,
+  markLiquidationDust,
   markLiquidationSuccess,
   pruneSettledLiquidations,
+  refreshPendingLiquidation,
 } from './liquidation-queue.js'
 import { __setStateFilePath } from './state.js'
 
@@ -52,6 +54,29 @@ describe('Liquidation Queue Domain', () => {
 
     const all = getPendingLiquidations('pending')
     expect(all.length).toBe(1)
+  })
+
+  it('does not overwrite a known usd with null on a failed re-enqueue', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintKeep', symbol: 'KEEP', amount: 100, usd: 12.5 })
+
+    await enqueuePendingLiquidation({ mint: 'MintKeep', amount: 100, usd: null, error: 'swap failed' })
+    expect(getPendingLiquidation('MintKeep')?.usd).toBe(12.5)
+
+    // A real value (including 0) still overwrites.
+    await enqueuePendingLiquidation({ mint: 'MintKeep', amount: 100, usd: 0 })
+    expect(getPendingLiquidation('MintKeep')?.usd).toBe(0)
+  })
+
+  it('marks a dust-skipped entry with a terminal dust status', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintDust', symbol: 'DUST', amount: 1, usd: 0.001 })
+    expect(getPendingLiquidation('MintDust')?.status).toBe('pending')
+
+    const ok = await markLiquidationDust('MintDust', { reason: 'skipped dust (< $0.02)' })
+    expect(ok).toBe(true)
+
+    const item = getPendingLiquidation('MintDust')
+    expect(item?.status).toBe('dust')
+    expect(item?.last_error).toContain('dust')
   })
 
   it('re-enqueuing an existing token updates details and resets status to pending', async () => {
@@ -116,6 +141,45 @@ describe('Liquidation Queue Domain', () => {
     const item = getPendingLiquidation('MintC')
     expect(item?.status).toBe('abandoned')
     expect(item?.last_error).toBe('Zero pool liquidity')
+  })
+
+  it('persists settlement details and the swapped reason on success', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintSettle', symbol: 'SET', amount: 10, usd: 5 })
+    await markLiquidationSuccess('MintSettle', { tx: 'tx-settle-1', amountOutSol: 0.25, reason: 'swapped' })
+
+    const item = getPendingLiquidation('MintSettle')
+    expect(item?.liquidated_at).toBeTruthy()
+    expect(item?.tx).toBe('tx-settle-1')
+    expect(item?.amount_out_sol).toBe(0.25)
+    expect(item?.reason).toBe('swapped')
+  })
+
+  it('records wallet_empty as the reason when the token is already gone', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintGone', symbol: 'GONE', amount: 1, usd: 1 })
+    await markLiquidationSuccess('MintGone', { reason: 'wallet_empty' })
+    expect(getPendingLiquidation('MintGone')?.reason).toBe('wallet_empty')
+  })
+
+  it('records priced=false for unpriced entries and priced=true for a $0 price', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintUnpriced', amount: 1, usd: null })
+    expect(getPendingLiquidation('MintUnpriced')?.priced).toBe(false)
+
+    await enqueuePendingLiquidation({ mint: 'MintZero', amount: 1, usd: 0 })
+    expect(getPendingLiquidation('MintZero')?.priced).toBe(true)
+  })
+
+  it('refreshes pending amount/usd without touching status or erasing a known price', async () => {
+    await enqueuePendingLiquidation({ mint: 'MintRefresh', symbol: 'REF', amount: 10, usd: 1 })
+
+    await refreshPendingLiquidation('MintRefresh', { amount: 5, usd: 2 })
+    const item = getPendingLiquidation('MintRefresh')
+    expect(item?.amount).toBe(5)
+    expect(item?.usd).toBe(2)
+    expect(item?.status).toBe('pending')
+
+    // An unknown (undefined) live price must not erase the known value (Part1-6).
+    await refreshPendingLiquidation('MintRefresh', { usd: undefined })
+    expect(getPendingLiquidation('MintRefresh')?.usd).toBe(2)
   })
 
   it('marks liquidation as successful', async () => {

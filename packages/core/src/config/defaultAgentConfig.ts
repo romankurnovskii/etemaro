@@ -83,7 +83,7 @@ export const DEFAULT_AGENT_CONFIG: AgentConfigRaw = {
     repeatDeployCooldownEnabled: true,
     repeatDeployCooldownTriggerCount: 3,
     repeatDeployCooldownHours: 12,
-    repeatDeployCooldownScope: 'token',
+    repeatDeployCooldownScope: 'both',
     repeatDeployCooldownMinFeeEarnedPct: 0,
     minVolumeToRebalance: 1000,
     stopLossPct: -50,

@@ -104,6 +104,19 @@ describe('loadJsonFile — missing vs corrupt file handling', () => {
     )
   })
 
+  it('backs up a corrupt file when backupOnCorrupt is true', async () => {
+    const { loadJsonFile } = await import('./utils.js')
+    const target = path.join(tmpDir, 'corrupt-backup.json')
+    fs.writeFileSync(target, '{ bad json syntax !!!')
+
+    const result = loadJsonFile(target, { fallback: 1 }, { label: 'pool-memory', backupOnCorrupt: true })
+    expect(result).toEqual({ fallback: 1 })
+    expect(fs.existsSync(target)).toBe(false)
+    const backups = fs.readdirSync(tmpDir).filter((f) => f.startsWith('corrupt-backup.json.corrupt-'))
+    expect(backups).toHaveLength(1)
+    expect(fs.readFileSync(path.join(tmpDir, backups[0]!), 'utf8')).toContain('bad json syntax')
+  })
+
   it('correctly parses and returns valid JSON', async () => {
     const { loadJsonFile } = await import('./utils.js')
     const target = path.join(tmpDir, 'valid.json')

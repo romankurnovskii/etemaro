@@ -24,6 +24,15 @@ describe('pool-metrics domain', () => {
     }
   })
 
+  it('backs up corrupt pool-metrics state instead of silently resetting it', () => {
+    const file = getPoolMetricFile('pool_corrupt', 'pos_corrupt')
+    fs.writeFileSync(file, '{ corrupt metrics')
+    expect(readPoolMetrics('pool_corrupt', 'pos_corrupt')).toEqual([])
+    expect(fs.existsSync(file)).toBe(false)
+    const backups = fs.readdirSync(path.dirname(file)).filter((f) => f.startsWith(`${path.basename(file)}.corrupt-`))
+    expect(backups.length).toBeGreaterThanOrEqual(1)
+  })
+
   it('creates the pool_metrics directory automatically on first write', () => {
     expect(fs.existsSync(tempDir)).toBe(true)
     recordPoolMetric('pool_A', {
@@ -96,5 +105,22 @@ describe('pool-metrics domain', () => {
     const metrics = readPoolMetrics('pool/with/slashes', 'pos:special#chars')
     expect(metrics).toHaveLength(1)
     expect(metrics[0]?.pair).toBe('FOO/SOL')
+  })
+
+  it('caps metric rows at 288 to prevent unbounded growth', () => {
+    for (let i = 0; i < 300; i++) {
+      recordPoolMetric('pool_limit', {
+        position: 'pos_limit',
+        pair: 'LIMIT/SOL',
+        pnl_pct: i,
+      })
+    }
+
+    const metrics = readPoolMetrics('pool_limit', 'pos_limit')
+    expect(metrics).toHaveLength(288)
+    // The oldest 12 should be removed (0 to 11). The first one left should be 12.
+    expect(metrics[0]?.pnl_pct).toBe(12)
+    // The last one should be 299.
+    expect(metrics[metrics.length - 1]?.pnl_pct).toBe(299)
   })
 })

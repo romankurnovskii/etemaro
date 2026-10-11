@@ -34,8 +34,10 @@ import {
   getPendingLiquidation,
   getPendingLiquidations,
   markLiquidationAttempt,
+  markLiquidationDust,
   markLiquidationSuccess,
   pruneSettledLiquidations,
+  refreshPendingLiquidation,
 } from '../domain/liquidation-queue.js'
 import { addPoolNote, getPoolMemory } from '../domain/pool-memory.js'
 import {
@@ -989,7 +991,7 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
   if (Object.keys(priceMap).length > 0) {
     try {
       const { updatePendingTradesMarkToMarket } = await import('../domain/lessons.js')
-      updatePendingTradesMarkToMarket(priceMap)
+      updatePendingTradesMarkToMarket(priceMap, balances.tokens)
     } catch {
       // ignore
     }
@@ -1018,14 +1020,26 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
     total++
     const currentToken = (balances.tokens as any[])?.find((t: any) => t.mint === item.mint)
     if (!currentToken || (currentToken.balance ?? 0) <= 0) {
-      await markLiquidationSuccess(item.mint).catch(() => {})
+      await markLiquidationSuccess(item.mint, { reason: 'wallet_empty' }).catch(() => {})
       skipped++
       continue
     }
 
+    // Refresh the frozen enqueue-time snapshot with the live balance (Part1-3). A null
+    // live price leaves the previously known value intact (Part1-6).
+    await refreshPendingLiquidation(item.mint, {
+      amount: currentToken.balance,
+      usd: currentToken.usd != null ? currentToken.usd : undefined,
+    }).catch(() => {})
+
     const isDust = typeof currentToken.usd === 'number' && currentToken.usd >= 0 && currentToken.usd < minUsd
     const isRawDust = !isDust && isUnpriceableRawUnitDust(currentToken)
     if (isDust || isRawDust) {
+      await markLiquidationDust(item.mint, {
+        reason: isRawDust
+          ? `skipped unpriceable raw-unit dust (<= ${UNPRICEABLE_RAW_UNIT_DUST_FLOOR} atomic unit)`
+          : `skipped dust (< $${minUsd.toFixed(2)})`,
+      }).catch(() => {})
       skipped++
       results.push({
         mint: item.mint,
@@ -1094,18 +1108,29 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
 
   // Prune older settled entries, but keep abandoned tombstones for tokens still
   // held in the wallet so reconciliation cannot re-enqueue and re-alert them.
-  const heldMints = new Set((balances.tokens as any[]).filter((t) => (t.balance ?? 0) > 0).map((t) => t.mint as string))
-  await pruneSettledLiquidations(24, { preserveAbandonedMints: heldMints }).catch(() => {})
+  const scanIncomplete = balances.scan_incomplete === true
+  if (scanIncomplete) {
+    log('executor_warn', 'Wallet scan incomplete (Token-2022) — preserving tombstones, skipping prune')
+  } else {
+    const heldMints = new Set(
+      (balances.tokens as any[]).filter((t) => (t.balance ?? 0) > 0).map((t) => t.mint as string),
+    )
+    await pruneSettledLiquidations(24, { preserveAbandonedMints: heldMints }).catch(() => {})
+  }
 
   // Reconcile any closed_pending_swap performance records whose mint is no longer
   // actively pending in the liquidation queue. Catches swaps that completed inline
   // at position-close time but left sibling records stuck in closed_pending_swap.
-  try {
-    const { reconcileOrphanedPendingSwaps } = await import('../domain/lessons.js')
-    const activePendingMints = new Set(getPendingLiquidations('pending').map((item) => item.mint))
-    await reconcileOrphanedPendingSwaps(activePendingMints)
-  } catch (err: any) {
-    log('state_warn', `reconcileOrphanedPendingSwaps failed: ${err?.message || err}`)
+  if (scanIncomplete) {
+    log('executor_warn', 'Wallet scan incomplete (Token-2022) — skipping orphaned swap reconciliation')
+  } else {
+    try {
+      const { reconcileOrphanedPendingSwaps } = await import('../domain/lessons.js')
+      const activePendingMints = new Set(getPendingLiquidations('pending').map((item) => item.mint))
+      await reconcileOrphanedPendingSwaps(activePendingMints)
+    } catch (err: any) {
+      log('state_warn', `reconcileOrphanedPendingSwaps failed: ${err?.message || err}`)
+    }
   }
 
   logAction({

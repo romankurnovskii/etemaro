@@ -160,6 +160,8 @@ export interface WalletBalancesResult {
   }>
   total_usd: number
   error?: string
+  /** True when a token-program scan (e.g. Token-2022) failed, so tokens may be incomplete. */
+  scan_incomplete?: boolean
 }
 
 export interface PortfolioSummaryResult {
@@ -727,14 +729,22 @@ export interface PendingLiquidation {
   symbol?: string
   amount: number
   usd?: number | null
+  /** True when `usd` came from a price lookup (0 is a real price); false when unpriced (Part1-4). */
+  priced?: boolean
   pool_address?: string | null
   position?: string | null
   added_at: string
   last_attempt_at: string | null
   attempts: number
-  status: 'pending' | 'liquidated' | 'abandoned'
+  status: 'pending' | 'liquidated' | 'abandoned' | 'dust'
   last_error?: string | null
   last_error_code?: string | null
+  /** Settlement details for terminal entries (Part1-1). */
+  liquidated_at?: string | null
+  tx?: string | null
+  amount_out_sol?: number | null
+  /** Why the token left the wallet: swapped out or already absent (Part1-2). */
+  reason?: 'swapped' | 'wallet_empty' | null
 }
 
 export interface StrategyConfig {

@@ -30,7 +30,7 @@ type PoolMemoryDb = Record<string, PoolMemoryEntry>
 
 function load(): PoolMemoryDb {
   const file = _poolMemoryFilePath || POOL_MEMORY_FILE
-  return readStateFile<PoolMemoryDb>(file, {})
+  return readStateFile<PoolMemoryDb>(file, {}, { label: 'pool-memory', backupOnCorrupt: true })
 }
 
 function save(data: PoolMemoryDb): void {
@@ -99,6 +99,11 @@ interface RecordPoolDeployData {
  * Record a closed deploy into pool-memory.json.
  * Called automatically from recordPerformance() in lessons.js.
  */
+function deriveDeployedAt(closedAt?: string | null, minutesHeld?: number | null): string | null {
+  if (!closedAt || minutesHeld == null || !Number.isFinite(Number(minutesHeld))) return null
+  return new Date(new Date(closedAt).getTime() - Number(minutesHeld) * 60_000).toISOString()
+}
+
 export function recordPoolDeploy(poolAddress: string, deployData: RecordPoolDeployData): void {
   if (!poolAddress) return
 
@@ -123,7 +128,7 @@ export function recordPoolDeploy(poolAddress: string, deployData: RecordPoolDepl
   const entry = db[poolAddress]
 
   const deploy: PoolMemoryDeploy = {
-    deployed_at: deployData.deployed_at || null,
+    deployed_at: deployData.deployed_at || deriveDeployedAt(deployData.closed_at, deployData.minutes_held),
     closed_at: deployData.closed_at || new Date().toISOString(),
     pnl_pct: deployData.pnl_pct ?? null,
     pnl_usd: deployData.pnl_usd ?? null,
@@ -148,7 +153,7 @@ export function recordPoolDeploy(poolAddress: string, deployData: RecordPoolDepl
 
   entry.deploys.push(deploy)
   entry.total_deploys = entry.deploys.length
-  entry.last_deployed_at = deploy.closed_at
+  entry.last_deployed_at = deploy.deployed_at || deploy.closed_at
   entry.last_outcome = (deploy.pnl_pct ?? 0) >= 0 ? 'profit' : 'loss'
 
   // Recompute aggregates
@@ -304,6 +309,7 @@ export function getPoolMemory({ pool_address }: GetPoolMemoryOpts): Record<strin
     total_deploys: entry.total_deploys,
     avg_pnl_pct: entry.avg_pnl_pct,
     win_rate: entry.win_rate,
+    win_rate_pct: Math.round((entry.win_rate ?? 0) * 100),
     adjusted_win_rate: entry.adjusted_win_rate ?? 0,
     adjusted_win_rate_sample_count: entry.adjusted_win_rate_sample_count ?? 0,
     last_deployed_at: entry.last_deployed_at,
@@ -335,6 +341,18 @@ export interface PositionSnapshotData {
  */
 export function recordPositionSnapshot(poolAddress: string, snapshot: PositionSnapshotData): void {
   if (!poolAddress) return
+
+  // Deploy-time markers ({ position, pair } only) carry no measurements. Skipping them
+  // keeps the 48-snapshot ring buffer and pool_metrics free of all-null rows (Part 2, option 2).
+  const hasMetrics =
+    snapshot.pnl_pct != null ||
+    snapshot.pnl_usd != null ||
+    snapshot.in_range != null ||
+    snapshot.unclaimed_fees_usd != null ||
+    snapshot.minutes_out_of_range != null ||
+    snapshot.age_minutes != null
+  if (!hasMetrics) return
+
   const db = load()
 
   if (!db[poolAddress]) {
@@ -402,7 +420,7 @@ export function recallForPool(poolAddress: string): string | null {
   // Deploy history summary
   if (entry.total_deploys > 0) {
     lines.push(
-      `POOL MEMORY [${entry.name}]: ${entry.total_deploys} past deploy(s), avg PnL ${entry.avg_pnl_pct}%, win rate ${entry.win_rate}%, last outcome: ${entry.last_outcome}`,
+      `POOL MEMORY [${entry.name}]: ${entry.total_deploys} past deploy(s), avg PnL ${entry.avg_pnl_pct}%, win rate ${Math.round((entry.win_rate ?? 0) * 100)}%, last outcome: ${entry.last_outcome}`,
     )
   }
 
@@ -418,15 +436,28 @@ export function recallForPool(poolAddress: string): string | null {
     )
   }
 
-  // Recent snapshot trend (last 6 = ~30min)
-  const snaps = (entry.snapshots || []).slice(-6)
+  // Recent snapshot trend (last 6 = ~30min). Scope to the most recent position so a
+  // rapid redeploy cannot mix two positions' trajectories (R2).
+  const allSnaps = entry.snapshots || []
+  const latestPosition = allSnaps.length > 0 ? allSnaps[allSnaps.length - 1]?.position : undefined
+  const scopedSnaps = latestPosition ? allSnaps.filter((s) => s.position === latestPosition) : allSnaps
+  const snaps = scopedSnaps.slice(-6)
   if (snaps.length >= 2) {
-    const first = snaps[0]!
-    const last = snaps[snaps.length - 1]!
-    const pnlTrend = last.pnl_pct != null && first.pnl_pct != null ? (last.pnl_pct - first.pnl_pct).toFixed(2) : null
-    const oorCount = snaps.filter((s) => s.in_range === false).length
+    // Drift uses the first/last non-null PnL so one null deploy marker does not blank
+    // the trend (R1).
+    const pnlValues = snaps.map((s) => s.pnl_pct).filter((v): v is number => v != null)
+    const pnlTrend = pnlValues.length >= 2 ? (pnlValues[pnlValues.length - 1]! - pnlValues[0]!).toFixed(2) : null
+    // Unknown in_range (null) is not evidence of being in range: exclude it from the
+    // denominator and surface it separately so OOR drift is not understated (D5).
+    const knownRange = snaps.filter((s) => s.in_range != null)
+    const oorCount = knownRange.filter((s) => s.in_range === false).length
+    const unknownRangeCount = snaps.length - knownRange.length
+    const oorSummary =
+      knownRange.length > 0
+        ? `OOR in ${oorCount}/${knownRange.length} known cycles${unknownRangeCount > 0 ? ` (${unknownRangeCount} unknown)` : ''}`
+        : `OOR unknown for all ${snaps.length} cycles`
     lines.push(
-      `RECENT TREND: PnL drift ${pnlTrend !== null ? `${(Number(pnlTrend) >= 0 ? '+' : '') + pnlTrend}%` : 'unknown'} over last ${snaps.length} cycles, OOR in ${oorCount}/${snaps.length} cycles`,
+      `RECENT TREND: PnL drift ${pnlTrend !== null ? `${(Number(pnlTrend) >= 0 ? '+' : '') + pnlTrend}%` : 'unknown'} over last ${snaps.length} cycles, ${oorSummary}`,
     )
   }
 

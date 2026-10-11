@@ -29,7 +29,11 @@ import { getSharedLessonsForPrompt, pushHiveLesson, pushHivePerformanceEvent } f
 const LESSONS_FILE = dataPath('lessons.json')
 
 function load(): LessonsData {
-  return readStateFile<LessonsData>(LESSONS_FILE, { lessons: [], performance: [] })
+  return readStateFile<LessonsData>(
+    LESSONS_FILE,
+    { lessons: [], performance: [] },
+    { label: 'lessons', backupOnCorrupt: true },
+  )
 }
 
 function save(data: LessonsData): void {
@@ -1000,6 +1004,36 @@ export async function reconcileOrphanedPendingSwaps(pendingMints: Set<string>): 
     rec.pnl_usd = Math.round(pnl_usd * 100) / 100
     rec.pnl_pct = Math.round(pnl_pct * 100) / 100
 
+    // Pending records skip recordPoolDeploy at close; without this the loss never
+    // reaches pool-memory deploys[] (survivorship bias in win rate / recall).
+    // Idempotent: the record leaves closed_pending_swap on this pass.
+    if (rec.pool) {
+      try {
+        const { recordPoolDeploy } = await import('./pool-memory.js')
+        recordPoolDeploy(rec.pool, {
+          pool_name: rec.pool_name,
+          base_mint: rec.base_mint,
+          deployed_at: rec.deployed_at,
+          closed_at: now,
+          price_pnl_usd: rec.price_pnl_usd,
+          price_pnl_pct: rec.price_pnl_pct,
+          net_pnl_usd: rec.net_pnl_usd,
+          pnl_pct: rec.pnl_pct,
+          pnl_usd: rec.pnl_usd,
+          range_efficiency: rec.range_efficiency,
+          minutes_held: rec.minutes_held,
+          fees_earned_usd: rec.fees_earned_usd,
+          fees_earned_sol: rec.fees_earned_sol,
+          fee_earned_pct: rec.initial_value_usd > 0 ? ((rec.fees_earned_usd || 0) / rec.initial_value_usd) * 100 : null,
+          close_reason: rec.close_reason || 'abandoned_liquidation (orphaned write-down)',
+          strategy: rec.strategy,
+          volatility: rec.volatility,
+        })
+      } catch {
+        // pool-memory is best-effort
+      }
+    }
+
     reconciled++
   }
 
@@ -1013,8 +1047,12 @@ export async function reconcileOrphanedPendingSwaps(pendingMints: Set<string>): 
 
 /**
  * Continuously mark unswapped token inventory to market spot prices.
+ * Optionally refreshes unrealized_tokens_amount if live balances are provided.
  */
-export function updatePendingTradesMarkToMarket(priceMap: Record<string, number>): number {
+export function updatePendingTradesMarkToMarket(
+  priceMap: Record<string, number>,
+  liveBalances?: Array<{ mint?: string; balance?: number } | any>,
+): number {
   const data = load()
   let updated = 0
 
@@ -1022,6 +1060,16 @@ export function updatePendingTradesMarkToMarket(priceMap: Record<string, number>
     if (rec.status !== 'closed_pending_swap') continue
     const mint = rec.liquidation_mint || rec.base_mint
     if (!mint) continue
+
+    // Refresh from live balances if provided (D7 fix)
+    if (liveBalances) {
+      const liveToken = liveBalances.find((b) => b.mint === mint)
+      if (liveToken && typeof liveToken.balance === 'number') {
+        rec.unrealized_tokens_amount = liveToken.balance
+      } else if (!liveToken) {
+        rec.unrealized_tokens_amount = 0
+      }
+    }
 
     // Only revalue records with a real, recorded token inventory. When the close
     // returned 100% SOL there are no tokens to mark; recomputing from amount * price

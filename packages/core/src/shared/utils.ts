@@ -129,7 +129,7 @@ export function nonEmptyString(...values: unknown[]): string | null {
 export function loadJsonFile<T>(
   filePath: string,
   fallback: T,
-  options?: { label?: string; warnOnCorrupt?: boolean; critical?: boolean },
+  options?: { label?: string; warnOnCorrupt?: boolean; critical?: boolean; backupOnCorrupt?: boolean },
 ): T {
   if (!fs.existsSync(filePath)) return fallback
   try {
@@ -141,6 +141,23 @@ export function loadJsonFile<T>(
       const msg = `${prefix}Failed to parse JSON file at "${filePath}" (corrupt or unreadable): ${parseError}. Critical file corrupted — failing fast to prevent state loss.`
       log('file_error', msg)
       throw new Error(msg, { cause: err })
+    }
+    if (options?.backupOnCorrupt) {
+      const backupPath = `${filePath}.corrupt-${Date.now()}`
+      try {
+        fs.renameSync(filePath, backupPath)
+        log(
+          'file_error',
+          `${prefix}Failed to parse JSON file at "${filePath}" (corrupt or unreadable): ${parseError}. Corrupt file backed up to "${backupPath}"; using default fallback.`,
+        )
+      } catch (backupErr: unknown) {
+        const backupMessage = backupErr instanceof Error ? backupErr.message : String(backupErr)
+        log(
+          'file_error',
+          `${prefix}Failed to parse JSON file at "${filePath}" (corrupt or unreadable): ${parseError}. Backup failed (${backupMessage}); using default fallback.`,
+        )
+      }
+      return fallback
     }
     if (options?.warnOnCorrupt !== false) {
       log(
