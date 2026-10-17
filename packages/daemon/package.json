@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@etemaro/core": "workspace:*",
-    "dotenv": "^18.0.6",
+    "dotenv": "^18.0.7",
     "ws": "^8.22.0"
   },
   "devDependencies": {
