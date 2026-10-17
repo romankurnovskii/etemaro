@@ -40,18 +40,23 @@ export interface PositionSummary {
   pnlUsd?: number
   pnlPct?: number
   valueUsd?: number
+  unclaimedFeesUsd?: number
   deployedAt?: string
 }
 
 export interface StateSnapshot {
   positions: PositionSummary[]
   totalPnlUsd: number
+  totalRealizedPnlUsd?: number
+  sessionPnlUsd?: number
+  unclaimedFeesUsd?: number
   nextScreenAt?: string
   nextManageAt?: string
   busy: boolean
   walletAddress?: string | null
   activeStrategyId?: string | null
   configPath?: string
+  dryRun?: boolean
 }
 
 export interface JsonSchema {
