@@ -122,6 +122,8 @@ export interface IpcToolResultPayload {
  * Mirrors `StructuredLogEntry` from logger.ts plus runtime envelope fields.
  */
 export interface IpcLogEntry {
+  /** Severity selected by the producer's existing logging policy. */
+  level?: 'debug' | 'info' | 'warn' | 'error'
   /** Log category matching `logStructured()` categories (e.g. 'tool_start'). */
   category: string
   /** Human-readable log message (already redacted). */
@@ -141,10 +143,20 @@ export interface IpcLogEntry {
  * after every management cycle and PnL poll.
  */
 export interface IpcStateSnapshot {
+  /** Actual daemon execution stage; Settled means execution finished, not on-chain settlement. */
+  phase?: 'Idle' | 'Evaluating' | 'Rebalancing' | 'Settled'
+  phaseSince?: string
+  lastDecision?: { summary: string; ts: string } | null
+  lastTool?: { name: string; ts: string; status: 'running' | 'completed' | 'blocked' | 'failed' } | null
+  /** No calibrated decision confidence is currently produced by the daemon. */
+  confidence?: number | null
+  lastError?: { message: string; ts: string } | null
   /** Currently tracked open positions. */
   positions: IpcPositionSummary[]
   /** Aggregate unrealised + realised PnL in USD. */
   totalPnlUsd: number
+  /** False means the required numeric field is a placeholder, not an observed zero. */
+  totalPnlUsdKnown?: boolean
   /** Lifetime realized PnL in USD across all recorded closed positions. */
   totalRealizedPnlUsd?: number
   /** Realized PnL in USD achieved during current daemon session. */
@@ -169,6 +181,13 @@ export interface IpcStateSnapshot {
 
 /** Minimal position summary for state snapshots. */
 export interface IpcPositionSummary {
+  lowerBin?: number | null
+  upperBin?: number | null
+  /** Current observed active bin; deployment-time bins are never substituted. */
+  activeBin?: number | null
+  inRange?: boolean | null
+  /** Measured human-unit token quantities, not percentages of unlike assets. */
+  assetSplit?: { tokenXAmount: number; tokenYAmount: number } | null
   positionAddress: string
   poolAddress: string
   tokenSymbol?: string

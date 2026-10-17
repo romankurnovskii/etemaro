@@ -1,6 +1,9 @@
 import fs from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// Logger tests need an identity, not the config loader's environment/credential I/O.
+vi.mock('./agentIdentity.js', () => ({ getAgentIdForRequests: () => 'agent-test' }))
+
 // Spy on fs.appendFileSync before importing logger so the mock intercepts file writes.
 // vi.spyOn mutates the fs object in-place, so any module that imported fs shares the same spy.
 const appendSpy = vi.spyOn(fs, 'appendFileSync').mockImplementation(() => undefined as any)
@@ -16,6 +19,7 @@ const {
   getCorrelationId,
   createTimer,
   setDryRun,
+  addLogListener,
 } = await import('./logger.js')
 
 describe('logger', () => {
@@ -60,6 +64,23 @@ describe('logger', () => {
     expect(output).toContain('[wallet]')
     expect(output).not.toContain('[DRY RUN]')
     expect(output).toContain('Imported wallet abc as default')
+  })
+
+  it('publishes severity selected by the existing plain and structured producer policies', () => {
+    const entries: Array<{ level?: string; message: string }> = []
+    const unsubscribe = addLogListener((entry) => entries.push(entry))
+    try {
+      log('debug', 'debug event')
+      log('cron_warn', 'warning event')
+      log('cron_error', 'error event')
+      log('startup', 'ordinary event')
+      logStructured({ category: 'fetch_error', message: 'structured failure' })
+      logStructured({ category: 'fetch_warn', message: 'structured warning' })
+      logStructured({ category: 'tool_execution_start', message: 'actual start' })
+      expect(entries.map((entry) => entry.level)).toEqual(['debug', 'warn', 'error', 'info', 'error', 'warn', 'info'])
+    } finally {
+      unsubscribe()
+    }
   })
 })
 

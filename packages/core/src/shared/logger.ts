@@ -223,6 +223,7 @@ export function log(level: string, message: string): void {
 
   if (_logListeners.size > 0) {
     const entry: IpcLogEntry = {
+      level: (Object.keys(LOG_LEVELS) as LogLevel[]).find((key) => LOG_LEVELS[key] === categoryLevel) ?? 'info',
       category: level,
       message: redacted,
       agentId,
@@ -287,6 +288,7 @@ export function logStructured({ category, message, metadata }: StructuredLogEntr
 
   if (_logListeners.size > 0) {
     const entry: IpcLogEntry = {
+      level: category.endsWith('_error') ? 'error' : category.endsWith('_warn') ? 'warn' : 'info',
       category: record.category as string,
       message: record.message as string,
       agentId: record.agentId as string,

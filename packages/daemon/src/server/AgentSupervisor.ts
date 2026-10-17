@@ -21,6 +21,10 @@ export interface ManagedAgent {
   strategyId: string | null
   running: boolean
   pid: number | null
+  /** Configured TCP port, or null for Unix sockets or absent/invalid ports. Not a liveness probe. */
+  ipcPort: number | null
+  /** ISO start time for the currently running supervised child, otherwise null. */
+  startedAt: string | null
   configPath: string
   dataDir: string
 }
@@ -38,7 +42,7 @@ interface InstanceConfig {
   agentId?: string
   description?: string
   strategy?: { activeStrategyId?: string; [key: string]: unknown }
-  connection?: { dryRun?: boolean; [key: string]: unknown }
+  connection?: { dryRun?: boolean; ipcPort?: number; ipcSocketPath?: string; [key: string]: unknown }
   [key: string]: unknown
 }
 
@@ -62,6 +66,7 @@ export class AgentSupervisor {
   private readonly spawnFn: typeof spawn
   private readonly cli: { program: string; argsPrefix: string[] }
   private readonly children = new Map<string, ChildProcess>()
+  private readonly childStartedAt = new WeakMap<ChildProcess, string>()
 
   constructor(options: AgentSupervisorOptions = {}) {
     this.repoRoot = options.repoRoot ?? REPO_ROOT
@@ -131,10 +136,15 @@ export class AgentSupervisor {
       detached: false,
     })
     this.children.set(agentId, child)
+    this.childStartedAt.set(child, new Date().toISOString())
     this.writeRegistry()
     child.on('exit', () => {
-      this.children.delete(agentId)
-      this.writeRegistry()
+      this.childStartedAt.delete(child)
+      // A stopped child can exit after its replacement has already started.
+      if (this.children.get(agentId) === child) {
+        this.children.delete(agentId)
+        this.writeRegistry()
+      }
       try {
         fs.closeSync(out)
       } catch {
@@ -176,6 +186,7 @@ export class AgentSupervisor {
           /* ignore */
         }
       }
+      this.childStartedAt.delete(child)
       this.children.delete(id)
     }
     this.clearRegistry()
@@ -291,6 +302,9 @@ export class AgentSupervisor {
     const config = this.readConfig(id, true)
     const child = this.children.get(id)
     const running = Boolean(child && child.exitCode === null && !child.killed)
+    const socketPath = config.connection?.ipcSocketPath
+    // IpcServer binds the Unix socket instead of TCP when this path is non-empty.
+    const port = typeof socketPath === 'string' && socketPath.length > 0 ? undefined : config.connection?.ipcPort
     return {
       id,
       name: config.description || config.agentId || id,
@@ -298,6 +312,8 @@ export class AgentSupervisor {
       strategyId: config.strategy?.activeStrategyId ?? null,
       running,
       pid: running ? (child?.pid ?? null) : null,
+      ipcPort: typeof port === 'number' && Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null,
+      startedAt: running && child ? (this.childStartedAt.get(child) ?? null) : null,
       configPath: this.configPathFor(id),
       dataDir: this.dataDirFor(id),
     }

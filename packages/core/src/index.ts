@@ -55,6 +55,7 @@ export type {
   TransactionErrorNotification,
 } from './ports/index.js'
 export type { StateStorePort, StateStoreReadOptions } from './ports/state-store.js'
+export { AgentTelemetry, cachedPositionTelemetry, observedPnlTotal, observedUsd } from './shared/agent-telemetry.js'
 export { getConfig, resetConfig, setConfig } from './shared/configProvider.js'
 export { getWalletAddress } from './shared/connection.js'
 export * from './shared/constants.js'

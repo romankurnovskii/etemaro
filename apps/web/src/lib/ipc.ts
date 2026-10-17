@@ -25,6 +25,9 @@ export interface IpcMessage<T = unknown> {
 }
 
 export interface LogEntry {
+  /** Browser-only stable key taken from the IPC envelope. */
+  clientId?: string
+  level?: 'debug' | 'info' | 'warn' | 'error'
   category: string
   message: string
   agentId: string
@@ -41,17 +44,29 @@ export interface PositionSummary {
   pnlPct?: number
   valueUsd?: number
   deployedAt?: string
+  lowerBin?: number | null
+  upperBin?: number | null
+  activeBin?: number | null
+  inRange?: boolean | null
+  assetSplit?: { tokenXAmount: number; tokenYAmount: number } | null
 }
 
 export interface StateSnapshot {
   positions: PositionSummary[]
   totalPnlUsd: number
+  totalPnlUsdKnown?: boolean
   nextScreenAt?: string
   nextManageAt?: string
   busy: boolean
   walletAddress?: string | null
   activeStrategyId?: string | null
   configPath?: string
+  phase?: 'Idle' | 'Evaluating' | 'Rebalancing' | 'Settled'
+  phaseSince?: string
+  lastDecision?: { summary: string; ts: string } | null
+  lastTool?: { name: string; ts: string; status: 'running' | 'completed' | 'blocked' | 'failed' } | null
+  confidence?: number | null
+  lastError?: { message: string; ts: string } | null
 }
 
 export interface JsonSchema {
@@ -80,6 +95,10 @@ export interface ManagedAgent {
   pid: number | null
   configPath: string
   dataDir: string
+  /** Configured TCP port; it does not imply a successful connection. */
+  ipcPort?: number | null
+  /** Actual supervisor start time, absent for older daemon versions. */
+  startedAt?: string | null
 }
 
 export interface StrategySummary {

@@ -38,6 +38,7 @@ import {
   syncOpenPositions,
   trackPosition,
 } from '../../domain/state.js'
+import { projectPositionTelemetry } from '../../shared/agent-telemetry.js'
 import { getConnection, getWalletKeypair as getWallet, withRpcFailover } from '../../shared/connection.js'
 import { getMinSafeBinsBelow } from '../../shared/constants.js'
 import { log, logStructured } from '../../shared/logger.js'
@@ -1416,6 +1417,12 @@ export async function getMyPositions({
           }
 
           positions.push({
+            visualization: projectPositionTelemetry({
+              lowerBin: binData?.lowerBinId,
+              upperBin: binData?.upperBinId,
+              activeBin: binData?.poolActiveBinId,
+              inRange: typeof binData?.isOutOfRange === 'boolean' ? !binData.isOutOfRange : undefined,
+            }),
             position: positionAddress,
             pool: pool.poolAddress,
             pair: tracked?.pool_name || `${pool.tokenX}/${pool.tokenY}`,
