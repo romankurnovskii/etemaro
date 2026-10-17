@@ -21,8 +21,8 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       dotenv:
-        specifier: ^18.0.4
-        version: 18.0.4
+        specifier: ^18.0.7
+        version: 18.0.7
       jsonrepair:
         specifier: ^3.15.0
         version: 3.15.0
@@ -120,7 +120,7 @@ importers:
         specifier: ^8.18.2
         version: 8.18.2
       dotenv:
-        specifier: ^18.0.6
+        specifier: ^18.0.7
         version: 18.0.7
       tsup:
         specifier: ^8.5.1
@@ -150,7 +150,7 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       dotenv:
-        specifier: ^18.0.6
+        specifier: ^18.0.7
         version: 18.0.7
       jsonrepair:
         specifier: ^3.15.0
@@ -184,7 +184,7 @@ importers:
         specifier: workspace:*
         version: link:../core
       dotenv:
-        specifier: ^18.0.6
+        specifier: ^18.0.7
         version: 18.0.7
       ws:
         specifier: ^8.22.0
@@ -1479,11 +1479,6 @@ packages:
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
-
-  dotenv@18.0.4:
-    resolution: {integrity: sha512-jGt9uI5BIxpVO15kvy+iEFqNAwxYClKWnkptLjSNPnFLC003Imd0ofr3aEVsbpHdSBdSsbcApNIlz4nbyGMwdA==}
-    engines: {node: '>=12'}
-    hasBin: true
 
   dotenv@18.0.7:
     resolution: {integrity: sha512-QEvMEF8ca3GNZJJnAbOgxpj5ULhBvnMcURp+XKrtvqFNPgjBvYoswQ0Jl2cO7JzCjxZjJhr9ZuIEhlrRxMft/Q==}
@@ -3535,8 +3530,6 @@ snapshots:
   destroy@1.2.0: {}
 
   detect-libc@2.1.2: {}
-
-  dotenv@18.0.4: {}
 
   dotenv@18.0.7: {}
 
