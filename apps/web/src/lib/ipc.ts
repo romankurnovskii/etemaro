@@ -33,6 +33,11 @@ export interface LogEntry {
   metadata?: Record<string, unknown>
 }
 
+export type LogSeverity = 'info' | 'warn' | 'error'
+
+export const LOOP_STAGES = ['Idle', 'Evaluating', 'Rebalancing', 'Settled'] as const
+export type LoopStage = (typeof LOOP_STAGES)[number]
+
 export interface PositionSummary {
   positionAddress: string
   poolAddress: string
@@ -41,17 +46,32 @@ export interface PositionSummary {
   pnlPct?: number
   valueUsd?: number
   deployedAt?: string
+  binRange?: { minBinId: number; maxBinId: number } | [number, number]
+  inRange?: boolean
+  assetSplit?: {
+    tokenX?: number
+    tokenY?: number
+    tokenXSymbol?: string
+    tokenYSymbol?: string
+    ratioX?: number
+  }
+  activeBin?: number
+  unclaimedFeesUsd?: number
 }
 
 export interface StateSnapshot {
   positions: PositionSummary[]
   totalPnlUsd: number
+  totalRealizedPnlUsd?: number
+  sessionPnlUsd?: number
+  unclaimedFeesUsd?: number
   nextScreenAt?: string
   nextManageAt?: string
   busy: boolean
   walletAddress?: string | null
   activeStrategyId?: string | null
   configPath?: string
+  dryRun?: boolean
 }
 
 export interface JsonSchema {
@@ -85,11 +105,43 @@ export interface ManagedAgent {
 export interface StrategySummary {
   id: string
   name?: string
+  description?: string
   active?: boolean
+  parameters?: Record<string, unknown>
+}
+
+export interface StrategyDetails {
+  id: string
+  name?: string
+  description?: string
+  parameters?: Record<string, unknown>
+  minLiquidityUsd?: number
+  stopLossPct?: number
+  takeProfitPct?: number
+  binStep?: number
+  rebalanceInterval?: string | number
+  [key: string]: unknown
 }
 
 export interface ChatMessage {
   id: string
   sender: 'user' | 'agent' | 'system'
   text: string
+}
+
+export type DecisionType = 'deploy' | 'close' | 'skip' | 'no_deploy' | 'note'
+
+export interface Decision {
+  id: string
+  ts: string
+  type: DecisionType
+  actor: string
+  pool: string | null
+  pool_name: string | null
+  position: string | null
+  summary: string | null
+  reason: string | null
+  risks: string[]
+  metrics: Record<string, unknown>
+  rejected: string[]
 }
