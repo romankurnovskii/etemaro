@@ -35,6 +35,7 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
   const [confirm, setConfirm] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (initialToolName) setActive(initialToolName)
@@ -53,10 +54,21 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
     return catalog.filter((t) => `${t.name} ${t.description}`.toLowerCase().includes(q))
   }, [catalog, query])
 
+  const copyResult = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard unavailable (insecure context / denied) — the text stays selectable */
+    }
+  }
+
   const run = async () => {
     if (!tool) return
     setPending(true)
     setResult(null)
+    setCopied(false)
     try {
       const body = { name: tool.name, args: normalizeArgs(tool, args), confirm }
       const res = await fetchJson<unknown>('/api/tool', token, {
@@ -131,7 +143,14 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
                 {pending ? 'Running…' : 'Run tool'}
               </button>
             </form>
-            {result ? <pre className="result mt">{result}</pre> : null}
+            {result ? (
+              <div className="result-wrap mt">
+                <button type="button" className="ghost copy-btn" onClick={() => void copyResult(result)}>
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+                <pre className="result">{result}</pre>
+              </div>
+            ) : null}
           </>
         )}
       </section>
