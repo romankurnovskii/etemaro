@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAgentConnection } from './hooks/useAgentConnection'
 import { useAgents } from './hooks/useAgents'
+import { useDecisions } from './hooks/useDecisions'
 import { useStrategies } from './hooks/useStrategies'
 import { DAEMON_URL, WS_URL } from './lib/api'
 import { AgentsView } from './views/AgentsView'
@@ -12,6 +13,9 @@ import { ToolsView } from './views/ToolsView'
 
 const TABS = ['agents', 'dashboard', 'tools', 'config', 'logs', 'chat'] as const
 type Tab = (typeof TABS)[number]
+
+/** REST endpoint backing the daemon's tool invocation route. */
+const TOOL_ENDPOINT = `${DAEMON_URL}/api/tool`
 
 export default function App() {
   const [token] = useState(() => {
@@ -35,17 +39,20 @@ export default function App() {
   const conn = useAgentConnection(WS_URL, token)
   const agents = useAgents(token)
   const strategies = useStrategies(token)
+  // The decision log is only surfaced on the visualizer tab, so it polls
+  // exclusively while that tab is mounted.
+  const decisions = useDecisions(TOOL_ENDPOINT, token, tab === 'agents')
 
   return (
     <div className="app">
       <header className="topbar">
         <h1>Etemaro Agent Console</h1>
-        <span>
+        <span className="conn-badge">
           <span className={`status-dot status-${conn.status}`} />
           {conn.status}
         </span>
         <span className="spacer" />
-        <span className="muted small">{DAEMON_URL}</span>
+        <span className="muted small mono">{DAEMON_URL}</span>
       </header>
       <nav className="tabs">
         {TABS.map((t) => (
@@ -60,6 +67,10 @@ export default function App() {
             agents={agents.agents}
             busy={agents.busy}
             strategies={strategies.strategies}
+            decisions={decisions.decisions}
+            decisionsLoading={decisions.loading}
+            decisionsError={decisions.error}
+            logs={conn.logs}
             onCreate={agents.create}
             onStart={agents.start}
             onStop={agents.stop}

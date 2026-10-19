@@ -24,6 +24,9 @@ export interface IpcMessage<T = unknown> {
   timestamp: number
 }
 
+/** Severity levels the console supports when filtering the log stream. */
+export type LogSeverity = 'info' | 'warn' | 'error'
+
 export interface LogEntry {
   category: string
   message: string
@@ -93,3 +96,31 @@ export interface ChatMessage {
   sender: 'user' | 'agent' | 'system'
   text: string
 }
+
+/**
+ * A structured agent decision, as persisted by the daemon's decision log and
+ * returned by the `get_recent_decisions` tool.
+ *
+ * Mirrors the `Decision` interface in packages/core/src/shared/types.ts.
+ */
+export type DecisionType = 'deploy' | 'close' | 'skip' | 'no_deploy' | 'note'
+
+export interface Decision {
+  id: string
+  ts: string
+  type: DecisionType
+  actor: string
+  pool: string | null
+  pool_name: string | null
+  position: string | null
+  summary: string | null
+  reason: string | null
+  risks: string[]
+  metrics: Record<string, unknown>
+  rejected: string[]
+}
+
+/** Stages of the agent loop, in execution order. */
+export const LOOP_STAGES = ['Idle', 'Evaluating', 'Rebalancing', 'Settled'] as const
+
+export type LoopStage = (typeof LOOP_STAGES)[number]
