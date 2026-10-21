@@ -131,11 +131,37 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
                 {pending ? 'Running…' : 'Run tool'}
               </button>
             </form>
-            {result ? <pre className="result mt">{result}</pre> : null}
+            {result ? (
+              <>
+                <div className="result-head">
+                  <h3>Output</h3>
+                  <CopyButton text={result} />
+                </div>
+                <pre className="result">{result}</pre>
+              </>
+            ) : null}
           </>
         )}
       </section>
     </div>
+  )
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      className="ghost"
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1500)
+        })
+      }}
+    >
+      {copied ? 'Copied' : 'Copy'}
+    </button>
   )
 }
 

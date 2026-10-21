@@ -56,6 +56,10 @@ export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) 
           <div className="value">{snapshot.busy ? 'yes' : 'no'}</div>
         </div>
         <div className="metric">
+          <div className="label">Dry-run</div>
+          <div className="value">{snapshot.dryRun ? 'yes' : 'no'}</div>
+        </div>
+        <div className="metric">
           <div className="label">Next screening</div>
           <div className="value small">{fmtTime(snapshot.nextScreenAt)}</div>
         </div>
