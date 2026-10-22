@@ -15,6 +15,7 @@ import { type Connection, PublicKey } from '@solana/web3.js'
 import { config } from '../config/Config.js'
 import { getTrackedPosition, markInRange, markOutOfRange, minutesOutOfRange } from '../domain/state.js'
 import { getNamedConnection } from '../shared/connection.js'
+import type { IpcPositionSummary } from '../shared/ipc-protocol.js'
 import { log } from '../shared/logger.js'
 import { withRpcRetry } from '../shared/utils.js'
 
@@ -131,6 +132,7 @@ interface FlatPosition {
   position: string
   pool: string
   baseMint: string | null
+  quoteMint: string | null
   decX: number
   decY: number
   active: number | null
@@ -183,7 +185,28 @@ async function getMeteoraData(
 }
 
 // ─── Build the shaped position object (matches getMyPositions output) ──
+/** Preserve token units; never infer value shares from raw token quantities. */
+export function buildAssetSplit(
+  tokenXAmount: number,
+  tokenYAmount: number,
+  priceX: number | null,
+  priceY: number | null,
+): IpcPositionSummary['assetSplit'] {
+  if (![tokenXAmount, tokenYAmount].every((v) => Number.isFinite(v) && v >= 0)) return undefined
+  const split: NonNullable<IpcPositionSummary['assetSplit']> = { tokenXAmount, tokenYAmount }
+  const priced = (amount: number, price: number | null) =>
+    amount === 0 || (price !== null && Number.isFinite(price) && price > 0)
+  if (priced(tokenXAmount, priceX) && priced(tokenYAmount, priceY)) {
+    const xValue = tokenXAmount === 0 ? 0 : tokenXAmount * (priceX ?? 0)
+    const yValue = tokenYAmount === 0 ? 0 : tokenYAmount * (priceY ?? 0)
+    const total = xValue + yValue
+    if (Number.isFinite(total) && total > 0) split.tokenXPercent = round((xValue / total) * 100, 2)
+  }
+  return split
+}
+
 interface BuiltPosition {
+  assetSplit?: IpcPositionSummary['assetSplit']
   position: string
   pool: string
   pair: string
@@ -276,6 +299,12 @@ function buildPosition(
   return {
     position: f.position,
     pool: f.pool,
+    assetSplit: buildAssetSplit(
+      xHuman,
+      yHuman,
+      f.baseMint ? (prices[f.baseMint] ?? null) : null,
+      f.quoteMint ? (prices[f.quoteMint] ?? null) : null,
+    ),
     pair: tracked?.pool_name || (meteora ? `${meteora.tokenX ?? '?'}/${meteora.tokenY ?? 'SOL'}` : '?/SOL'),
     base_mint: f.baseMint,
     lower_bin: f.lower ?? tracked?.bin_range?.min ?? null,
@@ -338,6 +367,7 @@ export async function computePositions(walletAddress: string): Promise<ComputePo
         position: p.publicKey.toString(),
         pool: lbPairKey,
         baseMint,
+        quoteMint: info?.tokenY?.mint?.address?.toString?.() ?? null,
         decX,
         decY,
         active,
@@ -356,7 +386,7 @@ export async function computePositions(walletAddress: string): Promise<ComputePo
   }
 
   const [prices, meteoraByPosition] = await Promise.all([
-    getJupiterPrices([SOL_MINT, ...(flat.map((f) => f.baseMint).filter(Boolean) as string[])]),
+    getJupiterPrices([SOL_MINT, ...(flat.flatMap((f) => [f.baseMint, f.quoteMint]).filter(Boolean) as string[])]),
     getMeteoraData(conn, walletAddress, flat),
   ])
   const solUsd = prices[SOL_MINT] ?? null
