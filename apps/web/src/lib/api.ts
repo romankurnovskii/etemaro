@@ -7,8 +7,8 @@ export function authHeaders(token: string): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-export async function fetchJson<T>(path: string, token: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(DAEMON_URL + path, {
+export async function fetchJson<T>(path: string, token: string, init?: RequestInit, baseUrl = DAEMON_URL): Promise<T> {
+  const res = await fetch(baseUrl + path, {
     ...init,
     headers: { ...(init?.headers ?? {}), ...authHeaders(token) },
   })
@@ -27,4 +27,30 @@ export async function fetchJson<T>(path: string, token: string, init?: RequestIn
     throw new Error(message)
   }
   return body as T
+}
+
+/** Tool-level failures can arrive inside an otherwise successful HTTP response. */
+export async function readTool<T>(
+  name: string,
+  args: Record<string, unknown>,
+  token: string,
+  baseUrl = DAEMON_URL,
+  signal?: AbortSignal,
+): Promise<T> {
+  const response = await fetchJson<{ ok?: boolean; error?: string; result?: T & { error?: string } }>(
+    '/api/tool',
+    token,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, args }),
+      signal,
+    },
+    baseUrl,
+  )
+  if (response.ok === false || response.error || response.result?.error) {
+    throw new Error(response.error || response.result?.error || 'Tool request failed')
+  }
+  if (response.result === undefined) throw new Error('Daemon returned no tool result')
+  return response.result
 }
