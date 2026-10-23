@@ -41,9 +41,21 @@ export interface PositionSummary {
   pnlPct?: number
   valueUsd?: number
   deployedAt?: string
+  lowerBin?: number
+  upperBin?: number
+  activeBin?: number
+  inRange?: boolean
+  assetXValueUsd?: number
+  assetYValueUsd?: number
 }
 
 export interface StateSnapshot {
+  agentId?: string
+  startedAt?: string
+  observedAt?: string
+  phase?: 'idle' | 'evaluating' | 'rebalancing' | 'settled' | 'error'
+  lastTool?: { name: string; status: string; at: string }
+  lastDecision?: { summary: string; confidence?: number }
   positions: PositionSummary[]
   totalPnlUsd: number
   nextScreenAt?: string
@@ -72,6 +84,8 @@ export interface ToolDescriptor {
 }
 
 export interface ManagedAgent {
+  ipcPort?: number
+  startedAt?: string
   id: string
   name: string
   description?: string

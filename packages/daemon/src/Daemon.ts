@@ -38,6 +38,7 @@ import {
   getInstanceId,
   getLastBriefingDate,
   getPerformanceRecords,
+  getRecentDecisions,
   getTrackedPosition,
   getTrackedPositions,
   getWalletAddress,
@@ -76,6 +77,7 @@ import { createDaemonAdapters } from './composition.js'
 export { createAgentLoopDeps, createDaemonAdapters } from './composition.js'
 
 import { AgentSupervisor } from './server/AgentSupervisor.js'
+import { ConsoleTelemetry, livePositionFor, positionTelemetry } from './server/ConsoleTelemetry.js'
 import { IpcServer } from './server/IpcServer.js'
 // These will be injected or resolved at runtime by the adapter layer.
 
@@ -359,6 +361,7 @@ export class Daemon {
 
   // IPC Server
   private ipcServer: IpcServer | null = null
+  private readonly consoleTelemetry = new ConsoleTelemetry()
   private readonly agentSupervisor = new AgentSupervisor()
   private unsubscribeLog: (() => void) | null = null
 
@@ -616,6 +619,7 @@ export class Daemon {
 
       this.unsubscribeLog = addLogListener((entry) => {
         this.ipcServer?.broadcastLog(entry)
+        if (this.consoleTelemetry.observe(entry, toolExecutor.WRITE_TOOLS)) this.broadcastIpcState()
       })
 
       this.ipcServer.onChat((prompt: string) => {
@@ -3281,7 +3285,7 @@ IMPORTANT:
         trackedSet.has(lp.position || lp.position_address),
       )
       const positions: IpcPositionSummary[] = tracked.map((p: any) => {
-        const live = this.latestLivePositions.find((lp: any) => lp.position === p.position || lp.pool === p.pool)
+        const live = livePositionFor(p, this.latestLivePositions)
         const pnl = Number(live?.pnl_usd ?? p.pnl_usd ?? 0)
         const pnlPct = Number(live?.pnl_pct ?? p.pnl_pct ?? p.peak_pnl_pct ?? 0)
         const tokenSymbol =
@@ -3297,6 +3301,7 @@ IMPORTANT:
           valueUsd: Math.round(valueUsd * 100) / 100,
           unclaimedFeesUsd: Math.round(unclaimedFeesUsd * 100) / 100,
           deployedAt: p.deployed_at ? new Date(p.deployed_at).toISOString() : undefined,
+          ...positionTelemetry(live),
         }
       })
 
@@ -3315,6 +3320,20 @@ IMPORTANT:
         : new Date(Date.now() + config.schedule.managementIntervalMin * 60 * 1000).toISOString()
 
       this.ipcServer.broadcastState({
+        agentId: getInstanceId(),
+        startedAt: new Date(this.sessionStartTime).toISOString(),
+        observedAt: new Date().toISOString(),
+        phase: this.consoleTelemetry.phase,
+        lastTool: this.consoleTelemetry.lastTool,
+        lastDecision: (() => {
+          const decision = getRecentDecisions(1)[0]
+          if (!decision) return undefined
+          const confidence = decision.metrics?.confidence
+          return {
+            summary: decision.summary ?? decision.reason ?? decision.type,
+            confidence: typeof confidence === 'number' && confidence >= 0 && confidence <= 1 ? confidence : undefined,
+          }
+        })(),
         positions,
         totalPnlUsd: pnlMetrics.openUnrealizedPnlUsd,
         totalRealizedPnlUsd: pnlMetrics.totalRealizedPnlUsd,

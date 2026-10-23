@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchJson } from '../lib/api'
 import type { ManagedAgent } from '../lib/ipc'
 
 export interface AgentsController {
+  error: string | null
   agents: ManagedAgent[]
   busy: Record<string, boolean>
   create: (name: string) => Promise<void>
@@ -13,19 +14,35 @@ export interface AgentsController {
 }
 
 export function useAgents(token: string): AgentsController {
+  const [error, setError] = useState<string | null>(null)
+  const generation = useRef(0)
   const [agents, setAgents] = useState<ManagedAgent[]>([])
   const [busy, setBusy] = useState<Record<string, boolean>>({})
 
   const reload = useCallback(() => {
+    const request = ++generation.current
     fetchJson<{ agents: ManagedAgent[] }>('/api/agents', token)
-      .then((res) => setAgents(res.agents ?? []))
-      .catch(() => {})
+      .then((res) => {
+        if (request === generation.current) {
+          setAgents(res.agents ?? [])
+          setError(null)
+        }
+      })
+      .catch((reason) => {
+        if (request === generation.current) setError(reason instanceof Error ? reason.message : 'Cannot load agents')
+      })
   }, [token])
 
   useEffect(() => {
+    setAgents([])
+    setBusy({})
+    setError(null)
     reload()
     const id = window.setInterval(reload, 15000)
-    return () => window.clearInterval(id)
+    return () => {
+      generation.current++
+      window.clearInterval(id)
+    }
   }, [reload])
 
   const create = useCallback(
@@ -70,6 +87,7 @@ export function useAgents(token: string): AgentsController {
   )
 
   return {
+    error,
     agents,
     busy,
     create,

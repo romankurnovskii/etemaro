@@ -361,6 +361,8 @@ describe('WalletAdapter', () => {
     })
 
     it('sets scan_incomplete=true if Token-2022 scan fails', async () => {
+      // This is a scan-failure test, not a live price-provider integration test.
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', { status: 404 }))
       const getParsedTokenAccountsSpy = vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner')
       getParsedTokenAccountsSpy.mockImplementation(async (_owner, filter: any) => {
         if (filter.programId.equals(TOKEN_PROGRAM_ID)) {

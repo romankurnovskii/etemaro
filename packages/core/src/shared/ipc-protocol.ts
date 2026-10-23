@@ -141,6 +141,13 @@ export interface IpcLogEntry {
  * after every management cycle and PnL poll.
  */
 export interface IpcStateSnapshot {
+  /** Optional console telemetry; older clients may ignore these fields. */
+  agentId?: string
+  startedAt?: string
+  observedAt?: string
+  phase?: 'idle' | 'evaluating' | 'rebalancing' | 'settled' | 'error'
+  lastTool?: { name: string; status: string; at: string }
+  lastDecision?: { summary: string; confidence?: number }
   /** Currently tracked open positions. */
   positions: IpcPositionSummary[]
   /** Aggregate unrealised + realised PnL in USD. */
@@ -169,6 +176,12 @@ export interface IpcStateSnapshot {
 
 /** Minimal position summary for state snapshots. */
 export interface IpcPositionSummary {
+  lowerBin?: number
+  upperBin?: number
+  activeBin?: number
+  inRange?: boolean
+  assetXValueUsd?: number
+  assetYValueUsd?: number
   positionAddress: string
   poolAddress: string
   tokenSymbol?: string

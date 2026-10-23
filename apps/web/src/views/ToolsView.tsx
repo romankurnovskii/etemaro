@@ -34,17 +34,16 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
   const [args, setArgs] = useState<Record<string, unknown>>({})
   const [confirm, setConfirm] = useState(false)
   const [result, setResult] = useState<string | null>(null)
+  const [copyStatus, setCopyStatus] = useState('')
   const [pending, setPending] = useState(false)
 
   useEffect(() => {
     if (initialToolName) setActive(initialToolName)
-  }, [initialToolName])
-
-  useEffect(() => {
     setArgs({})
     setConfirm(false)
     setResult(null)
-  }, [])
+    setCopyStatus('')
+  }, [initialToolName])
 
   const tool = useMemo(() => catalog.find((t) => t.name === active) ?? null, [catalog, active])
   const filtered = useMemo(() => {
@@ -83,12 +82,19 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
               type="button"
               key={t.name}
               className={`tool-item${active === t.name ? ' active' : ''}`}
-              onClick={() => setActive(t.name)}
+              disabled={pending}
+              onClick={() => {
+                setActive(t.name)
+                setArgs({})
+                setConfirm(false)
+                setResult(null)
+                setCopyStatus('')
+              }}
             >
               <div className="name">
                 {t.name}{' '}
-                <span className={`badge ${t.isProtected ? 'badge-write' : 'badge-read'}`}>
-                  {t.isProtected ? 'write' : 'read'}
+                <span className={`badge ${t.isWrite ? 'badge-write' : 'badge-read'}`}>
+                  {t.isWrite ? 'write' : 'read'}
                 </span>
               </div>
               <div className="desc">{t.description}</div>
@@ -127,11 +133,32 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
                   </span>
                 </label>
               ) : null}
-              <button type="submit" className="primary" disabled={pending}>
+              <button type="submit" className="primary" disabled={pending || (tool.isProtected && !confirm)}>
                 {pending ? 'Running…' : 'Run tool'}
               </button>
             </form>
-            {result ? <pre className="result mt">{result}</pre> : null}
+            {result ? (
+              <div className="mt">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => {
+                    navigator.clipboard
+                      ?.writeText(result)
+                      .then(() => setCopyStatus('Copied'))
+                      .catch(() => setCopyStatus('Copy unavailable; select the output manually.'))
+                    if (!navigator.clipboard) setCopyStatus('Copy unavailable; select the output manually.')
+                  }}
+                >
+                  Copy output
+                </button>
+                <span role="status" className="muted small">
+                  {' '}
+                  {copyStatus}
+                </span>
+                <pre className="result">{result}</pre>
+              </div>
+            ) : null}
           </>
         )}
       </section>

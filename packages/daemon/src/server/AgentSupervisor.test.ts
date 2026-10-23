@@ -65,6 +65,23 @@ describe('AgentSupervisor', () => {
     sup.create('Bot')
     expect(sup.create('Bot').id).toBe('bot-1')
   })
+  it('exposes dedicated child ports and measured start times without credentials', () => {
+    const a = sup.create('Alpha')
+    const b = sup.create('Beta')
+    expect(a.ipcPort).toBe(8766)
+    expect(b.ipcPort).toBe(8767)
+    expect(a.startedAt).toBeUndefined()
+    const running = sup.start(a.id)
+    expect(Number.isFinite(Date.parse(running.startedAt ?? ''))).toBe(true)
+    expect(running).not.toHaveProperty('ipcToken')
+  })
+  it('rejects an immediate start while the previous child is still stopping', () => {
+    const agent = sup.create('Runner')
+    sup.start(agent.id)
+    sup.stop(agent.id)
+    expect(() => sup.start(agent.id)).toThrow(/still stopping/)
+    expect(spawnFn).toHaveBeenCalledTimes(1)
+  })
 
   it('lists agents sorted by name', () => {
     sup.create('Beta')

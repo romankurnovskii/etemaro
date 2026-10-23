@@ -15,6 +15,8 @@ import path from 'node:path'
 import { defaultAgentConfigStr, REPO_ROOT } from '@etemaro/core'
 
 export interface ManagedAgent {
+  ipcPort?: number
+  startedAt?: string
   id: string
   name: string
   description?: string
@@ -62,6 +64,7 @@ export class AgentSupervisor {
   private readonly spawnFn: typeof spawn
   private readonly cli: { program: string; argsPrefix: string[] }
   private readonly children = new Map<string, ChildProcess>()
+  private readonly startedAt = new Map<string, string>()
 
   constructor(options: AgentSupervisorOptions = {}) {
     this.repoRoot = options.repoRoot ?? REPO_ROOT
@@ -111,6 +114,8 @@ export class AgentSupervisor {
     const configPath = this.configPathFor(agentId)
     if (!fs.existsSync(configPath)) throw new Error(`Agent "${agentId}" not found`)
     if (this.isRunning(agentId)) return this.toManaged(agentId)
+    const previous = this.children.get(agentId)
+    if (previous?.killed && previous.exitCode === null) throw new Error('Agent is still stopping; retry after it exits')
 
     const dataDir = this.dataDirFor(agentId)
     const baseDataDir = path.join(this.repoRoot, 'data')
@@ -131,9 +136,11 @@ export class AgentSupervisor {
       detached: false,
     })
     this.children.set(agentId, child)
+    this.startedAt.set(agentId, new Date().toISOString())
     this.writeRegistry()
     child.on('exit', () => {
       this.children.delete(agentId)
+      this.startedAt.delete(agentId)
       this.writeRegistry()
       try {
         fs.closeSync(out)
@@ -300,6 +307,8 @@ export class AgentSupervisor {
       pid: running ? (child?.pid ?? null) : null,
       configPath: this.configPathFor(id),
       dataDir: this.dataDirFor(id),
+      ipcPort: typeof config.connection?.ipcPort === 'number' ? config.connection.ipcPort : undefined,
+      startedAt: running ? this.startedAt.get(id) : undefined,
     }
   }
 

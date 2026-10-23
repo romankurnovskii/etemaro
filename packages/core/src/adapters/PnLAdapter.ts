@@ -184,6 +184,8 @@ async function getMeteoraData(
 
 // ─── Build the shaped position object (matches getMyPositions output) ──
 interface BuiltPosition {
+  asset_x_value_usd?: number
+  asset_y_value_usd?: number
   position: string
   pool: string
   pair: string
@@ -275,6 +277,8 @@ function buildPosition(
 
   return {
     position: f.position,
+    asset_x_value_usd: priceX > 0 || xHuman === 0 ? xHuman * priceX : undefined,
+    asset_y_value_usd: yHuman === 0 ? 0 : solUsd != null && solUsd > 0 ? yHuman * solUsd : undefined,
     pool: f.pool,
     pair: tracked?.pool_name || (meteora ? `${meteora.tokenX ?? '?'}/${meteora.tokenY ?? 'SOL'}` : '?/SOL'),
     base_mint: f.baseMint,
