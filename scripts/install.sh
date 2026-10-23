@@ -48,7 +48,9 @@ install_desktop() {
 }
 
 if [ "$OS" = "Windows_NT" ]; then
-    echo "Windows is not supported by this script yet. Please use npm to install."
+    echo "For Windows, run the native PowerShell installer:"
+    echo "  powershell -ExecutionPolicy Bypass -File scripts/install.ps1"
+    echo "Or install globally via npm: npm install -g @etemaro/cli"
     exit 1
 fi
 

@@ -64,8 +64,15 @@ flowchart LR
 
 Need **Node.js 22+**. Then two commands:
 
+### macOS / Linux:
 ```bash
 curl -fsSL https://etemaro.com/install.sh | sh
+etemaro init
+```
+
+### Windows (PowerShell):
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://etemaro.com/install.ps1 | iex"
 etemaro init
 ```
 
