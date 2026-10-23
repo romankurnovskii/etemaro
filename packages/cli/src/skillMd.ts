@@ -119,6 +119,24 @@ Permanently deletes a saved wallet from the keystore. Requires --yes when stdout
 Output: { success, removed, paths }
 \`\`\`
 
+### etemaro wallet swap-all [--skip <mints>]
+Swaps all non-SOL tokens in the active wallet back to SOL via Jupiter DEX.
+\`\`\`
+Output: { success, swaps: [{ mint, symbol, amount, tx }] }
+\`\`\`
+
+### etemaro sweep [--skip <mints>]
+Sweeps and auto-liquidates residual unsold tokens back to SOL.
+\`\`\`
+Output: { success, swept_count, tokens: [...] }
+\`\`\`
+
+### etemaro liquidations [--status <status>]
+Returns pending or processed token liquidation queue entries.
+\`\`\`
+Output: { total, pending, liquidations: [...] }
+\`\`\`
+
 ### etemaro strategy validate <file...> [--json] [--strict]
 Validates strategy JSON (a library or a single strategy object) against the canonical Strategy schema.
 Reports unknown and legacy fields the runtime will ignore, and checks smartWalletListId wiring against the loaded config.
@@ -130,6 +148,12 @@ Returns the full runtime config.
 Updates a config key. Parses value as JSON when possible.
 \`\`\`
 Valid keys: minTvl, maxTvl, minVolume, maxPositions, deployAmountSol, managementIntervalMin, screeningIntervalMin, managementModel, screeningModel, generalModel, autoSwapAfterClaim, autoSwapRetryAttempts, autoSwapRetryDelayMs, autoSwapInterSwapDelayMs, minClaimAmount, outOfRangeWaitMinutes
+\`\`\`
+
+### etemaro config validate [<file>] [--json] [--env-optional]
+Validates the structure and field references of an agent configuration file against the canonical schema.
+\`\`\`
+Output: { ok, reports: [{ file, valid, errors, warnings }] }
 \`\`\`
 
 ### etemaro pool-memory --pool <addr>

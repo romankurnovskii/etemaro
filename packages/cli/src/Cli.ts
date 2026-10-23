@@ -31,6 +31,7 @@ import {
   promptSecret,
   resolveWalletImportSource,
 } from './cliUtils.js'
+import { getContextualHelp } from './commandHelp.js'
 import { SKILL_MD } from './skillMd.js'
 
 /** Expand a leading `~` in a user-supplied path. */
@@ -232,10 +233,21 @@ export class Cli {
     this.writeSkillMd()
 
     // Parse args
-    const subcommand = argv.find((a) => !a.startsWith('-'))
-    const sub2 = argv.filter((a) => !a.startsWith('-'))[1]
+    const isHelp = argv.includes('--help') || argv.includes('-h') || argv.includes('help')
+    const subcommand = argv.find((a) => !a.startsWith('-') && a !== 'help')
+    const sub2 = argv.filter((a) => !a.startsWith('-') && a !== 'help')[1]
 
-    if (!subcommand || subcommand === 'help' || argv.includes('--help')) {
+    if (isHelp) {
+      const contextualHelp = getContextualHelp(subcommand)
+      if (contextualHelp) {
+        process.stdout.write(contextualHelp)
+        process.exit(0)
+      }
+      process.stdout.write(SKILL_MD)
+      process.exit(0)
+    }
+
+    if (!subcommand) {
       process.stdout.write(SKILL_MD)
       process.exit(0)
     }
