@@ -212,6 +212,11 @@ export const strategyLibraryPath = sharedConfigPath
  * Fallback: ~/.config/etemaro/.credentials/wallets/<segments>
  */
 export function credentialsPath(...segments: string[]): string {
+  for (const seg of segments) {
+    if (seg.includes('..') || seg.includes('/') || seg.includes('\\')) {
+      throw new Error(`Path traversal detected in credentialsPath segment: "${seg}"`)
+    }
+  }
   const inUserWallets = path.join(getEtemaroDir(), '.credentials', 'wallets', ...segments)
   if (fs.existsSync(inUserWallets)) return inUserWallets
 
