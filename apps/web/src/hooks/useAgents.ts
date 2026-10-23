@@ -5,6 +5,8 @@ import type { ManagedAgent } from '../lib/ipc'
 export interface AgentsController {
   agents: ManagedAgent[]
   busy: Record<string, boolean>
+  /** Last API failure (e.g. rejected token, daemon unreachable), cleared on the next success. */
+  error: string | null
   create: (name: string) => Promise<void>
   start: (id: string) => Promise<void>
   stop: (id: string) => Promise<void>
@@ -15,11 +17,15 @@ export interface AgentsController {
 export function useAgents(token: string): AgentsController {
   const [agents, setAgents] = useState<ManagedAgent[]>([])
   const [busy, setBusy] = useState<Record<string, boolean>>({})
+  const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(() => {
     fetchJson<{ agents: ManagedAgent[] }>('/api/agents', token)
-      .then((res) => setAgents(res.agents ?? []))
-      .catch(() => {})
+      .then((res) => {
+        setAgents(res.agents ?? [])
+        setError(null)
+      })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   }, [token])
 
   useEffect(() => {
@@ -72,6 +78,7 @@ export function useAgents(token: string): AgentsController {
   return {
     agents,
     busy,
+    error,
     create,
     start: (id: string) => action(id, 'start'),
     stop: (id: string) => action(id, 'stop'),

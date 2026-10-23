@@ -16,6 +16,8 @@ export interface AgentConnection {
   logs: LogEntry[]
   chat: ChatMessage[]
   catalog: ToolDescriptor[]
+  /** Epoch ms of the next scheduled reconnect attempt, or null when not waiting. */
+  retryAt: number | null
   sendChat: (text: string) => boolean
 }
 
@@ -40,6 +42,7 @@ export function useAgentConnection(wsUrl: string, token: string): AgentConnectio
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [chat, setChat] = useState<ChatMessage[]>([])
   const [catalog, setCatalog] = useState<ToolDescriptor[]>([])
+  const [retryAt, setRetryAt] = useState<number | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
@@ -49,12 +52,16 @@ export function useAgentConnection(wsUrl: string, token: string): AgentConnectio
 
     const connect = () => {
       if (closed) return
+      if (timer) window.clearTimeout(timer)
+      timer = undefined
+      setRetryAt(null)
       setStatus('connecting')
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {
         retry = 800
+        setRetryAt(null)
         setStatus('connected')
         if (token) send(ws, IpcMessageType.AUTH, { token })
         send(ws, IpcMessageType.SUBSCRIBE_LOGS, {})
@@ -89,16 +96,28 @@ export function useAgentConnection(wsUrl: string, token: string): AgentConnectio
       ws.onclose = () => {
         setStatus('disconnected')
         if (!closed) {
-          timer = window.setTimeout(connect, retry)
+          // Exponential backoff (cap 8s) with +/-25% jitter so a restarted daemon is not stampeded.
+          const delay = Math.round(retry * (0.75 + Math.random() * 0.5))
+          setRetryAt(Date.now() + delay)
+          timer = window.setTimeout(connect, delay)
           retry = Math.min(retry * 1.6, 8000)
         }
       }
       ws.onerror = () => {}
     }
 
+    // Skip the wait when the network comes back.
+    const onOnline = () => {
+      if (closed || wsRef.current?.readyState === WebSocket.OPEN) return
+      retry = 800
+      connect()
+    }
+    window.addEventListener('online', onOnline)
+
     connect()
     return () => {
       closed = true
+      window.removeEventListener('online', onOnline)
       if (timer) window.clearTimeout(timer)
       wsRef.current?.close()
     }
@@ -115,5 +134,5 @@ export function useAgentConnection(wsUrl: string, token: string): AgentConnectio
     return true
   }, [])
 
-  return { status, snapshot, logs, chat, catalog, sendChat }
+  return { status, snapshot, logs, chat, catalog, retryAt, sendChat }
 }
