@@ -40,6 +40,7 @@ export interface PositionSummary {
   pnlUsd?: number
   pnlPct?: number
   valueUsd?: number
+  unclaimedFeesUsd?: number
   deployedAt?: string
 }
 
@@ -92,4 +93,16 @@ export interface ChatMessage {
   id: string
   sender: 'user' | 'agent' | 'system'
   text: string
+}
+
+export type LogSeverity = 'info' | 'warn' | 'error'
+
+/**
+ * Derive a log's severity from its category, mirroring the daemon's structured
+ * logger convention (`foo_error` → error, `foo_warn` → warn, else info).
+ */
+export function logSeverity(category: string): LogSeverity {
+  if (category.endsWith('_error') || category.endsWith('_fail')) return 'error'
+  if (category.endsWith('_warn')) return 'warn'
+  return 'info'
 }
