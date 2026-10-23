@@ -21,11 +21,12 @@ function formatCountdown(targetIso?: string): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`
 }
 
-function formatUsd(val?: number | null, withSign = true): { text: string; color: 'green' | 'red' } {
-  const n = Number(val ?? 0)
+function formatUsd(val?: number | null, withSign = true): { text: string; color: 'green' | 'red' | 'gray' } {
+  if (typeof val !== 'number' || !Number.isFinite(val)) return { text: 'Not reported', color: 'gray' }
+  const n = val
   const isPositive = n >= 0
   const color = isPositive ? 'green' : 'red'
-  const prefix = withSign ? (isPositive ? '+$' : '-$') : '$'
+  const prefix = isPositive ? (withSign ? '+$' : '$') : '-$'
   return {
     text: `${prefix}${Math.abs(n).toFixed(2)}`,
     color,
@@ -40,16 +41,13 @@ export const StatusPane: React.FC<StatusPaneProps> = ({
   agentId = 'default',
   endpoint = '127.0.0.1:8765',
 }) => {
-  const totalRealizedPnl = state?.totalRealizedPnlUsd ?? 0
-  const totalRealizedFormatted = formatUsd(totalRealizedPnl)
+  const totalRealizedFormatted = formatUsd(state?.totalRealizedPnlUsd)
 
-  const sessionPnl = state?.sessionPnlUsd ?? 0
-  const sessionFormatted = formatUsd(sessionPnl)
+  const sessionFormatted = formatUsd(state?.sessionPnlUsd)
 
-  const openPnl = state?.totalPnlUsd ?? 0
-  const openFormatted = formatUsd(openPnl)
+  const openFormatted = formatUsd(state?.totalPnlUsdKnown === false ? undefined : state?.totalPnlUsd)
 
-  const unclaimedFees = state?.unclaimedFeesUsd ?? 0
+  const unclaimedFees = state?.unclaimedFeesUsd
 
   let connStatus = <Text color="green">● Connected ({endpoint})</Text>
   if (!connected) {
@@ -132,7 +130,7 @@ export const StatusPane: React.FC<StatusPaneProps> = ({
               <Text dimColor>Open PnL: </Text>
               <Text color={openFormatted.color}>{openFormatted.text}</Text>
             </Text>
-            {unclaimedFees > 0 && (
+            {typeof unclaimedFees === 'number' && Number.isFinite(unclaimedFees) && unclaimedFees > 0 && (
               <Text>
                 <Text dimColor>Unclaimed: </Text>
                 <Text color="green">+${unclaimedFees.toFixed(2)}</Text>
@@ -155,11 +153,14 @@ export const StatusPane: React.FC<StatusPaneProps> = ({
           <Text dimColor>Active Pools:</Text>
           {state?.positions.slice(0, 3).map((pos, i) => {
             const sym = pos.tokenSymbol || (pos.positionAddress ? pos.positionAddress.slice(0, 8) : 'Unknown')
-            const posPnl = Number(pos.pnlUsd ?? 0)
-            const col = posPnl >= 0 ? 'green' : 'red'
-            const val = pos.valueUsd != null && pos.valueUsd > 0 ? `$${pos.valueUsd.toFixed(2)}` : null
+            const posPnl = formatUsd(pos.pnlUsd)
+            const pct =
+              typeof pos.pnlPct === 'number' && Number.isFinite(pos.pnlPct) ? `${pos.pnlPct}%` : 'Not reported'
+            const val = formatUsd(pos.valueUsd, false).text
             const fees =
-              pos.unclaimedFeesUsd != null && pos.unclaimedFeesUsd > 0
+              typeof pos.unclaimedFeesUsd === 'number' &&
+              Number.isFinite(pos.unclaimedFeesUsd) &&
+              pos.unclaimedFeesUsd > 0
                 ? `+fees $${pos.unclaimedFeesUsd.toFixed(2)}`
                 : null
             return (
@@ -167,9 +168,9 @@ export const StatusPane: React.FC<StatusPaneProps> = ({
                 <Text>
                   {i + 1}. {sym}
                 </Text>
-                {val && <Text color="cyan">[{val}]</Text>}
-                <Text color={col}>
-                  ({posPnl >= 0 ? '+' : ''}${posPnl.toFixed(2)} / {pos.pnlPct ?? 0}%)
+                <Text color="cyan">[{val}]</Text>
+                <Text color={posPnl.color}>
+                  ({posPnl.text} / {pct})
                 </Text>
                 {fees && <Text color="green">[{fees}]</Text>}
               </Box>

@@ -22,8 +22,10 @@ import {
   AGENT_CONFIG_PATH,
   type AgentLoopDeps,
   type AgentMessage,
+  AgentTelemetry,
   addLogListener,
   agentLoop,
+  cachedPositionTelemetry,
   computeAgentPnlMetrics,
   computeDeployAmount,
   config,
@@ -48,7 +50,10 @@ import {
   loadJsonFileWithInfo,
   log,
   meteora,
+  observedPnlTotal,
+  observedUsd,
   REPO_ROOT,
+  redactSensitive,
   registerExitSignal,
   repoPath,
   resetConsecutiveSwapFailures,
@@ -359,8 +364,27 @@ export class Daemon {
 
   // IPC Server
   private ipcServer: IpcServer | null = null
+  private broadcastingIpcState = false
   private readonly agentSupervisor = new AgentSupervisor()
   private unsubscribeLog: (() => void) | null = null
+  private readonly telemetry = new AgentTelemetry()
+  private readonly telemetryCycles = new Map<'management' | 'screening', symbol>()
+
+  /** Observe the real invocation, including rejection, without changing its result or tool behavior. */
+  private async runObservedAgentLoop(...args: Parameters<typeof agentLoop>): ReturnType<typeof agentLoop> {
+    const activity = this.telemetry.beginActivity()
+    this.broadcastIpcState()
+    let failure: string | undefined
+    try {
+      return await agentLoop(...args)
+    } catch (error: unknown) {
+      failure = redactSensitive(error instanceof Error ? error.message : String(error))
+      throw error
+    } finally {
+      this.telemetry.finishActivity(activity, failure)
+      this.broadcastIpcState()
+    }
+  }
 
   /**
    * Synchronous atomic check-and-set lock acquisition for daemon async cycles.
@@ -372,10 +396,14 @@ export class Daemon {
       case 'management':
         if (this.managementBusy || this.pnlPollBusy) return false
         this.managementBusy = true
+        this.telemetryCycles.set('management', this.telemetry.beginActivity())
+        this.broadcastIpcState()
         return true
       case 'screening':
         if (this.screeningBusy) return false
         this.screeningBusy = true
+        this.telemetryCycles.set('screening', this.telemetry.beginActivity())
+        this.broadcastIpcState()
         return true
       case 'pnlPoll':
         if (this.managementBusy || this.screeningBusy || this.pnlPollBusy) return false
@@ -412,6 +440,12 @@ export class Daemon {
       case 'sweeper':
         this.sweeperBusy = false
         break
+    }
+    if (lockName === 'management' || lockName === 'screening') {
+      const activity = this.telemetryCycles.get(lockName)
+      if (activity) this.telemetry.finishActivity(activity)
+      this.telemetryCycles.delete(lockName)
+      this.broadcastIpcState()
     }
     this.drainTelegramQueue().catch((err: any) => {
       log('telegram_warn', `Failed to drain telegram queue after releasing ${lockName} lock: ${err?.message || err}`)
@@ -616,6 +650,7 @@ export class Daemon {
 
       this.unsubscribeLog = addLogListener((entry) => {
         this.ipcServer?.broadcastLog(entry)
+        if (this.telemetry.observeLog(entry)) this.broadcastIpcState()
       })
 
       this.ipcServer.onChat((prompt: string) => {
@@ -765,7 +800,7 @@ export class Daemon {
       if (!this.acquireLock('management')) return
       log('cron', 'Starting health check')
       try {
-        await agentLoop(
+        await this.runObservedAgentLoop(
           `
 HEALTH CHECK
 
@@ -1127,7 +1162,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
         )
         .join('\n\n')
 
-      const { content } = await agentLoop(
+      const { content } = await this.runObservedAgentLoop(
         `
 INSTRUCTION EVALUATION — ${instructionPositions.length} position(s)
 
@@ -1688,7 +1723,7 @@ After evaluating, write a brief one-line result per position.
 
       let deployAttempted = false
       let deploySucceeded = false
-      const { content } = await agentLoop(
+      const { content } = await this.runObservedAgentLoop(
         `
 SCREENING CYCLE
 ${strategyBlock}
@@ -2847,7 +2882,7 @@ IMPORTANT:
           ? `Replying to: "${quotedText.slice(0, 140)}"\nRequest: ${text.slice(0, 140)}`
           : `Request: ${text.slice(0, 240)}`,
       )
-      const { content } = await agentLoop(
+      const { content } = await this.runObservedAgentLoop(
         prompt,
         config.llm.maxSteps,
         this.sessionHistory,
@@ -3172,16 +3207,24 @@ IMPORTANT:
         )
       }
 
-      const { content } = await agentLoop(text, config.llm.maxSteps, this.sessionHistory, agentRole, agentModel, null, {
-        deps: this.adapters.agentLoopDeps,
-        interactive: true,
-        onToolStart: async ({ name }: any) => {
-          if (liveMessage) await liveMessage.toolStart(name)
+      const { content } = await this.runObservedAgentLoop(
+        text,
+        config.llm.maxSteps,
+        this.sessionHistory,
+        agentRole,
+        agentModel,
+        null,
+        {
+          deps: this.adapters.agentLoopDeps,
+          interactive: true,
+          onToolStart: async ({ name }: any) => {
+            if (liveMessage) await liveMessage.toolStart(name)
+          },
+          onToolFinish: async ({ name, result, success }: any) => {
+            if (liveMessage) await liveMessage.toolFinish(name, result, success)
+          },
         },
-        onToolFinish: async ({ name, result, success }: any) => {
-          if (liveMessage) await liveMessage.toolFinish(name, result, success)
-        },
-      })
+      )
 
       this.appendHistory(text, content)
       const cleanContent = stripThink(content)
@@ -3273,7 +3316,8 @@ IMPORTANT:
   }
 
   private broadcastIpcState(): void {
-    if (!this.ipcServer) return
+    if (!this.ipcServer || this.broadcastingIpcState) return
+    this.broadcastingIpcState = true
     try {
       const tracked = getTrackedPositions(true)
       const trackedSet = new Set(tracked.map((p: any) => p.position || p.position_address))
@@ -3281,21 +3325,34 @@ IMPORTANT:
         trackedSet.has(lp.position || lp.position_address),
       )
       const positions: IpcPositionSummary[] = tracked.map((p: any) => {
-        const live = this.latestLivePositions.find((lp: any) => lp.position === p.position || lp.pool === p.pool)
-        const pnl = Number(live?.pnl_usd ?? p.pnl_usd ?? 0)
-        const pnlPct = Number(live?.pnl_pct ?? p.pnl_pct ?? p.peak_pnl_pct ?? 0)
+        // Two positions may share a pool; never display one position's telemetry on another.
+        const positionId = p.position ?? p.position_address
+        const live = this.latestLivePositions.find(
+          (lp: any) => positionId && (lp.position ?? lp.position_address) === positionId,
+        )
+        const pnl = observedUsd(live?.pnl_true_usd, live?.pnl_usd, Boolean(config.management.solMode))
+        const pnlPct = typeof live?.pnl_pct === 'number' && Number.isFinite(live.pnl_pct) ? live.pnl_pct : undefined
         const tokenSymbol =
           live?.pair ?? p.pool_name ?? p.pair ?? p.tokenSymbol ?? (p.position ? p.position.slice(0, 8) : '')
-        const valueUsd = Number(live?.total_value_usd ?? live?.value_usd ?? p.initial_value_usd ?? 0)
-        const unclaimedFeesUsd = Number(live?.unclaimed_fees_usd ?? p.unclaimed_fees_usd ?? 0)
+        const valueUsd = observedUsd(
+          live?.total_value_true_usd,
+          live?.total_value_usd ?? live?.value_usd,
+          Boolean(config.management.solMode),
+        )
+        const unclaimedFeesUsd = observedUsd(
+          live?.unclaimed_fees_true_usd,
+          live?.unclaimed_fees_usd,
+          Boolean(config.management.solMode),
+        )
         return {
+          ...cachedPositionTelemetry(live),
           positionAddress: p.position ?? p.position_address ?? '',
           poolAddress: p.pool ?? p.pool_address ?? '',
           tokenSymbol,
-          pnlUsd: Math.round(pnl * 100) / 100,
-          pnlPct: Math.round(pnlPct * 100) / 100,
-          valueUsd: Math.round(valueUsd * 100) / 100,
-          unclaimedFeesUsd: Math.round(unclaimedFeesUsd * 100) / 100,
+          pnlUsd: pnl === undefined ? undefined : Math.round(pnl * 100) / 100,
+          pnlPct: pnlPct === undefined ? undefined : Math.round(pnlPct * 100) / 100,
+          valueUsd: valueUsd === undefined ? undefined : Math.round(valueUsd * 100) / 100,
+          unclaimedFeesUsd: unclaimedFeesUsd === undefined ? undefined : Math.round(unclaimedFeesUsd * 100) / 100,
           deployedAt: p.deployed_at ? new Date(p.deployed_at).toISOString() : undefined,
         }
       })
@@ -3315,11 +3372,14 @@ IMPORTANT:
         : new Date(Date.now() + config.schedule.managementIntervalMin * 60 * 1000).toISOString()
 
       this.ipcServer.broadcastState({
+        ...this.telemetry.snapshot(),
         positions,
-        totalPnlUsd: pnlMetrics.openUnrealizedPnlUsd,
+        ...observedPnlTotal(positions),
         totalRealizedPnlUsd: pnlMetrics.totalRealizedPnlUsd,
         sessionPnlUsd: pnlMetrics.sessionRealizedPnlUsd,
-        unclaimedFeesUsd: pnlMetrics.openUnclaimedFeesUsd,
+        unclaimedFeesUsd: positions.every((position) => position.unclaimedFeesUsd !== undefined)
+          ? Math.round(positions.reduce((sum, position) => sum + (position.unclaimedFeesUsd ?? 0), 0) * 100) / 100
+          : undefined,
         nextScreenAt,
         nextManageAt,
         busy: this.managementBusy || this.screeningBusy || this.busy,
@@ -3330,6 +3390,8 @@ IMPORTANT:
       })
     } catch (e: any) {
       log('ipc_warn', `Failed to broadcast IPC state: ${e.message}`)
+    } finally {
+      this.broadcastingIpcState = false
     }
   }
 
@@ -3712,7 +3774,7 @@ Interactive REPL is active. Type a command or question at the prompt below and p
         await runBusy(async () => {
           const pool = latest[pick - 1]
           console.log(`\nDeploying ${DEPLOY} SOL into ${pool.name}...\n`)
-          const { content: reply } = await agentLoop(
+          const { content: reply } = await this.runObservedAgentLoop(
             `Deploy ${DEPLOY} SOL into pool ${pool.pool} (${pool.name}). Call get_active_bin first then deploy_position. Report result.`,
             config.llm.maxSteps,
             [],
@@ -3731,7 +3793,7 @@ Interactive REPL is active. Type a command or question at the prompt below and p
       if (input.toLowerCase() === 'auto') {
         await runBusy(async () => {
           console.log('\nAgent is picking and deploying...\n')
-          const { content: reply } = await agentLoop(
+          const { content: reply } = await this.runObservedAgentLoop(
             `get_top_candidates and deploy only if a candidate is clearly worth it. If there is only one weak candidate, report NO DEPLOY. For a valid deploy, use amount_y=${DEPLOY}, amount_x=0, bins_above=0, and bins_below from positive volatility. Execute now, don't ask.`,
             config.llm.maxSteps,
             [],
@@ -3848,7 +3910,7 @@ Interactive REPL is active. Type a command or question at the prompt below and p
 
           const poolList = poolsToStudy.map((p: any, i: number) => `${i + 1}. ${p.name} (${p.pool})`).join('\n')
 
-          const { content: reply } = await agentLoop(
+          const { content: reply } = await this.runObservedAgentLoop(
             `Study top LPers across these ${poolsToStudy.length} pools by calling study_top_lpers for each:
 
 ${poolList}
@@ -3875,7 +3937,7 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
       // ── Free-form chat ───────────────────────
       await runBusy(async () => {
         log('user', input)
-        const { content } = await agentLoop(
+        const { content } = await this.runObservedAgentLoop(
           input,
           config.llm.maxSteps,
           this.sessionHistory,

@@ -14,6 +14,7 @@
 import { type Connection, PublicKey } from '@solana/web3.js'
 import { config } from '../config/Config.js'
 import { getTrackedPosition, markInRange, markOutOfRange, minutesOutOfRange } from '../domain/state.js'
+import { type PositionTelemetry, projectPositionTelemetry } from '../shared/agent-telemetry.js'
 import { getNamedConnection } from '../shared/connection.js'
 import { log } from '../shared/logger.js'
 import { withRpcRetry } from '../shared/utils.js'
@@ -133,6 +134,8 @@ interface FlatPosition {
   baseMint: string | null
   decX: number
   decY: number
+  observedDecX?: number
+  observedDecY?: number
   active: number | null
   lower: number | null
   upper: number | null
@@ -184,6 +187,7 @@ async function getMeteoraData(
 
 // ─── Build the shaped position object (matches getMyPositions output) ──
 interface BuiltPosition {
+  visualization: PositionTelemetry
   position: string
   pool: string
   pair: string
@@ -274,6 +278,15 @@ function buildPosition(
   const ageMinutes = meteora?.createdAt ? Math.floor((Date.now() - meteora.createdAt * 1000) / 60000) : ageFromState
 
   return {
+    visualization: projectPositionTelemetry({
+      lowerBin: f.lower,
+      upperBin: f.upper,
+      activeBin: f.active,
+      tokenXRaw: f.xRaw,
+      tokenYRaw: f.yRaw,
+      tokenXDecimals: f.observedDecX,
+      tokenYDecimals: f.observedDecY,
+    }),
     position: f.position,
     pool: f.pool,
     pair: tracked?.pool_name || (meteora ? `${meteora.tokenX ?? '?'}/${meteora.tokenY ?? 'SOL'}` : '?/SOL'),
@@ -340,6 +353,8 @@ export async function computePositions(walletAddress: string): Promise<ComputePo
         baseMint,
         decX,
         decY,
+        observedDecX: info?.tokenX?.mint?.decimals,
+        observedDecY: info?.tokenY?.mint?.decimals,
         active,
         lower: d.lowerBinId ?? null,
         upper: d.upperBinId ?? null,

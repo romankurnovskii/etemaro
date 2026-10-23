@@ -1,4 +1,5 @@
 import { dataPath, MAX_DECISIONS } from '../shared/constants.js'
+import { logStructured } from '../shared/logger.js'
 import { readStateFile, writeStateFile } from '../shared/stateStore.js'
 import type { Decision, DecisionType } from '../shared/types.js'
 
@@ -78,6 +79,7 @@ export function appendDecision(entry: AppendDecisionEntry): Decision {
   data.decisions.unshift(decision)
   data.decisions = data.decisions.slice(0, MAX_DECISIONS)
   save(data)
+  logStructured({ category: 'decision_recorded', message: decision.summary || `Decision recorded: ${decision.type}` })
   return decision
 }
 

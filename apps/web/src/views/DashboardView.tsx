@@ -1,7 +1,8 @@
 import type { StateSnapshot } from '../lib/ipc'
 
 function fmtUsd(value: number | undefined): string {
-  const v = Number(value ?? 0)
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'Not reported'
+  const v = value
   return (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(2)
 }
 
@@ -44,7 +45,7 @@ export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) 
         <div className="metric">
           <div className="label">Total PnL</div>
           <div className={`value ${Number(snapshot.totalPnlUsd) >= 0 ? 'pos' : 'neg'}`}>
-            {fmtUsd(snapshot.totalPnlUsd)}
+            {snapshot.totalPnlUsdKnown === false ? 'Not reported' : fmtUsd(snapshot.totalPnlUsd)}
           </div>
         </div>
         <div className="metric">

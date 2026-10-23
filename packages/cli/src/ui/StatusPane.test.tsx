@@ -88,4 +88,82 @@ describe('StatusPane', () => {
     expect(output).toContain('+$0.08')
     expect(output).toContain('+fees $0.08')
   })
+
+  it.each([undefined, null, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    'does not display unobserved or nonfinite USD and percentages as measured values (%s)',
+    (value) => {
+      const state = {
+        ...baseState,
+        totalRealizedPnlUsd: value,
+        sessionPnlUsd: value,
+        totalPnlUsd: 0,
+        totalPnlUsdKnown: false,
+        unclaimedFeesUsd: value,
+        positions: [
+          {
+            positionAddress: 'unobserved',
+            poolAddress: 'pool',
+            tokenSymbol: 'UNOBSERVED',
+            pnlUsd: value,
+            pnlPct: value,
+            valueUsd: value,
+            unclaimedFeesUsd: value,
+          },
+        ],
+      } as unknown as IpcStateSnapshot
+      const output = renderToString(
+        <StatusPane connected={true} connecting={false} reconnectAttempts={0} state={state} />,
+        { columns: 240 },
+      )
+      expect(output).toContain('Total PnL: Not reported')
+      expect(output).toContain('Session: Not reported')
+      expect(output).toContain('Open PnL: Not reported')
+      expect(output).toContain('UNOBSERVED [Not reported] (Not reported / Not reported)')
+      expect(output).not.toContain('$0.00')
+      expect(output).not.toContain('0%')
+      expect(output).not.toContain('NaN')
+      expect(output).not.toContain('Infinity')
+    },
+  )
+
+  it.each([0, 99])('respects unknown aggregate provenance even when its wire placeholder is %s', (totalPnlUsd) => {
+    const output = renderToString(
+      <StatusPane
+        connected={true}
+        connecting={false}
+        reconnectAttempts={0}
+        state={{
+          ...baseState,
+          totalPnlUsd,
+          totalPnlUsdKnown: false,
+          positions: [{ positionAddress: 'unobserved', poolAddress: 'pool' }],
+        }}
+      />,
+      { columns: 240 },
+    )
+    expect(output).toContain('Open PnL: Not reported')
+    expect(output).not.toContain(`+$${totalPnlUsd.toFixed(2)}`)
+  })
+
+  it('preserves measured zero USD, percentages and position value', () => {
+    const state: IpcStateSnapshot = {
+      ...baseState,
+      totalRealizedPnlUsd: 0,
+      sessionPnlUsd: 0,
+      totalPnlUsd: 0,
+      totalPnlUsdKnown: true,
+      positions: [
+        { positionAddress: 'zero', poolAddress: 'pool', tokenSymbol: 'ZERO', pnlUsd: 0, pnlPct: 0, valueUsd: 0 },
+      ],
+    }
+    const output = renderToString(
+      <StatusPane connected={true} connecting={false} reconnectAttempts={0} state={state} />,
+      { columns: 240 },
+    )
+    expect(output).toContain('Total PnL: +$0.00')
+    expect(output).toContain('Session: +$0.00')
+    expect(output).toContain('Open PnL: +$0.00')
+    expect(output).toContain('ZERO [$0.00] (+$0.00 / 0%)')
+    expect(output).not.toContain('Not reported')
+  })
 })

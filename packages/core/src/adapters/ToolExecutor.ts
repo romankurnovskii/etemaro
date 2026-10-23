@@ -14,6 +14,7 @@
  */
 
 import { execSync, spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 
 // ─── Shared imports ────────────────────────────────────────────
 import { getRecentDecisions } from '../domain/decision-log.js'
@@ -1351,6 +1352,13 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
   }
 
   // ─── Execute ──────────────────────────────
+  const executionId = randomUUID()
+  let executionOutcome: 'completed' | 'blocked' | 'failed' = 'failed'
+  logStructured({
+    category: 'tool_execution_start',
+    message: `Executing tool: ${name}`,
+    metadata: { executionId, tool: name },
+  })
   try {
     const result = await fn(args)
     const duration = Date.now() - startTime
@@ -1500,6 +1508,7 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
       }
     }
 
+    executionOutcome = (result as any)?.blocked ? 'blocked' : success ? 'completed' : 'failed'
     return result
   } catch (error: any) {
     const duration = Date.now() - startTime
@@ -1535,6 +1544,12 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
       error: error.message,
       tool: name,
     }
+  } finally {
+    logStructured({
+      category: 'tool_execution_end',
+      message: `Tool execution ${executionOutcome}: ${name}`,
+      metadata: { executionId, tool: name, outcome: executionOutcome },
+    })
   }
 }
 

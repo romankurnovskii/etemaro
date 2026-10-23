@@ -1143,3 +1143,96 @@ describe('Telegram reply_to_message context injection (#338)', () => {
     expect(loopSpy.mock.calls[0]?.[0]).toBe('[Replying to Telegram message: "Line one Line two"]\n\nExplain')
   })
 })
+
+describe('Daemon — IPC visualizer observations', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('retains read errors without recursively broadcasting and recovers on the next publication', async () => {
+    const core = await import('@etemaro/core')
+    const failureMessage = 'Synthetic corrupt state for IPC regression'
+    const readTracked = vi.spyOn(core, 'getTrackedPositions').mockImplementation(() => {
+      core.log('file_error', failureMessage)
+      throw new Error(failureMessage)
+    })
+    vi.spyOn(core, 'getPerformanceRecords').mockReturnValue([])
+    const broadcastState = vi.fn()
+    const daemon = new Daemon(createMockAdapters()) as unknown as {
+      ipcServer: { broadcastState: typeof broadcastState }
+      broadcastingIpcState: boolean
+      _cachedWalletAddress: null
+      telemetry: InstanceType<typeof core.AgentTelemetry>
+      broadcastIpcState: () => void
+    }
+    daemon.ipcServer = { broadcastState }
+    daemon._cachedWalletAddress = null
+    const unsubscribe = core.addLogListener((entry) => {
+      if (daemon.telemetry.observeLog(entry)) daemon.broadcastIpcState()
+    })
+    try {
+      daemon.broadcastIpcState()
+      expect(readTracked).toHaveBeenCalledTimes(1)
+      expect(broadcastState).not.toHaveBeenCalled()
+      expect(daemon.telemetry.snapshot().lastError?.message).toBe(failureMessage)
+      expect(daemon.broadcastingIpcState).toBe(false)
+
+      readTracked.mockReturnValue([])
+      daemon.broadcastIpcState()
+      expect(readTracked).toHaveBeenCalledTimes(2)
+      expect(broadcastState).toHaveBeenCalledTimes(1)
+      expect(broadcastState.mock.calls[0]?.[0].lastError?.message).toBe(failureMessage)
+      expect(daemon.broadcastingIpcState).toBe(false)
+    } finally {
+      unsubscribe()
+    }
+  })
+
+  it('reports actual guarded-cycle entry and completion without starting a daemon', () => {
+    const daemon = new Daemon(createMockAdapters())
+    const observer = daemon as unknown as {
+      telemetry: { snapshot: () => { phase: string | undefined } }
+      acquireLock: (name: 'management') => boolean
+      releaseLock: (name: 'management') => void
+    }
+    expect(observer.telemetry.snapshot().phase).toBe('Idle')
+    expect(observer.acquireLock('management')).toBe(true)
+    expect(observer.telemetry.snapshot().phase).toBe('Evaluating')
+    expect(observer.acquireLock('management')).toBe(false)
+    observer.releaseLock('management')
+    expect(observer.telemetry.snapshot().phase).toBe('Settled')
+  })
+
+  it('keeps measured values isolated for two positions sharing a pool', async () => {
+    const core = await import('@etemaro/core')
+    const tracked = [
+      { position: 'position-a', pool: 'shared-pool', pool_name: 'Synthetic pair' },
+      { position: 'position-b', pool: 'shared-pool', pool_name: 'Synthetic pair' },
+    ] as ReturnType<typeof core.getTrackedPositions>
+    vi.spyOn(core, 'getTrackedPositions').mockReturnValue(tracked)
+    vi.spyOn(core, 'getPerformanceRecords').mockReturnValue([])
+    const broadcastState = vi.fn()
+    const daemon = new Daemon(createMockAdapters()) as unknown as {
+      ipcServer: { broadcastState: typeof broadcastState }
+      latestLivePositions: Array<Record<string, unknown>>
+      broadcastIpcState: () => void
+    }
+    daemon.ipcServer = { broadcastState }
+    daemon.latestLivePositions = [
+      {
+        position: 'position-a',
+        pool: 'shared-pool',
+        pnl_true_usd: 5,
+        total_value_true_usd: 10,
+        visualization: { lowerBin: 100, upperBin: 140, activeBin: 120, inRange: true, assetSplit: null },
+      },
+    ]
+    daemon.broadcastIpcState()
+    const snapshot = broadcastState.mock.calls[0]?.[0]
+    expect(snapshot.positions[0]).toMatchObject({ positionAddress: 'position-a', pnlUsd: 5, lowerBin: 100 })
+    expect(snapshot.positions[1]).toMatchObject({ positionAddress: 'position-b', lowerBin: null, assetSplit: null })
+    expect(snapshot.positions[1].pnlUsd).toBeUndefined()
+    expect(snapshot.positions[1].pnlPct).toBeUndefined()
+    expect(snapshot.positions[1].valueUsd).toBeUndefined()
+    expect(snapshot.totalPnlUsdKnown).toBe(false)
+    expect(snapshot.confidence).toBeNull()
+  })
+})

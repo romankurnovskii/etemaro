@@ -3,6 +3,18 @@ export const DAEMON_URL =
 
 export const WS_URL = DAEMON_URL.replace(/^http/, 'ws')
 
+/** Child endpoints share the configured daemon host, but have independent ports. */
+export function agentWsUrl(ipcPort: number | null | undefined, daemonUrl = DAEMON_URL): string | null {
+  if (!Number.isInteger(ipcPort) || !ipcPort || ipcPort < 1 || ipcPort > 65535) return null
+  const url = new URL(daemonUrl)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  url.port = String(ipcPort)
+  url.pathname = '/'
+  url.search = ''
+  url.hash = ''
+  return url.toString()
+}
+
 export function authHeaders(token: string): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
