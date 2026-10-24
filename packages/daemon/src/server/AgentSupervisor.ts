@@ -23,6 +23,10 @@ export interface ManagedAgent {
   pid: number | null
   configPath: string
   dataDir: string
+  /** The agent's own IPC port (its `connection.ipcPort`), or null if not configured. */
+  ipcPort: number | null
+  /** ISO timestamp of the last successful spawn, or null when not running. */
+  startedAt: string | null
 }
 
 export interface AgentSupervisorOptions {
@@ -62,6 +66,7 @@ export class AgentSupervisor {
   private readonly spawnFn: typeof spawn
   private readonly cli: { program: string; argsPrefix: string[] }
   private readonly children = new Map<string, ChildProcess>()
+  private readonly startedAt = new Map<string, string>()
 
   constructor(options: AgentSupervisorOptions = {}) {
     this.repoRoot = options.repoRoot ?? REPO_ROOT
@@ -131,9 +136,11 @@ export class AgentSupervisor {
       detached: false,
     })
     this.children.set(agentId, child)
+    this.startedAt.set(agentId, new Date().toISOString())
     this.writeRegistry()
     child.on('exit', () => {
       this.children.delete(agentId)
+      this.startedAt.delete(agentId)
       this.writeRegistry()
       try {
         fs.closeSync(out)
@@ -177,6 +184,7 @@ export class AgentSupervisor {
         }
       }
       this.children.delete(id)
+      this.startedAt.delete(id)
     }
     this.clearRegistry()
     return stopped
@@ -291,6 +299,7 @@ export class AgentSupervisor {
     const config = this.readConfig(id, true)
     const child = this.children.get(id)
     const running = Boolean(child && child.exitCode === null && !child.killed)
+    const ipcPort = Number(config.connection?.ipcPort)
     return {
       id,
       name: config.description || config.agentId || id,
@@ -300,6 +309,8 @@ export class AgentSupervisor {
       pid: running ? (child?.pid ?? null) : null,
       configPath: this.configPathFor(id),
       dataDir: this.dataDirFor(id),
+      ipcPort: Number.isFinite(ipcPort) && ipcPort > 0 ? ipcPort : null,
+      startedAt: running ? (this.startedAt.get(id) ?? null) : null,
     }
   }
 

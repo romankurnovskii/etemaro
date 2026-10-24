@@ -42,18 +42,50 @@ export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) 
       </div>
       <div className="metrics mt">
         <div className="metric">
-          <div className="label">Total PnL</div>
+          <div className="label">Open PnL</div>
           <div className={`value ${Number(snapshot.totalPnlUsd) >= 0 ? 'pos' : 'neg'}`}>
             {fmtUsd(snapshot.totalPnlUsd)}
           </div>
         </div>
+        {snapshot.totalRealizedPnlUsd != null && (
+          <div className="metric">
+            <div className="label">Realized PnL</div>
+            <div className={`value ${Number(snapshot.totalRealizedPnlUsd) >= 0 ? 'pos' : 'neg'}`}>
+              {fmtUsd(snapshot.totalRealizedPnlUsd)}
+            </div>
+          </div>
+        )}
+        {snapshot.sessionPnlUsd != null && (
+          <div className="metric">
+            <div className="label">Session PnL</div>
+            <div className={`value ${Number(snapshot.sessionPnlUsd) >= 0 ? 'pos' : 'neg'}`}>
+              {fmtUsd(snapshot.sessionPnlUsd)}
+            </div>
+          </div>
+        )}
+        {snapshot.unclaimedFeesUsd != null && (
+          <div className="metric">
+            <div className="label">Unclaimed Fees</div>
+            <div className="value pos">{fmtUsd(snapshot.unclaimedFeesUsd)}</div>
+          </div>
+        )}
         <div className="metric">
-          <div className="label">Open positions</div>
+          <div className="label">Positions</div>
           <div className="value">{positions.length}</div>
         </div>
         <div className="metric">
-          <div className="label">Busy</div>
-          <div className="value">{snapshot.busy ? 'yes' : 'no'}</div>
+          <div className="label">Phase</div>
+          <div className="value small">{snapshot.phase ?? (snapshot.busy ? 'busy' : 'idle')}</div>
+        </div>
+        <div className="metric">
+          <div className="label">Mode</div>
+          <div className="value small">
+            {snapshot.dryRun === false ? (
+              <span className="badge badge-live">LIVE</span>
+            ) : (
+              <span className="badge badge-dry">DRY-RUN</span>
+            )}
+          </div>
         </div>
         <div className="metric">
           <div className="label">Next screening</div>
@@ -77,6 +109,7 @@ export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) 
                 <th className="num">PnL</th>
                 <th className="num">PnL %</th>
                 <th className="num">Value</th>
+                <th className="num">Fees</th>
               </tr>
             </thead>
             <tbody>
@@ -87,6 +120,7 @@ export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) 
                   <td className={`num ${Number(p.pnlUsd ?? 0) >= 0 ? 'pos' : 'neg'}`}>{fmtUsd(p.pnlUsd)}</td>
                   <td className="num">{p.pnlPct == null ? '—' : `${Number(p.pnlPct).toFixed(2)}%`}</td>
                   <td className="num">{fmtUsd(p.valueUsd)}</td>
+                  <td className="num">{p.unclaimedFeesUsd != null ? fmtUsd(p.unclaimedFeesUsd) : '—'}</td>
                 </tr>
               ))}
             </tbody>
