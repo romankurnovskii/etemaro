@@ -52,6 +52,7 @@ export interface StateSnapshot {
   walletAddress?: string | null
   activeStrategyId?: string | null
   configPath?: string
+  dryRun?: boolean
 }
 
 export interface JsonSchema {
