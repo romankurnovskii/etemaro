@@ -2,6 +2,7 @@
 
 export * from './decision-log.js'
 export * from './dev-blocklist.js'
+export * from './ipcStateHelpers.js'
 export * from './lessons.js'
 export * from './liquidation-queue.js'
 export * from './pnlTracker.js'

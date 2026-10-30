@@ -5,6 +5,7 @@ export function ChatView({ chat, onSend }: { chat: ChatMessage[]; onSend: (text:
   const [text, setText] = useState('')
   const logRef = useRef<HTMLDivElement | null>(null)
 
+  // Scroll to bottom whenever a new message arrives
   useEffect(() => {
     const el = logRef.current
     if (el) el.scrollTop = el.scrollHeight
