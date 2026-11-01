@@ -31,13 +31,13 @@ importers:
         version: 3.0.3
       openai:
         specifier: ^7.45.1
-        version: 7.45.1(ws@8.22.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.5)
+        version: 7.45.1(ws@8.22.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7)
       pm2:
         specifier: ^7.0.4
         version: 7.0.4(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       zod:
-        specifier: ^4.6.5
-        version: 4.6.5
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.5.15
@@ -67,11 +67,11 @@ importers:
   apps/web:
     dependencies:
       react:
-        specifier: 19.3.0
-        version: 19.3.0
+        specifier: 19.3.1
+        version: 19.3.1
       react-dom:
         specifier: 19.3.1
-        version: 19.3.1(react@19.3.0)
+        version: 19.3.1(react@19.3.1)
     devDependencies:
       '@types/react':
         specifier: ^19.3.0
@@ -120,8 +120,8 @@ importers:
         specifier: ^8.18.2
         version: 8.18.2
       dotenv:
-        specifier: ^18.0.7
-        version: 18.0.7
+        specifier: ^18.0.9
+        version: 18.0.9
       tsup:
         specifier: ^9.0.0
         version: 9.0.0(postcss@8.5.32)(tsx@4.23.15)(typescript@7.0.2)
@@ -150,7 +150,7 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       dotenv:
-        specifier: ^18.0.8
+        specifier: ^18.0.9
         version: 18.0.9
       jsonrepair:
         specifier: ^3.15.0
@@ -184,7 +184,7 @@ importers:
         specifier: workspace:*
         version: link:../core
       dotenv:
-        specifier: ^18.0.8
+        specifier: ^18.0.9
         version: 18.0.9
       ws:
         specifier: ^8.22.0
@@ -1987,10 +1987,6 @@ packages:
     peerDependencies:
       react: ^19.3.0
 
-  react@19.3.0:
-    resolution: {integrity: sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog==}
-    engines: {node: '>=0.10.0'}
-
   react@19.3.1:
     resolution: {integrity: sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==}
     engines: {node: '>=0.10.0'}
@@ -2410,9 +2406,6 @@ packages:
 
   yoga-layout@3.2.1:
     resolution: {integrity: sha512-0LPOt3AxKqMdFBZA3HBAt/t/8vIKq7VaQYbuA8WxCgung+p9TVyKRYdpvCb80HcdTN2NkbIKbhNwKUfm3tQywQ==}
-
-  zod@4.6.5:
-    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
@@ -3808,10 +3801,10 @@ snapshots:
       ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       zod: 4.6.7
 
-  openai@7.45.1(ws@8.22.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.5):
+  openai@7.45.1(ws@8.22.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7):
     optionalDependencies:
       ws: 8.22.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
-      zod: 4.6.5
+      zod: 4.6.7
 
   pac-proxy-agent@7.2.0:
     dependencies:
@@ -3942,17 +3935,15 @@ snapshots:
       iconv-lite: 0.4.24
       unpipe: 1.0.0
 
-  react-dom@19.3.1(react@19.3.0):
+  react-dom@19.3.1(react@19.3.1):
     dependencies:
-      react: 19.3.0
+      react: 19.3.1
       scheduler: 0.28.0
 
   react-reconciler@0.34.0(react@19.3.1):
     dependencies:
       react: 19.3.1
       scheduler: 0.28.0
-
-  react@19.3.0: {}
 
   react@19.3.1: {}
 
@@ -4383,7 +4374,5 @@ snapshots:
       utf-8-validate: 6.0.6
 
   yoga-layout@3.2.1: {}
-
-  zod@4.6.5: {}
 
   zod@4.6.7: {}
