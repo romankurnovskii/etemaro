@@ -35,16 +35,20 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
   const [confirm, setConfirm] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (initialToolName) setActive(initialToolName)
   }, [initialToolName])
 
   useEffect(() => {
-    setArgs({})
-    setConfirm(false)
-    setResult(null)
-  }, [])
+    if (active) {
+      setArgs({})
+      setConfirm(false)
+      setResult(null)
+      setCopied(false)
+    }
+  }, [active])
 
   const tool = useMemo(() => catalog.find((t) => t.name === active) ?? null, [catalog, active])
   const filtered = useMemo(() => {
@@ -57,6 +61,7 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
     if (!tool) return
     setPending(true)
     setResult(null)
+    setCopied(false)
     try {
       const body = { name: tool.name, args: normalizeArgs(tool, args), confirm }
       const res = await fetchJson<unknown>('/api/tool', token, {
@@ -72,38 +77,76 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
     }
   }
 
+  const handleCopy = async () => {
+    if (!result) return
+    try {
+      await navigator.clipboard.writeText(result)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      /* ignore */
+    }
+  }
+
   return (
     <div className="tool-layout">
       <section className="card">
-        <h2>Tools ({catalog.length})</h2>
-        <input value={query} placeholder="Search tools" onChange={(e) => setQuery(e.target.value)} />
+        <div className="section-head">
+          <h2>Tool Catalog</h2>
+          <span className="muted small">{catalog.length} registered</span>
+        </div>
+        <input
+          value={query}
+          placeholder="Search tools by name or description…"
+          onChange={(e) => setQuery(e.target.value)}
+          className="mt-1"
+        />
         <div className="tool-list mt">
-          {filtered.map((t) => (
-            <button
-              type="button"
-              key={t.name}
-              className={`tool-item${active === t.name ? ' active' : ''}`}
-              onClick={() => setActive(t.name)}
-            >
-              <div className="name">
-                {t.name}{' '}
-                <span className={`badge ${t.isProtected ? 'badge-write' : 'badge-read'}`}>
-                  {t.isProtected ? 'write' : 'read'}
-                </span>
-              </div>
-              <div className="desc">{t.description}</div>
-            </button>
-          ))}
+          {filtered.length === 0 ? (
+            <p className="muted small">No matching tools found.</p>
+          ) : (
+            filtered.map((t) => (
+              <button
+                type="button"
+                key={t.name}
+                className={`tool-item${active === t.name ? ' active' : ''}`}
+                onClick={() => setActive(t.name)}
+              >
+                <div className="name">
+                  {t.name}{' '}
+                  <span className={`badge ${t.isProtected ? 'badge-write' : 'badge-read'}`}>
+                    {t.isProtected ? 'write' : 'read'}
+                  </span>
+                </div>
+                <div className="desc">{t.description}</div>
+              </button>
+            ))
+          )}
         </div>
       </section>
+
       <section className="card">
         {!tool ? (
-          <p className="muted">Select a tool on the left to see its parameters and run it.</p>
+          <div className="tool-placeholder">
+            <h3>Select a Tool</h3>
+            <p className="muted small mt-1">
+              Select any tool from the catalog on the left to inspect its schema, provide parameters, and execute it.
+            </p>
+          </div>
         ) : (
           <>
-            <h2>{tool.name}</h2>
-            <p className="muted small">{tool.description}</p>
+            <div className="section-head">
+              <div>
+                <h2>{tool.name}</h2>
+                <span className={`badge ${tool.isProtected ? 'badge-write' : 'badge-read'}`}>
+                  {tool.isProtected ? 'State-Mutating (Write)' : 'Read-Only'}
+                </span>
+              </div>
+            </div>
+            <p className="muted small mt-1">{tool.description}</p>
+
             <form
+              className="mt"
               onSubmit={(e) => {
                 e.preventDefault()
                 void run()
@@ -119,19 +162,39 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
                   onChange={(v) => setArgs((prev) => ({ ...prev, [name]: v }))}
                 />
               ))}
+
               {tool.isProtected ? (
-                <label className="field">
+                <label className="field confirmation-field">
                   <span className="warn">
-                    <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} /> I
-                    understand and want to run it
+                    <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} /> I confirm
+                    and understand this action may execute real on-chain transactions or modify state
                   </span>
                 </label>
               ) : null}
-              <button type="submit" className="primary" disabled={pending}>
-                {pending ? 'Running…' : 'Run tool'}
-              </button>
+
+              <div className="row mt">
+                <button type="submit" className="primary" disabled={pending}>
+                  {pending ? 'Executing Tool…' : 'Execute Tool'}
+                </button>
+                {result ? (
+                  <button type="button" className="ghost" onClick={() => setResult(null)}>
+                    Clear Result
+                  </button>
+                ) : null}
+              </div>
             </form>
-            {result ? <pre className="result mt">{result}</pre> : null}
+
+            {result ? (
+              <div className="result-container mt">
+                <div className="result-header">
+                  <span className="muted small font-medium">Output Response</span>
+                  <button type="button" className="ghost small" onClick={() => void handleCopy()}>
+                    {copied ? 'Copied ✓' : 'Copy Output'}
+                  </button>
+                </div>
+                <pre className="result">{result}</pre>
+              </div>
+            ) : null}
           </>
         )}
       </section>
@@ -155,9 +218,11 @@ function ToolField({
   const type = schema.type ?? 'string'
   const inputId = `tool-field-${name}`
   let input: ReactNode
+
   if (Array.isArray(schema.enum)) {
     input = (
       <select id={inputId} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Select option…</option>
         {schema.enum.map((v) => (
           <option key={String(v)} value={String(v)}>
             {String(v)}
@@ -182,7 +247,7 @@ function ToolField({
       <input
         id={inputId}
         value={Array.isArray(value) ? value.join(', ') : String(value ?? '')}
-        placeholder="comma-separated"
+        placeholder="comma-separated list"
         onChange={(e) => onChange(e.target.value)}
       />
     )
@@ -191,6 +256,7 @@ function ToolField({
       <textarea
         id={inputId}
         value={typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value)}
+        placeholder='JSON object, e.g. {"key": "value"}'
         onChange={(e) => onChange(e.target.value)}
       />
     )
