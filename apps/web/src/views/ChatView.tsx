@@ -7,8 +7,8 @@ export function ChatView({ chat, onSend }: { chat: ChatMessage[]; onSend: (text:
 
   useEffect(() => {
     const el = logRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [])
+    if (el && chat.length > 0) el.scrollTop = el.scrollHeight
+  }, [chat])
 
   const submit = () => {
     const value = text.trim()
@@ -32,6 +32,7 @@ export function ChatView({ chat, onSend }: { chat: ChatMessage[]; onSend: (text:
       </div>
       <div className="row">
         <input
+          aria-label="Message to agent"
           value={text}
           placeholder="Ask the agent…"
           onChange={(e) => setText(e.target.value)}
