@@ -10,47 +10,111 @@ import { DashboardView } from './views/DashboardView'
 import { LogsView } from './views/LogsView'
 import { ToolsView } from './views/ToolsView'
 
-const TABS = ['agents', 'dashboard', 'tools', 'config', 'logs', 'chat'] as const
-type Tab = (typeof TABS)[number]
+const TABS = [
+  { id: 'agents', label: 'Visualizer' },
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'tools', label: 'Tools' },
+  { id: 'config', label: 'Config' },
+  { id: 'logs', label: 'Logs' },
+  { id: 'chat', label: 'Chat' },
+] as const
+
+type Tab = (typeof TABS)[number]['id']
+
+function readStoredToken(): string {
+  const fromUrl = new URLSearchParams(location.search).get('token')
+  if (fromUrl) {
+    try {
+      localStorage.setItem('etemaro.token', fromUrl)
+    } catch {
+      /* ignore */
+    }
+    return fromUrl
+  }
+  try {
+    return localStorage.getItem('etemaro.token') ?? ''
+  } catch {
+    return ''
+  }
+}
 
 export default function App() {
-  const [token] = useState(() => {
-    const fromUrl = new URLSearchParams(location.search).get('token')
-    if (fromUrl) {
-      try {
-        localStorage.setItem('etemaro.token', fromUrl)
-      } catch {
-        /* ignore */
-      }
-      return fromUrl
-    }
-    try {
-      return localStorage.getItem('etemaro.token') ?? ''
-    } catch {
-      return ''
-    }
-  })
+  const [token, setToken] = useState(readStoredToken)
+  const [tokenDraft, setTokenDraft] = useState(token)
+  const [showToken, setShowToken] = useState(false)
   const [tab, setTab] = useState<Tab>('agents')
   const [openTool, setOpenTool] = useState<string | null>(null)
   const conn = useAgentConnection(WS_URL, token)
   const agents = useAgents(token)
   const strategies = useStrategies(token)
 
+  const saveToken = () => {
+    const next = tokenDraft.trim()
+    try {
+      if (next) localStorage.setItem('etemaro.token', next)
+      else localStorage.removeItem('etemaro.token')
+    } catch {
+      /* ignore */
+    }
+    setToken(next)
+    setShowToken(false)
+  }
+
+  const clearToken = () => {
+    setTokenDraft('')
+    try {
+      localStorage.removeItem('etemaro.token')
+    } catch {
+      /* ignore */
+    }
+    setToken('')
+    setShowToken(false)
+  }
+
   return (
     <div className="app">
       <header className="topbar">
-        <h1>Etemaro Agent Console</h1>
-        <span>
+        <h1>Etemaro</h1>
+        <span className="conn-badge">
           <span className={`status-dot status-${conn.status}`} />
           {conn.status}
         </span>
         <span className="spacer" />
-        <span className="muted small">{DAEMON_URL}</span>
+        <span className="muted small mono">{DAEMON_URL}</span>
+        <div className="token-box">
+          {showToken ? (
+            <>
+              <input
+                type="password"
+                value={tokenDraft}
+                placeholder="Bearer token"
+                onChange={(e) => setTokenDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveToken()
+                }}
+                aria-label="Daemon bearer token"
+              />
+              <button type="button" className="primary" onClick={saveToken}>
+                Save
+              </button>
+              <button type="button" className="ghost" onClick={clearToken}>
+                Clear
+              </button>
+              <button type="button" className="ghost" onClick={() => setShowToken(false)}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button type="button" className="ghost" onClick={() => setShowToken(true)}>
+              {token ? 'Token · set' : 'Token · unset'}
+            </button>
+          )}
+        </div>
       </header>
       <nav className="tabs">
         {TABS.map((t) => (
-          <button type="button" key={t} className={t === tab ? 'active' : ''} onClick={() => setTab(t)}>
-            {t}
+          <button type="button" key={t.id} className={t.id === tab ? 'active' : ''} onClick={() => setTab(t.id)}>
+            {t.label}
           </button>
         ))}
       </nav>
@@ -60,6 +124,9 @@ export default function App() {
             agents={agents.agents}
             busy={agents.busy}
             strategies={strategies.strategies}
+            snapshot={conn.snapshot}
+            logs={conn.logs}
+            token={token}
             onCreate={agents.create}
             onStart={agents.start}
             onStop={agents.stop}
