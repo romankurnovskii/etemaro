@@ -37,12 +37,33 @@ describe('toIpcPositionSummary', () => {
     expect(s.assetSplit).toEqual({ tokenXPct: 62.5, tokenYPct: 37.5 })
   })
 
-  it('keeps the existing plain *_usd money mapping (consistent with snapshot totals)', () => {
-    const s = toIpcPositionSummary(tracked, live)
-    expect(s.valueUsd).toBe(0.9)
-    expect(s.pnlUsd).toBe(0.01)
-    expect(s.unclaimedFeesUsd).toBe(0)
+  it('resolves real USD money fields in solMode (plain *_usd hold SOL)', () => {
+    const s = toIpcPositionSummary(tracked, live, true)
+    expect(s.valueUsd).toBe(180.25)
+    expect(s.pnlUsd).toBe(2.5)
+    expect(s.unclaimedFeesUsd).toBe(0.33)
     expect(s.tokenSymbol).toBe('SOL/USDC')
+  })
+
+  it('never shows a SOL amount as USD in solMode when no true USD exists', () => {
+    const solOnly = { position: 'POS_A', pool: 'POOL_1', total_value_usd: 0.9, pnl_usd: 0.01, unclaimed_fees_usd: 0.2 }
+    const s = toIpcPositionSummary({ ...tracked, initial_value_usd: undefined }, solOnly, true)
+    expect(s.valueUsd).toBeUndefined()
+    expect(s.pnlUsd).toBeUndefined()
+    expect(s.unclaimedFeesUsd).toBeUndefined()
+  })
+
+  it('falls back to the tracked USD initial value in solMode', () => {
+    const solOnly = { position: 'POS_A', pool: 'POOL_1', total_value_usd: 0.9 }
+    expect(toIpcPositionSummary(tracked, solOnly, true).valueUsd).toBe(100)
+  })
+
+  it('keeps plain *_usd values outside solMode when no true USD exists', () => {
+    const plain = { position: 'POS_A', pool: 'POOL_1', total_value_usd: 150, pnl_usd: 4, unclaimed_fees_usd: 0.5 }
+    const s = toIpcPositionSummary(tracked, plain)
+    expect(s.valueUsd).toBe(150)
+    expect(s.pnlUsd).toBe(4)
+    expect(s.unclaimedFeesUsd).toBe(0.5)
   })
 
   it('falls back to tracked bin_range and null status/split without live data', () => {

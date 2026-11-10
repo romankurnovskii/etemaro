@@ -2,12 +2,13 @@
  * Pure mappers from daemon/core state to the IPC state-snapshot shapes.
  * Kept out of Daemon.ts so the mapping can be unit-tested without the daemon.
  */
-import type { IpcDecisionSummary, IpcPositionSummary, IpcUptime } from '@etemaro/core'
+import { type IpcDecisionSummary, type IpcPositionSummary, type IpcUptime, resolveLiveUsd } from '@etemaro/core'
 
 // biome-ignore lint/suspicious/noExplicitAny: tracked/live position records are untyped JSON state
 type Loose = Record<string, any>
 
 const round2 = (n: number) => Math.round(n * 100) / 100
+const round2OrUndefined = (n: number | null) => (n == null ? undefined : round2(n))
 
 function finite(value: unknown): number | null {
   const n = typeof value === 'number' ? value : value == null ? Number.NaN : Number(value)
@@ -22,20 +23,28 @@ function positionId(p: Loose): string {
  * Builds the IPC summary for one tracked position.
  *
  * `live` is the matching entry from `getMyPositions()` (the BuiltPosition shape).
- * Money fields keep the existing mapping (plain `*_usd`) so rows stay consistent
- * with the snapshot totals from `computeAgentPnlMetrics`. Known issue, unchanged
- * here: in `management.solMode` those plain fields hold SOL amounts.
+ * Money fields resolve real USD via `resolveLiveUsd`, the same rule as the
+ * snapshot totals in `computeAgentPnlMetrics`: in `management.solMode` the plain
+ * `*_usd` fields hold SOL, so only `*_true_usd` is used there and a value with
+ * no USD figure is omitted rather than shown as dollars.
  * Range / split data is only taken from a live entry whose position address
  * matches exactly, so one position never shows another position's bins.
  */
-export function toIpcPositionSummary(tracked: Loose, live: Loose | undefined): IpcPositionSummary {
+export function toIpcPositionSummary(tracked: Loose, live: Loose | undefined, solMode = false): IpcPositionSummary {
   const id = positionId(tracked)
   const exact = live && positionId(live) === id ? live : undefined
 
-  const pnl = finite(live?.pnl_usd) ?? finite(tracked.pnl_usd) ?? 0
+  const pnl = resolveLiveUsd(live?.pnl_true_usd, live?.pnl_usd ?? tracked.pnl_usd ?? 0, solMode)
   const pnlPct = finite(live?.pnl_pct) ?? finite(tracked.pnl_pct) ?? finite(tracked.peak_pnl_pct) ?? 0
-  const valueUsd = finite(live?.total_value_usd) ?? finite(live?.value_usd) ?? finite(tracked.initial_value_usd) ?? 0
-  const feesUsd = finite(live?.unclaimed_fees_usd) ?? finite(tracked.unclaimed_fees_usd) ?? 0
+  const valueUsd =
+    resolveLiveUsd(live?.total_value_true_usd, live?.total_value_usd ?? live?.value_usd, solMode) ??
+    finite(tracked.initial_value_usd) ??
+    (solMode ? null : 0)
+  const feesUsd = resolveLiveUsd(
+    live?.unclaimed_fees_true_usd,
+    live?.unclaimed_fees_usd ?? tracked.unclaimed_fees_usd ?? 0,
+    solMode,
+  )
   const tokenSymbol =
     live?.pair ?? tracked.pool_name ?? tracked.pair ?? tracked.tokenSymbol ?? (id ? id.slice(0, 8) : '')
 
@@ -49,10 +58,10 @@ export function toIpcPositionSummary(tracked: Loose, live: Loose | undefined): I
     positionAddress: id,
     poolAddress: tracked.pool ?? tracked.pool_address ?? '',
     tokenSymbol,
-    pnlUsd: round2(pnl),
+    pnlUsd: round2OrUndefined(pnl),
     pnlPct: round2(pnlPct),
-    valueUsd: round2(valueUsd),
-    unclaimedFeesUsd: round2(feesUsd),
+    valueUsd: round2OrUndefined(valueUsd),
+    unclaimedFeesUsd: round2OrUndefined(feesUsd),
     deployedAt: tracked.deployed_at ? new Date(tracked.deployed_at).toISOString() : undefined,
     priceRangeBins: lower != null && upper != null ? { lower, upper, active } : null,
     inRangeStatus:

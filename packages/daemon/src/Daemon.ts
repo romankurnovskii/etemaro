@@ -53,7 +53,6 @@ import {
   registerExitSignal,
   repoPath,
   resetConsecutiveSwapFailures,
-  resolveLiveUsd,
   SHARED_STRATEGY_LIB_FILENAME,
   SHARED_STRATEGY_LIBRARY,
   SMART_WALLETS_FILENAME,
@@ -3284,10 +3283,10 @@ IMPORTANT:
         trackedSet.has(lp.position || lp.position_address),
       )
       // In solMode the plain *_usd position fields are SOL-denominated; the IPC
-      // snapshot is labelled USD, so totals resolve real USD (see resolveLiveUsd).
+      // snapshot is labelled USD, so rows and totals resolve real USD (resolveLiveUsd).
       const solMode = Boolean(config.management?.solMode)
       const positions: IpcPositionSummary[] = tracked.map((p: any) =>
-        toIpcPositionSummary(p, findLivePosition(p, this.latestLivePositions)),
+        toIpcPositionSummary(p, findLivePosition(p, this.latestLivePositions), solMode),
       )
 
       // Optional visualizer fields: read in isolation so a bad decision log
