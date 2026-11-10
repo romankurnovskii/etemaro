@@ -29,6 +29,48 @@ part of the workspace. The root `pre-commit` hook builds before running tests.
 - **Tools** — the full agent tool catalog with JSON-Schema-driven forms; protected tools require an explicit confirm.
 - **Logs / Chat** — live log stream and a direct line to the agent.
 
+## Agent Visualizer
+
+Agents is the default view. Fleet cards show the supervisor's process state and
+subscribe to each running agent's own IPC port (read from its instance config).
+Connections stay on the configured daemon hostname. The inspector never assigns
+the console daemon's positions or logs to an unrelated managed agent.
+
+- The loop indicator is **derived** from the agent's `busy` snapshot and structured
+  `tool_start` / `tool_finish` / `tool_blocked` events. It is unknown without a snapshot.
+- Position bins and range status come from the existing read-only `get_my_positions`
+  tool. The selected agent's positions and recent decisions refresh every 15 seconds;
+  overlapping requests are prevented and outstanding reads are aborted on selection changes.
+- Older daemon versions do not expose LP asset composition or decision confidence.
+  These fields show **Not reported**. Optional `token_x_value_usd` / `token_y_value_usd`
+  position fields render a USD composition bar; structured log metadata can supply `confidence`.
+  No allocation is inferred from wallet balances, bin location, or token quantities.
+- Strategy changes fetch both full `get_strategy` records and show a field diff
+  before an explicit confirmation updates the instance configuration. The supervisor's
+  endpoint saves configuration only: **restart a running agent to load the change**.
+- Refresh reloads the fleet and strategy catalog and retries per-agent connections.
+
+The header can save, replace, or remove the existing `etemaro.token` browser-storage
+entry. URL tokens are removed from the address after import. WebSocket subscriptions
+wait for the matching authentication ACK; invalid credentials stop automatic retries
+until the token is changed. Transient disconnects retry with capped exponential backoff.
+
+## Verification
+
+From `apps/web`:
+
+```bash
+npm run typecheck
+npm run build
+npm test            # Node >=22.6; built-in test runner, no added test framework
+```
+
+The focused tests cover loop inference, severity mapping, nested strategy diffs, and
+agent endpoint validation. Browser acceptance should additionally cover per-agent
+data isolation, token replacement, delayed auth ACK, reconnect, create/start/stop,
+strategy preview/cancel/confirm/error, tool confirmation reset and output copying,
+log search/severity/category filters, and narrow-screen navigation.
+
 ## HTTP API (served by IpcServer)
 
 | Method | Path | Description |

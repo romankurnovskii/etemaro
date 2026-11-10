@@ -35,16 +35,19 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
   const [confirm, setConfirm] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [copyStatus, setCopyStatus] = useState('Copy output')
 
   useEffect(() => {
     if (initialToolName) setActive(initialToolName)
   }, [initialToolName])
 
   useEffect(() => {
+    if (!active) return
     setArgs({})
     setConfirm(false)
     setResult(null)
-  }, [])
+    setCopyStatus('Copy output')
+  }, [active])
 
   const tool = useMemo(() => catalog.find((t) => t.name === active) ?? null, [catalog, active])
   const filtered = useMemo(() => {
@@ -54,7 +57,7 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
   }, [catalog, query])
 
   const run = async () => {
-    if (!tool) return
+    if (!tool || pending || (tool.isProtected && !confirm)) return
     setPending(true)
     setResult(null)
     try {
@@ -76,7 +79,12 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
     <div className="tool-layout">
       <section className="card">
         <h2>Tools ({catalog.length})</h2>
-        <input value={query} placeholder="Search tools" onChange={(e) => setQuery(e.target.value)} />
+        <input
+          aria-label="Search tools"
+          value={query}
+          placeholder="Search tools"
+          onChange={(e) => setQuery(e.target.value)}
+        />
         <div className="tool-list mt">
           {filtered.map((t) => (
             <button
@@ -127,11 +135,33 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
                   </span>
                 </label>
               ) : null}
-              <button type="submit" className="primary" disabled={pending}>
+              <button type="submit" className="primary" disabled={pending || (tool.isProtected && !confirm)}>
                 {pending ? 'Running…' : 'Run tool'}
               </button>
             </form>
-            {result ? <pre className="result mt">{result}</pre> : null}
+            {result ? (
+              <>
+                <div className="row mt space-between">
+                  <span className="muted small">Tool output</span>
+                  <button
+                    type="button"
+                    className="ghost small"
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(result)
+                        .then(() => setCopyStatus('Copied'))
+                        .catch(() => setCopyStatus('Copy failed; select the output below'))
+                    }}
+                  >
+                    {copyStatus}
+                  </button>
+                </div>
+                <pre className="result mt">{result}</pre>
+                <span className="sr-only" role="status">
+                  {copyStatus}
+                </span>
+              </>
+            ) : null}
           </>
         )}
       </section>
@@ -157,7 +187,8 @@ function ToolField({
   let input: ReactNode
   if (Array.isArray(schema.enum)) {
     input = (
-      <select id={inputId} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
+      <select id={inputId} required={required} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Select a value</option>
         {schema.enum.map((v) => (
           <option key={String(v)} value={String(v)}>
             {String(v)}
@@ -172,7 +203,8 @@ function ToolField({
       <input
         id={inputId}
         type="number"
-        step="any"
+        step={type === 'integer' ? 1 : 'any'}
+        required={required}
         value={value == null ? '' : String(value)}
         onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
       />
@@ -181,6 +213,7 @@ function ToolField({
     input = (
       <input
         id={inputId}
+        required={required}
         value={Array.isArray(value) ? value.join(', ') : String(value ?? '')}
         placeholder="comma-separated"
         onChange={(e) => onChange(e.target.value)}
@@ -190,12 +223,15 @@ function ToolField({
     input = (
       <textarea
         id={inputId}
+        required={required}
         value={typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value)}
         onChange={(e) => onChange(e.target.value)}
       />
     )
   } else {
-    input = <input id={inputId} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
+    input = (
+      <input id={inputId} required={required} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
+    )
   }
 
   return (
