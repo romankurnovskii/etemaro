@@ -165,6 +165,52 @@ export interface IpcStateSnapshot {
   configPath?: string
   /** Whether the daemon is running in dry-run mode. */
   dryRun?: boolean
+  /** Instance id of the agent this daemon process runs (see `getInstanceId()`). */
+  agentId?: string
+  /** Daemon session uptime, measured from process start. */
+  uptime?: IpcUptime | null
+  /** ISO timestamp when this snapshot was generated (heartbeat). */
+  heartbeatAt?: string
+  /** Most recent structured decision from the decision log, if any. */
+  lastDecision?: IpcDecisionSummary | null
+}
+
+/** Daemon session uptime. */
+export interface IpcUptime {
+  /** ISO timestamp when the daemon session started. */
+  startedAt: string
+  /** Whole seconds elapsed since `startedAt` at snapshot time. */
+  seconds: number
+}
+
+/** Trimmed decision-log entry (no free-text reason or raw metrics). */
+export interface IpcDecisionSummary {
+  ts: string
+  type: string
+  actor: string
+  poolName: string | null
+  summary: string | null
+}
+
+/** Position bin range (Meteora DLMM bin ids). */
+export interface IpcPriceRangeBins {
+  lower: number
+  upper: number
+  /** Pool's current active bin, when known. */
+  active: number | null
+}
+
+/** Whether the pool's active bin sits inside the position range. */
+export interface IpcInRangeStatus {
+  inRange: boolean
+  /** Minutes the position has spent out of range in the current streak. */
+  minutesOutOfRange: number
+}
+
+/** Share of position value held as token X vs token Y (percent, sums to 100). */
+export interface IpcAssetSplit {
+  tokenXPct: number
+  tokenYPct: number
 }
 
 /** Minimal position summary for state snapshots. */
@@ -177,6 +223,12 @@ export interface IpcPositionSummary {
   valueUsd?: number
   unclaimedFeesUsd?: number
   deployedAt?: string
+  /** Bin range; null when the live position and tracked state both lack it. */
+  priceRangeBins?: IpcPriceRangeBins | null
+  /** Range status; null when there is no live data for this position. */
+  inRangeStatus?: IpcInRangeStatus | null
+  /** Value split; null when token prices are missing or the position is empty. */
+  assetSplit?: IpcAssetSplit | null
 }
 
 // ─── ACK / ERROR ─────────────────────────────────────────────────────────────

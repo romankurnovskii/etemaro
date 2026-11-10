@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchJson } from '../lib/api'
-import type { ManagedAgent } from '../lib/ipc'
+import { type ManagedAgent, normalizeAgent } from '../lib/ipc'
 
 export interface AgentsController {
   agents: ManagedAgent[]
@@ -10,16 +10,22 @@ export interface AgentsController {
   stop: (id: string) => Promise<void>
   setStrategy: (id: string, strategyId: string) => Promise<void>
   reload: () => void
+  /** Last error from the agents list request (e.g. a rejected token), or null. */
+  error: string | null
 }
 
 export function useAgents(token: string): AgentsController {
   const [agents, setAgents] = useState<ManagedAgent[]>([])
   const [busy, setBusy] = useState<Record<string, boolean>>({})
+  const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(() => {
     fetchJson<{ agents: ManagedAgent[] }>('/api/agents', token)
-      .then((res) => setAgents(res.agents ?? []))
-      .catch(() => {})
+      .then((res) => {
+        setAgents((res.agents ?? []).map(normalizeAgent))
+        setError(null)
+      })
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }, [token])
 
   useEffect(() => {
@@ -77,5 +83,6 @@ export function useAgents(token: string): AgentsController {
     stop: (id: string) => action(id, 'stop'),
     setStrategy,
     reload,
+    error,
   }
 }
