@@ -555,15 +555,15 @@ function RangeBar(props: { bins: PriceRangeBins | null; inRange: boolean | null 
   return (
     <div
       className={`range-bar range-${state}`}
-      title={`Bins ${lower}–${upper}${active != null ? ` · active ${active}` : ''}`}
+      title={`Bins ${lower} to ${upper}${active != null ? ` · active ${active}` : ''}`}
     >
       <div className="range-track">
         <span className="range-fill" style={{ left: pos(lower), width: `${((upper - lower) / span) * 100}%` }} />
         {active != null ? <span className="range-marker" style={{ left: pos(active) }} /> : null}
       </div>
       <span className="range-label mono">
-        {lower}–{upper}
-        {active != null ? ` @${active}` : ''}
+        {`${lower} … ${upper}`}
+        {active != null ? ` · @${active}` : ''}
       </span>
     </div>
   )
