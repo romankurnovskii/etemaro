@@ -22,25 +22,20 @@ function positionId(p: Loose): string {
  * Builds the IPC summary for one tracked position.
  *
  * `live` is the matching entry from `getMyPositions()` (the BuiltPosition shape).
- * Money fields prefer the `*_true_usd` variants: in `management.solMode` the plain
- * `*_usd` fields hold SOL amounts. Range / split data is only taken from a live
- * entry whose position address matches exactly, so one position never shows
- * another position's bins.
+ * Money fields keep the existing mapping (plain `*_usd`) so rows stay consistent
+ * with the snapshot totals from `computeAgentPnlMetrics`. Known issue, unchanged
+ * here: in `management.solMode` those plain fields hold SOL amounts.
+ * Range / split data is only taken from a live entry whose position address
+ * matches exactly, so one position never shows another position's bins.
  */
 export function toIpcPositionSummary(tracked: Loose, live: Loose | undefined): IpcPositionSummary {
   const id = positionId(tracked)
   const exact = live && positionId(live) === id ? live : undefined
 
-  const pnl = finite(live?.pnl_true_usd) ?? finite(live?.pnl_usd) ?? finite(tracked.pnl_usd) ?? 0
+  const pnl = finite(live?.pnl_usd) ?? finite(tracked.pnl_usd) ?? 0
   const pnlPct = finite(live?.pnl_pct) ?? finite(tracked.pnl_pct) ?? finite(tracked.peak_pnl_pct) ?? 0
-  const valueUsd =
-    finite(live?.total_value_true_usd) ??
-    finite(live?.total_value_usd) ??
-    finite(live?.value_usd) ??
-    finite(tracked.initial_value_usd) ??
-    0
-  const feesUsd =
-    finite(live?.unclaimed_fees_true_usd) ?? finite(live?.unclaimed_fees_usd) ?? finite(tracked.unclaimed_fees_usd) ?? 0
+  const valueUsd = finite(live?.total_value_usd) ?? finite(live?.value_usd) ?? finite(tracked.initial_value_usd) ?? 0
+  const feesUsd = finite(live?.unclaimed_fees_usd) ?? finite(tracked.unclaimed_fees_usd) ?? 0
   const tokenSymbol =
     live?.pair ?? tracked.pool_name ?? tracked.pair ?? tracked.tokenSymbol ?? (id ? id.slice(0, 8) : '')
 

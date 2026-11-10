@@ -37,11 +37,11 @@ describe('toIpcPositionSummary', () => {
     expect(s.assetSplit).toEqual({ tokenXPct: 62.5, tokenYPct: 37.5 })
   })
 
-  it('prefers *_true_usd money fields (plain *_usd hold SOL in solMode)', () => {
+  it('keeps the existing plain *_usd money mapping (consistent with snapshot totals)', () => {
     const s = toIpcPositionSummary(tracked, live)
-    expect(s.valueUsd).toBe(180.25)
-    expect(s.pnlUsd).toBe(2.5)
-    expect(s.unclaimedFeesUsd).toBe(0.33)
+    expect(s.valueUsd).toBe(0.9)
+    expect(s.pnlUsd).toBe(0.01)
+    expect(s.unclaimedFeesUsd).toBe(0)
     expect(s.tokenSymbol).toBe('SOL/USDC')
   })
 

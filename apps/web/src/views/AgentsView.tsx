@@ -391,6 +391,11 @@ function AgentTopology(props: {
     <section className="card">
       <div className="card-head">
         <h2>Agent topology</h2>
+        {snapshot?.agentId ? (
+          <span className="muted small mono" title="Agent reported by the connected daemon">
+            {snapshot.agentId}
+          </span>
+        ) : null}
         <span className="spacer" />
         {snapshot?.dryRun ? <span className="badge badge-muted">dry-run</span> : null}
         <span className="muted small">
