@@ -182,6 +182,16 @@ async function getMeteoraData(
   return byPosition
 }
 
+/**
+ * Percent of position balance value held as token X (0–100, one decimal).
+ * Returns null when the split cannot be trusted: no value, or a price is missing.
+ */
+export function computeXSharePct(xValueUsd: number, totalValueUsd: number, priceMissing: boolean): number | null {
+  if (priceMissing || !(totalValueUsd > 0) || !Number.isFinite(xValueUsd)) return null
+  const pct = (xValueUsd / totalValueUsd) * 100
+  return Math.round(Math.min(100, Math.max(0, pct)) * 10) / 10
+}
+
 // ─── Build the shaped position object (matches getMyPositions output) ──
 interface BuiltPosition {
   position: string
@@ -207,6 +217,8 @@ interface BuiltPosition {
   fee_per_tvl_24h: number | null
   age_minutes: number | null
   minutes_out_of_range: number
+  /** Percent of balance value held as token X; null when prices are missing. */
+  x_share_pct: number | null
   instruction: string | null
 }
 
@@ -297,6 +309,7 @@ function buildPosition(
     fee_per_tvl_24h: meteora ? Math.round(safeNum(meteora.feePerTvl24h) * 100) / 100 : null,
     age_minutes: ageMinutes,
     minutes_out_of_range: minutesOutOfRange(f.position),
+    x_share_pct: computeXSharePct(xHuman * priceX, balancesUsd, priceMissing),
     instruction: tracked?.instruction ?? null,
   }
 }

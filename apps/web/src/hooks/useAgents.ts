@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchJson } from '../lib/api'
-import type { ManagedAgent } from '../lib/ipc'
+import { type ManagedAgent, normalizeAgent } from '../lib/ipc'
 
 export interface AgentsController {
   agents: ManagedAgent[]
@@ -22,7 +22,7 @@ export function useAgents(token: string): AgentsController {
   const reload = useCallback(() => {
     fetchJson<{ agents: ManagedAgent[] }>('/api/agents', token)
       .then((res) => {
-        setAgents(res.agents ?? [])
+        setAgents((res.agents ?? []).map(normalizeAgent))
         setError(null)
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))

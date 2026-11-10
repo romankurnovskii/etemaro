@@ -203,6 +203,22 @@ pre.diff-text .add { display: block; color: var(--color-success); background: va
 .overlay { position: fixed; inset: 0; z-index: 50; background: rgba(26, 18, 13, 0.4); display: grid; place-items: center; padding: 16px; }
 .dialog { width: 100%; max-width: 560px; max-height: calc(100vh - 32px); overflow: auto; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 16px; box-shadow: 0 12px 32px rgba(26, 18, 13, 0.18); }
 
+/* ---------- Agent Visualizer: position range, split, decision ---------- */
+.range-bar, .split-bar { display: flex; flex-direction: column; gap: 3px; min-width: 96px; }
+.range-track, .split-track { position: relative; height: 6px; border-radius: 3px; background: var(--color-border); overflow: visible; }
+.range-fill { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--color-text-muted); }
+.range-in .range-fill { background: var(--color-success); }
+.range-out .range-fill { background: var(--color-danger); opacity: 0.55; }
+.range-marker { position: absolute; top: -3px; width: 2px; height: 12px; margin-left: -1px; background: var(--color-text); border-radius: 1px; }
+.range-label, .split-label { font-size: 11px; color: var(--color-text-muted); white-space: nowrap; }
+.split-track { overflow: hidden; }
+.split-x { position: absolute; top: 0; bottom: 0; left: 0; background: var(--color-accent); }
+.decision { background: var(--color-canvas); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px 12px; }
+.decision-summary { margin: 6px 0 0; overflow-wrap: anywhere; }
+.badge-decision-deploy { color: var(--color-success); }
+.badge-decision-close { color: var(--color-danger); }
+.badge-decision-skip, .badge-decision-no_deploy, .badge-decision-note { color: var(--color-text-muted); }
+
 /* ---------- Header: connection + token ---------- */
 .conn-badge { display: inline-flex; align-items: center; font-size: 12px; font-weight: 500; padding: 2px 8px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); text-transform: capitalize; }
 .conn-connected { color: var(--color-success); }

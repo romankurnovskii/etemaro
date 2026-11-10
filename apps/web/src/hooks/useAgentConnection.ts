@@ -4,6 +4,7 @@ import {
   type IpcMessage,
   IpcMessageType,
   type LogEntry,
+  normalizeSnapshot,
   type StateSnapshot,
   type ToolDescriptor,
 } from '../lib/ipc'
@@ -69,7 +70,7 @@ export function useAgentConnection(wsUrl: string, token: string): AgentConnectio
           return
         }
         if (msg.type === IpcMessageType.STATE_SNAPSHOT) {
-          setSnapshot(msg.payload as StateSnapshot)
+          setSnapshot(normalizeSnapshot(msg.payload as StateSnapshot))
         } else if (msg.type === IpcMessageType.LOG_ENTRY) {
           setLogs((prev) => [...prev.slice(-499), msg.payload as LogEntry])
         } else if (msg.type === IpcMessageType.TOOL_CATALOG) {

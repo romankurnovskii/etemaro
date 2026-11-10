@@ -85,6 +85,23 @@ describe('AgentSupervisor', () => {
     expect(agent.pid).toBe(4242)
   })
 
+  it('reports startedAt while running and clears it when the child exits', () => {
+    const byId = (id: string) => sup.list().find((a) => a.id === id)
+    expect(sup.create('Timer').startedAt).toBeNull()
+    const before = Date.now()
+    const started = sup.start('timer')
+    expect(started.startedAt).not.toBeNull()
+    expect(Date.parse(started.startedAt as string)).toBeGreaterThanOrEqual(before - 1000)
+
+    const child = spawnFn.mock.results[0]?.value
+    const onExit = child.on.mock.calls.find((call: unknown[]) => call[0] === 'exit')?.[1] as () => void
+    child.exitCode = 0
+    onExit()
+    const stopped = byId('timer')
+    expect(stopped?.running).toBe(false)
+    expect(stopped?.startedAt).toBeNull()
+  })
+
   it('stops a running agent with SIGTERM', () => {
     sup.create('Stopper')
     sup.start('stopper')

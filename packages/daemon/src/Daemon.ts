@@ -38,6 +38,7 @@ import {
   getInstanceId,
   getLastBriefingDate,
   getPerformanceRecords,
+  getRecentDecisions,
   getTrackedPosition,
   getTrackedPositions,
   getWalletAddress,
@@ -78,6 +79,7 @@ export { createAgentLoopDeps, createDaemonAdapters } from './composition.js'
 
 import { AgentSupervisor } from './server/AgentSupervisor.js'
 import { IpcServer } from './server/IpcServer.js'
+import { findLivePosition, toDecisionSummary, toIpcPositionSummary, toUptime } from './server/ipc-state.js'
 // These will be injected or resolved at runtime by the adapter layer.
 
 export interface DaemonAdapters {
@@ -3282,35 +3284,20 @@ IMPORTANT:
         trackedSet.has(lp.position || lp.position_address),
       )
       // In solMode the plain *_usd position fields are SOL-denominated; the IPC
-      // snapshot is labelled USD, so resolve real USD (or omit the value).
+      // snapshot is labelled USD, so totals resolve real USD (see resolveLiveUsd).
       const solMode = Boolean(config.management?.solMode)
-      const round2 = (n: number | null | undefined) => (n == null ? undefined : Math.round(n * 100) / 100)
-      const positions: IpcPositionSummary[] = tracked.map((p: any) => {
-        const live = this.latestLivePositions.find((lp: any) => lp.position === p.position || lp.pool === p.pool)
-        const pnl = resolveLiveUsd(live?.pnl_true_usd, live?.pnl_usd ?? p.pnl_usd ?? 0, solMode)
-        const pnlPct = Number(live?.pnl_pct ?? p.pnl_pct ?? p.peak_pnl_pct ?? 0)
-        const tokenSymbol =
-          live?.pair ?? p.pool_name ?? p.pair ?? p.tokenSymbol ?? (p.position ? p.position.slice(0, 8) : '')
-        const initialUsd = Number(p.initial_value_usd)
-        const valueUsd =
-          resolveLiveUsd(live?.total_value_true_usd, live?.total_value_usd ?? live?.value_usd, solMode) ??
-          (Number.isFinite(initialUsd) ? initialUsd : solMode ? null : 0)
-        const unclaimedFeesUsd = resolveLiveUsd(
-          live?.unclaimed_fees_true_usd,
-          live?.unclaimed_fees_usd ?? p.unclaimed_fees_usd ?? 0,
-          solMode,
-        )
-        return {
-          positionAddress: p.position ?? p.position_address ?? '',
-          poolAddress: p.pool ?? p.pool_address ?? '',
-          tokenSymbol,
-          pnlUsd: round2(pnl),
-          pnlPct: Math.round(pnlPct * 100) / 100,
-          valueUsd: round2(valueUsd),
-          unclaimedFeesUsd: round2(unclaimedFeesUsd),
-          deployedAt: p.deployed_at ? new Date(p.deployed_at).toISOString() : undefined,
-        }
-      })
+      const positions: IpcPositionSummary[] = tracked.map((p: any) =>
+        toIpcPositionSummary(p, findLivePosition(p, this.latestLivePositions)),
+      )
+
+      // Optional visualizer fields: read in isolation so a bad decision log
+      // can never drop the whole snapshot.
+      let lastDecision: ReturnType<typeof toDecisionSummary> = null
+      try {
+        lastDecision = toDecisionSummary(getRecentDecisions(1)[0])
+      } catch (e: any) {
+        log('ipc_warn', `Failed to read last decision for IPC state: ${e.message}`)
+      }
 
       const perfRecords = getPerformanceRecords()
       const pnlMetrics = computeAgentPnlMetrics({
@@ -3340,6 +3327,10 @@ IMPORTANT:
         activeStrategyId: this.adapters.domain.getActiveStrategy()?.id ?? null,
         configPath: AGENT_CONFIG_PATH,
         dryRun: Boolean(config.connection?.dryRun),
+        agentId: getInstanceId() || undefined,
+        uptime: toUptime(this.sessionStartTime, Date.now()),
+        heartbeatAt: new Date().toISOString(),
+        lastDecision,
       })
     } catch (e: any) {
       log('ipc_warn', `Failed to broadcast IPC state: ${e.message}`)

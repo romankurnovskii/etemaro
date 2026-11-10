@@ -1,8 +1,11 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import type {
+  AssetSplit,
+  InRangeStatus,
   LogEntry,
   ManagedAgent,
   PositionSummary,
+  PriceRangeBins,
   StateSnapshot,
   StrategySummary,
   ToolDescriptor,
@@ -149,8 +152,22 @@ function formatWhen(iso: string | undefined): string {
   return diffSec >= 0 ? `in ${span}` : `${span} ago`
 }
 
+/** Elapsed time since an ISO timestamp, e.g. "2h" — "—" when unknown. */
+function formatSince(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const ts = Date.parse(iso)
+  if (Number.isNaN(ts)) return '—'
+  return formatSpan(Math.max(0, Math.round((Date.now() - ts) / 1000)))
+}
+
 function shortAddress(address: string): string {
   return address.length > 12 ? `${address.slice(0, 4)}…${address.slice(-4)}` : address
+}
+
+/** Splits a pair label like "SOL-USDC" or "SOL/USDC" into its two token names. */
+function pairTokens(symbol: string | undefined): [string, string] {
+  const parts = (symbol ?? '').split(/[-/]/).filter(Boolean)
+  return [parts[0] ?? 'X', parts[1] ?? 'Y']
 }
 
 function strategyLabel(strategies: StrategySummary[], id: string | null | undefined): string {
@@ -286,7 +303,8 @@ function FleetOverview(props: Props & { onOpenSwitch: (id: string) => void }) {
                       <strong>{agent.name}</strong> <span className={`badge badge-${status}`}>{status}</span>
                     </div>
                     <div className="meta">
-                      {strategyLabel(strategies, agent.strategyId)} · pid {agent.pid ?? '—'} · {agent.id}
+                      {strategyLabel(strategies, agent.strategyId)} · pid {agent.pid ?? '—'}
+                      {agent.startedAt ? ` · up ${formatSince(agent.startedAt)}` : ''} · {agent.id}
                     </div>
                   </div>
                   <button
@@ -408,7 +426,27 @@ function AgentTopology(props: {
         <Metric label="Unclaimed fees" value={formatUsd(snapshot?.unclaimedFeesUsd)} />
         <Metric label="Next screen" value={formatWhen(snapshot?.nextScreenAt)} />
         <Metric label="Next manage" value={formatWhen(snapshot?.nextManageAt)} />
+        <Metric label="Uptime" value={formatSince(snapshot?.uptime?.startedAt)} />
+        <Metric label="Last heartbeat" value={formatWhen(snapshot?.heartbeatAt)} />
       </div>
+
+      <h3 className="subhead">Last decision</h3>
+      {snapshot?.lastDecision ? (
+        <div className="decision">
+          <div className="agent-row">
+            <span className={`badge badge-decision-${snapshot.lastDecision.type}`}>{snapshot.lastDecision.type}</span>
+            <strong>{snapshot.lastDecision.poolName ?? 'No pool'}</strong>
+            <span className="muted small">by {snapshot.lastDecision.actor}</span>
+            <span className="spacer" />
+            <span className="muted small">{formatWhen(snapshot.lastDecision.ts)}</span>
+          </div>
+          {snapshot.lastDecision.summary ? (
+            <p className="small decision-summary">{snapshot.lastDecision.summary}</p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="muted small">No structured decisions recorded yet.</p>
+      )}
 
       <h3 className="subhead">Positions</h3>
       {positions.length === 0 ? (
@@ -419,8 +457,10 @@ function AgentTopology(props: {
             <thead>
               <tr>
                 <th>Position</th>
-                <th>Pool</th>
                 <th>Token</th>
+                <th>Range (bins)</th>
+                <th>Status</th>
+                <th>Split</th>
                 <th className="num">Value</th>
                 <th className="num">PnL</th>
                 <th className="num">PnL %</th>
@@ -431,13 +471,19 @@ function AgentTopology(props: {
             <tbody>
               {positions.map((p) => (
                 <tr key={p.positionAddress}>
-                  <td className="mono" title={p.positionAddress}>
+                  <td className="mono" title={`Position ${p.positionAddress}\nPool ${p.poolAddress}`}>
                     {shortAddress(p.positionAddress)}
                   </td>
-                  <td className="mono" title={p.poolAddress}>
-                    {shortAddress(p.poolAddress)}
-                  </td>
                   <td>{p.tokenSymbol ?? '—'}</td>
+                  <td>
+                    <RangeBar bins={p.priceRangeBins ?? null} inRange={p.inRangeStatus?.inRange ?? null} />
+                  </td>
+                  <td>
+                    <RangeStatus status={p.inRangeStatus ?? null} />
+                  </td>
+                  <td>
+                    <SplitBar split={p.assetSplit ?? null} tokenSymbol={p.tokenSymbol} />
+                  </td>
                   <td className="num">{formatUsd(p.valueUsd)}</td>
                   <td className={`num ${pnlClass(p.pnlUsd)}`}>{formatUsd(p.pnlUsd)}</td>
                   <td className={`num ${pnlClass(p.pnlPct)}`}>{p.pnlPct == null ? '—' : `${p.pnlPct.toFixed(2)}%`}</td>
@@ -491,6 +537,63 @@ function AgentTopology(props: {
         </div>
       )}
     </section>
+  )
+}
+
+/** Bin range track with the pool's active bin marked; "—" when bins are unknown. */
+function RangeBar(props: { bins: PriceRangeBins | null; inRange: boolean | null }) {
+  const { bins } = props
+  if (!bins) return <span className="muted">—</span>
+  const { lower, upper, active } = bins
+  const min = Math.min(lower, active ?? lower)
+  const max = Math.max(upper, active ?? upper)
+  const pad = Math.max(1, (max - min) * 0.15)
+  const lo = min - pad
+  const span = max + pad - lo
+  const pos = (bin: number) => `${((bin - lo) / span) * 100}%`
+  const state = props.inRange == null ? 'unknown' : props.inRange ? 'in' : 'out'
+  return (
+    <div
+      className={`range-bar range-${state}`}
+      title={`Bins ${lower}–${upper}${active != null ? ` · active ${active}` : ''}`}
+    >
+      <div className="range-track">
+        <span className="range-fill" style={{ left: pos(lower), width: `${((upper - lower) / span) * 100}%` }} />
+        {active != null ? <span className="range-marker" style={{ left: pos(active) }} /> : null}
+      </div>
+      <span className="range-label mono">
+        {lower}–{upper}
+        {active != null ? ` @${active}` : ''}
+      </span>
+    </div>
+  )
+}
+
+function RangeStatus(props: { status: InRangeStatus | null }) {
+  const { status } = props
+  if (!status) return <span className="muted">—</span>
+  if (status.inRange) return <span className="badge badge-running">in range</span>
+  return (
+    <span className="badge badge-error">
+      out{status.minutesOutOfRange > 0 ? ` ${formatSpan(status.minutesOutOfRange * 60)}` : ''}
+    </span>
+  )
+}
+
+/** Two-segment bar: token X share vs token Y share of position value. */
+function SplitBar(props: { split: AssetSplit | null; tokenSymbol: string | undefined }) {
+  const { split } = props
+  if (!split) return <span className="muted">—</span>
+  const [x, y] = pairTokens(props.tokenSymbol)
+  return (
+    <div className="split-bar" title={`${x} ${split.tokenXPct}% · ${y} ${split.tokenYPct}%`}>
+      <div className="split-track">
+        <span className="split-x" style={{ width: `${split.tokenXPct}%` }} />
+      </div>
+      <span className="split-label mono">
+        {Math.round(split.tokenXPct)}/{Math.round(split.tokenYPct)}
+      </span>
+    </div>
   )
 }
 
