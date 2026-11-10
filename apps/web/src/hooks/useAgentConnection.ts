@@ -13,6 +13,7 @@ export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
 export interface AgentConnection {
   status: ConnectionStatus
   snapshot: StateSnapshot | null
+  lastHeartbeat: number | null
   logs: LogEntry[]
   chat: ChatMessage[]
   catalog: ToolDescriptor[]
@@ -37,12 +38,20 @@ function nextMessageId(): string {
 export function useAgentConnection(wsUrl: string, token: string): AgentConnection {
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [snapshot, setSnapshot] = useState<StateSnapshot | null>(null)
+  const [lastHeartbeat, setLastHeartbeat] = useState<number | null>(null)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [chat, setChat] = useState<ChatMessage[]>([])
   const [catalog, setCatalog] = useState<ToolDescriptor[]>([])
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
+    if (!wsUrl) {
+      setStatus('disconnected')
+      setSnapshot(null)
+      setLastHeartbeat(null)
+      setLogs([])
+      return
+    }
     let closed = false
     let timer: number | undefined
     let retry = 800
@@ -70,6 +79,7 @@ export function useAgentConnection(wsUrl: string, token: string): AgentConnectio
         }
         if (msg.type === IpcMessageType.STATE_SNAPSHOT) {
           setSnapshot(msg.payload as StateSnapshot)
+          setLastHeartbeat(Date.now())
         } else if (msg.type === IpcMessageType.LOG_ENTRY) {
           setLogs((prev) => [...prev.slice(-499), msg.payload as LogEntry])
         } else if (msg.type === IpcMessageType.TOOL_CATALOG) {
@@ -88,6 +98,8 @@ export function useAgentConnection(wsUrl: string, token: string): AgentConnectio
 
       ws.onclose = () => {
         setStatus('disconnected')
+        setSnapshot(null)
+        setLastHeartbeat(null)
         if (!closed) {
           timer = window.setTimeout(connect, retry)
           retry = Math.min(retry * 1.6, 8000)
@@ -115,5 +127,5 @@ export function useAgentConnection(wsUrl: string, token: string): AgentConnectio
     return true
   }, [])
 
-  return { status, snapshot, logs, chat, catalog, sendChat }
+  return { status, snapshot, lastHeartbeat, logs, chat, catalog, sendChat }
 }

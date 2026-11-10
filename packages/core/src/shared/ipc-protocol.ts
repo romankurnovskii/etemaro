@@ -177,6 +177,10 @@ export interface IpcPositionSummary {
   valueUsd?: number
   unclaimedFeesUsd?: number
   deployedAt?: string
+  lowerBin?: number
+  upperBin?: number
+  activeBin?: number
+  inRange?: boolean
 }
 
 // ─── ACK / ERROR ─────────────────────────────────────────────────────────────
