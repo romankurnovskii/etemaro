@@ -60,6 +60,9 @@ export default function App() {
             agents={agents.agents}
             busy={agents.busy}
             strategies={strategies.strategies}
+            snapshot={conn.snapshot}
+            catalog={conn.catalog}
+            logs={conn.logs}
             onCreate={agents.create}
             onStart={agents.start}
             onStop={agents.stop}
