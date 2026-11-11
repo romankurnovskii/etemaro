@@ -89,7 +89,8 @@ export function useAgentConnection(wsUrl: string, token: string): AgentConnectio
       ws.onclose = () => {
         setStatus('disconnected')
         if (!closed) {
-          timer = window.setTimeout(connect, retry)
+          const jitter = retry * (0.5 + Math.random())
+          timer = window.setTimeout(connect, jitter)
           retry = Math.min(retry * 1.6, 8000)
         }
       }
