@@ -165,6 +165,16 @@ export interface IpcStateSnapshot {
   configPath?: string
   /** Whether the daemon is running in dry-run mode. */
   dryRun?: boolean
+  /** Instance id of the daemon that produced this snapshot (see getInstanceId()). */
+  agentId?: string
+  /**
+   * Coarse execution phase, derived from the same busy flags the daemon already
+   * tracks (managementBusy / screeningBusy / busy). Absent on older daemons —
+   * consumers should fall back to a log-based heuristic when it is missing.
+   */
+  phase?: 'idle' | 'screening' | 'managing' | 'chat'
+  /** ISO timestamp when this daemon session started. */
+  startedAt?: string
 }
 
 /** Minimal position summary for state snapshots. */
@@ -177,6 +187,16 @@ export interface IpcPositionSummary {
   valueUsd?: number
   unclaimedFeesUsd?: number
   deployedAt?: string
+  /** Lower bin id of the LP position's price range, when known. */
+  lowerBin?: number
+  /** Upper bin id of the LP position's price range, when known. */
+  upperBin?: number
+  /** The pool's currently active bin id, when known. */
+  activeBin?: number
+  /** Whether the active bin currently falls within [lowerBin, upperBin]. */
+  inRange?: boolean
+  /** Minutes the position has spent out of range, when tracked. */
+  minutesOutOfRange?: number
 }
 
 // ─── ACK / ERROR ─────────────────────────────────────────────────────────────
