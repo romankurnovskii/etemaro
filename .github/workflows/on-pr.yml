@@ -52,6 +52,9 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
+      - name: Typecheck web
+        run: pnpm --filter @etemaro/web typecheck
+
       - name: Boundaries
         run: pnpm run lint:boundaries
 

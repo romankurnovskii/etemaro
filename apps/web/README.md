@@ -24,10 +24,17 @@ part of the workspace. The root `pre-commit` hook builds before running tests.
 
 ## Views
 
-- **Agents** — one-click create, start, stop, and re-target an agent's strategy. Backed by `/api/agents*`.
+- **Agents** — Agent Visualizer: one card per managed agent with status, inferred loop phase
+  (Idle → Evaluating → Rebalancing → Settled), last tool, last decision, and active pool; start/stop; and a
+  strategy switch that previews a recursive diff (`get_strategy`) before confirming. Backed by `/api/agents*`.
+  Each managed agent is a separate process with its own IPC server (`connection.ipcPort` in its instance
+  config), so the console connects to every running agent directly — the console daemon's WebSocket only
+  carries its own logs and state. Logs are attributed to a card by exact `agentId` match only. Range bins,
+  in-range status, asset split, and uptime are not exposed over IPC and show "—".
 - **Dashboard** — live state snapshot (PnL, positions, cycle timers).
 - **Tools** — the full agent tool catalog with JSON-Schema-driven forms; protected tools require an explicit confirm.
-- **Logs / Chat** — live log stream and a direct line to the agent.
+- **Logs / Chat** — merged live log stream (console daemon + running agents) with info/warn/error, category,
+  and agent filters; and a direct line to the console daemon's agent.
 
 ## HTTP API (served by IpcServer)
 

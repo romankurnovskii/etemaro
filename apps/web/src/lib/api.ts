@@ -28,3 +28,17 @@ export async function fetchJson<T>(path: string, token: string, init?: RequestIn
   }
   return body as T
 }
+
+/** Invoke an agent tool on the console daemon (POST /api/tool) and return its `result`. */
+export async function callTool<T = Record<string, unknown>>(
+  name: string,
+  args: Record<string, unknown>,
+  token: string,
+): Promise<T> {
+  const res = await fetchJson<{ result?: T }>('/api/tool', token, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, args }),
+  })
+  return (res?.result ?? {}) as T
+}
