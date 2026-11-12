@@ -35,16 +35,19 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
   const [confirm, setConfirm] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (initialToolName) setActive(initialToolName)
   }, [initialToolName])
 
-  useEffect(() => {
+  const selectTool = (name: string) => {
+    setActive(name)
     setArgs({})
     setConfirm(false)
     setResult(null)
-  }, [])
+    setCopied(false)
+  }
 
   const tool = useMemo(() => catalog.find((t) => t.name === active) ?? null, [catalog, active])
   const filtered = useMemo(() => {
@@ -57,6 +60,7 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
     if (!tool) return
     setPending(true)
     setResult(null)
+    setCopied(false)
     try {
       const body = { name: tool.name, args: normalizeArgs(tool, args), confirm }
       const res = await fetchJson<unknown>('/api/tool', token, {
@@ -83,12 +87,12 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
               type="button"
               key={t.name}
               className={`tool-item${active === t.name ? ' active' : ''}`}
-              onClick={() => setActive(t.name)}
+              onClick={() => selectTool(t.name)}
             >
               <div className="name">
                 {t.name}{' '}
                 <span className={`badge ${t.isProtected ? 'badge-write' : 'badge-read'}`}>
-                  {t.isProtected ? 'write' : 'read'}
+                  {t.isProtected ? 'protected' : t.isWrite ? 'write' : 'read'}
                 </span>
               </div>
               <div className="desc">{t.description}</div>
@@ -131,7 +135,23 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
                 {pending ? 'Running…' : 'Run tool'}
               </button>
             </form>
-            {result ? <pre className="result mt">{result}</pre> : null}
+            {result ? (
+              <div className="mt">
+                <div className="row">
+                  <span className="muted small grow">Output</span>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(result).then(() => setCopied(true))
+                    }}
+                  >
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <pre className="result">{result}</pre>
+              </div>
+            ) : null}
           </>
         )}
       </section>
