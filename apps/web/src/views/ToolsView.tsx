@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchJson } from '../lib/api'
 import type { JsonSchema, ToolDescriptor } from '../lib/ipc'
 
@@ -72,6 +72,15 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
     }
   }
 
+  const [copied, setCopied] = useState(false)
+  const copyResult = useCallback(() => {
+    if (!result) return
+    void navigator.clipboard?.writeText(result).then(() => {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    })
+  }, [result])
+
   return (
     <div className="tool-layout">
       <section className="card">
@@ -131,7 +140,17 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
                 {pending ? 'Running…' : 'Run tool'}
               </button>
             </form>
-            {result ? <pre className="result mt">{result}</pre> : null}
+            {result ? (
+              <div className="result-wrap mt">
+                <div className="result-head">
+                  <span className="muted small">Output</span>
+                  <button type="button" className="ghost small-btn" onClick={copyResult}>
+                    {copied ? 'Copied ✓' : 'Copy'}
+                  </button>
+                </div>
+                <pre className="result">{result}</pre>
+              </div>
+            ) : null}
           </>
         )}
       </section>
