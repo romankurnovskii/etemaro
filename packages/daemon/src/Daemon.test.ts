@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { trackPosition } from '@etemaro/core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Daemon, type DaemonAdapters, getDeterministicCloseRule } from './Daemon.js'
 
@@ -1141,5 +1142,42 @@ describe('Telegram reply_to_message context injection (#338)', () => {
     })
 
     expect(loopSpy.mock.calls[0]?.[0]).toBe('[Replying to Telegram message: "Line one Line two"]\n\nExplain')
+  })
+})
+
+describe('IPC live asset composition', () => {
+  it('keeps same-pool positions isolated and omits unavailable token balances', () => {
+    for (const position of ['split-a', 'split-b', 'split-c']) {
+      trackPosition({
+        position,
+        pool: 'shared-pool',
+        pool_name: 'X/Y',
+        strategy: 'test',
+        amount_sol: 1,
+        active_bin: 0,
+        bin_step: 1,
+        volatility: 0,
+        fee_tvl_ratio: 0,
+        organic_score: 0,
+        initial_value_usd: 100,
+      })
+    }
+    const daemon = new Daemon(createMockAdapters()) as any
+    const broadcastState = vi.fn()
+    daemon.ipcServer = { broadcastState }
+    const a = { tokenXAmount: 100, tokenYAmount: 2, tokenXPercent: 33.33 }
+    const b = { tokenXAmount: 0, tokenYAmount: 5, tokenXPercent: 0 }
+    daemon.latestLivePositions = [
+      { position: 'split-b', pool: 'shared-pool', assetSplit: b },
+      { position: 'split-a', pool: 'shared-pool', assetSplit: a },
+    ]
+    daemon.broadcastIpcState()
+    const positions = broadcastState.mock.calls[0]?.[0].positions
+    expect(positions.find((p: any) => p.positionAddress === 'split-a').assetSplit).toEqual(a)
+    expect(positions.find((p: any) => p.positionAddress === 'split-b').assetSplit).toEqual(b)
+    expect(positions.find((p: any) => p.positionAddress === 'split-c').assetSplit).toBeUndefined()
+    daemon.latestLivePositions = []
+    daemon.broadcastIpcState()
+    expect(broadcastState.mock.calls[1]?.[0].positions.every((p: any) => !p.assetSplit)).toBe(true)
   })
 })

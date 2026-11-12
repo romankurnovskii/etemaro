@@ -74,6 +74,7 @@ export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) 
               <tr>
                 <th>Pair</th>
                 <th>Position</th>
+                <th>Asset split (X / Y)</th>
                 <th className="num">PnL</th>
                 <th className="num">PnL %</th>
                 <th className="num">Value</th>
@@ -84,6 +85,23 @@ export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) 
                 <tr key={p.positionAddress || p.poolAddress}>
                   <td>{p.tokenSymbol ?? '—'}</td>
                   <td className="small muted">{(p.positionAddress || '').slice(0, 10)}</td>
+                  <td>
+                    {p.assetSplit ? (
+                      <>
+                        <span>
+                          {p.assetSplit.tokenXAmount} / {p.assetSplit.tokenYAmount}
+                        </span>
+                        {p.assetSplit.tokenXPercent != null && (
+                          <div className="small muted">
+                            {p.assetSplit.tokenXPercent.toFixed(2)}% / {(100 - p.assetSplit.tokenXPercent).toFixed(2)}%
+                            by USD value
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td className={`num ${Number(p.pnlUsd ?? 0) >= 0 ? 'pos' : 'neg'}`}>{fmtUsd(p.pnlUsd)}</td>
                   <td className="num">{p.pnlPct == null ? '—' : `${Number(p.pnlPct).toFixed(2)}%`}</td>
                   <td className="num">{fmtUsd(p.valueUsd)}</td>

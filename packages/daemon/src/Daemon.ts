@@ -3281,7 +3281,10 @@ IMPORTANT:
         trackedSet.has(lp.position || lp.position_address),
       )
       const positions: IpcPositionSummary[] = tracked.map((p: any) => {
-        const live = this.latestLivePositions.find((lp: any) => lp.position === p.position || lp.pool === p.pool)
+        const address = p.position || p.position_address
+        const live = this.latestLivePositions.find(
+          (lp: any) => address && (lp.position || lp.position_address) === address,
+        )
         const pnl = Number(live?.pnl_usd ?? p.pnl_usd ?? 0)
         const pnlPct = Number(live?.pnl_pct ?? p.pnl_pct ?? p.peak_pnl_pct ?? 0)
         const tokenSymbol =
@@ -3292,6 +3295,7 @@ IMPORTANT:
           positionAddress: p.position ?? p.position_address ?? '',
           poolAddress: p.pool ?? p.pool_address ?? '',
           tokenSymbol,
+          assetSplit: live?.assetSplit,
           pnlUsd: Math.round(pnl * 100) / 100,
           pnlPct: Math.round(pnlPct * 100) / 100,
           valueUsd: Math.round(valueUsd * 100) / 100,

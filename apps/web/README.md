@@ -25,7 +25,7 @@ part of the workspace. The root `pre-commit` hook builds before running tests.
 ## Views
 
 - **Agents** — one-click create, start, stop, and re-target an agent's strategy. Backed by `/api/agents*`.
-- **Dashboard** — live state snapshot (PnL, positions, cycle timers).
+- **Dashboard** — live state snapshot (PnL, positions, cycle timers). Position asset split shows live liquidity amounts in token X / Y order, excluding unclaimed fees. USD value shares appear only when held tokens have valid prices; older daemons and API fallback snapshots without balances show `—`.
 - **Tools** — the full agent tool catalog with JSON-Schema-driven forms; protected tools require an explicit confirm.
 - **Logs / Chat** — live log stream and a direct line to the agent.
 
