@@ -30,8 +30,8 @@ importers:
         specifier: ^3.0.3
         version: 3.0.3
       openai:
-        specifier: ^7.45.1
-        version: 7.45.1(ws@8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7)
+        specifier: ^7.53.0
+        version: 7.53.0(ws@8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7)
       pm2:
         specifier: ^7.1.2
         version: 7.1.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
@@ -159,7 +159,7 @@ importers:
         specifier: ^4.6.0
         version: 4.6.0
       openai:
-        specifier: ^7.50.0
+        specifier: ^7.53.0
         version: 7.53.0(ws@7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7)
       zod:
         specifier: ^4.6.7
@@ -1761,33 +1761,6 @@ packages:
   onetime@5.1.2:
     resolution: {integrity: sha512-kbpaSSGJTWdAY5KPVeMOKXSrPtr8C8C7wodJbcsd51jRnmD+GZu8Y0VoU6Dm5Z4vWr0Ig/1NKuWRKf7j5aaYSg==}
     engines: {node: '>=6'}
-
-  openai@7.45.1:
-    resolution: {integrity: sha512-mutrJXwhJIMZ24Lab2COFtNp44OcpZSnV4O2O7q38wAHUa2m2fQqUO5pj1XS3PqLfOTeODBUS9YoadqDnnGk5A==}
-    engines: {node: '>=22.0.0'}
-    peerDependencies:
-      '@aws-sdk/credential-provider-node': '>=3.972.0 <4'
-      '@smithy/hash-node': '>=4.3.0 <5'
-      '@smithy/signature-v4': '>=5.4.0 <6'
-      google-auth-library: '>=9.15.1 <12'
-      undici: '>=5 <9'
-      ws: ^8.21.0
-      zod: ^3.25 || ^4.0
-    peerDependenciesMeta:
-      '@aws-sdk/credential-provider-node':
-        optional: true
-      '@smithy/hash-node':
-        optional: true
-      '@smithy/signature-v4':
-        optional: true
-      google-auth-library:
-        optional: true
-      undici:
-        optional: true
-      ws:
-        optional: true
-      zod:
-        optional: true
 
   openai@7.53.0:
     resolution: {integrity: sha512-PXiIZraFYMb2QYgTtWqDA16Oszj4fWRZNn7qLIAddmiJxM5uQPWBFaxp9O8MhLfTUOQ+iQsnFSRJhLPecsGovQ==}
@@ -3624,14 +3597,14 @@ snapshots:
     dependencies:
       mimic-fn: 2.1.0
 
-  openai@7.45.1(ws@8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7):
-    optionalDependencies:
-      ws: 8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6)
-      zod: 4.6.7
-
   openai@7.53.0(ws@7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7):
     optionalDependencies:
       ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      zod: 4.6.7
+
+  openai@7.53.0(ws@8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7):
+    optionalDependencies:
+      ws: 8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       zod: 4.6.7
 
   pako@2.2.0: {}
