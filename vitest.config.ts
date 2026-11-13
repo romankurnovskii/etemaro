@@ -5,12 +5,12 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     testTimeout: 15000,
-    include: ['packages/**/*.test.ts', 'packages/**/*.test.tsx'],
+    include: ['packages/**/*.test.ts', 'packages/**/*.test.tsx', 'apps/**/*.test.ts', 'apps/**/*.test.tsx'],
     setupFiles: ['vitest.setup.ts'],
     coverage: {
       provider: 'v8',
-      include: ['packages/*/src/**/*.ts'],
-      exclude: ['packages/**/*.test.ts'],
+      include: ['packages/*/src/**/*.ts', 'apps/*/src/**/*.ts'],
+      exclude: ['packages/**/*.test.ts', 'apps/**/*.test.ts'],
     },
   },
 });
