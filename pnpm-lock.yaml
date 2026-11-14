@@ -31,7 +31,7 @@ importers:
         version: 3.0.3
       openai:
         specifier: ^7.53.0
-        version: 7.53.0(ws@8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7)
+        version: 7.53.0(ws@8.23.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7)
       pm2:
         specifier: ^7.1.2
         version: 7.1.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
@@ -101,8 +101,8 @@ importers:
         specifier: ^19.3.1
         version: 19.3.1
       ws:
-        specifier: ^8.22.1
-        version: 8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+        specifier: ^8.22.2
+        version: 8.23.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     devDependencies:
       '@etemaro/core':
         specifier: workspace:*
@@ -160,7 +160,7 @@ importers:
         version: 4.6.0
       openai:
         specifier: ^7.53.0
-        version: 7.53.0(ws@7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7)
+        version: 7.53.0(ws@7.5.14(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7)
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -187,8 +187,8 @@ importers:
         specifier: ^18.0.9
         version: 18.0.9
       ws:
-        specifier: ^8.22.1
-        version: 8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+        specifier: ^8.22.2
+        version: 8.23.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     devDependencies:
       '@types/node':
         specifier: ^26.6.6
@@ -2251,8 +2251,8 @@ packages:
     resolution: {integrity: sha512-6OLRNZqRntVGBm26ghZ5eZhCuWWyOkRCSn8XsOIuq5stpCE/tjLbdozd93naILZig0lmD8ANfRwnhn0DLeXGlg==}
     engines: {node: '>=20'}
 
-  ws@7.5.13:
-    resolution: {integrity: sha512-rsKI6xDBFVf4r/x8XyChGK04QR/XHroxs/jUcoWvtEZM8TPU/X/uIY9B1CsSzYws9ZJb/6bbBu7dPhFW00CAoA==}
+  ws@7.5.14:
+    resolution: {integrity: sha512-u9Oi2nQ8SZnTUAf6spLLKF5TyqoG3Nbbrd4ai6Sjo4P24bycDewhQqtNMIg4bFpnpH/TD4qk4IuAVhT0HIIqug==}
     engines: {node: '>=8.3.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -2275,8 +2275,8 @@ packages:
       utf-8-validate:
         optional: true
 
-  ws@8.22.1:
-    resolution: {integrity: sha512-oyL6OPYme/CmiFvNuGzeoxCJ4nOrZE2O1FwM9MWM1AsGri6nLXB2pg+lNA8aLeXMSav0J6eIVS1j6vUPzUtK9g==}
+  ws@8.23.0:
+    resolution: {integrity: sha512-wCkmX8QMOrKjgO8HW2WyDbTSGeqkocxgDzS9iR79rEAexty6/2qzilx3Ag8Tqf9ykop3irLKle0MtVn5qjVnoQ==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -2506,7 +2506,7 @@ snapshots:
       debug: 4.3.7
       eventemitter2: 6.4.9
       extrareqp2: 1.0.0(debug@4.3.7)
-      ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      ws: 8.23.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -3432,9 +3432,9 @@ snapshots:
 
   is-in-ci@2.0.0: {}
 
-  isomorphic-ws@4.0.1(ws@7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6)):
+  isomorphic-ws@4.0.1(ws@7.5.14(bufferutil@4.1.0)(utf-8-validate@6.0.6)):
     dependencies:
-      ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      ws: 7.5.14(bufferutil@4.1.0)(utf-8-validate@6.0.6)
 
   jayson@4.3.0(bufferutil@4.1.0)(utf-8-validate@6.0.6):
     dependencies:
@@ -3445,11 +3445,11 @@ snapshots:
       delay: 5.0.0
       es6-promisify: 5.0.0
       eyes: 0.1.8
-      isomorphic-ws: 4.0.1(ws@7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6))
+      isomorphic-ws: 4.0.1(ws@7.5.14(bufferutil@4.1.0)(utf-8-validate@6.0.6))
       json-stringify-safe: 5.0.1
       stream-json: 1.9.1
       uuid: 8.3.2
-      ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      ws: 7.5.14(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -3597,14 +3597,14 @@ snapshots:
     dependencies:
       mimic-fn: 2.1.0
 
-  openai@7.53.0(ws@7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7):
+  openai@7.53.0(ws@7.5.14(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7):
     optionalDependencies:
-      ws: 7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      ws: 7.5.14(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       zod: 4.6.7
 
-  openai@7.53.0(ws@8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7):
+  openai@7.53.0(ws@8.23.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7):
     optionalDependencies:
-      ws: 8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      ws: 8.23.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       zod: 4.6.7
 
   pako@2.2.0: {}
@@ -3793,7 +3793,7 @@ snapshots:
       buffer: 6.0.3
       eventemitter3: 5.0.4
       uuid: 14.0.2
-      ws: 8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      ws: 8.23.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     optionalDependencies:
       bufferutil: 4.1.0
       utf-8-validate: 6.0.6
@@ -4094,7 +4094,7 @@ snapshots:
       ansi-styles: 6.2.3
       string-width: 8.3.0
 
-  ws@7.5.13(bufferutil@4.1.0)(utf-8-validate@6.0.6):
+  ws@7.5.14(bufferutil@4.1.0)(utf-8-validate@6.0.6):
     optionalDependencies:
       bufferutil: 4.1.0
       utf-8-validate: 6.0.6
@@ -4104,7 +4104,7 @@ snapshots:
       bufferutil: 4.1.0
       utf-8-validate: 6.0.6
 
-  ws@8.22.1(bufferutil@4.1.0)(utf-8-validate@6.0.6):
+  ws@8.23.0(bufferutil@4.1.0)(utf-8-validate@6.0.6):
     optionalDependencies:
       bufferutil: 4.1.0
       utf-8-validate: 6.0.6
