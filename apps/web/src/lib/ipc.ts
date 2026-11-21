@@ -41,6 +41,13 @@ export interface PositionSummary {
   pnlPct?: number
   valueUsd?: number
   deployedAt?: string
+  /** Live liquidity token amounts; excludes unclaimed fees. Absent for sources without token balances. */
+  assetSplit?: {
+    tokenXAmount: number
+    tokenYAmount: number
+    /** USD value share, 0–100. Absent if prices are unavailable or liquidity is empty. */
+    tokenXPercent?: number
+  }
 }
 
 export interface StateSnapshot {
