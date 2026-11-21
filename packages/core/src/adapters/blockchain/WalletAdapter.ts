@@ -20,6 +20,7 @@ import { getConnection, getWalletKeypair, withRpcFailover } from '../../shared/c
 import { credentialsPath } from '../../shared/constants.js'
 import { writeKeystoreFile } from '../../shared/keystore.js'
 import { createTimer, log, logStructured } from '../../shared/logger.js'
+import { assertSafeSwapTransaction, UnsafeTransactionError } from '../../shared/txGuard.js'
 import type { SwapErrorCategory, WalletBalancesResult } from '../../shared/types.js'
 import { withRpcRetry } from '../../shared/utils.js'
 import { sleep } from '../../utils/time.js'
@@ -838,8 +839,12 @@ export async function swapToken({ input_mint, output_mint, amount, slippageBps }
       throw new Error('Swap V2 order missing transaction')
     }
 
-    // ─── Deserialize and sign ─────────────────────────────────
+    // ─── Deserialize, verify, then sign ───────────────────────
     const tx = VersionedTransaction.deserialize(Buffer.from(unsignedTx, 'base64'))
+    // The order comes from an external service: verify what it actually does before
+    // the key touches it. A SOL-input swap may spend `amount` SOL plus fees.
+    const maxSolLoss = (input_mint === config.tokens.SOL ? amount : 0) + 0.01
+    await assertSafeSwapTransaction(tx, wallet, { inputMint: input_mint, outputMint: output_mint, maxSolLoss })
     tx.sign([wallet])
     const signedTx = Buffer.from(tx.serialize()).toString('base64')
 
@@ -924,7 +929,8 @@ export async function swapToken({ input_mint, output_mint, amount, slippageBps }
   } catch (error: unknown) {
     const e = error as { message?: string }
     const jupiterError = error instanceof JupiterSwapError ? error : null
-    const errorCode = jupiterError?.errorCode ?? null
+    const guardError = error instanceof UnsafeTransactionError ? error : null
+    const errorCode = jupiterError?.errorCode ?? (guardError ? 'UNSAFE_TRANSACTION' : null)
     const errorCategory = jupiterError?.errorCategory ?? classifyJupiterError(e.message || String(error))
     const jupiterRequestId = jupiterError?.requestId ?? null
 

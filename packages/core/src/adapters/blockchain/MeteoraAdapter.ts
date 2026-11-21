@@ -14,11 +14,9 @@
 import {
   Keypair,
   PublicKey,
-  SystemInstruction,
-  SystemProgram,
   sendAndConfirmTransaction,
   Transaction,
-  TransactionInstruction,
+  type TransactionInstruction,
   VersionedTransaction,
 } from '@solana/web3.js'
 import BN from 'bn.js'
@@ -41,6 +39,12 @@ import {
 import { getConnection, getWalletKeypair as getWallet, withRpcFailover } from '../../shared/connection.js'
 import { getMinSafeBinsBelow } from '../../shared/constants.js'
 import { log, logStructured } from '../../shared/logger.js'
+import {
+  assertNoUnsafeSystemTransfer,
+  deserializeSignedTransaction,
+  getStaticAccountKeyStrings,
+  signSerializedTransaction,
+} from '../../shared/txGuard.js'
 import type { GetMyPositionsResult } from '../../shared/types.js'
 import { withRpcRetry } from '../../shared/utils.js'
 import { agentMeridianJson, getAgentIdForRequests, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js'
@@ -127,89 +131,6 @@ function shouldUseLpAgentRelay(): boolean {
 
 function shouldUseLpAgentRelayForDeploy(): boolean {
   return false
-}
-
-function signSerializedTransaction(serialized: string, wallet: Keypair): string {
-  const bytes = Buffer.from(serialized, 'base64')
-  try {
-    const versioned = VersionedTransaction.deserialize(bytes)
-    versioned.sign([wallet])
-    return Buffer.from(versioned.serialize()).toString('base64')
-  } catch {
-    const legacy = Transaction.from(bytes)
-    legacy.partialSign(wallet)
-    return legacy.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64')
-  }
-}
-
-function deserializeSignedTransaction(signedBase64: string): Transaction | VersionedTransaction {
-  const bytes = Buffer.from(signedBase64, 'base64')
-  try {
-    return VersionedTransaction.deserialize(bytes)
-  } catch {
-    return Transaction.from(bytes)
-  }
-}
-
-function getStaticAccountKeyStrings(tx: Transaction | VersionedTransaction): string[] {
-  if (tx instanceof VersionedTransaction) {
-    return tx.message.staticAccountKeys.map((key: PublicKey) => key.toString())
-  }
-  return tx.compileMessage().accountKeys.map((key: PublicKey) => key.toString())
-}
-
-function getTransactionInstructions(tx: Transaction | VersionedTransaction): TransactionInstruction[] {
-  if (!(tx instanceof VersionedTransaction)) return tx.instructions
-
-  const keys = tx.message.staticAccountKeys
-  return tx.message.compiledInstructions
-    .map((ix: any) => {
-      const programId = keys[ix.programIdIndex]
-      if (!programId) return null
-      const indexes = ix.accountKeyIndexes || ix.accounts || []
-      const accounts = indexes.map((accountIndex: number) => keys[accountIndex]).filter(Boolean)
-      return new TransactionInstruction({
-        programId,
-        keys: accounts.map((pubkey: PublicKey) => ({
-          pubkey,
-          isSigner: false,
-          isWritable: false,
-        })),
-        data: Buffer.from(ix.data),
-      })
-    })
-    .filter(Boolean) as TransactionInstruction[]
-}
-
-function assertNoUnsafeSystemTransfer(
-  tx: Transaction | VersionedTransaction,
-  wallet: Keypair,
-  allowedDestinations: string[] = [],
-): void {
-  const owner = wallet.publicKey.toString()
-  const allowed = new Set(allowedDestinations.filter(Boolean).map(String))
-
-  for (const ix of getTransactionInstructions(tx)) {
-    if (!ix.programId.equals(SystemProgram.programId)) continue
-
-    let type: string
-    try {
-      type = SystemInstruction.decodeInstructionType(ix)
-    } catch {
-      continue
-    }
-    if (type !== 'Transfer' && type !== 'TransferWithSeed') continue
-
-    const decoded =
-      type === 'Transfer' ? SystemInstruction.decodeTransfer(ix) : SystemInstruction.decodeTransferWithSeed(ix)
-    const source = decoded.fromPubkey?.toString()
-    const destination = decoded.toPubkey?.toString()
-    if (source === owner && !allowed.has(destination!)) {
-      throw new Error(
-        `Relay transaction contains direct SOL transfer from owner to ${destination?.slice(0, 8) || 'unknown'}.`,
-      )
-    }
-  }
 }
 
 function signSerializedTransactions(serializedTxs: string[], wallet: Keypair): string[] {
