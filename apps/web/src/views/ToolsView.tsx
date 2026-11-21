@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { CopyButton } from '../components/CopyButton'
 import { fetchJson } from '../lib/api'
 import type { JsonSchema, ToolDescriptor } from '../lib/ipc'
 
@@ -36,15 +37,22 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
   const [result, setResult] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
-  useEffect(() => {
-    if (initialToolName) setActive(initialToolName)
-  }, [initialToolName])
-
-  useEffect(() => {
+  // Each tool gets a fresh form: args from one tool must never leak into another.
+  const selectTool = (name: string) => {
+    setActive(name)
     setArgs({})
     setConfirm(false)
     setResult(null)
-  }, [])
+  }
+
+  useEffect(() => {
+    if (initialToolName) {
+      setActive(initialToolName)
+      setArgs({})
+      setConfirm(false)
+      setResult(null)
+    }
+  }, [initialToolName])
 
   const tool = useMemo(() => catalog.find((t) => t.name === active) ?? null, [catalog, active])
   const filtered = useMemo(() => {
@@ -83,7 +91,7 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
               type="button"
               key={t.name}
               className={`tool-item${active === t.name ? ' active' : ''}`}
-              onClick={() => setActive(t.name)}
+              onClick={() => selectTool(t.name)}
             >
               <div className="name">
                 {t.name}{' '}
@@ -131,7 +139,15 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
                 {pending ? 'Running…' : 'Run tool'}
               </button>
             </form>
-            {result ? <pre className="result mt">{result}</pre> : null}
+            {result ? (
+              <div className="result-wrap mt">
+                <div className="result-head">
+                  <span className="field-label">Output</span>
+                  <CopyButton text={result} />
+                </div>
+                <pre className="result">{result}</pre>
+              </div>
+            ) : null}
           </>
         )}
       </section>
