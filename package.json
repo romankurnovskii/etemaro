@@ -28,7 +28,7 @@
     "pm2:stop": "pm2 stop config/ecosystem.config.cjs",
     "pm2:delete": "pm2 delete config/ecosystem.config.cjs",
     "pm2:logs": "pm2 logs --lines 100",
-    "desktop": "pnpm --filter @etemaro/desktop tauri dev",
+    "desktop": "cd apps/desktop && pnpm tauri dev",
     "web": "pnpm --filter @etemaro/web dev",
     "prepare": "husky",
     "postinstall": "node scripts/patch-anchor.js"
