@@ -68,8 +68,12 @@ jobs:
         with:
           targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
 
-      - name: Install frontend dependencies
-        run: pnpm install --no-frozen-lockfile
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile --ignore-workspace
 
       - name: Build frontend
         run: pnpm run build
@@ -112,8 +116,12 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install frontend dependencies
-        run: pnpm install --no-frozen-lockfile
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile --ignore-workspace
 
       - name: Build frontend
         run: pnpm run build
@@ -155,8 +163,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
-      - name: Install frontend dependencies
-        run: pnpm install --no-frozen-lockfile
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile --ignore-workspace
 
       - name: Build frontend
         run: pnpm run build
