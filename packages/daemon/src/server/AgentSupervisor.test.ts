@@ -83,6 +83,8 @@ describe('AgentSupervisor', () => {
     expect(args).toContain('--data-dir')
     expect(agent.running).toBe(true)
     expect(agent.pid).toBe(4242)
+    expect(agent.ipcPort).toBe(8766)
+    expect(agent.startedAt).toBeTruthy()
   })
 
   it('stops a running agent with SIGTERM', () => {

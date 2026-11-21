@@ -131,7 +131,14 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
                 {pending ? 'Running…' : 'Run tool'}
               </button>
             </form>
-            {result ? <pre className="result mt">{result}</pre> : null}
+            {result ? (
+              <>
+                <button type="button" className="ghost mt" onClick={() => void navigator.clipboard.writeText(result)}>
+                  Copy output
+                </button>
+                <pre className="result mt">{result}</pre>
+              </>
+            ) : null}
           </>
         )}
       </section>

@@ -41,6 +41,10 @@ export interface PositionSummary {
   pnlPct?: number
   valueUsd?: number
   deployedAt?: string
+  lowerBin?: number
+  upperBin?: number
+  activeBin?: number
+  inRange?: boolean
 }
 
 export interface StateSnapshot {
@@ -80,12 +84,16 @@ export interface ManagedAgent {
   pid: number | null
   configPath: string
   dataDir: string
+  ipcPort?: number
+  startedAt?: string
 }
 
 export interface StrategySummary {
   id: string
   name?: string
   active?: boolean
+  lpStrategy?: string
+  bestFor?: string
 }
 
 export interface ChatMessage {

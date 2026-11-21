@@ -14,7 +14,7 @@ const TABS = ['agents', 'dashboard', 'tools', 'config', 'logs', 'chat'] as const
 type Tab = (typeof TABS)[number]
 
 export default function App() {
-  const [token] = useState(() => {
+  const [token, setToken] = useState(() => {
     const fromUrl = new URLSearchParams(location.search).get('token')
     if (fromUrl) {
       try {
@@ -32,6 +32,8 @@ export default function App() {
   })
   const [tab, setTab] = useState<Tab>('agents')
   const [openTool, setOpenTool] = useState<string | null>(null)
+  const [editingToken, setEditingToken] = useState(false)
+  const [tokenDraft, setTokenDraft] = useState('')
   const conn = useAgentConnection(WS_URL, token)
   const agents = useAgents(token)
   const strategies = useStrategies(token)
@@ -39,15 +41,56 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1>Etemaro Agent Console</h1>
-        <span>
+        <h1>
+          Etemaro <span className="muted">/ Agent Console</span>
+        </h1>
+        <span className="connection-badge">
           <span className={`status-dot status-${conn.status}`} />
           {conn.status}
         </span>
         <span className="spacer" />
         <span className="muted small">{DAEMON_URL}</span>
+        {editingToken ? (
+          <form
+            className="row"
+            onSubmit={(event) => {
+              event.preventDefault()
+              const value = tokenDraft.trim()
+              setToken(value)
+              try {
+                if (value) localStorage.setItem('etemaro.token', value)
+                else localStorage.removeItem('etemaro.token')
+              } catch {
+                /* ignore */
+              }
+              setEditingToken(false)
+            }}
+          >
+            <input
+              aria-label="Daemon token"
+              type="password"
+              autoComplete="off"
+              value={tokenDraft}
+              onChange={(event) => setTokenDraft(event.target.value)}
+            />
+            <button className="primary" type="submit">
+              Save
+            </button>
+          </form>
+        ) : (
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => {
+              setTokenDraft(token)
+              setEditingToken(true)
+            }}
+          >
+            Token
+          </button>
+        )}
       </header>
-      <nav className="tabs">
+      <nav className="tabs" aria-label="Console views">
         {TABS.map((t) => (
           <button type="button" key={t} className={t === tab ? 'active' : ''} onClick={() => setTab(t)}>
             {t}
@@ -60,6 +103,7 @@ export default function App() {
             agents={agents.agents}
             busy={agents.busy}
             strategies={strategies.strategies}
+            token={token}
             onCreate={agents.create}
             onStart={agents.start}
             onStop={agents.stop}

@@ -21,6 +21,8 @@ export interface ManagedAgent {
   strategyId: string | null
   running: boolean
   pid: number | null
+  ipcPort?: number
+  startedAt?: string
   configPath: string
   dataDir: string
 }
@@ -62,6 +64,7 @@ export class AgentSupervisor {
   private readonly spawnFn: typeof spawn
   private readonly cli: { program: string; argsPrefix: string[] }
   private readonly children = new Map<string, ChildProcess>()
+  private readonly startedAt = new Map<string, string>()
 
   constructor(options: AgentSupervisorOptions = {}) {
     this.repoRoot = options.repoRoot ?? REPO_ROOT
@@ -131,9 +134,11 @@ export class AgentSupervisor {
       detached: false,
     })
     this.children.set(agentId, child)
+    this.startedAt.set(agentId, new Date().toISOString())
     this.writeRegistry()
     child.on('exit', () => {
       this.children.delete(agentId)
+      this.startedAt.delete(agentId)
       this.writeRegistry()
       try {
         fs.closeSync(out)
@@ -177,6 +182,7 @@ export class AgentSupervisor {
         }
       }
       this.children.delete(id)
+      this.startedAt.delete(id)
     }
     this.clearRegistry()
     return stopped
@@ -298,6 +304,8 @@ export class AgentSupervisor {
       strategyId: config.strategy?.activeStrategyId ?? null,
       running,
       pid: running ? (child?.pid ?? null) : null,
+      ipcPort: typeof config.connection?.ipcPort === 'number' ? config.connection.ipcPort : undefined,
+      startedAt: running ? this.startedAt.get(id) : undefined,
       configPath: this.configPathFor(id),
       dataDir: this.dataDirFor(id),
     }

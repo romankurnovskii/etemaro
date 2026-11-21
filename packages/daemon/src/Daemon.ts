@@ -3297,6 +3297,10 @@ IMPORTANT:
           valueUsd: Math.round(valueUsd * 100) / 100,
           unclaimedFeesUsd: Math.round(unclaimedFeesUsd * 100) / 100,
           deployedAt: p.deployed_at ? new Date(p.deployed_at).toISOString() : undefined,
+          lowerBin: live?.lower_bin ?? p.bin_range?.min ?? undefined,
+          upperBin: live?.upper_bin ?? p.bin_range?.max ?? undefined,
+          activeBin: live?.active_bin ?? p.bin_range?.active ?? undefined,
+          inRange: live?.in_range ?? undefined,
         }
       })
 
