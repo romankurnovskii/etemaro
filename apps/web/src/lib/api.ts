@@ -1,5 +1,6 @@
-export const DAEMON_URL =
+export const DAEMON_URL = (
   import.meta.env.VITE_DAEMON_URL || (import.meta.env.DEV ? 'http://127.0.0.1:8765' : location.origin)
+).replace(/\/+$/, '')
 
 export const WS_URL = DAEMON_URL.replace(/^http/, 'ws')
 
