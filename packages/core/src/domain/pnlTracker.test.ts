@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import type { PerformanceRecord } from '../shared/types.js'
-import { computeAgentPnlMetrics } from './pnlTracker.js'
+import { computeAgentPnlMetrics, resolveLiveUsd } from './pnlTracker.js'
+
+describe('resolveLiveUsd', () => {
+  it('prefers the true USD value', () => {
+    expect(resolveLiveUsd(12.5, 0.08, true)).toBe(12.5)
+    expect(resolveLiveUsd(12.5, 11, false)).toBe(12.5)
+  })
+
+  it('falls back to the plain field only outside solMode', () => {
+    expect(resolveLiveUsd(undefined, 11, false)).toBe(11)
+    expect(resolveLiveUsd(undefined, 0.08, true)).toBeNull()
+    expect(resolveLiveUsd(null, null, false)).toBeNull()
+  })
+})
 
 describe('computeAgentPnlMetrics', () => {
   const mockBaseRecord: PerformanceRecord = {
@@ -79,6 +92,34 @@ describe('computeAgentPnlMetrics', () => {
     expect(metrics.openUnrealizedPnlUsd).toBe(0)
     expect(metrics.openUnclaimedFeesUsd).toBe(0)
     expect(metrics.totalClosedCount).toBe(0)
+  })
+
+  it('uses *_true_usd for open positions in solMode (plain *_usd hold SOL)', () => {
+    const live = [
+      // pnl_usd / unclaimed_fees_usd are SOL amounts in solMode
+      { pnl_usd: 0.02, unclaimed_fees_usd: 0.001, pnl_true_usd: 3.4, unclaimed_fees_true_usd: 0.17 },
+      { pnl_usd: -0.01, unclaimed_fees_usd: 0.002, pnl_true_usd: -1.7, unclaimed_fees_true_usd: 0.34 },
+    ]
+    const metrics = computeAgentPnlMetrics({ livePositions: live, solMode: true })
+    expect(metrics.openUnrealizedPnlUsd).toBe(1.7)
+    expect(metrics.openUnclaimedFeesUsd).toBe(0.51)
+  })
+
+  it('never adds SOL-denominated values to USD totals in solMode', () => {
+    const live = [
+      { pnl_usd: 0.5, unclaimed_fees_usd: 0.1 }, // no true USD available
+      { pnl_usd: 0.02, unclaimed_fees_usd: 0.001, pnl_true_usd: 2, unclaimed_fees_true_usd: 0.25 },
+    ]
+    const metrics = computeAgentPnlMetrics({ livePositions: live, solMode: true })
+    expect(metrics.openUnrealizedPnlUsd).toBe(2)
+    expect(metrics.openUnclaimedFeesUsd).toBe(0.25)
+  })
+
+  it('prefers *_true_usd outside solMode but falls back to plain *_usd', () => {
+    const live = [{ pnl_usd: 1, unclaimed_fees_usd: 0.1, pnl_true_usd: 1.05 }]
+    const metrics = computeAgentPnlMetrics({ livePositions: live })
+    expect(metrics.openUnrealizedPnlUsd).toBe(1.05)
+    expect(metrics.openUnclaimedFeesUsd).toBe(0.1)
   })
 
   it('filters out mock TEST-SOL records', () => {

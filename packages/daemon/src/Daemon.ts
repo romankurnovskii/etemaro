@@ -52,6 +52,7 @@ import {
   registerExitSignal,
   repoPath,
   resetConsecutiveSwapFailures,
+  resolveLiveUsd,
   SHARED_STRATEGY_LIB_FILENAME,
   SHARED_STRATEGY_LIBRARY,
   SMART_WALLETS_FILENAME,
@@ -3280,22 +3281,33 @@ IMPORTANT:
       this.latestLivePositions = (this.latestLivePositions || []).filter((lp: any) =>
         trackedSet.has(lp.position || lp.position_address),
       )
+      // In solMode the plain *_usd position fields are SOL-denominated; the IPC
+      // snapshot is labelled USD, so resolve real USD (or omit the value).
+      const solMode = Boolean(config.management?.solMode)
+      const round2 = (n: number | null | undefined) => (n == null ? undefined : Math.round(n * 100) / 100)
       const positions: IpcPositionSummary[] = tracked.map((p: any) => {
         const live = this.latestLivePositions.find((lp: any) => lp.position === p.position || lp.pool === p.pool)
-        const pnl = Number(live?.pnl_usd ?? p.pnl_usd ?? 0)
+        const pnl = resolveLiveUsd(live?.pnl_true_usd, live?.pnl_usd ?? p.pnl_usd ?? 0, solMode)
         const pnlPct = Number(live?.pnl_pct ?? p.pnl_pct ?? p.peak_pnl_pct ?? 0)
         const tokenSymbol =
           live?.pair ?? p.pool_name ?? p.pair ?? p.tokenSymbol ?? (p.position ? p.position.slice(0, 8) : '')
-        const valueUsd = Number(live?.total_value_usd ?? live?.value_usd ?? p.initial_value_usd ?? 0)
-        const unclaimedFeesUsd = Number(live?.unclaimed_fees_usd ?? p.unclaimed_fees_usd ?? 0)
+        const initialUsd = Number(p.initial_value_usd)
+        const valueUsd =
+          resolveLiveUsd(live?.total_value_true_usd, live?.total_value_usd ?? live?.value_usd, solMode) ??
+          (Number.isFinite(initialUsd) ? initialUsd : solMode ? null : 0)
+        const unclaimedFeesUsd = resolveLiveUsd(
+          live?.unclaimed_fees_true_usd,
+          live?.unclaimed_fees_usd ?? p.unclaimed_fees_usd ?? 0,
+          solMode,
+        )
         return {
           positionAddress: p.position ?? p.position_address ?? '',
           poolAddress: p.pool ?? p.pool_address ?? '',
           tokenSymbol,
-          pnlUsd: Math.round(pnl * 100) / 100,
+          pnlUsd: round2(pnl),
           pnlPct: Math.round(pnlPct * 100) / 100,
-          valueUsd: Math.round(valueUsd * 100) / 100,
-          unclaimedFeesUsd: Math.round(unclaimedFeesUsd * 100) / 100,
+          valueUsd: round2(valueUsd),
+          unclaimedFeesUsd: round2(unclaimedFeesUsd),
           deployedAt: p.deployed_at ? new Date(p.deployed_at).toISOString() : undefined,
         }
       })
@@ -3305,6 +3317,7 @@ IMPORTANT:
         performanceRecords: perfRecords,
         sessionStartTime: this.sessionStartTime,
         livePositions: this.latestLivePositions,
+        solMode,
       })
 
       const nextScreenAt = this.screeningLastRun
