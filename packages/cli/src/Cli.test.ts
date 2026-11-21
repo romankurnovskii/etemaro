@@ -129,7 +129,7 @@ describe('Cli handleNewAgent', () => {
       expect(parsed.description).toBe('Fast 15m bid-ask scalper')
       expect(parsed.agentId).toBe('sol-scalper-alpha')
       expect(parsed.configFile).toContain('sol-scalper-alpha.json')
-      expect(parsed.dataDir).toContain('instances/sol-scalper-alpha')
+      expect(parsed.dataDir).toContain(path.join('instances', 'sol-scalper-alpha'))
 
       // Verifies config file write
       expect(writeSpy).toHaveBeenCalled()
@@ -139,9 +139,10 @@ describe('Cli handleNewAgent', () => {
       expect(writtenContent.agentId).toBe('sol-scalper-alpha')
 
       // Verifies data directory creation
-      expect(mkdirSpy).toHaveBeenCalledWith(expect.stringContaining('instances/sol-scalper-alpha/logs'), {
-        recursive: true,
-      })
+      expect(mkdirSpy).toHaveBeenCalledWith(
+        expect.stringContaining(path.join('instances', 'sol-scalper-alpha', 'logs')),
+        { recursive: true },
+      )
     } finally {
       mockExit.mockRestore()
       mockStdout.mockRestore()
@@ -437,7 +438,7 @@ describe('resolveWalletImportSource', () => {
 describe('expandHome', () => {
   it('expands a leading ~/', () => {
     const home = process.env.HOME || ''
-    expect(expandHome('~/key.json')).toBe(`${home}/key.json`)
+    expect(expandHome('~/key.json')).toBe(path.join(home, 'key.json'))
   })
 
   it('expands a bare ~', () => {

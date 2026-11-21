@@ -243,19 +243,26 @@ describe('TASK-03: Realistic PnL Accounting & Mark-to-Market', () => {
     })
 
     // Token drops 50% to $0.0475
-    const updatedCount = updatePendingTradesMarkToMarket({
-      'mint-meme-4': 0.0475,
-    })
+    const updatedCount = updatePendingTradesMarkToMarket(
+      {
+        'mint-meme-4': 0.0475,
+      },
+      [{ mint: 'mint-meme-4', balance: 500 }],
+    ) // Simulated user sold half manually
     expect(updatedCount).toBe(1)
 
     const data = JSON.parse(fs.readFileSync(lessonsFile, 'utf-8'))
     const rec = data.performance[0]
-    expect(rec.unrealized_residual_usd).toBeCloseTo(47.5, 2)
-    // finalValue = $15 (cash) + $47.5 (residual) = $62.5
-    expect(rec.final_value_usd).toBeCloseTo(62.5, 2)
-    // Net PnL = $62.5 - $100 = -$37.5 (-37.5%)
-    expect(rec.net_pnl_usd).toBeCloseTo(-37.5, 2)
-    expect(rec.pnl_pct).toBeCloseTo(-37.5, 2)
+
+    // Verify D7 fix: amount refreshed to 500 before marking
+    expect(rec.unrealized_tokens_amount).toBe(500)
+    // 500 tokens * 0.0475 = $23.75 residual
+    expect(rec.unrealized_residual_usd).toBeCloseTo(23.75, 2)
+    // finalValue = $15 (cash) + $23.75 (residual) = $38.75
+    expect(rec.final_value_usd).toBeCloseTo(38.75, 2)
+    // Net PnL = $38.75 - $100 = -$61.25 (-61.25%)
+    expect(rec.net_pnl_usd).toBeCloseTo(-61.25, 2)
+    expect(rec.pnl_pct).toBeCloseTo(-61.25, 2)
   })
 
   it('AC5: liquidation-queue markLiquidationSuccess automatically settles trade in lessons.json', async () => {
@@ -451,5 +458,262 @@ describe('TASK-03: Realistic PnL Accounting & Mark-to-Market', () => {
     expect(rec.cash_realized_usd).toBeCloseTo(10.17, 2)
     expect(rec.final_value_usd).toBeCloseTo(10.17, 2)
     expect(rec.net_pnl_usd).toBeCloseTo(0.07, 2)
+  })
+})
+
+// ─── Regression: multi-record settlement & orphan reconciliation ──────────────
+
+describe('REGRESSION: settleTradeLiquidation settles ALL records per mint', () => {
+  beforeEach(() => {
+    fs.mkdirSync(tmpDir, { recursive: true })
+    fs.writeFileSync(lessonsFile, JSON.stringify({ lessons: [], performance: [] }))
+  })
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('settles all N closed_pending_swap records sharing the same base_mint in one call', async () => {
+    const MINT = 'mint-multi-settle-111111111111111111111111111'
+
+    // Simulate 3 separate position closes all leaving MINT tokens unsold
+    for (let i = 1; i <= 3; i++) {
+      await recordPerformance({
+        position: `pos-multi-${i}`,
+        pool: `pool-multi-${i}`,
+        pool_name: 'MULTI-SOL',
+        base_mint: MINT,
+        liquidation_mint: MINT,
+        strategy: 'spot',
+        bin_range: 20,
+        bin_step: 10,
+        volatility: 0.5,
+        fee_tvl_ratio: 0.1,
+        organic_score: 50,
+        amount_sol: 1.0,
+        initial_value_usd: 100,
+        final_value_usd: 90,
+        fees_earned_usd: 0,
+        minutes_in_range: 30,
+        minutes_held: 60,
+        close_reason: 'stop loss',
+        status: 'closed_pending_swap',
+        cash_realized_sol: 0.5,
+        cash_realized_usd: 50,
+        unrealized_residual_usd: 40,
+        unrealized_tokens_amount: 5000,
+      })
+    }
+
+    const before = JSON.parse(fs.readFileSync(lessonsFile, 'utf-8'))
+    expect(before.performance.filter((p: any) => p.status === 'closed_pending_swap')).toHaveLength(3)
+
+    const summaryBefore = getPerformanceSummary() as any
+    expect(summaryBefore.pending_swaps_count).toBe(3)
+    expect(summaryBefore.unrealized_residual_usd).toBeCloseTo(120, 1) // 3 × $40
+
+    // Single successful swap settles ALL 3 records
+    const settled = await settleTradeLiquidation(MINT, { amountOutSol: 0.25 })
+    expect(settled).toBe(true)
+
+    const after = JSON.parse(fs.readFileSync(lessonsFile, 'utf-8'))
+    const pending = after.performance.filter((p: any) => p.status === 'closed_pending_swap')
+    expect(pending).toHaveLength(0)
+
+    const realized = after.performance.filter((p: any) => p.status === 'realized')
+    expect(realized).toHaveLength(3)
+
+    // Every record must have unrealized_residual_usd zeroed
+    for (const rec of realized) {
+      expect(rec.unrealized_residual_usd).toBe(0)
+    }
+
+    const summaryAfter = getPerformanceSummary() as any
+    expect(summaryAfter.pending_swaps_count).toBe(0)
+    expect(summaryAfter.unrealized_residual_usd).toBe(0)
+  })
+
+  it('abandonTradeLiquidation abandons ALL records sharing the same base_mint', async () => {
+    const MINT = 'mint-multi-abandon-22222222222222222222222222'
+
+    for (let i = 1; i <= 2; i++) {
+      await recordPerformance({
+        position: `pos-abandon-${i}`,
+        pool: `pool-abandon-${i}`,
+        pool_name: 'DEAD-SOL',
+        base_mint: MINT,
+        liquidation_mint: MINT,
+        strategy: 'spot',
+        bin_range: 20,
+        bin_step: 10,
+        volatility: 0.5,
+        fee_tvl_ratio: 0.1,
+        organic_score: 50,
+        amount_sol: 0.5,
+        initial_value_usd: 75,
+        final_value_usd: 60,
+        fees_earned_usd: 0,
+        minutes_in_range: 10,
+        minutes_held: 30,
+        close_reason: 'stop loss',
+        status: 'closed_pending_swap',
+        cash_realized_sol: 0.2,
+        cash_realized_usd: 30,
+        unrealized_residual_usd: 30,
+        unrealized_tokens_amount: 10000,
+      })
+    }
+
+    const abandoned = await abandonTradeLiquidation(MINT, { reason: 'no route found' })
+    expect(abandoned).toBe(true)
+
+    const after = JSON.parse(fs.readFileSync(lessonsFile, 'utf-8'))
+    const pending = after.performance.filter((p: any) => p.status === 'closed_pending_swap')
+    expect(pending).toHaveLength(0)
+
+    const abandonedRecs = after.performance.filter((p: any) => p.status === 'abandoned_loss')
+    expect(abandonedRecs).toHaveLength(2)
+
+    for (const rec of abandonedRecs) {
+      expect(rec.unrealized_residual_usd).toBe(0)
+    }
+
+    const summary = getPerformanceSummary() as any
+    expect(summary.pending_swaps_count).toBe(0)
+    expect(summary.unrealized_residual_usd).toBe(0)
+  })
+})
+
+describe('REGRESSION: reconcileOrphanedPendingSwaps clears stale closed_pending_swap records', () => {
+  beforeEach(() => {
+    fs.mkdirSync(tmpDir, { recursive: true })
+    fs.writeFileSync(lessonsFile, JSON.stringify({ lessons: [], performance: [] }))
+  })
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('marks orphaned records as abandoned_loss and zeroes unrealized_residual_usd', async () => {
+    const { reconcileOrphanedPendingSwaps } = await import('./lessons.js')
+
+    const ORPHAN_MINT = 'mint-orphan-aaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const STILL_PENDING_MINT = 'mint-active-bbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+    // Record 2 orphans (mint no longer in pendingLiquidations)
+    for (let i = 1; i <= 2; i++) {
+      await recordPerformance({
+        position: `pos-orphan-${i}`,
+        pool: `pool-orphan-${i}`,
+        pool_name: 'ORPHAN-SOL',
+        base_mint: ORPHAN_MINT,
+        liquidation_mint: ORPHAN_MINT,
+        strategy: 'spot',
+        bin_range: 20,
+        bin_step: 10,
+        volatility: 0.5,
+        fee_tvl_ratio: 0.1,
+        organic_score: 50,
+        amount_sol: 1.0,
+        initial_value_usd: 100,
+        final_value_usd: 50,
+        fees_earned_usd: 0,
+        minutes_in_range: 20,
+        minutes_held: 40,
+        close_reason: 'stop loss',
+        status: 'closed_pending_swap',
+        cash_realized_sol: 0.3,
+        cash_realized_usd: 30,
+        unrealized_residual_usd: 20,
+        unrealized_tokens_amount: 3000,
+      })
+    }
+
+    // Record 1 record for a mint that is still genuinely pending
+    await recordPerformance({
+      position: 'pos-still-pending',
+      pool: 'pool-still-pending',
+      pool_name: 'ACTIVE-SOL',
+      base_mint: STILL_PENDING_MINT,
+      liquidation_mint: STILL_PENDING_MINT,
+      strategy: 'spot',
+      bin_range: 20,
+      bin_step: 10,
+      volatility: 0.5,
+      fee_tvl_ratio: 0.1,
+      organic_score: 50,
+      amount_sol: 1.0,
+      initial_value_usd: 120,
+      final_value_usd: 80,
+      fees_earned_usd: 0,
+      minutes_in_range: 30,
+      minutes_held: 60,
+      close_reason: 'stop loss',
+      status: 'closed_pending_swap',
+      cash_realized_sol: 0.4,
+      cash_realized_usd: 40,
+      unrealized_residual_usd: 40,
+      unrealized_tokens_amount: 8000,
+    })
+
+    const summaryBefore = getPerformanceSummary() as any
+    expect(summaryBefore.pending_swaps_count).toBe(3)
+    expect(summaryBefore.unrealized_residual_usd).toBeCloseTo(80, 1)
+
+    // Only STILL_PENDING_MINT is in the active pending set
+    const activePendingMints = new Set([STILL_PENDING_MINT])
+    const count = await reconcileOrphanedPendingSwaps(activePendingMints)
+    expect(count).toBe(2) // 2 orphaned ORPHAN_MINT records
+
+    const after = JSON.parse(fs.readFileSync(lessonsFile, 'utf-8'))
+    const orphaned = after.performance.filter((p: any) => p.base_mint === ORPHAN_MINT)
+    expect(orphaned.every((p: any) => p.status === 'abandoned_loss')).toBe(true)
+    expect(orphaned.every((p: any) => p.unrealized_residual_usd === 0)).toBe(true)
+
+    // The still-pending record must be untouched
+    const active = after.performance.filter((p: any) => p.base_mint === STILL_PENDING_MINT)
+    expect(active[0]?.status).toBe('closed_pending_swap')
+    expect(active[0]?.unrealized_residual_usd).toBe(40)
+
+    const summaryAfter = getPerformanceSummary() as any
+    expect(summaryAfter.pending_swaps_count).toBe(1) // only STILL_PENDING_MINT
+    expect(summaryAfter.unrealized_residual_usd).toBe(40)
+  })
+
+  it('records the orphan write-down loss into pool-memory deploys[] exactly once', async () => {
+    const { reconcileOrphanedPendingSwaps } = await import('./lessons.js')
+    await recordPerformance({
+      position: 'pos-pm-1',
+      pool: 'pool-pm-1',
+      pool_name: 'PM-SOL',
+      base_mint: 'mint-pm-1',
+      liquidation_mint: 'mint-pm-1',
+      strategy: 'spot',
+      bin_range: 20,
+      bin_step: 10,
+      volatility: 0.5,
+      fee_tvl_ratio: 0.1,
+      organic_score: 50,
+      amount_sol: 1.0,
+      initial_value_usd: 100,
+      final_value_usd: 50,
+      fees_earned_usd: 0,
+      minutes_in_range: 20,
+      minutes_held: 40,
+      close_reason: 'agent decision',
+      status: 'closed_pending_swap',
+      cash_realized_sol: 0.3,
+      cash_realized_usd: 30,
+      unrealized_residual_usd: 20,
+      unrealized_tokens_amount: 3000,
+    })
+
+    await reconcileOrphanedPendingSwaps(new Set())
+    await reconcileOrphanedPendingSwaps(new Set())
+
+    const pm = JSON.parse(fs.readFileSync(path.join(tmpDir, 'pool-memory.json'), 'utf-8'))
+    expect(pm['pool-pm-1'].deploys).toHaveLength(1)
+    expect(pm['pool-pm-1'].deploys[0].pnl_pct).toBeLessThan(0)
+    expect(pm['pool-pm-1'].win_rate).toBe(0)
   })
 })

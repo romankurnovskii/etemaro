@@ -29,7 +29,11 @@ import { getSharedLessonsForPrompt, pushHiveLesson, pushHivePerformanceEvent } f
 const LESSONS_FILE = dataPath('lessons.json')
 
 function load(): LessonsData {
-  return readStateFile<LessonsData>(LESSONS_FILE, { lessons: [], performance: [] })
+  return readStateFile<LessonsData>(
+    LESSONS_FILE,
+    { lessons: [], performance: [] },
+    { label: 'lessons', backupOnCorrupt: true },
+  )
 }
 
 function save(data: LessonsData): void {
@@ -423,7 +427,11 @@ export function evolveThresholds(
   if (!agentConfig.screening || typeof agentConfig.screening !== 'object' || Array.isArray(agentConfig.screening)) {
     agentConfig.screening = {}
   }
-  Object.assign(agentConfig.screening as Record<string, unknown>, changes)
+  const screening = agentConfig.screening as Record<string, unknown>
+  if (!screening.common || typeof screening.common !== 'object' || Array.isArray(screening.common)) {
+    screening.common = {}
+  }
+  Object.assign(screening.common as Record<string, unknown>, changes)
   // Clean up legacy root-level keys if present from previous versions
   delete (agentConfig as Record<string, unknown>).minFeeActiveTvlRatio
   delete (agentConfig as Record<string, unknown>).minOrganic
@@ -711,106 +719,120 @@ export interface SettleTradeLiquidationOpts {
 
 export async function settleTradeLiquidation(mint: string, opts: SettleTradeLiquidationOpts): Promise<boolean> {
   const data = load()
-  let targetIndex = -1
+  const now = new Date().toISOString()
+
+  // Collect all matching closed_pending_swap indices for this mint.
+  // A token can appear in multiple position records when the same base token was
+  // traded across many positions (e.g. 8 CAKE-SOL positions all hold CAKE tokens).
+  // Previously only the LAST matching record was settled; the rest stayed
+  // closed_pending_swap forever and inflated getPerformanceSummary().
+  const targetIndices: number[] = []
   if (opts.position) {
-    targetIndex = data.performance.findIndex((p) => p.position === opts.position && p.status === 'closed_pending_swap')
+    const posIdx = data.performance.findIndex((p) => p.position === opts.position && p.status === 'closed_pending_swap')
+    if (posIdx !== -1) targetIndices.push(posIdx)
   }
-  if (targetIndex === -1) {
-    for (let i = data.performance.length - 1; i >= 0; i--) {
+  if (targetIndices.length === 0) {
+    for (let i = 0; i < data.performance.length; i++) {
       const p = data.performance[i]
       if (p && p.status === 'closed_pending_swap' && (p.liquidation_mint === mint || p.base_mint === mint)) {
-        targetIndex = i
-        break
+        targetIndices.push(i)
       }
     }
   }
 
-  if (targetIndex === -1) return false
+  if (targetIndices.length === 0) return false
 
-  const rec = data.performance[targetIndex]
-  if (!rec) return false
-  const now = new Date().toISOString()
+  // Credit swap proceeds to the FIRST record only; subsequent records for the same
+  // mint are zeroed — their tokens were already accounted for in the primary record.
+  let anySettled = false
+  for (let idx = 0; idx < targetIndices.length; idx++) {
+    const recordIndex = targetIndices[idx]!
+    const rec = data.performance[recordIndex]
+    if (!rec) continue
 
-  const additionalSol = opts.amountOutSol || 0
-  const solPrice =
-    opts.solPrice || (rec.amount_sol > 0 && rec.initial_value_usd > 0 ? rec.initial_value_usd / rec.amount_sol : 150)
-  const additionalUsd = additionalSol * solPrice
-  // When settlement is triggered because the token is already gone from the wallet
-  // (no swap output reported), preserve the residual USD captured at close. Zeroing
-  // it here silently destroyed the value of positions that closed as 100% SOL.
-  const fallbackResidualUsd = additionalSol > 1e-6 ? 0 : Math.max(0, rec.unrealized_residual_usd || 0)
-  const fallbackResidualSol = fallbackResidualUsd > 0 && solPrice > 0 ? fallbackResidualUsd / solPrice : 0
-  const newCashSol = (rec.cash_realized_sol || 0) + additionalSol + fallbackResidualSol
-  const newCashUsd = Math.round(((rec.cash_realized_usd || 0) + additionalUsd + fallbackResidualUsd) * 100) / 100
+    const isPrimary = idx === 0
+    const additionalSol = isPrimary ? opts.amountOutSol || 0 : 0
+    const solPrice =
+      opts.solPrice || (rec.amount_sol > 0 && rec.initial_value_usd > 0 ? rec.initial_value_usd / rec.amount_sol : 150)
+    const additionalUsd = additionalSol * solPrice
+    // When settlement is triggered because the token is already gone from the wallet
+    // (no swap output reported), preserve the residual USD captured at close. Zeroing
+    // it here silently destroyed the value of positions that closed as 100% SOL.
+    const fallbackResidualUsd = isPrimary && additionalSol > 1e-6 ? 0 : Math.max(0, rec.unrealized_residual_usd || 0)
+    const fallbackResidualSol = fallbackResidualUsd > 0 && solPrice > 0 ? fallbackResidualUsd / solPrice : 0
+    const newCashSol = (rec.cash_realized_sol || 0) + additionalSol + fallbackResidualSol
+    const newCashUsd = Math.round(((rec.cash_realized_usd || 0) + additionalUsd + fallbackResidualUsd) * 100) / 100
 
-  rec.cash_realized_sol = Math.round(newCashSol * 10000) / 10000
-  rec.cash_realized_usd = newCashUsd
-  rec.unrealized_residual_usd = 0
-  rec.unrealized_tokens_amount = 0
-  rec.final_value_usd = newCashUsd
-  rec.status = 'realized'
-  rec.settled_at = now
-  if (opts.tx) rec.liquidation_tx = opts.tx
+    rec.cash_realized_sol = Math.round(newCashSol * 10000) / 10000
+    rec.cash_realized_usd = newCashUsd
+    rec.unrealized_residual_usd = 0
+    rec.unrealized_tokens_amount = 0
+    rec.final_value_usd = newCashUsd
+    rec.status = 'realized'
+    rec.settled_at = now
+    if (isPrimary && opts.tx) rec.liquidation_tx = opts.tx
 
-  const price_pnl_usd = rec.final_value_usd - rec.initial_value_usd
-  const price_pnl_pct = rec.initial_value_usd > 0 ? (price_pnl_usd / rec.initial_value_usd) * 100 : 0
-  const net_pnl_usd = price_pnl_usd + (rec.fees_earned_usd || 0)
-  const pnl_usd = net_pnl_usd
-  const pnl_pct = rec.initial_value_usd > 0 ? (pnl_usd / rec.initial_value_usd) * 100 : 0
+    const price_pnl_usd = rec.final_value_usd - rec.initial_value_usd
+    const price_pnl_pct = rec.initial_value_usd > 0 ? (price_pnl_usd / rec.initial_value_usd) * 100 : 0
+    const net_pnl_usd = price_pnl_usd + (rec.fees_earned_usd || 0)
+    const pnl_usd = net_pnl_usd
+    const pnl_pct = rec.initial_value_usd > 0 ? (pnl_usd / rec.initial_value_usd) * 100 : 0
 
-  rec.price_pnl_usd = Math.round(price_pnl_usd * 100) / 100
-  rec.price_pnl_pct = Math.round(price_pnl_pct * 100) / 100
-  rec.net_pnl_usd = Math.round(net_pnl_usd * 100) / 100
-  rec.pnl_usd = Math.round(pnl_usd * 100) / 100
-  rec.pnl_pct = Math.round(pnl_pct * 100) / 100
+    rec.price_pnl_usd = Math.round(price_pnl_usd * 100) / 100
+    rec.price_pnl_pct = Math.round(price_pnl_pct * 100) / 100
+    rec.net_pnl_usd = Math.round(net_pnl_usd * 100) / 100
+    rec.pnl_usd = Math.round(pnl_usd * 100) / 100
+    rec.pnl_pct = Math.round(pnl_pct * 100) / 100
 
-  const lesson = derivLesson(rec as PerformanceRecord & { recorded_at?: string })
-  if (lesson) {
-    if (lesson.rule) {
-      const sanitized = sanitizeLessonText(lesson.rule)
-      if (sanitized) lesson.rule = sanitized
+    const lesson = derivLesson(rec as PerformanceRecord & { recorded_at?: string })
+    if (lesson) {
+      if (lesson.rule) {
+        const sanitized = sanitizeLessonText(lesson.rule)
+        if (sanitized) lesson.rule = sanitized
+      }
+      data.lessons.push(lesson)
+      log('lessons', `Settled trade lesson: ${lesson.rule}`)
+      void pushHiveLesson(lesson)
     }
-    data.lessons.push(lesson)
-    log('lessons', `Settled trade lesson: ${lesson.rule}`)
-    void pushHiveLesson(lesson)
+
+    if (rec.pool) {
+      try {
+        const { recordPoolDeploy } = await import('./pool-memory.js')
+        recordPoolDeploy(rec.pool, {
+          pool_name: rec.pool_name,
+          base_mint: rec.base_mint,
+          deployed_at: rec.deployed_at,
+          closed_at: now,
+          price_pnl_usd: rec.price_pnl_usd,
+          price_pnl_pct: rec.price_pnl_pct,
+          net_pnl_usd: rec.net_pnl_usd,
+          pnl_pct: rec.pnl_pct,
+          pnl_usd: rec.pnl_usd,
+          range_efficiency: rec.range_efficiency,
+          minutes_held: rec.minutes_held,
+          fees_earned_usd: rec.fees_earned_usd,
+          fees_earned_sol: rec.fees_earned_sol,
+          fee_earned_pct: rec.initial_value_usd > 0 ? ((rec.fees_earned_usd || 0) / rec.initial_value_usd) * 100 : null,
+          close_reason: rec.close_reason,
+          strategy: rec.strategy,
+          volatility: rec.volatility,
+          entry_mcap: rec.entry_mcap,
+          entry_tvl: rec.entry_tvl,
+          entry_volume: rec.entry_volume,
+          exit_mcap: rec.exit_mcap,
+          exit_tvl: rec.exit_tvl,
+          exit_volume: rec.exit_volume,
+        })
+      } catch {
+        // ignore
+      }
+    }
+
+    anySettled = true
   }
 
   save(data)
-
-  if (rec.pool) {
-    try {
-      const { recordPoolDeploy } = await import('./pool-memory.js')
-      recordPoolDeploy(rec.pool, {
-        pool_name: rec.pool_name,
-        base_mint: rec.base_mint,
-        deployed_at: rec.deployed_at,
-        closed_at: now,
-        price_pnl_usd: rec.price_pnl_usd,
-        price_pnl_pct: rec.price_pnl_pct,
-        net_pnl_usd: rec.net_pnl_usd,
-        pnl_pct: rec.pnl_pct,
-        pnl_usd: rec.pnl_usd,
-        range_efficiency: rec.range_efficiency,
-        minutes_held: rec.minutes_held,
-        fees_earned_usd: rec.fees_earned_usd,
-        fees_earned_sol: rec.fees_earned_sol,
-        fee_earned_pct: rec.initial_value_usd > 0 ? ((rec.fees_earned_usd || 0) / rec.initial_value_usd) * 100 : null,
-        close_reason: rec.close_reason,
-        strategy: rec.strategy,
-        volatility: rec.volatility,
-        entry_mcap: rec.entry_mcap,
-        entry_tvl: rec.entry_tvl,
-        entry_volume: rec.entry_volume,
-        exit_mcap: rec.exit_mcap,
-        exit_tvl: rec.exit_tvl,
-        exit_volume: rec.exit_volume,
-      })
-    } catch {
-      // ignore
-    }
-  }
-
-  return true
+  return anySettled
 }
 
 /**
@@ -824,104 +846,213 @@ export interface AbandonTradeLiquidationOpts {
 
 export async function abandonTradeLiquidation(mint: string, opts: AbandonTradeLiquidationOpts = {}): Promise<boolean> {
   const data = load()
-  let targetIndex = -1
+  const now = new Date().toISOString()
+
+  // Collect ALL matching closed_pending_swap records for this mint — not just the last.
+  // Same reasoning as settleTradeLiquidation: one mint can map to many position records.
+  const targetIndices: number[] = []
   if (opts.position) {
-    targetIndex = data.performance.findIndex((p) => p.position === opts.position && p.status === 'closed_pending_swap')
+    const posIdx = data.performance.findIndex((p) => p.position === opts.position && p.status === 'closed_pending_swap')
+    if (posIdx !== -1) targetIndices.push(posIdx)
   }
-  if (targetIndex === -1) {
-    for (let i = data.performance.length - 1; i >= 0; i--) {
+  if (targetIndices.length === 0) {
+    for (let i = 0; i < data.performance.length; i++) {
       const p = data.performance[i]
       if (p && p.status === 'closed_pending_swap' && (p.liquidation_mint === mint || p.base_mint === mint)) {
-        targetIndex = i
-        break
+        targetIndices.push(i)
       }
     }
   }
 
-  if (targetIndex === -1) return false
+  if (targetIndices.length === 0) return false
 
-  const rec = data.performance[targetIndex]
-  if (!rec) return false
-  const now = new Date().toISOString()
+  let anyAbandoned = false
+  let lessonEmitted = false
 
-  rec.status = 'abandoned_loss'
-  rec.settled_at = now
-  rec.unrealized_residual_usd = 0
-  rec.unrealized_tokens_amount = 0
-  rec.final_value_usd = rec.cash_realized_usd || 0
+  for (const recordIndex of targetIndices) {
+    const rec = data.performance[recordIndex]
+    if (!rec) continue
 
-  const price_pnl_usd = rec.final_value_usd - rec.initial_value_usd
-  const price_pnl_pct = rec.initial_value_usd > 0 ? (price_pnl_usd / rec.initial_value_usd) * 100 : 0
-  const net_pnl_usd = price_pnl_usd + (rec.fees_earned_usd || 0)
-  const pnl_usd = net_pnl_usd
-  const pnl_pct = rec.initial_value_usd > 0 ? (pnl_usd / rec.initial_value_usd) * 100 : 0
+    rec.status = 'abandoned_loss'
+    rec.settled_at = now
+    rec.unrealized_residual_usd = 0
+    rec.unrealized_tokens_amount = 0
+    rec.final_value_usd = rec.cash_realized_usd || 0
 
-  rec.price_pnl_usd = Math.round(price_pnl_usd * 100) / 100
-  rec.price_pnl_pct = Math.round(price_pnl_pct * 100) / 100
-  rec.net_pnl_usd = Math.round(net_pnl_usd * 100) / 100
-  rec.pnl_usd = Math.round(pnl_usd * 100) / 100
-  rec.pnl_pct = Math.round(pnl_pct * 100) / 100
+    const price_pnl_usd = rec.final_value_usd - rec.initial_value_usd
+    const price_pnl_pct = rec.initial_value_usd > 0 ? (price_pnl_usd / rec.initial_value_usd) * 100 : 0
+    const net_pnl_usd = price_pnl_usd + (rec.fees_earned_usd || 0)
+    const pnl_usd = net_pnl_usd
+    const pnl_pct = rec.initial_value_usd > 0 ? (pnl_usd / rec.initial_value_usd) * 100 : 0
 
-  const tokenLabel = rec.pool_name?.split(/[-/]/)[0] || mint.slice(0, 8)
-  const reasonText = opts.reason || 'Unsold tokens abandoned / unsellable'
-  const lessonRule = `EXECUTION FAILURE / CAPITAL LOSS: Unsold ${tokenLabel} (${mint.slice(0, 8)}) could not be liquidated (${reasonText}). Realized loss: -$${Math.abs(pnl_usd).toFixed(2)} (${pnl_pct.toFixed(1)}%). Strategy: ${rec.strategy}.`
+    rec.price_pnl_usd = Math.round(price_pnl_usd * 100) / 100
+    rec.price_pnl_pct = Math.round(price_pnl_pct * 100) / 100
+    rec.net_pnl_usd = Math.round(net_pnl_usd * 100) / 100
+    rec.pnl_usd = Math.round(pnl_usd * 100) / 100
+    rec.pnl_pct = Math.round(pnl_pct * 100) / 100
 
-  const lesson: Lesson = {
-    id: Date.now(),
-    rule: lessonRule,
-    tags: ['execution_failure', 'liquidation_failure', 'capital_loss', rec.strategy],
-    outcome: 'bad',
-    sourceType: 'performance',
-    confidence: 0.95,
-    context: `${rec.pool_name}, strategy=${rec.strategy}, liquidation_failed`,
-    pnl_pct: rec.pnl_pct,
-    fees_earned_usd: rec.fees_earned_usd,
-    initial_value_usd: rec.initial_value_usd,
-    range_efficiency: rec.range_efficiency,
-    close_reason: `abandoned_liquidation: ${reasonText}`,
-    pool: rec.pool,
-    created_at: now,
-  }
+    // Only emit one lesson per mint to avoid log spam for repeated positions
+    if (!lessonEmitted) {
+      const tokenLabel = rec.pool_name?.split(/[-/]/)[0] || mint.slice(0, 8)
+      const reasonText = opts.reason || 'Unsold tokens abandoned / unsellable'
+      const lessonRule = `EXECUTION FAILURE / CAPITAL LOSS: Unsold ${tokenLabel} (${mint.slice(0, 8)}) could not be liquidated (${reasonText}). Realized loss: -$${Math.abs(pnl_usd).toFixed(2)} (${pnl_pct.toFixed(1)}%). Strategy: ${rec.strategy}.`
 
-  data.lessons.push(lesson)
-  log('lessons_warn', `Recognized abandoned liquidation loss: ${lessonRule}`)
-  save(data)
-  void pushHiveLesson(lesson)
-
-  if (rec.pool) {
-    try {
-      const { recordPoolDeploy } = await import('./pool-memory.js')
-      recordPoolDeploy(rec.pool, {
-        pool_name: rec.pool_name,
-        base_mint: rec.base_mint,
-        deployed_at: rec.deployed_at,
-        closed_at: now,
-        price_pnl_usd: rec.price_pnl_usd,
-        price_pnl_pct: rec.price_pnl_pct,
-        net_pnl_usd: rec.net_pnl_usd,
+      const lesson: Lesson = {
+        id: Date.now(),
+        rule: lessonRule,
+        tags: ['execution_failure', 'liquidation_failure', 'capital_loss', rec.strategy],
+        outcome: 'bad',
+        sourceType: 'performance',
+        confidence: 0.95,
+        context: `${rec.pool_name}, strategy=${rec.strategy}, liquidation_failed`,
         pnl_pct: rec.pnl_pct,
-        pnl_usd: rec.pnl_usd,
-        range_efficiency: rec.range_efficiency,
-        minutes_held: rec.minutes_held,
         fees_earned_usd: rec.fees_earned_usd,
-        fees_earned_sol: rec.fees_earned_sol,
-        fee_earned_pct: rec.initial_value_usd > 0 ? ((rec.fees_earned_usd || 0) / rec.initial_value_usd) * 100 : null,
+        initial_value_usd: rec.initial_value_usd,
+        range_efficiency: rec.range_efficiency,
         close_reason: `abandoned_liquidation: ${reasonText}`,
-        strategy: rec.strategy,
-        volatility: rec.volatility,
-      })
-    } catch {
-      // ignore
+        pool: rec.pool,
+        created_at: now,
+      }
+
+      data.lessons.push(lesson)
+      log('lessons_warn', `Recognized abandoned liquidation loss: ${lessonRule}`)
+      void pushHiveLesson(lesson)
+      lessonEmitted = true
     }
+
+    if (rec.pool) {
+      try {
+        const { recordPoolDeploy } = await import('./pool-memory.js')
+        const reasonText = opts.reason || 'Unsold tokens abandoned / unsellable'
+        recordPoolDeploy(rec.pool, {
+          pool_name: rec.pool_name,
+          base_mint: rec.base_mint,
+          deployed_at: rec.deployed_at,
+          closed_at: now,
+          price_pnl_usd: rec.price_pnl_usd,
+          price_pnl_pct: rec.price_pnl_pct,
+          net_pnl_usd: rec.net_pnl_usd,
+          pnl_pct: rec.pnl_pct,
+          pnl_usd: rec.pnl_usd,
+          range_efficiency: rec.range_efficiency,
+          minutes_held: rec.minutes_held,
+          fees_earned_usd: rec.fees_earned_usd,
+          fees_earned_sol: rec.fees_earned_sol,
+          fee_earned_pct: rec.initial_value_usd > 0 ? ((rec.fees_earned_usd || 0) / rec.initial_value_usd) * 100 : null,
+          close_reason: `abandoned_liquidation: ${reasonText}`,
+          strategy: rec.strategy,
+          volatility: rec.volatility,
+        })
+      } catch {
+        // ignore
+      }
+    }
+
+    anyAbandoned = true
   }
 
-  return true
+  save(data)
+  return anyAbandoned
+}
+
+/**
+ * Reconcile stale closed_pending_swap performance records.
+ *
+ * A record stays closed_pending_swap when the swap either succeeded (but settlement
+ * wasn't triggered for that record) or the token was abandoned without a matching
+ * performance record found at the time. This function is the safety-net:
+ * - For every closed_pending_swap record whose mint is no longer actively pending
+ *   in the liquidation queue (i.e. already liquidated, abandoned, or was never
+ *   tracked — meaning the swap already happened inline at close time), mark the
+ *   record as abandoned_loss and zero out unrealized_residual_usd so it no longer
+ *   pollutes getPerformanceSummary().
+ *
+ * Called at the end of each sweeper cycle.
+ *
+ * @param pendingMints - Set of mint addresses currently pending in the liquidation
+ *   queue (status === 'pending'). Records whose mint is NOT in this set are orphans.
+ * @returns Number of records reconciled.
+ */
+export async function reconcileOrphanedPendingSwaps(pendingMints: Set<string>): Promise<number> {
+  const data = load()
+  const now = new Date().toISOString()
+  let reconciled = 0
+
+  for (const rec of data.performance) {
+    if (rec.status !== 'closed_pending_swap') continue
+    const mint = rec.liquidation_mint || rec.base_mint
+    // If the mint is actively pending (sweeper will handle it), leave it alone.
+    if (mint && pendingMints.has(mint)) continue
+
+    // Orphan: token already swapped (inline at close) or permanently abandoned.
+    // Zero the residual so getPerformanceSummary() reflects reality.
+    rec.status = 'abandoned_loss'
+    rec.settled_at = now
+    rec.unrealized_residual_usd = 0
+    rec.unrealized_tokens_amount = 0
+    rec.final_value_usd = rec.cash_realized_usd || 0
+
+    const price_pnl_usd = rec.final_value_usd - rec.initial_value_usd
+    const price_pnl_pct = rec.initial_value_usd > 0 ? (price_pnl_usd / rec.initial_value_usd) * 100 : 0
+    const net_pnl_usd = price_pnl_usd + (rec.fees_earned_usd || 0)
+    const pnl_usd = net_pnl_usd
+    const pnl_pct = rec.initial_value_usd > 0 ? (pnl_usd / rec.initial_value_usd) * 100 : 0
+
+    rec.price_pnl_usd = Math.round(price_pnl_usd * 100) / 100
+    rec.price_pnl_pct = Math.round(price_pnl_pct * 100) / 100
+    rec.net_pnl_usd = Math.round(net_pnl_usd * 100) / 100
+    rec.pnl_usd = Math.round(pnl_usd * 100) / 100
+    rec.pnl_pct = Math.round(pnl_pct * 100) / 100
+
+    // Pending records skip recordPoolDeploy at close; without this the loss never
+    // reaches pool-memory deploys[] (survivorship bias in win rate / recall).
+    // Idempotent: the record leaves closed_pending_swap on this pass.
+    if (rec.pool) {
+      try {
+        const { recordPoolDeploy } = await import('./pool-memory.js')
+        recordPoolDeploy(rec.pool, {
+          pool_name: rec.pool_name,
+          base_mint: rec.base_mint,
+          deployed_at: rec.deployed_at,
+          closed_at: now,
+          price_pnl_usd: rec.price_pnl_usd,
+          price_pnl_pct: rec.price_pnl_pct,
+          net_pnl_usd: rec.net_pnl_usd,
+          pnl_pct: rec.pnl_pct,
+          pnl_usd: rec.pnl_usd,
+          range_efficiency: rec.range_efficiency,
+          minutes_held: rec.minutes_held,
+          fees_earned_usd: rec.fees_earned_usd,
+          fees_earned_sol: rec.fees_earned_sol,
+          fee_earned_pct: rec.initial_value_usd > 0 ? ((rec.fees_earned_usd || 0) / rec.initial_value_usd) * 100 : null,
+          close_reason: rec.close_reason || 'abandoned_liquidation (orphaned write-down)',
+          strategy: rec.strategy,
+          volatility: rec.volatility,
+        })
+      } catch {
+        // pool-memory is best-effort
+      }
+    }
+
+    reconciled++
+  }
+
+  if (reconciled > 0) {
+    save(data)
+    log('lessons', `Reconciled ${reconciled} orphaned closed_pending_swap record(s) → abandoned_loss`)
+  }
+
+  return reconciled
 }
 
 /**
  * Continuously mark unswapped token inventory to market spot prices.
+ * Optionally refreshes unrealized_tokens_amount if live balances are provided.
  */
-export function updatePendingTradesMarkToMarket(priceMap: Record<string, number>): number {
+export function updatePendingTradesMarkToMarket(
+  priceMap: Record<string, number>,
+  liveBalances?: Array<{ mint?: string; balance?: number } | any>,
+): number {
   const data = load()
   let updated = 0
 
@@ -929,6 +1060,16 @@ export function updatePendingTradesMarkToMarket(priceMap: Record<string, number>
     if (rec.status !== 'closed_pending_swap') continue
     const mint = rec.liquidation_mint || rec.base_mint
     if (!mint) continue
+
+    // Refresh from live balances if provided (D7 fix)
+    if (liveBalances) {
+      const liveToken = liveBalances.find((b) => b.mint === mint)
+      if (liveToken && typeof liveToken.balance === 'number') {
+        rec.unrealized_tokens_amount = liveToken.balance
+      } else if (!liveToken) {
+        rec.unrealized_tokens_amount = 0
+      }
+    }
 
     // Only revalue records with a real, recorded token inventory. When the close
     // returned 100% SOL there are no tokens to mark; recomputing from amount * price

@@ -109,6 +109,22 @@ describe('writeRuntimeSkeleton', () => {
     expect(result.env.created).toBe(false)
     expect(fs.readFileSync(path.join(dir, '.env'), 'utf8')).toContain('keep-me')
   })
+
+  it('seeds a resolvable RPC_URL default and documents PNL_RPC_URL', () => {
+    const dir = tmpDir()
+    writeRuntimeSkeleton(dir, {
+      defaultAgentConfigStr: '{"_version":7}',
+      sharedStrategyJson: '{"strategies":{}}',
+      privateStrategyJson: '{"strategies":{}}',
+    })
+
+    const env = fs.readFileSync(path.join(dir, '.env'), 'utf8')
+
+    expect(env).not.toContain('pump.helius-rpc.com')
+    // Default primary RPC must point at a host that actually resolves.
+    expect(env).toMatch(/^RPC_URL="https:\/\/api\.mainnet-beta\.solana\.com"$/m)
+    expect(env).toMatch(/^PNL_RPC_URL=/m)
+  })
 })
 
 describe('upsertEnvVars', () => {

@@ -28,7 +28,8 @@ LLM_BASE_URL="https://openrouter.ai/api/v1"
 LLM_MODEL="anthropic/claude-3.5-sonnet"
 JUPITER_API_KEY=""
 HELIUS_API_KEY=""
-RPC_URL="https://pump.helius-rpc.com"
+RPC_URL="https://api.mainnet-beta.solana.com"
+PNL_RPC_URL=""
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 TELEGRAM_ALLOWED_USER_IDS=""
@@ -64,7 +65,7 @@ export function formatInitMessage(opts: { directory: string; firstRun: boolean; 
     `Runtime: ${directory}`,
     '',
     `  [${mark(status.llm)}] LLM      LLM_API_KEY`,
-    `  [${mark(status.jupiter)}] Jupiter  JUPITER_API_KEY  (live swaps only)`,
+    `  [${mark(status.jupiter)}] Jupiter  JUPITER_API_KEY  (required for live swaps — free key)`,
     '',
   ]
   if (status.readyForDryRun) {

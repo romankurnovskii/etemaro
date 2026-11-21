@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "meteora": {
+      "type": "http",
+      "url": "https://docs.meteora.ag/mcp"
+    }
+  }
+}

@@ -48,6 +48,7 @@ import {
   loadJsonFileWithInfo,
   log,
   meteora,
+  REPO_ROOT,
   registerExitSignal,
   repoPath,
   resetConsecutiveSwapFailures,
@@ -69,6 +70,7 @@ import {
   updatePnlAndCheckExits,
 } from '@etemaro/core'
 import cron from 'node-cron'
+import { resolveBuildId } from './buildInfo.js'
 import { createDaemonAdapters } from './composition.js'
 
 export { createAgentLoopDeps, createDaemonAdapters } from './composition.js'
@@ -82,7 +84,7 @@ export interface DaemonAdapters {
     getMyPositions: (opts?: {
       force?: boolean
       silent?: boolean
-    }) => Promise<{ positions: any[]; total_positions: number }>
+    }) => Promise<{ positions: any[]; total_positions: number; error?: string; degraded?: boolean }>
     closePosition: (opts: { position_address: string }) => Promise<any>
     getActiveBin: (opts: { pool_address: string }) => Promise<any>
   }
@@ -159,6 +161,15 @@ export interface DaemonAdapters {
 }
 
 // ─── Deterministic Close Rule ───────────────────────────────────
+
+/**
+ * Collapse a quoted Telegram reply into a single-line snippet so multi-line or
+ * oversized replies cannot distort the agent prompt.
+ */
+function formatQuotedReply(raw?: unknown): string {
+  if (typeof raw !== 'string') return ''
+  return raw.replace(/\s+/g, ' ').trim().slice(0, 500)
+}
 
 interface DeterministicCloseResult {
   action: 'CLOSE'
@@ -419,6 +430,7 @@ export class Daemon {
   async start(options: { tty?: boolean } = {}): Promise<void> {
     log('startup', 'DLMM LP Agent starting...')
     log('startup', `Repo: ${process.cwd()}`)
+    log('startup', `Build: ${resolveBuildId(REPO_ROOT)}`)
 
     // === Config Source & Mode ===
     const dataDir = getDataDir()
@@ -807,6 +819,10 @@ Summarize the current portfolio health, total fees earned, and performance of al
           log('cron_error', `PnL poller failed to fetch positions: ${err?.message || err}`)
           return null
         })
+        if (result?.degraded) {
+          log('cron_error', `PnL poller position state unknown (${result.error}) — skipping this tick`)
+          return
+        }
         if (result?.positions) {
           this.latestLivePositions = result.positions
         }
@@ -874,7 +890,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
             log('cron_error', `Opportunity poller failed to fetch positions: ${err?.message || err}`)
             return null
           })
-          if (!positions || (positions.total_positions ?? 0) >= config.risk.maxPositions) return
+          if (!positions || positions.degraded || (positions.total_positions ?? 0) >= config.risk.maxPositions) return
 
           const top = await this.adapters.screening
             .getTopCandidates({ limit: config.opportunity.limit })
@@ -982,10 +998,10 @@ Summarize the current portfolio health, total fees earned, and performance of al
     try {
       log('cron', 'Starting unsold token sweeper cycle')
       const result = await this.adapters.toolExecutor.executeTool('sweep_unsold_tokens', {})
-      if (result && (result.successful > 0 || result.failed > 0 || result.abandoned > 0)) {
+      if (result && (result.successful > 0 || result.failed > 0 || result.abandoned > 0 || result.skipped > 0)) {
         log(
           'cron',
-          `Sweeper cycle complete: ${result.successful} swapped, ${result.failed} failed, ${result.abandoned} abandoned out of ${result.total}`,
+          `Sweeper cycle complete: ${result.successful} swapped, ${result.failed} failed, ${result.abandoned} abandoned, ${result.skipped} skipped out of ${result.total}`,
         )
       }
       return result
@@ -1164,10 +1180,18 @@ After evaluating, write a brief one-line result per position.
         log('cron_error', `Failed to fetch live positions in management cycle: ${err?.message || err}`)
         return null
       })
-      if (livePositions?.positions) {
+      // Unknown position state must fail closed: never treat it as flat, or screening
+      // could deploy while real positions are unmanaged.
+      if (!livePositions || livePositions.degraded) {
+        const detail = livePositions?.error || 'position fetch failed'
+        log('cron_error', `Position state unknown (${detail}) — skipping management and screening for this cycle`)
+        mgmtReport = 'Position state unknown — management cycle skipped.'
+        return mgmtReport
+      }
+      if (livePositions.positions) {
         this.latestLivePositions = livePositions.positions
       }
-      positions = livePositions?.positions || []
+      positions = livePositions.positions || []
 
       if (positions.length === 0) {
         log('cron', 'No open positions — checking screening trigger')
@@ -1373,6 +1397,10 @@ After evaluating, write a brief one-line result per position.
     let screenReport: string | null = null
     try {
       prePositions = await this.adapters.meteora.getMyPositions({ force: true })
+      if (prePositions?.degraded) {
+        log('cron_error', `Position state unknown (${prePositions.error}) — screening aborted`)
+        return 'Position state unknown — screening aborted.'
+      }
       if (prePositions.total_positions >= config.risk.maxPositions) {
         log(
           'cron',
@@ -1908,7 +1936,10 @@ IMPORTANT:
     }
 
     // 4. Calculate diff using pure domain helper
-    const diff = domain.diffSmartWalletPositions(currentPositions, snapshot)
+    const vetoRetryHours = config.screening.smartWalletVetoRetryHours
+    const diff = domain.diffSmartWalletPositions(currentPositions, snapshot, {
+      vetoRetryMs: vetoRetryHours * 3_600_000,
+    })
 
     if (diff.isFirstRun) {
       saveJsonFile(snapshotPath, diff.nextSnapshot)
@@ -1934,7 +1965,13 @@ IMPORTANT:
     // 5. Deploy on candidate pools and track resolution
     let deployedCount = 0
     const deployedPools = new Set<string>()
-    const processedPositions: { position: string; resolved: boolean }[] = []
+    const processedPositions: Array<{
+      position: string
+      resolved: boolean
+      vetoed?: boolean
+      reason?: string
+      at?: number
+    }> = []
 
     for (const posItem of diff.newPositions) {
       const pool = posItem.pool
@@ -1968,7 +2005,13 @@ IMPORTANT:
         const rejectReason = screening.getRawPoolScreeningRejectReason(detail as any, config.screening)
         if (rejectReason) {
           log('cron', `[SmartWallets] Vetoed ${detail.name || pool}: ${rejectReason}`)
-          processedPositions.push({ position: posItem.position, resolved: true })
+          processedPositions.push({
+            position: posItem.position,
+            resolved: true,
+            vetoed: true,
+            reason: rejectReason,
+            at: Date.now(),
+          })
           continue
         }
 
@@ -1992,23 +2035,67 @@ IMPORTANT:
           strategy: config.strategy.strategyMeteora,
         })
 
-        domain.recordPositionSnapshot(pool, deployRes.position)
-        log('cron', `[SmartWallets] Deployed ${deployRes.position.position} on ${detail.name || pool}`)
+        // A guarded deploy (pool / base-mint cooldown) resolves to
+        // `{ success: false, error }` with no `position` field. Reading the address
+        // blind used to throw `Cannot read properties of undefined (reading
+        // 'position')`; counting the skip as a deploy also logged an empty address
+        // and marked the pool resolved, so the guard rejection was never retried.
+        const positionAddress =
+          typeof deployRes?.position === 'string'
+            ? deployRes.position
+            : deployRes?.position?.position || String(deployRes?.position || '')
+        const txSignature =
+          typeof deployRes?.txs?.[0] === 'string'
+            ? deployRes.txs[0]
+            : typeof deployRes?.tx === 'string'
+              ? deployRes.tx
+              : ''
+
+        if (deployRes?.success === false || !positionAddress) {
+          log(
+            'deploy',
+            `[SmartWallets] Deploy skipped for pool ${pool}: ${deployRes?.error || 'deploy response carried no position'}`,
+          )
+          processedPositions.push({ position: posItem.position, resolved: false })
+          continue
+        }
+
+        const pair = detail.name || (deployRes as any).pool_name || pool
+
+        this.adapters.domain.recordPositionSnapshot(pool, {
+          position: positionAddress,
+          pair,
+        })
+        log('cron', `[SmartWallets] Deployed ${positionAddress} on ${pair}`)
         deployedPools.add(pool)
         deployedCount++
         processedPositions.push({ position: posItem.position, resolved: true })
-        // Notify deploy for Telegram after successful smart wallet deployment
-        this.adapters.telegram
-          .notifyDeploy({
-            pair: detail.name || pool,
-            amountSol: deployAmount,
-            position: deployRes.position.position,
-            tx: deployRes.txs?.[0] || deployRes.tx,
-            // Other details from deployRes can be passed if available
-          })
-          .catch((err: any) => {
-            log('telegram_warn', `Failed to send smart wallet deploy notification: ${err?.message || err}`)
-          })
+        // A deploy notification claims an on-chain position exists. Without the tx
+        // signature that claim is unprovable, so suppress the notification and raise
+        // an incident instead of fabricating "Position: unknown / Tx: unknown". The
+        // position is still committed so a real deploy is not retried (no duplicate
+        // capital), but it is never announced as a success.
+        if (txSignature) {
+          this.adapters.telegram
+            .notifyDeploy({
+              pair,
+              amountSol: deployAmount,
+              position: positionAddress,
+              tx: txSignature,
+              priceRange: (deployRes as any).price_range,
+              rangeCoverage: (deployRes as any).range_coverage,
+              binStep: (deployRes as any).bin_step,
+              baseFee: (deployRes as any).base_fee,
+            })
+            .catch((err: any) => {
+              log('telegram_warn', `Failed to send smart wallet deploy notification: ${err?.message || err}`)
+            })
+        } else {
+          log(
+            'cron_error',
+            `[SmartWallets] Deployed ${positionAddress} on ${pair} without a tx signature — deploy notification suppressed as unproven`,
+          )
+        }
       } catch (e: any) {
         log('cron_error', `[SmartWallets] Deploy failed for pool ${pool}: ${e.message}`)
         processedPositions.push({ position: posItem.position, resolved: false })
@@ -2752,18 +2839,33 @@ IMPORTANT:
         !hasCloseIntent && /\bdeploy\b|\bopen position\b|\blp into\b|\badd liquidity\b/i.test(text)
       const agentRole = isDeployRequest ? 'SCREENER' : 'GENERAL'
       const agentModel = agentRole === 'SCREENER' ? config.llm.screeningModel : config.llm.generalModel
-      liveMessage = await this.adapters.telegram.createLiveMessage('🤖 Live Update', `Request: ${text.slice(0, 240)}`)
-      const { content } = await agentLoop(text, config.llm.maxSteps, this.sessionHistory, agentRole, agentModel, null, {
-        deps: this.adapters.agentLoopDeps,
-        interactive: true,
-        onToolStart: async ({ name }: any) => {
-          await liveMessage?.toolStart(name)
+      const quotedText = formatQuotedReply(msg?.replyToMessage?.text)
+      const prompt = quotedText ? `[Replying to Telegram message: "${quotedText}"]\n\n${text}` : text
+      liveMessage = await this.adapters.telegram.createLiveMessage(
+        '🤖 Live Update',
+        quotedText
+          ? `Replying to: "${quotedText.slice(0, 140)}"\nRequest: ${text.slice(0, 140)}`
+          : `Request: ${text.slice(0, 240)}`,
+      )
+      const { content } = await agentLoop(
+        prompt,
+        config.llm.maxSteps,
+        this.sessionHistory,
+        agentRole,
+        agentModel,
+        null,
+        {
+          deps: this.adapters.agentLoopDeps,
+          interactive: true,
+          onToolStart: async ({ name }: any) => {
+            await liveMessage?.toolStart(name)
+          },
+          onToolFinish: async ({ name, result, success }: any) => {
+            await liveMessage?.toolFinish(name, result, success)
+          },
         },
-        onToolFinish: async ({ name, result, success }: any) => {
-          await liveMessage?.toolFinish(name, result, success)
-        },
-      })
-      this.appendHistory(text, content)
+      )
+      this.appendHistory(prompt, content)
       if (liveMessage) await liveMessage.finalize(stripThink(content))
       else await this.sendTelegramSafe(stripThink(content))
     } catch (e: any) {

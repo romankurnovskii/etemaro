@@ -24,6 +24,20 @@ export type { IndicatorConfirmation } from '../indicators/ChartIndicatorsAdapter
 // ─── Constants ─────────────────────────────────────────────────
 
 const DATAPI_JUP = 'https://datapi.jup.ag/v1'
+// ── Undocumented Meteora host — no public schema contract ──────────────────
+// `pool-discovery-api.datapi.meteora.ag` appears in neither the Meteora docs index
+// nor the published OpenAPI (only `dlmm.datapi.meteora.ag` is documented), and its
+// schema is not interchangeable with the documented `/pools`. Fields this module
+// depends on and has no documented equivalent for: `organic_score`,
+// `pvp_rival_holders`, `active_tvl`, `dlmm_params`.
+//
+// Failure behaviour if a field disappears (see docs/RPC_AND_API_OPTIMIZATION.md §7.4):
+//   - numeric gates (tvl, volume, holders, bin_step, mcap, fee/TVL, organic) reject
+//     with an explicit "unknown below min…" reason -> fails loud;
+//   - the `*_has_critical_warnings`, `*_has_high_supply_concentration`,
+//     `*_has_high_single_ownership` and `pool_type` checks are `=== true` / truthy
+//     guards, so they are skipped when the field is absent -> FAILS OPEN.
+// Adding a field here without a fallback inherits the second behaviour.
 const POOL_DISCOVERY_BASE = 'https://pool-discovery-api.datapi.meteora.ag'
 const DLMM_BASE = 'https://dlmm.datapi.meteora.ag'
 const MIN_VOLATILITY_TIMEFRAME = '30m'

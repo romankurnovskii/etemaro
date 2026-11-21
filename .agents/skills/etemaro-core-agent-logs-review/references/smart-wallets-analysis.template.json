@@ -1,0 +1,122 @@
+{
+  "_comment": "Template for <target-dir>/reports/REPORT-YYYY-MM-DD.smart-wallets.json. Fill every field; use null when unknown and put the reason in verification.limitations. Keep full addresses here (HTML may shorten them). Never store API keys.",
+  "schema": "etemaro.smart-wallets-analysis/v1",
+  "report_date": "YYYY-MM-DD",
+  "generated_at": "YYYY-MM-DDTHH:MM:SSZ",
+  "instance": {
+    "id": "agent-config.copy_trade_lag.v260910-1",
+    "agent_id": "agt_260910v1",
+    "config_path": "config/instances/agent-config.copy_trade_lag.v260910-1.json",
+    "active_strategy_id": "copy_trade_lag",
+    "smart_wallet_list_id": "copy_trade_lag",
+    "entry_source": "smart_wallets",
+    "max_positions": 1
+  },
+  "sources": [
+    {
+      "name": "api.etemaro",
+      "base_url": "https://api.etemaro.com",
+      "endpoint": "/v1/solana/portfolio/open",
+      "used": true,
+      "errors": []
+    },
+    {
+      "name": "meteora_datapi",
+      "base_url": "https://dlmm.datapi.meteora.ag",
+      "endpoint": "/portfolio/open",
+      "used": false,
+      "errors": []
+    }
+  ],
+  "wallets": [
+    {
+      "name": "Alpha1",
+      "address": "4oJxLxVy7gLVBiZWTQ6ESty73mNS75igUaEbv6M2sv8e",
+      "type": "lp",
+      "category": "alpha",
+      "status": "ok",
+      "error": null,
+      "source_used": "api.etemaro",
+      "fetched_at": "YYYY-MM-DDTHH:MM:SSZ",
+      "open_positions_count": 0,
+      "pools": [
+        {
+          "pool_address": "JBGqmRZB4csWcQnTMaJGsKBoo4zC1dAoMs7LYGMKqEjD",
+          "token_x": "FLAME",
+          "token_y": "SOL",
+          "position_addresses": ["Ha6XY8kJCXJqKWXKP8cQWEyKVUQEvkeLAYUUU8qGnGDj"],
+          "out_of_range": false,
+          "positions_out_of_range": [],
+          "bin_step": "100",
+          "fee_per_tvl_24h": "12.1",
+          "pnl_usd": "0.0",
+          "pnl_pct_change": "0.0",
+          "newest_position_created_at": 0
+        }
+      ]
+    }
+  ],
+  "agent_deploys": [
+    {
+      "pool_address": "JBGqmRZB4csWcQnTMaJGsKBoo4zC1dAoMs7LYGMKqEjD",
+      "pool_name": "FLAME-SOL",
+      "deployed_at": "2026-09-12T16:50:08.139Z",
+      "closed_at": "2026-09-12T16:54:31.274Z",
+      "exit_reason": "take profit (pnl=0.64% threshold=0.2%)",
+      "smart_wallet_present": true,
+      "wallets": ["Alpha1"],
+      "was_new_vs_snapshot": true,
+      "deploy_lag_seconds": 0,
+      "verdict": "PASS"
+    }
+  ],
+  "per_signal_veto_forensics": [
+    {
+      "signal": "FLAME-SOL",
+      "pool_address": "JBGqmRZB4csWcQnTMaJGsKBoo4zC1dAoMs7LYGMKqEjD",
+      "bin_step": 100,
+      "wallet_position": "Ha6XY8kJCXJqKWXKP8cQWEyKVUQEvkeLAYUUU8qGnGDj",
+      "position_opened": "YYYY-MM-DDTHH:MM:SSZ",
+      "position_closed": "YYYY-MM-DDTHH:MM:SSZ",
+      "veto_at": "YYYY-MM-DDTHH:MM:SSZ",
+      "failed_check": "#9 maxTvl",
+      "value_at_veto": "TVL 426760.4",
+      "threshold": "maxTvl 300000",
+      "wallet_pnl_usd": 0.0,
+      "live": {
+        "tvl": 0,
+        "fee_active_tvl_ratio": 0,
+        "volatility": 0,
+        "bin_step": 100,
+        "holders": 0,
+        "mcap": 0,
+        "base_organic": 0,
+        "age_hours": 0,
+        "fails_now": []
+      },
+      "note": "Set when a transient veto would pass at review time (permanent-ledger / missing-TTL finding)."
+    }
+  ],
+  "silent_drops": [
+    {
+      "token": "EXAMPLE-SOL",
+      "pool_address": "...",
+      "bin_step": 250,
+      "failed_check": "#10 maxBinStep",
+      "threshold": 200,
+      "wallet_positions": ["..."],
+      "note": "Filtered before the veto log; no Vetoed line."
+    }
+  ],
+  "verification": {
+    "gate_integrity": "PASS",
+    "snapshot_valid": true,
+    "max_positions_respected": true,
+    "exit_matches_config": true,
+    "wallet_liveness": "ok",
+    "wallets_checked": 2,
+    "wallets_failed": 0,
+    "overall_verdict": "PASS",
+    "limitations": ["Position API reflects review time, not deploy time; historical pool membership is approximate."]
+  }
+}

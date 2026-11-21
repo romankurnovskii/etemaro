@@ -14,11 +14,9 @@
 import {
   Keypair,
   PublicKey,
-  SystemInstruction,
-  SystemProgram,
   sendAndConfirmTransaction,
   Transaction,
-  TransactionInstruction,
+  type TransactionInstruction,
   VersionedTransaction,
 } from '@solana/web3.js'
 import BN from 'bn.js'
@@ -41,7 +39,14 @@ import {
 import { getConnection, getWalletKeypair as getWallet, withRpcFailover } from '../../shared/connection.js'
 import { getMinSafeBinsBelow } from '../../shared/constants.js'
 import { log, logStructured } from '../../shared/logger.js'
+import {
+  assertNoUnsafeSystemTransfer,
+  deserializeSignedTransaction,
+  getStaticAccountKeyStrings,
+  signSerializedTransaction,
+} from '../../shared/txGuard.js'
 import type { GetMyPositionsResult } from '../../shared/types.js'
+import { withRpcRetry } from '../../shared/utils.js'
 import { agentMeridianJson, getAgentIdForRequests, getAgentMeridianHeaders } from '../external/AgentMeridianClient.js'
 import { computePositions, fetchDlmmPnlForPool } from '../PnLAdapter.js'
 import {
@@ -126,89 +131,6 @@ function shouldUseLpAgentRelay(): boolean {
 
 function shouldUseLpAgentRelayForDeploy(): boolean {
   return false
-}
-
-function signSerializedTransaction(serialized: string, wallet: Keypair): string {
-  const bytes = Buffer.from(serialized, 'base64')
-  try {
-    const versioned = VersionedTransaction.deserialize(bytes)
-    versioned.sign([wallet])
-    return Buffer.from(versioned.serialize()).toString('base64')
-  } catch {
-    const legacy = Transaction.from(bytes)
-    legacy.partialSign(wallet)
-    return legacy.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64')
-  }
-}
-
-function deserializeSignedTransaction(signedBase64: string): Transaction | VersionedTransaction {
-  const bytes = Buffer.from(signedBase64, 'base64')
-  try {
-    return VersionedTransaction.deserialize(bytes)
-  } catch {
-    return Transaction.from(bytes)
-  }
-}
-
-function getStaticAccountKeyStrings(tx: Transaction | VersionedTransaction): string[] {
-  if (tx instanceof VersionedTransaction) {
-    return tx.message.staticAccountKeys.map((key: PublicKey) => key.toString())
-  }
-  return tx.compileMessage().accountKeys.map((key: PublicKey) => key.toString())
-}
-
-function getTransactionInstructions(tx: Transaction | VersionedTransaction): TransactionInstruction[] {
-  if (!(tx instanceof VersionedTransaction)) return tx.instructions
-
-  const keys = tx.message.staticAccountKeys
-  return tx.message.compiledInstructions
-    .map((ix: any) => {
-      const programId = keys[ix.programIdIndex]
-      if (!programId) return null
-      const indexes = ix.accountKeyIndexes || ix.accounts || []
-      const accounts = indexes.map((accountIndex: number) => keys[accountIndex]).filter(Boolean)
-      return new TransactionInstruction({
-        programId,
-        keys: accounts.map((pubkey: PublicKey) => ({
-          pubkey,
-          isSigner: false,
-          isWritable: false,
-        })),
-        data: Buffer.from(ix.data),
-      })
-    })
-    .filter(Boolean) as TransactionInstruction[]
-}
-
-function assertNoUnsafeSystemTransfer(
-  tx: Transaction | VersionedTransaction,
-  wallet: Keypair,
-  allowedDestinations: string[] = [],
-): void {
-  const owner = wallet.publicKey.toString()
-  const allowed = new Set(allowedDestinations.filter(Boolean).map(String))
-
-  for (const ix of getTransactionInstructions(tx)) {
-    if (!ix.programId.equals(SystemProgram.programId)) continue
-
-    let type: string
-    try {
-      type = SystemInstruction.decodeInstructionType(ix)
-    } catch {
-      continue
-    }
-    if (type !== 'Transfer' && type !== 'TransferWithSeed') continue
-
-    const decoded =
-      type === 'Transfer' ? SystemInstruction.decodeTransfer(ix) : SystemInstruction.decodeTransferWithSeed(ix)
-    const source = decoded.fromPubkey?.toString()
-    const destination = decoded.toPubkey?.toString()
-    if (source === owner && !allowed.has(destination!)) {
-      throw new Error(
-        `Relay transaction contains direct SOL transfer from owner to ${destination?.slice(0, 8) || 'unknown'}.`,
-      )
-    }
-  }
 }
 
 function signSerializedTransactions(serializedTxs: string[], wallet: Keypair): string[] {
@@ -1205,6 +1127,89 @@ export async function getPositionPnl({
 
 // ─── Get My Positions ──────────────────────────────────────────
 /**
+ * Parses a numeric `Retry-After` header (seconds) into milliseconds.
+ * HTTP-date form is ignored — the exponential backoff still applies.
+ */
+function parseRetryAfterMs(header: string | null | undefined): number | null {
+  const seconds = Number(header)
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null
+}
+
+// ── Undocumented Meteora host — no public schema contract ──────────────────
+// `pool-discovery-api.datapi.meteora.ag` appears in neither the Meteora docs index
+// nor the published OpenAPI (only `dlmm.datapi.meteora.ag` is documented), and its
+// schema is not interchangeable with the documented `/pools`. Fields this module
+// depends on and has no documented equivalent for: `organic_score`,
+// `pvp_rival_holders`, `active_tvl`, `dlmm_params`.
+//
+// Failure behaviour if a field disappears (see docs/RPC_AND_API_OPTIMIZATION.md §7.4):
+//   - numeric gates (tvl, volume, holders, bin_step, mcap, fee/TVL, organic) reject
+//     with an explicit "unknown below min…" reason -> fails loud;
+//   - the `*_has_critical_warnings`, `*_has_high_supply_concentration`,
+//     `*_has_high_single_ownership` and `pool_type` checks are `=== true` / truthy
+//     guards, so they are skipped when the field is absent -> FAILS OPEN.
+// Adding a field here without a fallback inherits the second behaviour.
+const POOL_DISCOVERY_BASE = 'https://pool-discovery-api.datapi.meteora.ag'
+
+/** Datapi page size for the portfolio endpoint (default 20, documented maximum 50). */
+const PORTFOLIO_PAGE_SIZE = 50
+/** Hard cap on followed portfolio pages, so a stuck `hasNext` cannot loop forever. */
+const PORTFOLIO_MAX_PAGES = 10
+
+/**
+ * Reads every page of the Meteora Datapi portfolio endpoint, retrying transient failures
+ * (including 429) instead of dropping straight to the RPC fallback. The thrown error
+ * carries `status` (so `isTransientRpcError` classifies it) and `retryAfterMs` when advertised.
+ *
+ * The endpoint paginates (`page_size` defaults to 20) and reports `hasNext` plus
+ * `totalPositions`; both are honoured so a wallet with more positions than one page
+ * cannot be silently under-counted.
+ */
+async function fetchPortfolioOpen(walletAddress: string): Promise<{ pools: any[]; totalPositions: number | null }> {
+  const pools: any[] = []
+  let totalPositions: number | null = null
+
+  for (let page = 1; page <= PORTFOLIO_MAX_PAGES; page++) {
+    const data: any = await withRpcRetry(
+      async () => {
+        const res = await fetch(
+          `https://dlmm.datapi.meteora.ag/portfolio/open?user=${walletAddress}&page=${page}&page_size=${PORTFOLIO_PAGE_SIZE}`,
+        )
+        if (!res.ok) {
+          const body = await res.text().catch(() => '')
+          const err: any = new Error(`Portfolio API ${res.status}: ${body}`)
+          err.status = res.status
+          const retryAfterMs = parseRetryAfterMs(res.headers?.get?.('retry-after'))
+          if (retryAfterMs) err.retryAfterMs = retryAfterMs
+          throw err
+        }
+        return res.json()
+      },
+      {
+        label: 'Meteora portfolio API',
+        logTag: 'positions_warn',
+        respectRetryAfter: true,
+        maxRetries: 3,
+      },
+    )
+
+    pools.push(...(data?.pools || []))
+    if (page === 1) {
+      const reported = Number(data?.totalPositions)
+      totalPositions = Number.isFinite(reported) ? reported : null
+    }
+    if (!data?.hasNext) break
+  }
+
+  return { pools, totalPositions }
+}
+
+/** Closed-position PnL lookup URL. The Datapi paginates via `page_size`, not `pageSize`. */
+export function meteoraClosedPnlUrl(poolAddress: string, walletAddress: string): string {
+  return `https://dlmm.datapi.meteora.ag/positions/${poolAddress}/pnl?user=${walletAddress}&status=closed&page_size=50&page=1`
+}
+
+/**
  * Fetches open DLMM positions for the wallet.
  * Uses Meteora REST Datapi by default (config.pnl.source === 'meteora_api') for 0 Solana RPC credit consumption.
  * Uses on-chain DLMM RPC when config.pnl.source === 'rpc'.
@@ -1227,6 +1232,7 @@ export async function getMyPositions({
       total_positions: 0,
       positions: [],
       error: 'Invalid wallet address',
+      degraded: true,
     }
   }
 
@@ -1269,10 +1275,7 @@ export async function getMyPositions({
       }
 
       if (!silent) log('positions', 'Fetching portfolio via Meteora portfolio API...')
-      const portfolioUrl = `https://dlmm.datapi.meteora.ag/portfolio/open?user=${walletAddress}`
-      const res = await fetch(portfolioUrl)
-      if (!res.ok) throw new Error(`Portfolio API ${res.status}: ${await res.text().catch(() => '')}`)
-      const portfolio = (await res.json()) as any
+      const portfolio = await fetchPortfolioOpen(walletAddress)
 
       const pools = portfolio.pools || []
       log('positions', `Found ${pools.length} pool(s) with open positions (source: Meteora Datapi)`)
@@ -1427,6 +1430,13 @@ export async function getMyPositions({
         }
       }
 
+      if (portfolio.totalPositions != null && portfolio.totalPositions > positions.length) {
+        log(
+          'positions_warn',
+          `Portfolio API reported totalPositions=${portfolio.totalPositions} but only ${positions.length} were assembled — response may be truncated (page_size=${PORTFOLIO_PAGE_SIZE}, pages=${PORTFOLIO_MAX_PAGES})`,
+        )
+      }
+
       const result = {
         wallet: walletAddress,
         total_positions: positions.length,
@@ -1462,6 +1472,7 @@ export async function getMyPositions({
         total_positions: 0,
         positions: [],
         error: error.message,
+        degraded: true,
       }
     } finally {
       if (useLocalWallet) _positionsInflight = null
@@ -1823,7 +1834,7 @@ export async function closePosition({ position_address, reason }: { position_add
           let initialUsd = 0
           let feesUsd = tracked.total_fees_claimed_usd || 0
           try {
-            const closedUrl = `https://dlmm.datapi.meteora.ag/positions/${poolAddress}/pnl?user=${wallet.publicKey.toString()}&status=closed&pageSize=50&page=1`
+            const closedUrl = meteoraClosedPnlUrl(poolAddress, wallet.publicKey.toString())
             for (let attempt = 0; attempt < 6; attempt++) {
               const res = await fetch(closedUrl)
               if (res.ok) {
@@ -1859,7 +1870,7 @@ export async function closePosition({ position_address, reason }: { position_add
           let exitMarket: any = {}
           try {
             const exitDetail = await fetch(
-              `https://pool-discovery-api.datapi.meteora.ag/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=${encodeURIComponent(config.screening?.timeframe || '5m')}`,
+              `${POOL_DISCOVERY_BASE}/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=${encodeURIComponent(config.screening?.timeframe || '5m')}`,
             )
               .then((r: any) => r.json())
               .catch(() => null)
@@ -2093,7 +2104,7 @@ export async function closePosition({ position_address, reason }: { position_add
       let initialUsd = 0
       let feesUsd = tracked.total_fees_claimed_usd || 0
       try {
-        const closedUrl = `https://dlmm.datapi.meteora.ag/positions/${poolAddress}/pnl?user=${wallet.publicKey.toString()}&status=closed&pageSize=50&page=1`
+        const closedUrl = meteoraClosedPnlUrl(poolAddress, wallet.publicKey.toString())
         for (let attempt = 0; attempt < 6; attempt++) {
           const res = await fetch(closedUrl)
           if (res.ok) {
@@ -2170,7 +2181,7 @@ export async function closePosition({ position_address, reason }: { position_add
       let exitMarket: any = {}
       try {
         const exitDetail = await fetch(
-          `https://pool-discovery-api.datapi.meteora.ag/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=${encodeURIComponent(config.screening?.timeframe || '5m')}`,
+          `${POOL_DISCOVERY_BASE}/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=${encodeURIComponent(config.screening?.timeframe || '5m')}`,
         )
           .then((r) => r.json() as any)
           .catch(() => null)

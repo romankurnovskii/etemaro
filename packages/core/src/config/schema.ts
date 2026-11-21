@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { DEFAULT_PNL_SOURCE } from '../shared/constants.js'
+import { DEFAULT_PNL_SOURCE, LEGACY_HARDCODED_RPC_URL, PUBLIC_SOLANA_RPC_URL } from '../shared/constants.js'
 
 export function resolveEnvString(val: string): string | null {
   if (!val.startsWith('env.')) return val
@@ -25,6 +25,40 @@ const envString = z.string().transform((val, ctx) => {
   }
   return val
 })
+
+// Resolves the PnL RPC endpoint. The field is only consumed when `pnl.source === 'rpc'`;
+// the shipped default (`meteora_api`) never reads it. Precedence: explicit PNL_RPC_URL,
+// then the primary RPC (RPC_URL), then a public Solana endpoint. A retired hardcoded
+// default is treated as "not configured" so existing configs heal on load.
+function resolvePnlRpcUrl(val: string): string {
+  const fallback = () => {
+    const primary = process.env.RPC_URL?.trim()
+    return primary && primary !== LEGACY_HARDCODED_RPC_URL ? primary : PUBLIC_SOLANA_RPC_URL
+  }
+  if (val === LEGACY_HARDCODED_RPC_URL) return fallback()
+  if (!val.startsWith('env.')) return val
+  const envVar = val.slice(4)
+  const resolved = process.env[envVar]
+  if (resolved !== undefined && resolved.trim() !== '') return resolved.trim()
+  return envVar === 'PNL_RPC_URL' ? fallback() : ''
+}
+
+const envPnlRpcUrl = z
+  .string()
+  .default('env.PNL_RPC_URL')
+  .transform((val, ctx) => {
+    const resolved = resolvePnlRpcUrl(val)
+    if (resolved === '') {
+      const envVar = val.slice(4)
+      ctx.addIssue({
+        code: 'custom',
+        message: `Environment variable ${envVar} is not set but is referenced by configuration.\nSet ${envVar} in your .env file or environment.`,
+        params: { envVar, ref: val },
+      })
+      return z.NEVER
+    }
+    return resolved
+  })
 
 // Helper for strings that can be null or empty string, resolving env references if applicable
 const envStringNullable = z
@@ -96,7 +130,7 @@ const envBoolean = z.union([z.boolean(), z.string()]).transform((val, ctx) => {
 
 export const AgentConfigSchema = z
   .object({
-    _version: z.number().optional().default(5),
+    _version: z.literal(7),
     preset: z.string().optional(),
     name: z.string().optional(),
     description: z.string().optional(),
@@ -137,35 +171,63 @@ export const AgentConfigSchema = z
     screening: z
       .object({
         description: z.string().optional(),
-        entrySource: z.enum(['market', 'smart_wallets']).optional().default('market'),
-        excludeHighSupplyConcentration: envBoolean,
-        minFeeActiveTvlRatio: envNumber,
-        minTvl: envNumber,
-        maxTvl: envNumber,
-        minVolume: envNumber,
-        minOrganic: envNumber,
-        minQuoteOrganic: envNumber,
-        minHolders: envNumber,
-        minMcap: envNumber,
-        maxMcap: envNumber,
-        minBinStep: envNumber,
-        maxBinStep: envNumber,
-        timeframe: envString,
-        category: envString,
-        minTokenFeesSol: envNumber,
-        useDiscordSignals: envBoolean.optional().default(false),
-        discordSignalMode: z.string().optional().default('merge'),
-        avoidPvpSymbols: envBoolean,
-        blockPvpSymbols: envBoolean,
-        maxBotHoldersPct: envNumber,
-        maxTop10Pct: envNumber,
-        loneCandidateMinDegen: envNumber,
-        allowedLaunchpads: z.array(envString),
-        blockedLaunchpads: z.array(envString),
-        minTokenAgeHours: envNumber.nullable(),
-        maxTokenAgeHours: envNumber.nullable(),
+        // Gates shared by every entry source (getRawPoolScreeningRejectReason).
+        common: z
+          .object({
+            excludeHighSupplyConcentration: envBoolean,
+            minFeeActiveTvlRatio: envNumber,
+            minTvl: envNumber,
+            maxTvl: envNumber,
+            minVolume: envNumber,
+            minOrganic: envNumber,
+            minQuoteOrganic: envNumber,
+            minHolders: envNumber,
+            minMcap: envNumber,
+            maxMcap: envNumber,
+            minBinStep: envNumber,
+            maxBinStep: envNumber,
+            blockedLaunchpads: z.array(envString),
+            minTokenAgeHours: envNumber.nullable(),
+            maxTokenAgeHours: envNumber.nullable(),
+          })
+          .strict(),
+        // Exactly one source block may be enabled. Both blocks always carry
+        // their full field set so enabling a source never requires new fields
+        // and the runtime never invents values; a disabled block is just unused.
+        market: z
+          .object({
+            enabled: envBoolean,
+            timeframe: envString,
+            category: envString,
+            minTokenFeesSol: envNumber,
+            useDiscordSignals: envBoolean,
+            discordSignalMode: z.string(),
+            avoidPvpSymbols: envBoolean,
+            blockPvpSymbols: envBoolean,
+            maxBotHoldersPct: envNumber,
+            maxTop10Pct: envNumber,
+            loneCandidateMinDegen: envNumber,
+            allowedLaunchpads: z.array(envString),
+          })
+          .strict(),
+        smartWallets: z
+          .object({
+            enabled: envBoolean,
+            smartWalletVetoRetryHours: envNumber,
+          })
+          .strict(),
       })
-      .strict(),
+      .strict()
+      .superRefine((value, ctx) => {
+        const enabledCount = [value.market.enabled, value.smartWallets.enabled].filter(Boolean).length
+        if (enabledCount !== 1) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['market', 'enabled'],
+            message: 'Exactly one of screening.market.enabled / screening.smartWallets.enabled must be true',
+          })
+        }
+      }),
     management: z
       .object({
         description: z.string().optional(),
@@ -359,7 +421,7 @@ export const AgentConfigSchema = z
     pnl: z
       .object({
         description: z.string().optional(),
-        rpcUrl: envString.default('https://pump.helius-rpc.com'),
+        rpcUrl: envPnlRpcUrl,
         source: envString.default(DEFAULT_PNL_SOURCE),
         pollIntervalSec: envNumber.default(15),
         depositCacheTtlSec: envNumber.default(300),

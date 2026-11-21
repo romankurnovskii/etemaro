@@ -1,6 +1,6 @@
 {
   "name": "@etemaro/daemon",
-  "version": "3.9.1",
+  "version": "4.4.0",
   "type": "module",
   "main": "src/Daemon.ts",
   "types": "src/Daemon.ts",
@@ -11,13 +11,13 @@
   },
   "dependencies": {
     "@etemaro/core": "workspace:*",
-    "dotenv": "^17.4.2",
-    "ws": "^8.21.3"
+    "dotenv": "^18.0.10",
+    "ws": "^8.22.1"
   },
   "devDependencies": {
-    "@types/node": "^26.6.1",
-    "@types/ws": "^8.18.1",
-    "tsx": "^4.23.13",
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
 }

@@ -4,6 +4,11 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { saveJsonFile } from './utils.js'
 
+vi.mock('./logger.js', () => ({
+  log: vi.fn(),
+  logStructured: vi.fn(),
+}))
+
 describe('saveJsonFile — atomicity', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'saveJsonFile-test-'))
   afterEach(() => {
@@ -97,6 +102,19 @@ describe('loadJsonFile — missing vs corrupt file handling', () => {
     expect(() => loadJsonFile(target, { fallback: true }, { label: 'state', critical: true })).toThrowError(
       /Failed to parse JSON file at.*Critical file corrupted/,
     )
+  })
+
+  it('backs up a corrupt file when backupOnCorrupt is true', async () => {
+    const { loadJsonFile } = await import('./utils.js')
+    const target = path.join(tmpDir, 'corrupt-backup.json')
+    fs.writeFileSync(target, '{ bad json syntax !!!')
+
+    const result = loadJsonFile(target, { fallback: 1 }, { label: 'pool-memory', backupOnCorrupt: true })
+    expect(result).toEqual({ fallback: 1 })
+    expect(fs.existsSync(target)).toBe(false)
+    const backups = fs.readdirSync(tmpDir).filter((f) => f.startsWith('corrupt-backup.json.corrupt-'))
+    expect(backups).toHaveLength(1)
+    expect(fs.readFileSync(path.join(tmpDir, backups[0]!), 'utf8')).toContain('bad json syntax')
   })
 
   it('correctly parses and returns valid JSON', async () => {
@@ -273,5 +291,98 @@ describe('withRpcRetry', () => {
 
     expect(result).toBe('custom success')
     expect(fn).toHaveBeenCalledTimes(2)
+  })
+
+  it('honours a Retry-After hint when respectRetryAfter is set', async () => {
+    vi.useFakeTimers()
+    try {
+      const { withRpcRetry } = await import('./utils.js')
+      const rateLimited: any = new Error('Portfolio API 429: Too many requests')
+      rateLimited.status = 429
+      rateLimited.retryAfterMs = 750
+      const fn = vi.fn().mockRejectedValueOnce(rateLimited).mockResolvedValueOnce('recovered')
+
+      const onRetry = vi.fn()
+      const promise = withRpcRetry(fn, {
+        maxRetries: 2,
+        initialDelayMs: 1,
+        maxDelayMs: 100,
+        jitter: false,
+        respectRetryAfter: true,
+        onRetry,
+      })
+      await vi.advanceTimersByTimeAsync(5000)
+      await promise
+
+      expect(onRetry).toHaveBeenCalledTimes(1)
+      // Backoff would be 1ms; the server hint wins.
+      expect(onRetry.mock.calls[0]?.[2]).toBe(750)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('ignores a Retry-After hint unless respectRetryAfter is set', async () => {
+    const { withRpcRetry } = await import('./utils.js')
+    const rateLimited: any = new Error('Portfolio API 429: Too many requests')
+    rateLimited.status = 429
+    rateLimited.retryAfterMs = 750
+    const fn = vi.fn().mockRejectedValueOnce(rateLimited).mockResolvedValueOnce('recovered')
+
+    const onRetry = vi.fn()
+    await withRpcRetry(fn, {
+      maxRetries: 2,
+      initialDelayMs: 1,
+      maxDelayMs: 100,
+      jitter: false,
+      onRetry,
+    })
+
+    expect(onRetry.mock.calls[0]?.[2]).toBe(1)
+  })
+
+  it('caps an absurd Retry-After hint instead of sleeping for it', async () => {
+    vi.useFakeTimers()
+    try {
+      const { withRpcRetry } = await import('./utils.js')
+      const rateLimited: any = new Error('Portfolio API 429: Too many requests')
+      rateLimited.status = 429
+      rateLimited.retryAfterMs = 60 * 60 * 1000
+      const fn = vi.fn().mockRejectedValueOnce(rateLimited).mockResolvedValueOnce('recovered')
+
+      const onRetry = vi.fn()
+      const promise = withRpcRetry(fn, {
+        maxRetries: 2,
+        initialDelayMs: 1,
+        maxDelayMs: 100,
+        jitter: false,
+        respectRetryAfter: true,
+        onRetry,
+      })
+      await vi.advanceTimersByTimeAsync(60_000)
+      await promise
+
+      expect(onRetry.mock.calls[0]?.[2]).toBe(10_000)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('logs retries under a custom tag so HTTP retries are not reported as RPC failures', async () => {
+    const { withRpcRetry } = await import('./utils.js')
+    const { log } = await import('./logger.js')
+    const fn = vi.fn().mockRejectedValueOnce(new Error('503 Service Unavailable')).mockResolvedValueOnce('ok')
+
+    await withRpcRetry(fn, {
+      maxRetries: 1,
+      initialDelayMs: 1,
+      jitter: false,
+      logTag: 'positions_warn',
+      label: 'Meteora portfolio API',
+    })
+
+    expect(vi.mocked(log)).toHaveBeenCalledWith('positions_warn', expect.stringContaining('Meteora portfolio API'))
+    const logged = vi.mocked(log).mock.calls.map((call) => String(call[1]))
+    expect(logged.some((message) => message.includes('RPC call failed'))).toBe(false)
   })
 })

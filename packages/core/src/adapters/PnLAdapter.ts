@@ -69,7 +69,7 @@ function uniqueArr<T>(arr: T[]): T[] {
 // Exported because tools/dlmm.js (getPositionPnl + the Meteora fallback path)
 // also reads it.
 export async function fetchDlmmPnlForPool(poolAddress: string, walletAddress: string): Promise<Record<string, any>> {
-  const url = `${METEORA_PNL}/${poolAddress}/pnl?user=${walletAddress}&status=open&pageSize=100&page=1`
+  const url = `${METEORA_PNL}/${poolAddress}/pnl?user=${walletAddress}&status=open&page_size=100&page=1`
   try {
     const res = await fetch(url)
     if (!res.ok) {

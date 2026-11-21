@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../../config/Config.js'
 import { log } from '../../shared/logger.js'
@@ -16,6 +19,8 @@ import {
   notifyTransactionError,
   sendMessage,
   setChatId,
+  startPolling,
+  stopPolling,
   summarizeToolResult,
 } from './TelegramAdapter.js'
 
@@ -117,6 +122,25 @@ describe('TelegramAdapter notifications', () => {
       '⚠️',
       'Auto-swap failed: Council → SOL',
       'Reason: Slippage exceeded',
+    )
+  })
+
+  it('notifySwapError includes source, amount, attempts and abandoned context when provided', async () => {
+    await notifySwapError({
+      inputSymbol: 'JubJub',
+      outputSymbol: 'SOL',
+      reason: 'Failed to get quotes',
+      source: 'sweeper',
+      amount: 0.000001,
+      attempts: 1,
+      abandoned: true,
+    })
+
+    expect(NotificationSink.notify).toHaveBeenCalledWith(
+      'swap_error',
+      '⚠️',
+      'Auto-swap failed: JubJub → SOL',
+      expect.stringMatching(/Source: sweeper[\s\S]*Amount: 0\.000001[\s\S]*Attempts: 1[\s\S]*no further retries/i),
     )
   })
 
@@ -316,5 +340,159 @@ describe('TelegramAdapter notifications', () => {
     expect(NotificationSink.notify).toHaveBeenCalledWith('tx_error', '❌', expect.any(String), expect.any(String))
 
     await live?.finalize('Done')
+  })
+
+  it('notifyDeploy formats pool metrics and fails closed when position/tx proof is missing', async () => {
+    config.connection.telegramBotToken = 'test_token'
+    config.connection.telegramChatId = '123456'
+    let sentText = ''
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url: any, init: any) => {
+      const body = JSON.parse(init?.body || '{}')
+      sentText = body.text || ''
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, result: { message_id: 112 } }),
+      } as any
+    })
+
+    // Case 1: All pool metrics provided
+    await notifyDeploy({
+      pair: 'JACK/SOL',
+      amountSol: 0.5,
+      position: '4xK9pLmN12345678',
+      tx: '3F242bcWa3Swdqiy12345678',
+      priceRange: { min: 0.0012, max: 0.0048 },
+      rangeCoverage: { downside_pct: 12.5, upside_pct: 25.0, width_pct: 37.5 },
+      binStep: 20,
+      baseFee: 0.25,
+    })
+
+    expect(sentText).toContain('✅ Deployed JACK/SOL')
+    expect(sentText).toContain('Amount: 0.5 SOL')
+    expect(sentText).toContain('Price range: 0.001200 – 0.004800')
+    expect(sentText).toContain('Range cover: 12.50% downside | 25.00% upside | 37.50% total')
+    expect(sentText).toContain('Bin step: 20  |  Base fee: 0.25%')
+    expect(sentText).toContain('Position: 4xK9pLmN...')
+    expect(sentText).toContain('Tx: 3F242bcWa3Swdqiy...')
+
+    // Case 2: a missing proof-of-execution must fail closed — never fabricate "unknown"
+    sentText = ''
+    await expect(
+      notifyDeploy({
+        pair: 'UNKNOWN/SOL',
+        amountSol: 0.1,
+        position: undefined as unknown as string,
+        tx: undefined as unknown as string,
+      }),
+    ).rejects.toThrow(/proof-of-execution/i)
+    expect(sentText).toBe('')
+  })
+})
+
+describe('TelegramAdapter reply_to_message parsing (#338)', () => {
+  let dir: string
+  let origDataDir: string | undefined
+  let origAllowedUserIds: string | null | undefined
+
+  function inboundUpdate(updateId: number, message: Record<string, unknown>): any {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        result: [{ update_id: updateId, message: { message_id: updateId * 10, ...message } }],
+      }),
+    }
+  }
+
+  async function captureFirstUpdate(update: any): Promise<any[]> {
+    const received: any[] = []
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(update)
+    startPolling(async (msg) => {
+      received.push(msg)
+      stopPolling()
+    })
+    for (let i = 0; i < 100 && received.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 5))
+    }
+    return received
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tg-reply-'))
+    origDataDir = process.env.ETEMARO_DATA_DIR
+    origAllowedUserIds = config.connection?.telegramAllowedUserIds
+    process.env.ETEMARO_DATA_DIR = dir
+    config.connection.telegramBotToken = 'test_token'
+    config.connection.telegramAllowedUserIds = ''
+    setChatId('123456')
+  })
+
+  afterEach(() => {
+    stopPolling()
+    vi.unstubAllGlobals()
+    config.connection.telegramAllowedUserIds = origAllowedUserIds ?? ''
+    if (origDataDir !== undefined) process.env.ETEMARO_DATA_DIR = origDataDir
+    else delete process.env.ETEMARO_DATA_DIR
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('normalizes reply_to_message text into replyToMessage on the inbound message', async () => {
+    const received = await captureFirstUpdate(
+      inboundUpdate(42, {
+        chat: { id: 123456, type: 'private' },
+        from: { id: 7, first_name: 'Roman' },
+        text: 'Why undefined?',
+        reply_to_message: {
+          message_id: 99,
+          from: { id: 1, first_name: 'Etemaro', username: 'etemaro_bot' },
+          text: '✅ Deployed JACK/SOL\nPosition: undefined',
+        },
+      }),
+    )
+
+    expect(received).toHaveLength(1)
+    expect(received[0].text).toBe('Why undefined?')
+    expect(received[0].replyToMessage).toEqual({
+      text: '✅ Deployed JACK/SOL\nPosition: undefined',
+      from: { id: 1, first_name: 'Etemaro', username: 'etemaro_bot' },
+      messageId: 99,
+    })
+  })
+
+  it('falls back to the replied message caption when text is absent', async () => {
+    const received = await captureFirstUpdate(
+      inboundUpdate(43, {
+        chat: { id: 123456, type: 'private' },
+        from: { id: 7, first_name: 'Roman' },
+        text: 'What was entry price?',
+        reply_to_message: { message_id: 100, caption: 'Position closed: JACK/SOL' },
+      }),
+    )
+
+    expect(received[0].replyToMessage?.text).toBe('Position closed: JACK/SOL')
+    expect(received[0].replyToMessage?.messageId).toBe(100)
+  })
+
+  it('leaves replyToMessage undefined for non-reply messages and blank quoted text', async () => {
+    const plain = await captureFirstUpdate(
+      inboundUpdate(44, {
+        chat: { id: 123456, type: 'private' },
+        from: { id: 7, first_name: 'Roman' },
+        text: 'Status?',
+      }),
+    )
+    expect(plain[0].replyToMessage).toBeUndefined()
+
+    const blankQuote = await captureFirstUpdate(
+      inboundUpdate(45, {
+        chat: { id: 123456, type: 'private' },
+        from: { id: 7, first_name: 'Roman' },
+        text: 'Hm?',
+        reply_to_message: { message_id: 101, text: '   ', from: { id: 1 } },
+      }),
+    )
+    expect(blankQuote[0].replyToMessage).toEqual({ text: undefined, from: { id: 1 }, messageId: 101 })
   })
 })

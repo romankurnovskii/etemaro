@@ -1,15 +1,17 @@
-import { DEFAULT_AGENT_ID } from '../shared/constants.js'
+import { DEFAULT_AGENT_ID, PUBLIC_SOLANA_RPC_URL } from '../shared/constants.js'
 import type { AgentConfigRaw } from './schema.js'
 
 export const DEFAULT_AGENT_CONFIG: AgentConfigRaw = {
-  _version: 5,
+  _version: 7,
   preset: 'custom',
   agentId: DEFAULT_AGENT_ID,
 
   connection: {
     description:
       'Network endpoints, API credentials, wallet key, LLM provider settings, and runtime mode. These values are also propagated to environment variables on startup.',
-    rpcUrl: 'env.RPC_URL',
+    // Literal default, not `env.RPC_URL`: onboarding must not fail when RPC_URL is unset.
+    // A non-empty RPC_URL in .env still overrides it (see ConfigValidator).
+    rpcUrl: PUBLIC_SOLANA_RPC_URL,
     rpcUrl2: 'env.RPC_URL_2',
     wallet: 'default',
     heliusApiKey: 'env.HELIUS_API_KEY',
@@ -29,34 +31,39 @@ export const DEFAULT_AGENT_CONFIG: AgentConfigRaw = {
 
   screening: {
     description:
-      'Filters applied when scanning for new pool candidates. Tighten these to reduce noise; loosen them to explore more pools.',
-    entrySource: 'market',
-    timeframe: '5m',
-    category: 'trending',
-    excludeHighSupplyConcentration: true,
-    minTvl: 10000,
-    maxTvl: 150000,
-    minVolume: 500,
-    minOrganic: 60,
-    minQuoteOrganic: 60,
-    minHolders: 500,
-    minMcap: 150000,
-    maxMcap: 10000000,
-    minBinStep: 80,
-    maxBinStep: 125,
-    minFeeActiveTvlRatio: 0.02,
-    minTokenFeesSol: 30,
-    useDiscordSignals: false,
-    discordSignalMode: 'merge',
-    avoidPvpSymbols: true,
-    blockPvpSymbols: false,
-    maxBotHoldersPct: 30,
-    maxTop10Pct: 60,
-    loneCandidateMinDegen: 50,
-    allowedLaunchpads: [],
-    blockedLaunchpads: [],
-    minTokenAgeHours: null,
-    maxTokenAgeHours: null,
+      'Screening is split into shared gates (common) and per-entry-source blocks (market / smartWallets). Exactly one source block must set enabled: true; the other must be { "enabled": false }.',
+    common: {
+      excludeHighSupplyConcentration: true,
+      minFeeActiveTvlRatio: 0.02,
+      minTvl: 10000,
+      maxTvl: 150000,
+      minVolume: 500,
+      minOrganic: 60,
+      minQuoteOrganic: 60,
+      minHolders: 500,
+      minMcap: 150000,
+      maxMcap: 10000000,
+      minBinStep: 80,
+      maxBinStep: 125,
+      blockedLaunchpads: [],
+      minTokenAgeHours: null,
+      maxTokenAgeHours: null,
+    },
+    market: {
+      enabled: true,
+      timeframe: '5m',
+      category: 'trending',
+      minTokenFeesSol: 30,
+      useDiscordSignals: false,
+      discordSignalMode: 'merge',
+      avoidPvpSymbols: true,
+      blockPvpSymbols: false,
+      maxBotHoldersPct: 30,
+      maxTop10Pct: 60,
+      loneCandidateMinDegen: 50,
+      allowedLaunchpads: [],
+    },
+    smartWallets: { enabled: false, smartWalletVetoRetryHours: 6 },
   },
 
   management: {
@@ -76,7 +83,7 @@ export const DEFAULT_AGENT_CONFIG: AgentConfigRaw = {
     repeatDeployCooldownEnabled: true,
     repeatDeployCooldownTriggerCount: 3,
     repeatDeployCooldownHours: 12,
-    repeatDeployCooldownScope: 'token',
+    repeatDeployCooldownScope: 'both',
     repeatDeployCooldownMinFeeEarnedPct: 0,
     minVolumeToRebalance: 1000,
     stopLossPct: -50,

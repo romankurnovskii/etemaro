@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<!--
+  AGENT RUN REVIEW — HTML REPORT TEMPLATE
+  ========================================
+  Copy this file as the basis for every report. Replace placeholders and go
+  section by section; mirror this exact structure (header, exec summary,
+  config & expected behavior, daily metrics, exit reasons, deep-dive trades,
+  strategy analysis, smart-wallet verification, incident cards,
+  recommendations). Keep ALL CSS inline — the file must render
+  standalone in a browser OR inside an email without any external assets.
+
+
+  Fill-in legend:
+    {{...}}           = replace with the reviewed value
+    [ ] comment text  = guidance for the analyst, delete after use
+  Tables without enough rows: delete the extra <tr> sample rows.
+  Missing data (e.g. no actions file)? Keep the section header and write
+  "Not present in this run directory" instead of deleting the section —
+  honest forensics over fabricated completeness.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Run Review — {{instance-id}} {{report-date}}</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f6f9; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#1c2733;">
+<div style="max-width:1024px; margin:0 auto; padding:24px 16px;">
+
+  <!-- ======================= HEADER ======================= -->
+  <div style="background:linear-gradient(135deg,#101828 0%,#1d3a5f 100%); border-radius:12px; padding:28px 32px; color:#ffffff;">
+    <div style="font-size:12px; letter-spacing:2px; text-transform:uppercase; color:#8ab4ff; margin-bottom:8px;">Agent Run Log &amp; Performance Review</div>
+    <div style="font-size:26px; font-weight:700; line-height:1.2;">{{instance-id}} · {{agent-id}}</div>
+    <div style="font-size:14px; color:#c3d2e3; margin-top:10px;">
+      Period: <b style="color:#ffffff;">{{start-timestamp}}Z → {{end-timestamp}}Z</b><br>
+      Model: <b style="color:#ffffff;">{{model}}</b> &nbsp;·&nbsp; Mode: <b style="color:#ffffff;">{{mode LIVE|DRY-RUN}}</b> &nbsp;·&nbsp; Restarts: <b style="color:#ffffff;">{{n-restarts|none}}</b><br>
+      Config: <b style="color:#ffffff;">{{strategy}} · {{sizing}} · {{position-limits}} · {{thresholds}}</b>
+    </div>
+  </div>
+
+  <!-- =================== EXECUTIVE SUMMARY =================== -->
+  <div style="background:#ffffff; border:1px solid #e3e8ef; border-radius:12px; margin-top:16px; padding:22px 28px;">
+    <div style="font-size:16px; font-weight:700; color:#101828; border-bottom:2px solid #101828; padding-bottom:8px;">1 · Executive Summary</div>
+    <!-- [KPI cards: net return, closed trades, avg hold / win rates. Use 3 cards, then bullet lines.] -->
+    <div style="display:inline-block; width:31%; vertical-align:top; background:#f0f7ff; border:1px solid #cfe4ff; border-radius:10px; padding:14px; margin-top:14px;">
+      <div style="font-size:11px; color:#5b7286; text-transform:uppercase; letter-spacing:1px;">Net Return</div>
+      <div style="font-size:24px; font-weight:700; color:#15803d;">{{net-usd}}</div>
+      <div style="font-size:12px; color:#5b7286;">Fees {{fees-usd}} · Price {{price-usd}}</div>
+    </div>
+    <div style="display:inline-block; width:31%; vertical-align:top; background:#f0f7ff; border:1px solid #cfe4ff; border-radius:10px; padding:14px; margin-top:14px; margin-left:2%;">
+      <div style="font-size:11px; color:#5b7286; text-transform:uppercase; letter-spacing:1px;">Closed Trades</div>
+      <div style="font-size:24px; font-weight:700; color:#101828;">{{closed-trades}}</div>
+      <div style="font-size:12px; color:#5b7286;">{{net W/L/N}} ({{net-win-rate}} net)</div>
+    </div>
+    <div style="display:inline-block; width:31%; vertical-align:top; background:#f0f7ff; border:1px solid #cfe4ff; border-radius:10px; padding:14px; margin-top:14px; margin-left:2%;">
+      <div style="font-size:11px; color:#5b7286; text-transform:uppercase; letter-spacing:1px;">Avg Hold</div>
+      <div style="font-size:24px; font-weight:700; color:#101828;">{{avg-hold}}m</div>
+      <div style="font-size:12px; color:#5b7286;">Range eff. {{range-eff}}%</div>
+    </div>
+    <div style="font-size:13px; color:#33424f; line-height:1.6; margin-top:16px;">
+      <!-- [One paragraph: exit summary — how many of each exit reason, thresholds hit, position sizing, confirmation count (deploys vs swaps vs on-chain checks).] -->
+      <b>Exits:</b> {{exit-reason-counts-brief}}. {{confirmations-sentence}}.
+    </div>
+    <!-- [Critical incident banner — keep ONLY if a real incident occurred. Red-tint box.] -->
+    <div style="margin-top:12px; font-size:13px; line-height:1.6; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:12px 14px; color:#b91c1c;">
+      <b>🔴 Critical incident:</b> {{critical-incident-summary}}
+    </div>
+    <!-- [If NO incidents: green-confirmation banner instead.] -->
+    <!-- <div style="margin-top:12px; ... background:#f0fdf4; border:1px solid #bbf7d0; ... color:#15803d;">
+      <b>✅ No critical incidents.</b> {{clean-run-summary}}
+    </div> -->
+  </div>
+
+  <!-- =============== AGENT CONFIG & EXPECTED STRATEGY BEHAVIOR =============== -->
+  <div style="background:#ffffff; border:1px solid #e3e8ef; border-radius:12px; margin-top:16px; padding:22px 28px;">
+    <div style="font-size:16px; font-weight:700; color:#101828; border-bottom:2px solid #101828; padding-bottom:8px;">2 · Agent Configuration &amp; Expected Strategy Behavior</div>
+    <div style="font-size:12px; color:#5b7286; margin-top:10px; line-height:1.6;">
+      Config: <span style="font-family:monospace;">{{config-path}}</span><br>
+      Strategy: <b>{{activeStrategyId}}</b> &nbsp;·&nbsp; Mode: <b>{{LIVE|DRY-RUN}}</b> &nbsp;·&nbsp;
+      <b>As-configured baseline:</b> {{one-line-baseline}}
+    </div>
+
+    <!-- [Config snapshot. One row per area; mask every secret as ***. See references/agent-config-strategy-analysis.md §2.] -->
+    <table style="width:100%; border-collapse:collapse; margin-top:14px; font-size:12px;">
+      <tr style="background:#101828; color:#ffffff;">
+        <th style="padding:8px 10px; text-align:left; border-radius:6px 0 0 0;">Config area</th>
+        <th style="padding:8px 10px; text-align:left;">Value</th>
+        <th style="padding:8px 10px; text-align:left; border-radius:0 6px 0 0;">Expected effect</th>
+      </tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>risk</b></td><td style="padding:8px 10px;">{{maxPositions}} · {{maxDeployAmount}}</td><td style="padding:8px 10px;">{{effect}}</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>screening</b></td><td style="padding:8px 10px;">entrySource={{entrySource}} · {{bounds}}</td><td style="padding:8px 10px;">{{effect}}</td></tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>opportunity</b></td><td style="padding:8px 10px;">minScore={{minScore}} · bonus={{smartWalletScoreBonus}}</td><td style="padding:8px 10px;">{{effect}}</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>strategy</b></td><td style="padding:8px 10px;">{{strategyMeteora}} · bins {{minBinsBelow}}–{{maxBinsBelow}}</td><td style="padding:8px 10px;">{{effect}}</td></tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>management</b></td><td style="padding:8px 10px;">TP={{takeProfitPct}} · SL={{stopLossPct}} · size={{deployAmountSol}}/{{positionSizePct}}</td><td style="padding:8px 10px;">{{effect}}</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>sweeper</b></td><td style="padding:8px 10px;">enabled={{sweeperEnabled}} · every {{sweeperIntervalMin}}m · min ${{sweeperMinUsd}}</td><td style="padding:8px 10px;">Unsold base tokens are swapped back to SOL; residuals tracked in state.pendingLiquidations</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>schedule</b></td><td style="padding:8px 10px;">screen {{screeningIntervalMin}}m · manage {{managementIntervalMin}}m</td><td style="padding:8px 10px;">{{effect}}</td></tr>
+      <tr style="background:#f9fafc;"><td style="padding:8px 10px;"><b>pnl</b></td><td style="padding:8px 10px;">{{source}} · {{pollIntervalSec}}s · confirm {{confirmTicks}}</td><td style="padding:8px 10px;">{{effect}}</td></tr>
+    </table>
+
+    <!-- [Expected-behavior matrix: one row per trigger/signal. See references/agent-config-strategy-analysis.md §3. Add/remove rows to match the config.] -->
+    <div style="font-size:13px; font-weight:700; color:#101828; margin-top:16px;">Expected behavior by trigger / signal</div>
+    <table style="width:100%; border-collapse:collapse; margin-top:8px; font-size:12px;">
+      <tr style="background:#101828; color:#ffffff;">
+        <th style="padding:8px 10px; text-align:left; border-radius:6px 0 0 0;">Event / Trigger</th>
+        <th style="padding:8px 10px; text-align:left;">Governing config</th>
+        <th style="padding:8px 10px; text-align:left;">Expected behavior</th>
+        <th style="padding:8px 10px; text-align:left; border-radius:0 6px 0 0;">Observed?</th>
+      </tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>{{trigger}}</b></td><td style="padding:8px 10px;">{{config}}</td><td style="padding:8px 10px;">{{expected}}</td><td style="padding:8px 10px;">{{observed / partial / not observed}}</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>{{trigger}}</b></td><td style="padding:8px 10px;">{{config}}</td><td style="padding:8px 10px;">{{expected}}</td><td style="padding:8px 10px;">{{observed}}</td></tr>
+      <tr style="background:#f9fafc;"><td style="padding:8px 10px;"><b>{{trigger}}</b></td><td style="padding:8px 10px;">{{config}}</td><td style="padding:8px 10px;">{{expected}}</td><td style="padding:8px 10px;">{{observed}}</td></tr>
+    </table>
+
+    <div style="margin-top:12px; font-size:13px; color:#33424f; line-height:1.6;"><b>Config vs strategy consistency:</b> {{mismatches or "none found"}}.</div>
+  </div>
+
+  <!-- =============== DAILY FINANCIAL / PERFORMANCE =============== -->
+  <div style="background:#ffffff; border:1px solid #e3e8ef; border-radius:12px; margin-top:16px; padding:22px 28px;">
+    <div style="font-size:16px; font-weight:700; color:#101828; border-bottom:2px solid #101828; padding-bottom:8px;">3 · Daily Financial &amp; Performance Metrics</div>
+    <!-- [Columns: Date | Closed | Price W/L | Net W/L | Price PnL | Fees | Net. One row per day + TOTAL row. Split `closed_pending_swap` trades out and show residual `unrealized_residual_usd` separately — see references/data-stores.md.] -->
+    <table style="width:100%; border-collapse:collapse; margin-top:14px; font-size:13px;">
+      <tr style="background:#101828; color:#ffffff;">
+        <th style="padding:9px 10px; text-align:left; border-radius:6px 0 0 0;">Date</th>
+        <th style="padding:9px 10px; text-align:center;">Closed</th>
+        <th style="padding:9px 10px; text-align:center;">Price W/L</th>
+        <th style="padding:9px 10px; text-align:center;">Net W/L</th>
+        <th style="padding:9px 10px; text-align:center;">Price PnL</th>
+        <th style="padding:9px 10px; text-align:center;">Fees</th>
+        <th style="padding:9px 10px; text-align:center; border-radius:0 6px 0 0;">Net</th>
+      </tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:9px 10px;">{{date}}</td><td style="padding:9px 10px; text-align:center;">{{n}}</td><td style="padding:9px 10px; text-align:center;">{{W/L}}</td><td style="padding:9px 10px; text-align:center;">{{W/L}}</td><td style="padding:9px 10px; text-align:center;">${{price}}</td><td style="padding:9px 10px; text-align:center;">${{fees}}</td><td style="padding:9px 10px; text-align:center; color:#15803d; font-weight:700;">${{net}}</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:9px 10px;">{{date}}</td><td style="padding:9px 10px; text-align:center;">{{n}}</td><td style="padding:9px 10px; text-align:center;">{{W/L}}</td><td style="padding:9px 10px; text-align:center;">{{W/L}}</td><td style="padding:9px 10px; text-align:center;">${{price}}</td><td style="padding:9px 10px; text-align:center;">${{fees}}</td><td style="padding:9px 10px; text-align:center; color:#15803d; font-weight:700;">${{net}}</td></tr>
+      <tr style="background:#eef3f8; font-weight:700;"><td style="padding:10px;">TOTAL</td><td style="padding:10px; text-align:center;">{{n}}</td><td style="padding:10px; text-align:center;">{{W/L}}</td><td style="padding:10px; text-align:center;">{{W/L}}</td><td style="padding:10px; text-align:center;">${{price}}</td><td style="padding:10px; text-align:center;">${{fees}}</td><td style="padding:10px; text-align:center; color:#15803d;">${{net}}</td></tr>
+    </table>
+    <div style="font-size:12px; color:#5b7286; margin-top:8px;">{{takeaway-line e.g. profitability drivers}}</div>
+  </div>
+
+  <!-- =============== EXIT REASON DISTRIBUTION =============== -->
+  <div style="background:#ffffff; border:1px solid #e3e8ef; border-radius:12px; margin-top:16px; padding:22px 28px;">
+    <div style="font-size:16px; font-weight:700; color:#101828; border-bottom:2px solid #101828; padding-bottom:8px;">4 · Exit Reason Distribution</div>
+    <!-- [Columns: Exit Reason | Count | % | Avg Price % | Avg Net % | Avg Fees $. Include a zeroed row for stop-loss to make its absence visible.] -->
+    <table style="width:100%; border-collapse:collapse; margin-top:14px; font-size:13px;">
+      <tr style="background:#101828; color:#ffffff;">
+        <th style="padding:9px 10px; text-align:left; border-radius:6px 0 0 0;">Exit Reason</th>
+        <th style="padding:9px 10px; text-align:center;">Count</th>
+        <th style="padding:9px 10px; text-align:center;">%</th>
+        <th style="padding:9px 10px; text-align:center;">Avg Price %</th>
+        <th style="padding:9px 10px; text-align:center;">Avg Net %</th>
+        <th style="padding:9px 10px; text-align:center; border-radius:0 6px 0 0;">Avg Fees $</th>
+      </tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:9px 10px;">{{exit-reason}}</td><td style="padding:9px 10px; text-align:center;">{{n}}</td><td style="padding:9px 10px; text-align:center;">{{%}}</td><td style="padding:9px 10px; text-align:center;">{{%}}</td><td style="padding:9px 10px; text-align:center; color:#15803d;">{{%}}</td><td style="padding:9px 10px; text-align:center;">${{fees}}</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:9px 10px;">{{exit-reason}}</td><td style="padding:9px 10px; text-align:center;">{{n}}</td><td style="padding:9px 10px; text-align:center;">{{%}}</td><td style="padding:9px 10px; text-align:center;">{{%}}</td><td style="padding:9px 10px; text-align:center; color:#15803d;">{{%}}</td><td style="padding:9px 10px; text-align:center;">${{fees}}</td></tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:9px 10px;">{{exit-reason}}</td><td style="padding:9px 10px; text-align:center;">{{n}}</td><td style="padding:9px 10px; text-align:center;">{{%}}</td><td style="padding:9px 10px; text-align:center;">{{%}}</td><td style="padding:9px 10px; text-align:center; color:#15803d;">{{%}}</td><td style="padding:9px 10px; text-align:center;">${{fees}}</td></tr>
+      <tr style="background:#f9fafc;"><td style="padding:9px 10px;">Stop loss</td><td style="padding:9px 10px; text-align:center;">{{n or 0}}</td><td style="padding:9px 10px; text-align:center;">{{% or —}}</td><td style="padding:9px 10px; text-align:center;">—</td><td style="padding:9px 10px; text-align:center;">—</td><td style="padding:9px 10px; text-align:center;">—</td></tr>
+    </table>
+  </div>
+
+  <!-- =============== DEEP-DIVE TRADES =============== -->
+  <div style="background:#ffffff; border:1px solid #e3e8ef; border-radius:12px; margin-top:16px; padding:22px 28px;">
+    <div style="font-size:16px; font-weight:700; color:#101828; border-bottom:2px solid #101828; padding-bottom:8px;">5 · Deep-Dive Trades</div>
+    <div style="font-size:13px; font-weight:700; color:#15803d; margin-top:12px;">▲ Top 5 Most Profitable</div>
+    <!-- [Columns: Asset/Pool | Date | Net % | Net $ | Price $ | Fees $ | Note] -->
+    <table style="width:100%; border-collapse:collapse; margin-top:8px; font-size:13px;">
+      <tr style="background:#101828; color:#ffffff;"><th style="padding:8px 10px; text-align:left; border-radius:6px 0 0 0;">Asset</th><th style="padding:8px 10px; text-align:left;">Date</th><th style="padding:8px 10px; text-align:center;">Net %</th><th style="padding:8px 10px; text-align:center;">Net $</th><th style="padding:8px 10px; text-align:center;">Price $</th><th style="padding:8px 10px; text-align:center;">Fees $</th><th style="padding:8px 10px; text-align:left; border-radius:0 6px 0 0;">Note</th></tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>{{asset}}</b></td><td style="padding:8px 10px;">{{date}}</td><td style="padding:8px 10px; text-align:center;">{{%}}</td><td style="padding:8px 10px; text-align:center; color:#15803d;">${{net}}</td><td style="padding:8px 10px; text-align:center;">${{price}}</td><td style="padding:8px 10px; text-align:center;">${{fees}}</td><td style="padding:8px 10px;">{{why-won}}</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>{{asset}}</b></td><td style="padding:8px 10px;">{{date}}</td><td style="padding:8px 10px; text-align:center;">{{%}}</td><td style="padding:8px 10px; text-align:center; color:#15803d;">${{net}}</td><td style="padding:8px 10px; text-align:center;">${{price}}</td><td style="padding:8px 10px; text-align:center;">${{fees}}</td><td style="padding:8px 10px;">{{why-won}}</td></tr>
+      <tr style="background:#f9fafc;"><td style="padding:8px 10px;"><b>{{asset}}</b></td><td style="padding:8px 10px;">{{date}}</td><td style="padding:8px 10px; text-align:center;">{{%}}</td><td style="padding:8px 10px; text-align:center; color:#15803d;">${{net}}</td><td style="padding:8px 10px; text-align:center;">${{price}}</td><td style="padding:8px 10px; text-align:center;">${{fees}}</td><td style="padding:8px 10px;">{{why-won}}</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>{{asset}}</b></td><td style="padding:8px 10px;">{{date}}</td><td style="padding:8px 10px; text-align:center;">{{%}}</td><td style="padding:8px 10px; text-align:center; color:#15803d;">${{net}}</td><td style="padding:8px 10px; text-align:center;">${{price}}</td><td style="padding:8px 10px; text-align:center;">${{fees}}</td><td style="padding:8px 10px;">{{why-won}}</td></tr>
+      <tr style="background:#f9fafc;"><td style="padding:8px 10px;"><b>{{asset}}</b></td><td style="padding:8px 10px;">{{date}}</td><td style="padding:8px 10px; text-align:center;">{{%}}</td><td style="padding:8px 10px; text-align:center; color:#15803d;">${{net}}</td><td style="padding:8px 10px; text-align:center;">${{price}}</td><td style="padding:8px 10px; text-align:center;">${{fees}}</td><td style="padding:8px 10px;">{{why-won}}</td></tr>
+    </table>
+    <div style="font-size:13px; font-weight:700; color:#b91c1c; margin-top:16px;">▼ Top 5 Worst Losing Trades</div>
+    <!-- [Columns: Asset | Date | Net % | Net $ | Price $ | Fees $ | Root Cause] -->
+    <table style="width:100%; border-collapse:collapse; margin-top:8px; font-size:13px;">
+      <tr style="background:#101828; color:#ffffff;"><th style="padding:8px 10px; text-align:left; border-radius:6px 0 0 0;">Asset</th><th style="padding:8px 10px; text-align:left;">Date</th><th style="padding:8px 10px; text-align:center;">Net %</th><th style="padding:8px 10px; text-align:center;">Net $</th><th style="padding:8px 10px; text-align:center;">Price $</th><th style="padding:8px 10px; text-align:center;">Fees $</th><th style="padding:8px 10px; text-align:left; border-radius:0 6px 0 0;">Root Cause</th></tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>{{asset}}</b></td><td style="padding:8px 10px;">{{date}}</td><td style="padding:8px 10px; text-align:center;">{{%}}</td><td style="padding:8px 10px; text-align:center; color:#b91c1c;">${{net}}</td><td style="padding:8px 10px; text-align:center;">${{price}}</td><td style="padding:8px 10px; text-align:center;">${{fees}}</td><td style="padding:8px 10px;">{{root-cause}}</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>{{asset}}</b></td><td style="padding:8px 10px;">{{date}}</td><td style="padding:8px 10px; text-align:center;">{{%}}</td><td style="padding:8px 10px; text-align:center; color:#b91c1c;">${{net}}</td><td style="padding:8px 10px; text-align:center;">${{price}}</td><td style="padding:8px 10px; text-align:center;">${{fees}}</td><td style="padding:8px 10px;">{{root-cause}}</td></tr>
+      <tr style="background:#f9fafc;"><td style="padding:8px 10px;"><b>{{asset}}</b></td><td style="padding:8px 10px;">{{date}}</td><td style="padding:8px 10px; text-align:center;">{{%}}</td><td style="padding:8px 10px; text-align:center; color:#b91c1c;">${{net}}</td><td style="padding:8px 10px; text-align:center;">${{price}}</td><td style="padding:8px 10px; text-align:center;">${{fees}}</td><td style="padding:8px 10px;">{{root-cause}}</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>{{asset}}</b></td><td style="padding:8px 10px;">{{date}}</td><td style="padding:8px 10px; text-align:center;">{{%}}</td><td style="padding:8px 10px; text-align:center; color:#b91c1c;">${{net}}</td><td style="padding:8px 10px; text-align:center;">${{price}}</td><td style="padding:8px 10px; text-align:center;">${{fees}}</td><td style="padding:8px 10px;">{{root-cause}}</td></tr>
+      <tr style="background:#f9fafc;"><td style="padding:8px 10px;"><b>{{asset}}</b></td><td style="padding:8px 10px;">{{date}}</td><td style="padding:8px 10px; text-align:center;">{{%}}</td><td style="padding:8px 10px; text-align:center; color:#b91c1c;">${{net}}</td><td style="padding:8px 10px; text-align:center;">${{price}}</td><td style="padding:8px 10px; text-align:center;">${{fees}}</td><td style="padding:8px 10px;">{{root-cause}}</td></tr>
+    </table>
+  </div>
+
+  <!-- =============== STRATEGY & EXECUTION ANALYSIS =============== -->
+  <div style="background:#ffffff; border:1px solid #e3e8ef; border-radius:12px; margin-top:16px; padding:22px 28px;">
+    <div style="font-size:16px; font-weight:700; color:#101828; border-bottom:2px solid #101828; padding-bottom:8px;">6 · Strategy &amp; Execution Analysis</div>
+    <!-- [Correlations that were actually computable: quality/score buckets, volatility buckets, signal-source attribution, screener refusals, recurring candidates.] -->
+    <div style="font-size:13px; color:#33424f; line-height:1.7; margin-top:12px;">
+      <b>Score buckets:</b> {{bucket-summary-lines}}<br>
+      <b>Volatility buckets:</b> {{bucket-summary-lines}}<br>
+      <b>Signal attribution:</b> {{signal-source-sentence}}<br>
+      <b>Screener refusals:</b> {{refusal-tally-sentence}}. Recurring candidate: {{asset}} ×{{n}}.
+    </div>
+  </div>
+
+  <!-- =============== PER-POSITION VETO FORENSICS (6b) =============== -->
+  <div style="background:#ffffff; border:1px solid #e3e8ef; border-radius:12px; margin-top:16px; padding:22px 28px;">
+    <div style="font-size:16px; font-weight:700; color:#101828; border-bottom:2px solid #101828; padding-bottom:8px;">6b · Per-position veto forensics</div>
+    <!-- [Required when the log contains Vetoed lines. For each rejected signal: the real wallet position(s), the first failed filter check, and the true indicator values at veto vs live. See references/smart-wallets-verification.md section 6.] -->
+    <div style="font-size:12px; color:#5b7286; margin-top:10px; line-height:1.6;">
+      Filter order: {{ordered-checks-summary}}. "Value at veto" is the value the agent logged; "live now" was re-fetched from the same source at {{fetch-time}}.
+    </div>
+    <table style="width:100%; border-collapse:collapse; margin-top:12px; font-size:11px;">
+      <tr style="background:#101828; color:#ffffff;"><th style="padding:6px 9px; text-align:left;">Signal</th><th style="padding:6px 9px; text-align:left;">Wallet position</th><th style="padding:6px 9px; text-align:left;">Open → close</th><th style="padding:6px 9px; text-align:left;">Veto @</th><th style="padding:6px 9px; text-align:left;">Failed check</th><th style="padding:6px 9px; text-align:left;">Value at veto</th><th style="padding:6px 9px; text-align:left;">Threshold</th><th style="padding:6px 9px; text-align:left;">Wallet outcome</th></tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:6px 9px;"><b>{{pool}}</b></td><td style="padding:6px 9px; font-family:monospace; font-size:10px;">{{positionAddress}}</td><td style="padding:6px 9px;">{{createdAt}} → {{closedAt}}</td><td style="padding:6px 9px;"><b>{{vetoTs}}</b></td><td style="padding:6px 9px; color:#b91c1c;"><b>{{failedCheck}}</b></td><td style="padding:6px 9px;">{{loggedValue}}</td><td style="padding:6px 9px;">{{threshold}}</td><td style="padding:6px 9px;">{{walletPnlUsd}}</td></tr>
+    </table>
+    <div style="font-size:12px; color:#5b7286; margin-top:8px;">Silently dropped (no veto line): {{tokens filtered before logging, e.g. bin_step out of range, or "none"}}.</div>
+    <div style="font-size:13px; font-weight:700; color:#101828; margin-top:16px;">Live indicator readout (same source the agent used)</div>
+    <table style="width:100%; border-collapse:collapse; margin-top:8px; font-size:11px;">
+      <tr style="background:#101828; color:#ffffff;"><th style="padding:6px 9px; text-align:left;">Pool</th><th style="padding:6px 9px; text-align:center;">Bin</th><th style="padding:6px 9px; text-align:center;">TVL</th><th style="padding:6px 9px; text-align:center;">Fee/TVL</th><th style="padding:6px 9px; text-align:center;">Volatility</th><th style="padding:6px 9px; text-align:center;">Holders</th><th style="padding:6px 9px; text-align:center;">Mcap</th><th style="padding:6px 9px; text-align:center;">Organic</th><th style="padding:6px 9px; text-align:center;">Age</th><th style="padding:6px 9px; text-align:left;">Fails now</th></tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:6px 9px;"><b>{{pool}}</b></td><td style="padding:6px 9px; text-align:center;">{{binStep}}</td><td style="padding:6px 9px; text-align:center;">{{tvl}}</td><td style="padding:6px 9px; text-align:center;">{{feeActiveTvlRatio}}</td><td style="padding:6px 9px; text-align:center;">{{volatility}}</td><td style="padding:6px 9px; text-align:center;">{{holders}}</td><td style="padding:6px 9px; text-align:center;">{{mcap}}</td><td style="padding:6px 9px; text-align:center;">{{organic}}</td><td style="padding:6px 9px; text-align:center;">{{ageHours}}</td><td style="padding:6px 9px; color:#b91c1c;">{{failsNow or "PASS all"}}</td></tr>
+    </table>
+    <!-- [Temporal finding: keep the red box only when a transient veto would now pass, i.e. the permanent ledger / missing-TTL bug. Otherwise state no veto would pass.] -->
+    <div style="margin-top:12px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:12px 14px; font-size:13px; color:#b91c1c; line-height:1.6;">
+      <b>Temporal / permanent-ledger finding:</b> {{signal vetoed for a transient reason that now passes; the position is committed to .smart-wallets-snapshot.json so the agent cannot reconsider. Or "No veto would pass under the current values."}}
+    </div>
+  </div>
+  <!-- =============== SMART WALLET SIGNAL VERIFICATION =============== -->
+  <div style="background:#ffffff; border:1px solid #e3e8ef; border-radius:12px; margin-top:16px; padding:22px 28px;">
+    <div style="font-size:16px; font-weight:700; color:#101828; border-bottom:2px solid #101828; padding-bottom:8px;">7 · Smart Wallet Signal Verification</div>
+    <div style="font-size:12px; color:#5b7286; margin-top:10px; line-height:1.6;">
+      List: <b>{{smartWalletListId}}</b> · entrySource: <b>{{entrySource}}</b> · fetched: {{fetched_at}} · sources: {{api.etemaro|meteora_datapi|…}} · JSON: <span style="font-family:monospace;">reports/REPORT-{{report-date}}.smart-wallets.json</span>
+    </div>
+
+    <!-- [Per wallet: live open positions, pools, overlap with the agent's pools, fetch status. See references/smart-wallets-verification.md §3.] -->
+    <table style="width:100%; border-collapse:collapse; margin-top:14px; font-size:12px;">
+      <tr style="background:#101828; color:#ffffff;">
+        <th style="padding:8px 10px; text-align:left; border-radius:6px 0 0 0;">Wallet</th>
+        <th style="padding:8px 10px; text-align:center;">Type</th>
+        <th style="padding:8px 10px; text-align:center;">Open positions</th>
+        <th style="padding:8px 10px; text-align:left;">Pools</th>
+        <th style="padding:8px 10px; text-align:left;">Overlap with agent</th>
+        <th style="padding:8px 10px; text-align:left; border-radius:0 6px 0 0;">Status</th>
+      </tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>{{name}}</b> <span style="color:#8a9aa9;">{{addr-short}}</span></td><td style="padding:8px 10px; text-align:center;">lp</td><td style="padding:8px 10px; text-align:center;">{{n}}</td><td style="padding:8px 10px;">{{pools}}</td><td style="padding:8px 10px;">{{yes/no}}</td><td style="padding:8px 10px;">{{ok/error}}</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>{{name}}</b> <span style="color:#8a9aa9;">{{addr-short}}</span></td><td style="padding:8px 10px; text-align:center;">lp</td><td style="padding:8px 10px; text-align:center;">{{n}}</td><td style="padding:8px 10px;">{{pools}}</td><td style="padding:8px 10px;">{{yes/no}}</td><td style="padding:8px 10px;">{{ok/error}}</td></tr>
+    </table>
+
+    <!-- [Per agent deploy: was a tracked wallet in the pool at entry? Compare with the snapshot ledger.] -->
+    <div style="font-size:13px; font-weight:700; color:#101828; margin-top:16px;">Deploy gate verification</div>
+    <table style="width:100%; border-collapse:collapse; margin-top:8px; font-size:12px;">
+      <tr style="background:#101828; color:#ffffff;">
+        <th style="padding:8px 10px; text-align:left; border-radius:6px 0 0 0;">Agent pool</th>
+        <th style="padding:8px 10px; text-align:left;">Deployed</th>
+        <th style="padding:8px 10px; text-align:center;">Wallet present?</th>
+        <th style="padding:8px 10px; text-align:left;">Wallet(s)</th>
+        <th style="padding:8px 10px; text-align:center;">New vs snapshot</th>
+        <th style="padding:8px 10px; text-align:left; border-radius:0 6px 0 0;">Verdict</th>
+      </tr>
+      <tr style="background:#f9fafc; border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>{{pool}}</b></td><td style="padding:8px 10px;">{{deployed_at}}</td><td style="padding:8px 10px; text-align:center;">{{yes/no}}</td><td style="padding:8px 10px;">{{wallets}}</td><td style="padding:8px 10px; text-align:center;">{{yes/no/—}}</td><td style="padding:8px 10px;">{{PASS|FAIL}}</td></tr>
+      <tr style="border-bottom:1px solid #e3e8ef;"><td style="padding:8px 10px;"><b>{{pool}}</b></td><td style="padding:8px 10px;">{{deployed_at}}</td><td style="padding:8px 10px; text-align:center;">{{yes/no}}</td><td style="padding:8px 10px;">{{wallets}}</td><td style="padding:8px 10px; text-align:center;">{{yes/no/—}}</td><td style="padding:8px 10px;">{{PASS|FAIL}}</td></tr>
+    </table>
+
+    <!-- [Verdict: PASS (green) / PARTIAL (yellow) / FAIL (red) / UNVERIFIED (grey) + one sentence + limitations.] -->
+    <div style="margin-top:12px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px 14px; font-size:13px; color:#15803d; line-height:1.6;">
+      <b>Verdict: {{PASS|PARTIAL|FAIL|UNVERIFIED}}</b> — {{one-sentence}}<br>
+      <span style="color:#166534;">Limitations: {{api-reflects-review-time-not-deploy-time etc.}}</span>
+    </div>
+  </div>
+
+  <!-- =============== STABILITY & INCIDENT FORENSICS =============== -->
+  <div style="background:#ffffff; border:1px solid #e3e8ef; border-radius:12px; margin-top:16px; padding:22px 28px;">
+    <div style="font-size:16px; font-weight:700; color:#101828; border-bottom:2px solid #101828; padding-bottom:8px;">8 · Stability &amp; Incident Forensics</div>
+
+    <!-- [CRITICAL (red) — one per real critical incident: what froze, timestamps, evidence sizes/lines, diagnosis.] -->
+    <div style="margin-top:14px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:14px 16px;">
+      <div style="font-size:14px; font-weight:700; color:#b91c1c;">🔴 Incident 1 — {{title}}</div>
+      <div style="font-size:13px; color:#7f1d1d; line-height:1.6; margin-top:6px;">
+        {{timeline-and-evidence. e.g. last activity HH:MM:SSZ → silence → files frozen at bytes X, log ends mid-word AB…}}
+        <div style="margin-top:8px;"><b>Diagnosis:</b> {{root-cause / freezes-what / what-kept-running}}</div>
+      </div>
+    </div>
+
+    <!-- [MINOR (yellow) — one per minor incident.] -->
+    <div style="margin-top:12px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:14px 16px;">
+      <div style="font-size:14px; font-weight:700; color:#92400e;">🟡 Incident N — {{title}}</div>
+      <div style="font-size:13px; color:#78350f; line-height:1.6; margin-top:6px;">{{detail + impact}}</div>
+    </div>
+
+    <!-- [VERIFIED CLEAN (green) — always include one, listing what was checked and ruled out. This is what makes the report trustworthy.] -->
+    <div style="margin-top:12px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:14px 16px;">
+      <div style="font-size:14px; font-weight:700; color:#15803d;">✅ Verified clean</div>
+      <div style="font-size:13px; color:#166534; line-height:1.6; margin-top:6px;">
+        {{what was checked and ruled out: e.g. no real RPC/HTTP/Anchor errors; apparent spikes were decimal false positives; guardrail blocks counted and functioning.}}
+      </div>
+    </div>
+  </div>
+
+  <!-- =============== RECOMMENDATIONS =============== -->
+  <div style="background:#ffffff; border:1px solid #e3e8ef; border-radius:12px; margin-top:16px; padding:22px 28px;">
+    <div style="font-size:16px; font-weight:700; color:#101828; border-bottom:2px solid #101828; padding-bottom:8px;">9 · Hardening &amp; Recommendations</div>
+
+    <div style="margin-top:14px; font-size:13px; line-height:1.7; color:#33424f;">
+      <b style="color:#b91c1c;">A · Critical fixes</b>
+      <ul style="margin:6px 0 0 0; padding-left:20px;">
+        <li>{{recommendation mapped to observed fact}}</li>
+        <li>{{recommendation}}</li>
+      </ul>
+      <b style="color:#92400e;">B · Strategy tuning</b>
+      <ul style="margin:6px 0 0 0; padding-left:20px;">
+        <li>{{recommendation}}</li>
+        <li>{{recommendation}}</li>
+      </ul>
+      <b style="color:#1d4ed8;">C · Telemetry &amp; memory infra</b>
+      <ul style="margin:6px 0 0 0; padding-left:20px;">
+        <li>{{recommendation}}</li>
+        <li>{{recommendation}}</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ======================= FOOTER ======================= -->
+  <div style="margin-top:16px; text-align:center; font-size:11px; color:#8a9aa9; line-height:1.6;">
+    Generated by <b>etemaro-core-agent-logs-review</b> · {{product-name}} · Instance <span style="font-family:monospace;">{{instance-id}}</span><br>
+    Review of run data from {{start-timestamp}}Z to {{end-timestamp}}Z — for internal use only.
+  </div>
+
+</div>
+</body>
+</html>

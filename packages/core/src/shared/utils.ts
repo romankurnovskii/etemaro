@@ -129,7 +129,7 @@ export function nonEmptyString(...values: unknown[]): string | null {
 export function loadJsonFile<T>(
   filePath: string,
   fallback: T,
-  options?: { label?: string; warnOnCorrupt?: boolean; critical?: boolean },
+  options?: { label?: string; warnOnCorrupt?: boolean; critical?: boolean; backupOnCorrupt?: boolean },
 ): T {
   if (!fs.existsSync(filePath)) return fallback
   try {
@@ -141,6 +141,23 @@ export function loadJsonFile<T>(
       const msg = `${prefix}Failed to parse JSON file at "${filePath}" (corrupt or unreadable): ${parseError}. Critical file corrupted — failing fast to prevent state loss.`
       log('file_error', msg)
       throw new Error(msg, { cause: err })
+    }
+    if (options?.backupOnCorrupt) {
+      const backupPath = `${filePath}.corrupt-${Date.now()}`
+      try {
+        fs.renameSync(filePath, backupPath)
+        log(
+          'file_error',
+          `${prefix}Failed to parse JSON file at "${filePath}" (corrupt or unreadable): ${parseError}. Corrupt file backed up to "${backupPath}"; using default fallback.`,
+        )
+      } catch (backupErr: unknown) {
+        const backupMessage = backupErr instanceof Error ? backupErr.message : String(backupErr)
+        log(
+          'file_error',
+          `${prefix}Failed to parse JSON file at "${filePath}" (corrupt or unreadable): ${parseError}. Backup failed (${backupMessage}); using default fallback.`,
+        )
+      }
+      return fallback
     }
     if (options?.warnOnCorrupt !== false) {
       log(
@@ -274,7 +291,18 @@ export interface RpcRetryOptions {
   onRetry?: (error: unknown, attempt: number, delayMs: number) => void
   /** Human-readable operation label for logging. */
   label?: string
+  /** Log tag used for retry warnings (default: `rpc_warn`). */
+  logTag?: string
+  /**
+   * When true, a numeric `retryAfterMs` on the thrown error raises the delay to the
+   * server-provided value, capped at 10s so a rate limiter cannot stall the cycle.
+   * Used by HTTP callers honouring `Retry-After`.
+   */
+  respectRetryAfter?: boolean
 }
+
+/** Upper bound applied to a server-provided Retry-After hint. */
+export const RETRY_AFTER_MAX_MS = 10_000
 
 /**
  * Checks if an error is a transient RPC / network failure that should be retried.
@@ -360,16 +388,28 @@ export async function withRpcRetry<T>(fn: () => Promise<T>, options: RpcRetryOpt
 
       // Calculate exponential backoff
       const rawDelay = Math.min(maxDelayMs, initialDelayMs * factor ** attempt)
-      const delayMs = jitter ? Math.round(rawDelay * (0.5 + Math.random() * 0.5)) : Math.round(rawDelay)
+      let delayMs = jitter ? Math.round(rawDelay * (0.5 + Math.random() * 0.5)) : Math.round(rawDelay)
+
+      // Honour a server-provided Retry-After hint when the caller opted in, without
+      // letting an absurd value stall the cycle.
+      if (options.respectRetryAfter) {
+        const retryAfterMs = Number((error as any)?.retryAfterMs)
+        if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+          delayMs = Math.min(RETRY_AFTER_MAX_MS, Math.max(delayMs, Math.ceil(retryAfterMs)))
+        }
+      }
 
       if (options.onRetry) {
         options.onRetry(error, attempt + 1, delayMs)
       } else {
         const errorMsg = error instanceof Error ? error.message : String(error)
         const label = options.label ? ` [${options.label}]` : ''
+        const tag = options.logTag ?? 'rpc_warn'
+        // HTTP callers pass their own tag; do not report their retries as RPC failures.
+        const prefix = tag === 'rpc_warn' ? 'RPC call failed' : 'Request failed'
         log(
-          'rpc_warn',
-          `RPC call failed${label}: ${errorMsg.slice(0, 100)} — retrying attempt ${attempt + 1}/${maxRetries} in ${delayMs}ms`,
+          tag,
+          `${prefix}${label}: ${errorMsg.slice(0, 100)} — retrying attempt ${attempt + 1}/${maxRetries} in ${delayMs}ms`,
         )
       }
 

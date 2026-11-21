@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { Connection, Keypair } from '@solana/web3.js'
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction, VersionedTransaction } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../../config/Config.js'
@@ -23,9 +23,17 @@ import {
   TOKEN_PROGRAM_ID,
 } from './WalletAdapter.js'
 
+interface SimState {
+  lamportDelta?: number
+  preTokenBalances?: any[]
+  postTokenBalances?: any[]
+  err?: any
+}
+
 describe('WalletAdapter', () => {
   let tempDir: string
   let testKeypair: Keypair
+  let simState: SimState
   const originalEnv = { ...process.env }
   const originalConnectionConfig = { ...config.connection }
 
@@ -59,6 +67,31 @@ describe('WalletAdapter', () => {
         },
       ],
     } as any)
+
+    // Default dry-run result for the pre-signing swap guard (Issue #511): a net SOL
+    // gain and no token movements, which satisfies the guard for SOL-output swaps.
+    // Tests that exercise the guard override `simState` before calling swapToken().
+    simState = {}
+    vi.spyOn(Connection.prototype, 'simulateTransaction').mockImplementation(async (tx: any) => {
+      const keys = (tx?.message?.staticAccountKeys || []).map((key: any) => key.toString())
+      const ownerIndex = keys.indexOf(testKeypair.publicKey.toString())
+      const preBalances = new Array(Math.max(keys.length, 1)).fill(1_000_000_000)
+      const postBalances = [...preBalances]
+      if (ownerIndex >= 0) postBalances[ownerIndex] = preBalances[ownerIndex] + (simState.lamportDelta ?? 1_000_000)
+      return {
+        context: { slot: 1 },
+        value: {
+          err: simState.err ?? null,
+          logs: [],
+          accounts: null,
+          unitsConsumed: 0,
+          preBalances,
+          postBalances,
+          preTokenBalances: simState.preTokenBalances ?? [],
+          postTokenBalances: simState.postTokenBalances ?? [],
+        },
+      } as any
+    })
   })
 
   afterEach(() => {
@@ -242,6 +275,67 @@ describe('WalletAdapter', () => {
       expect(res.total_usd).toBe(200.0)
     })
 
+    it('requests an explicit limit and follows Helius balances pagination', async () => {
+      config.connection = { ...config.connection, heliusApiKey: 'page-helius-key' }
+      vi.spyOn(Connection.prototype, 'getBalance').mockRejectedValue(new Error('Solana RPC rate limited 429'))
+
+      const heliusUrls: string[] = []
+      const balance = (mint: string, usd: number) => ({
+        mint,
+        symbol: mint.slice(0, 4),
+        balance: 1,
+        pricePerToken: usd,
+        usdValue: usd,
+      })
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        const urlStr = String(url)
+        if (!urlStr.includes('api.helius.xyz')) return { ok: false, status: 404, headers: new Headers() } as any
+        heliusUrls.push(urlStr)
+        const isSecondPage = urlStr.includes('page=2')
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => ({
+            balances: isSecondPage ? [balance('MintSecondPage11111111111111111111111111111', 5)] : [],
+            totalUsdValue: 5,
+            pagination: { page: isSecondPage ? 2 : 1, limit: 100, hasMore: !isSecondPage },
+          }),
+        } as any
+      })
+
+      const res = await getWalletBalances({ force: true })
+
+      expect(heliusUrls[0]).toContain('limit=100')
+      expect(heliusUrls[0]).toContain('page=1')
+      expect(heliusUrls).toHaveLength(2)
+      expect(heliusUrls[1]).toContain('page=2')
+      expect(res.tokens.map((t) => t.mint)).toContain('MintSecondPage11111111111111111111111111111')
+    })
+
+    it('stops after a bounded number of Helius pages', async () => {
+      config.connection = { ...config.connection, heliusApiKey: 'cap-helius-key' }
+      vi.spyOn(Connection.prototype, 'getBalance').mockRejectedValue(new Error('Solana RPC rate limited 429'))
+
+      let heliusCalls = 0
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        const urlStr = String(url)
+        if (!urlStr.includes('api.helius.xyz')) return { ok: false, status: 404, headers: new Headers() } as any
+        heliusCalls++
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => ({ balances: [], totalUsdValue: 0, pagination: { hasMore: true } }),
+        } as any
+      })
+
+      await getWalletBalances({ force: true })
+
+      expect(heliusCalls).toBe(5)
+    })
+
     it('queries both standard SPL Token and Token-2022 programs concurrently and discovers Token-2022 accounts', async () => {
       const getParsedTokenAccountsSpy = vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner')
       getParsedTokenAccountsSpy.mockImplementation(async (_owner, filter: any) => {
@@ -309,6 +403,41 @@ describe('WalletAdapter', () => {
       expect(token2022Item?.balance).toBe(1397.91)
       expect(token2022Item?.usd).toBe(27.96)
       expect(token2022Item?.program).toBe('token-2022')
+      expect(balances.scan_incomplete).toBe(false)
+    })
+
+    it('sets scan_incomplete=true if Token-2022 scan fails', async () => {
+      const getParsedTokenAccountsSpy = vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner')
+      getParsedTokenAccountsSpy.mockImplementation(async (_owner, filter: any) => {
+        if (filter.programId.equals(TOKEN_PROGRAM_ID)) {
+          return {
+            value: [
+              {
+                account: {
+                  data: {
+                    parsed: {
+                      info: {
+                        mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+                        tokenAmount: { uiAmount: 10.5, decimals: 6 },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          } as any
+        }
+        if (filter.programId.equals(TOKEN_2022_PROGRAM_ID)) {
+          throw new Error('RPC Node timeout on Token-2022 query')
+        }
+        return { value: [] } as any
+      })
+
+      const balances = await getWalletBalances({ force: true })
+      expect(balances.scan_incomplete).toBe(true)
+      // Standard token still returns
+      expect(balances.tokens.length).toBe(1)
+      expect(balances.tokens[0]?.mint).toBe('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
     })
 
     it('aggregates multiple token accounts for the same mint across programs', async () => {
@@ -375,6 +504,51 @@ describe('WalletAdapter', () => {
       expect(item).toBeDefined()
       expect(item?.balance).toBe(75) // 50 + 25 aggregated
       expect(item?.usd).toBe(150)
+    })
+
+    it('does not consult the Helius balances API when every token is priced (Q4 precedence)', async () => {
+      config.connection = { ...config.connection, heliusApiKey: 'unused-helius-key' }
+      const pricedMint = 'PRICED_TOKEN_MINT_11111111111111111111111'
+      vi.spyOn(Connection.prototype, 'getParsedTokenAccountsByOwner').mockImplementation(
+        async (_owner: any, filter: any) => {
+          if (filter.programId.equals(TOKEN_PROGRAM_ID)) {
+            return {
+              value: [
+                {
+                  account: {
+                    data: { parsed: { info: { mint: pricedMint, tokenAmount: { uiAmount: 10, decimals: 6 } } } },
+                  },
+                },
+              ],
+            } as any
+          }
+          return { value: [] } as any
+        },
+      )
+
+      const heliusCalls: string[] = []
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        const urlStr = String(url)
+        if (urlStr.includes('api.helius.xyz')) heliusCalls.push(urlStr)
+        if (urlStr.includes('jup.ag/price/v2')) {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            json: async () => ({
+              data: {
+                [pricedMint]: { price: '2.0' },
+                So11111111111111111111111111111111111111112: { price: '150.0' },
+              },
+            }),
+          } as any
+        }
+        return { ok: false, status: 404, headers: new Headers() } as any
+      })
+
+      const balances = await getWalletBalances({ force: true })
+      expect(balances.tokens.find((t) => t.mint === pricedMint)?.usd).toBe(20)
+      expect(heliusCalls).toHaveLength(0)
     })
 
     it('enriches unpriced tokens with Helius balances API when heliusApiKey is present', async () => {
@@ -514,6 +688,17 @@ describe('WalletAdapter', () => {
       expect(jupPriceCount).toBe(1)
 
       // Execute swap
+      simState = {
+        lamportDelta: -100_000_000,
+        postTokenBalances: [
+          {
+            accountIndex: 1,
+            mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+            owner: testKeypair.publicKey.toString(),
+            uiTokenAmount: { amount: '1000000', decimals: 6, uiAmount: 1, uiAmountString: '1' },
+          },
+        ],
+      }
       const swapRes = await swapToken({
         input_mint: 'So11111111111111111111111111111111111111112',
         output_mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
@@ -639,6 +824,17 @@ describe('WalletAdapter', () => {
         expect(lastOrderParams?.get('amount')).toBe('5500000')
 
         // Swap SOL (9 decimals) -> 1.25 SOL should convert to 1,250,000,000
+        simState = {
+          lamportDelta: -1_250_000_000,
+          postTokenBalances: [
+            {
+              accountIndex: 1,
+              mint: usdcMint,
+              owner: testKeypair.publicKey.toString(),
+              uiTokenAmount: { amount: '1250000', decimals: 6, uiAmount: 1.25, uiAmountString: '1.25' },
+            },
+          ],
+        }
         const solSwap = await swapToken({
           input_mint: solMint,
           output_mint: usdcMint,
@@ -940,6 +1136,183 @@ describe('WalletAdapter', () => {
           expect(res.error_category).toBe('liquidity.partial')
         }
       })
+    })
+  })
+
+  describe('swapToken transaction guard (Issue #511)', () => {
+    const SOL_MINT = 'So11111111111111111111111111111111111111112'
+    const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    const attacker = Keypair.generate().publicKey
+
+    function buildOrderTransaction(instructions: any[] = []): string {
+      const tx = new Transaction()
+      for (const ix of instructions) tx.add(ix)
+      tx.recentBlockhash = '11111111111111111111111111111111'
+      tx.feePayer = testKeypair.publicKey
+      return Buffer.from(tx.serialize({ requireAllSignatures: false })).toString('base64')
+    }
+
+    function mockOrder(transaction: string) {
+      process.env.JUPITER_API_KEY = 'test-jup-key'
+      config.jupiter.apiKey = 'test-jup-key'
+      delete process.env.DRY_RUN
+      config.connection.dryRun = false
+      return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        const urlStr = String(url)
+        if (urlStr.includes('jup.ag/swap/v2/order')) {
+          return {
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            headers: new Headers(),
+            json: async () => ({ transaction, requestId: 'req_guard' }),
+          } as any
+        }
+        if (urlStr.includes('jup.ag/swap/v2/execute')) {
+          return {
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            headers: new Headers(),
+            json: async () => ({
+              status: 'Success',
+              signature: 'sig_guard_ok',
+              inputAmountResult: 1,
+              outputAmountResult: 1,
+            }),
+          } as any
+        }
+        return { ok: false, status: 404, headers: new Headers() } as any
+      })
+    }
+
+    function tokenBalance(mint: string, amount: string) {
+      return {
+        accountIndex: 1,
+        mint,
+        owner: testKeypair.publicKey.toString(),
+        uiTokenAmount: { amount, decimals: 6, uiAmount: Number(amount) / 1e6, uiAmountString: amount },
+      }
+    }
+
+    it('AC1: rejects an order carrying an extra SystemProgram transfer out of the wallet', async () => {
+      const signSpy = vi.spyOn(VersionedTransaction.prototype, 'sign')
+      mockOrder(
+        buildOrderTransaction([
+          SystemProgram.transfer({ fromPubkey: testKeypair.publicKey, toPubkey: attacker, lamports: 1_000_000_000 }),
+        ]),
+      )
+
+      const res = await swapToken({ input_mint: USDC_MINT, output_mint: SOL_MINT, amount: 1 })
+
+      expect('success' in res && res.success).toBe(false)
+      if ('success' in res && !res.success) {
+        expect(res.error).toContain('direct SOL transfer')
+        expect(res.error_code).toBe('UNSAFE_TRANSACTION')
+      }
+      expect(signSpy).not.toHaveBeenCalled()
+    })
+
+    it('AC2: rejects an order that credits a different mint than the requested output', async () => {
+      const signSpy = vi.spyOn(VersionedTransaction.prototype, 'sign')
+      mockOrder(buildOrderTransaction())
+      simState = {
+        lamportDelta: -100_000_000,
+        postTokenBalances: [tokenBalance(Keypair.generate().publicKey.toString(), '1000000')],
+      }
+
+      const res = await swapToken({ input_mint: SOL_MINT, output_mint: USDC_MINT, amount: 0.1 })
+
+      expect('success' in res && res.success).toBe(false)
+      if ('success' in res && !res.success) {
+        expect(res.error).toContain('would not credit output mint')
+        expect(res.error_code).toBe('UNSAFE_TRANSACTION')
+      }
+      expect(signSpy).not.toHaveBeenCalled()
+    })
+
+    it('AC3: rejects an order that debits an unrelated SPL mint', async () => {
+      const signSpy = vi.spyOn(VersionedTransaction.prototype, 'sign')
+      const unrelated = Keypair.generate().publicKey.toString()
+      mockOrder(buildOrderTransaction())
+      simState = {
+        lamportDelta: -100_000_000,
+        preTokenBalances: [tokenBalance(unrelated, '1000000000')],
+        postTokenBalances: [tokenBalance(unrelated, '0'), tokenBalance(USDC_MINT, '1000000')],
+      }
+
+      const res = await swapToken({ input_mint: SOL_MINT, output_mint: USDC_MINT, amount: 0.1 })
+
+      expect('success' in res && res.success).toBe(false)
+      if ('success' in res && !res.success) {
+        expect(res.error).toContain('unrelated token mint')
+        expect(res.error_code).toBe('UNSAFE_TRANSACTION')
+      }
+      expect(signSpy).not.toHaveBeenCalled()
+    })
+
+    it('AC4: signs and executes a legitimate swap', async () => {
+      const signSpy = vi.spyOn(VersionedTransaction.prototype, 'sign')
+      mockOrder(buildOrderTransaction())
+      simState = {
+        lamportDelta: -100_000_000,
+        postTokenBalances: [tokenBalance(USDC_MINT, '1000000')],
+      }
+
+      const res = await swapToken({ input_mint: SOL_MINT, output_mint: USDC_MINT, amount: 0.1 })
+
+      expect('success' in res && res.success).toBe(true)
+      expect(signSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('allows the wrapped-SOL transfer a legitimate SOL-input swap needs', async () => {
+      const wsolAta = PublicKey.findProgramAddressSync(
+        [
+          testKeypair.publicKey.toBuffer(),
+          new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').toBuffer(),
+          new PublicKey(SOL_MINT).toBuffer(),
+        ],
+        new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'),
+      )[0]
+      const signSpy = vi.spyOn(VersionedTransaction.prototype, 'sign')
+      mockOrder(
+        buildOrderTransaction([
+          SystemProgram.transfer({ fromPubkey: testKeypair.publicKey, toPubkey: wsolAta, lamports: 100_000_000 }),
+        ]),
+      )
+      simState = {
+        lamportDelta: -100_000_000,
+        postTokenBalances: [tokenBalance(USDC_MINT, '1000000')],
+      }
+
+      const res = await swapToken({ input_mint: SOL_MINT, output_mint: USDC_MINT, amount: 0.1 })
+
+      expect('success' in res && res.success).toBe(true)
+      expect(signSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('rejects when the dry run fails', async () => {
+      const signSpy = vi.spyOn(VersionedTransaction.prototype, 'sign')
+      mockOrder(buildOrderTransaction())
+      simState = { err: { InstructionError: [0, { Custom: 1 }] } }
+
+      const res = await swapToken({ input_mint: SOL_MINT, output_mint: USDC_MINT, amount: 0.1 })
+
+      expect('success' in res && res.success).toBe(false)
+      if ('success' in res && !res.success) expect(res.error).toContain('simulation failed')
+      expect(signSpy).not.toHaveBeenCalled()
+    })
+
+    it('rejects when the dry run debits more SOL than the swap amount allows', async () => {
+      const signSpy = vi.spyOn(VersionedTransaction.prototype, 'sign')
+      mockOrder(buildOrderTransaction())
+      simState = { lamportDelta: -5_000_000_000, postTokenBalances: [tokenBalance(USDC_MINT, '1000000')] }
+
+      const res = await swapToken({ input_mint: SOL_MINT, output_mint: USDC_MINT, amount: 0.1 })
+
+      expect('success' in res && res.success).toBe(false)
+      if ('success' in res && !res.success) expect(res.error).toContain('SOL from the wallet')
+      expect(signSpy).not.toHaveBeenCalled()
     })
   })
 })

@@ -22,6 +22,7 @@ describe('Smart Wallets Screening Logic', () => {
       expect(res.nextSnapshot).toEqual({
         initialized: true,
         positions: ['pos1', 'pos2'],
+        vetoed: {},
       })
     })
 
@@ -83,6 +84,70 @@ describe('Smart Wallets Screening Logic', () => {
       expect(updated.positions).toContain('pos1')
       expect(updated.positions).toContain('pos2')
       expect(updated.positions).not.toContain('pos3') // Retry pos3 on next tick
+    })
+
+    it('records a vetoed position separately from permanently handled positions', () => {
+      const snapshot: SmartWalletSnapshot = { initialized: true, positions: [] }
+
+      const updated = updateSnapshotPositions(snapshot, [
+        { position: 'pos2', resolved: true, vetoed: true, reason: 'volatility 0 is unusable', at: 12345 },
+      ])
+
+      expect(updated.positions).not.toContain('pos2')
+      expect(updated.vetoed?.pos2).toEqual({ at: 12345, reason: 'volatility 0 is unusable' })
+    })
+
+    it('keeps a deployed position permanent and clears any prior veto marker', () => {
+      const snapshot: SmartWalletSnapshot = {
+        initialized: true,
+        positions: [],
+        vetoed: { pos2: { at: 1, reason: 'TVL 426760.4 above maxTvl 300000' } },
+      }
+
+      const updated = updateSnapshotPositions(snapshot, [{ position: 'pos2', resolved: true }])
+
+      expect(updated.positions).toContain('pos2')
+      expect(updated.vetoed?.pos2).toBeUndefined()
+    })
+  })
+
+  describe('veto retry TTL', () => {
+    const HOUR = 3_600_000
+
+    it('suppresses a vetoed position until the TTL elapses, then reports it as new again', () => {
+      const t0 = 1_000_000_000_000
+      const snapshot: SmartWalletSnapshot = {
+        initialized: true,
+        positions: ['pos1'],
+        vetoed: { pos2: { at: t0, reason: 'TVL 426760.4 above maxTvl 300000' } },
+      }
+      const current: WalletPositionItem[] = [
+        { position: 'pos1', pool: 'poolA' },
+        { position: 'pos2', pool: 'poolB' },
+      ]
+
+      const withinTtl = diffSmartWalletPositions(current, snapshot, { now: t0 + HOUR, vetoRetryMs: 6 * HOUR })
+      expect(withinTtl.newPositions).toEqual([])
+      expect(withinTtl.nextSnapshot.vetoed?.pos2).toBeDefined()
+
+      const afterTtl = diffSmartWalletPositions(current, snapshot, { now: t0 + 7 * HOUR, vetoRetryMs: 6 * HOUR })
+      expect(afterTtl.newPositions).toEqual([{ position: 'pos2', pool: 'poolB' }])
+      expect(afterTtl.nextSnapshot.vetoed?.pos2).toBeUndefined()
+    })
+
+    it('migrates a legacy snapshot that has no vetoed map', () => {
+      const legacy = { initialized: true, positions: ['pos1'] } as SmartWalletSnapshot
+
+      const res = diffSmartWalletPositions(
+        [
+          { position: 'pos1', pool: 'poolA' },
+          { position: 'pos2', pool: 'poolB' },
+        ],
+        legacy,
+      )
+
+      expect(res.newPositions).toEqual([{ position: 'pos2', pool: 'poolB' }])
+      expect(res.nextSnapshot.vetoed).toEqual({})
     })
   })
 })

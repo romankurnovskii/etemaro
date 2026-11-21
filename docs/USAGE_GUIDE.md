@@ -94,14 +94,30 @@ npm run cli close -- --position <addr> --dry-run
 npm run cli swap -- --from <mint> --to SOL --amount 100 --dry-run
 ```
 
-**Strategy management** (via CLI):
+**Strategy management** (agent chat + library files):
+
+There are no one-shot CLI or Telegram subcommands for strategy CRUD. The agent owns those tools
+(`list_strategies`, `get_strategy`, `add_strategy`, `set_active_strategy`, `remove_strategy`) — ask in
+the `attach` chat prompt or the Web GUI chat:
+
+```
+list my strategies
+add a strategy: id my_strategy, name "My Strategy", lpStrategy bid_ask
+activate smart_wallet_follow
+```
+
+The library is plain JSON and can be edited directly:
+
+| File | Role |
+| --- | --- |
+| `config/shared/strategy-library.shared.json` | Optional override of the bundled presets in `strategy-library-shared.ts` |
+| `config/shared/strategy-library.json` | Private override of the shared library; wins on id collision |
+
+Activation is the `strategy.activeStrategyId` field in the active agent config
+(`config/instances/agent-default.json`, or `$AGENT_CONFIG_PATH`). After editing, validate:
 
 ```bash
-npm run cli list-strategies                              # List all strategies
-npm run cli add-strategy -- --id my_strat --name "My Strategy" --lpStrategy bid_ask
-npm run cli get-strategy -- --id my_strat                # View strategy details
-npm run cli set-active-strategy -- --id my_strat         # Set active strategy
-npm run cli remove-strategy -- --id my_strat             # Remove a strategy
+npm run cli strategy validate config/shared/strategy-library.json --json
 ```
 
 **Telegram commands** (remote control):

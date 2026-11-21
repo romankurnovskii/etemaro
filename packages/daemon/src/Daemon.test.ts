@@ -268,6 +268,21 @@ describe('Daemon — Concurrency & Mutex Guards', () => {
     expect((daemon as any).screeningBusy).toBe(false)
   })
 
+  it('runScreeningCycle aborts without screening when the position fetch is degraded', async () => {
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({
+      positions: [],
+      total_positions: 0,
+      error: 'Portfolio API 429: Too many requests',
+      degraded: true,
+    })
+
+    const res = await daemon.runScreeningCycle({ silent: true })
+
+    expect(res).toContain('Position state unknown')
+    expect(adapters.screening.getTopCandidates).not.toHaveBeenCalled()
+    expect((daemon as any).screeningBusy).toBe(false)
+  })
+
   it('parses and persists structured rejected candidate rationales on NO DEPLOY screening decision', async () => {
     adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ total_positions: 0, positions: [] })
     adapters.wallet.getWalletBalances = vi.fn().mockResolvedValue({ sol: 10, tokens: [] })
@@ -324,12 +339,57 @@ REJECTED
     )
   })
 
-  it('logs cron_error when getMyPositions fails in runManagementCycle', async () => {
+  it('logs cron_error and reports unknown state when getMyPositions fails in runManagementCycle', async () => {
+    const screenSpy = vi.spyOn(daemon as any, 'runScreeningCycle').mockResolvedValue(null)
     adapters.meteora.getMyPositions = vi.fn().mockRejectedValue(new Error('RPC rate limited'))
 
     const res = await daemon.runManagementCycle({ silent: true })
-    expect(res).toBe('No open positions.')
+
+    expect(res).toBe('Position state unknown — management cycle skipped.')
+    expect(screenSpy).not.toHaveBeenCalled()
     expect((daemon as any).managementBusy).toBe(false)
+  })
+
+  it('skips management and screening when the portfolio fetch degrades', async () => {
+    const screenSpy = vi.spyOn(daemon as any, 'runScreeningCycle').mockResolvedValue(null)
+    ;(daemon as any).screeningLastTriggered = 0
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({
+      positions: [],
+      total_positions: 0,
+      error: 'Portfolio API 429: Too many requests',
+      degraded: true,
+    })
+
+    const res = await daemon.runManagementCycle({ silent: true })
+
+    expect(res).toBe('Position state unknown — management cycle skipped.')
+    expect(screenSpy).not.toHaveBeenCalled()
+    expect((daemon as any).screeningLastTriggered).toBe(0)
+  })
+
+  it('keeps the last known positions when a fetch degrades instead of treating the wallet as flat', async () => {
+    const known = [{ position: 'PosKnown', pool: 'PoolKnown', pair: 'KNOWN-SOL' }]
+    ;(daemon as any).latestLivePositions = known
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({
+      positions: [],
+      total_positions: 0,
+      error: 'Portfolio API 429: Too many requests',
+      degraded: true,
+    })
+
+    await daemon.runManagementCycle({ silent: true })
+
+    expect((daemon as any).latestLivePositions).toBe(known)
+  })
+
+  it('still reports no open positions when the portfolio is genuinely empty', async () => {
+    const screenSpy = vi.spyOn(daemon as any, 'runScreeningCycle').mockResolvedValue(null)
+    adapters.meteora.getMyPositions = vi.fn().mockResolvedValue({ positions: [], total_positions: 0 })
+
+    const res = await daemon.runManagementCycle({ silent: true })
+
+    expect(res).toBe('No open positions.')
+    expect(screenSpy).toHaveBeenCalled()
   })
 
   it('logs telegram_warn and handles error gracefully when sendTelegramSafe fails', async () => {
@@ -987,5 +1047,99 @@ describe('Telegram Queue Persistence & Safety Guards (#237 / #244)', () => {
       expect(res).toContain('insufficient SOL')
       expect(adapters.toolExecutor.executeTool).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('Telegram reply_to_message context injection (#338)', () => {
+  let adapters: DaemonAdapters
+  let daemon: Daemon
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    adapters = createMockAdapters()
+    adapters.telegram.isEnabled = () => true
+    daemon = new Daemon(adapters)
+  })
+
+  async function stubAgentLoop(content = 'Because the position address was missing.') {
+    const core = await import('@etemaro/core')
+    return vi.spyOn(core, 'agentLoop').mockResolvedValue({
+      content,
+      steps: [],
+      toolCalls: [],
+      finalAnswer: content,
+    } as any)
+  }
+
+  it('AC3: prefixes the agent prompt with the quoted reply and persists it to sessionHistory', async () => {
+    const loopSpy = await stubAgentLoop()
+
+    await (daemon as any).telegramHandler({
+      text: 'Why undefined?',
+      replyToMessage: {
+        text: '✅ Deployed JACK/SOL\nPosition: undefined',
+        from: { id: 1, first_name: 'Etemaro' },
+        messageId: 99,
+      },
+    })
+
+    const expectedPrompt =
+      '[Replying to Telegram message: "✅ Deployed JACK/SOL Position: undefined"]\n\nWhy undefined?'
+    expect(loopSpy).toHaveBeenCalledWith(
+      expectedPrompt,
+      expect.any(Number),
+      expect.any(Array),
+      'GENERAL',
+      expect.anything(),
+      null,
+      expect.any(Object),
+    )
+    expect((daemon as any).sessionHistory).toEqual([
+      { role: 'user', content: expectedPrompt },
+      { role: 'assistant', content: 'Because the position address was missing.' },
+    ])
+  })
+
+  it('AC4: live progress intro surfaces the replied snippet', async () => {
+    await stubAgentLoop('ok')
+    const live = {
+      toolStart: vi.fn().mockResolvedValue(undefined),
+      toolFinish: vi.fn().mockResolvedValue(undefined),
+      finalize: vi.fn().mockResolvedValue(undefined),
+      fail: vi.fn().mockResolvedValue(undefined),
+    }
+    adapters.telegram.createLiveMessage = vi.fn().mockResolvedValue(live)
+
+    await (daemon as any).telegramHandler({
+      text: 'Why did you close this?',
+      replyToMessage: { text: '🔒 Closed JACK/SOL PnL: -$3.20' },
+    })
+
+    expect(adapters.telegram.createLiveMessage).toHaveBeenCalledWith(
+      '🤖 Live Update',
+      expect.stringContaining('Replying to: "🔒 Closed JACK/SOL PnL: -$3.20"'),
+    )
+    expect(live.finalize).toHaveBeenCalledWith('ok')
+  })
+
+  it('passes the plain prompt and keeps history unchanged when the message is not a reply', async () => {
+    const loopSpy = await stubAgentLoop('plain')
+
+    await (daemon as any).telegramHandler({ text: 'Status?' })
+
+    expect(loopSpy.mock.calls[0]?.[0]).toBe('Status?')
+    expect((daemon as any).sessionHistory[0]).toEqual({ role: 'user', content: 'Status?' })
+    expect(adapters.telegram.createLiveMessage).toHaveBeenCalledWith('🤖 Live Update', 'Request: Status?')
+  })
+
+  it('collapses multi-line quoted replies into a single-line snippet', async () => {
+    const loopSpy = await stubAgentLoop()
+
+    await (daemon as any).telegramHandler({
+      text: 'Explain',
+      replyToMessage: { text: 'Line one\n\tLine   two' },
+    })
+
+    expect(loopSpy.mock.calls[0]?.[0]).toBe('[Replying to Telegram message: "Line one Line two"]\n\nExplain')
   })
 })

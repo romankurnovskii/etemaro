@@ -50,4 +50,72 @@ describe('config-validation', () => {
     expect(report.parseError).toMatch(/invalid JSON/)
     fs.rmSync(dir, { recursive: true, force: true })
   })
+
+  it('rejects a config where neither source block is enabled', () => {
+    const doc = {
+      ...base,
+      screening: {
+        ...base.screening,
+        market: { ...base.screening.market, enabled: false },
+        smartWallets: { ...base.screening.smartWallets, enabled: false },
+      },
+    }
+    const report = validateConfigDocument(doc, { envOptional: true })
+    expect(report.ok).toBe(false)
+    expect(report.entries[0]?.errors.join('\n')).toMatch(/Exactly one of screening\.market\.enabled/)
+  })
+
+  it('rejects a config where both source blocks are enabled', () => {
+    const doc = {
+      ...base,
+      screening: {
+        ...base.screening,
+        market: { ...base.screening.market, enabled: true },
+        smartWallets: { ...base.screening.smartWallets, enabled: true },
+      },
+    }
+    const report = validateConfigDocument(doc, { envOptional: true })
+    expect(report.ok).toBe(false)
+    expect(report.entries[0]?.errors.join('\n')).toMatch(/Exactly one of screening\.market\.enabled/)
+  })
+
+  it('requires the smartWallets field set even when the block is disabled', () => {
+    const doc = {
+      ...base,
+      screening: {
+        ...base.screening,
+        market: { ...base.screening.market, enabled: true },
+        smartWallets: { enabled: false },
+      },
+    }
+    const report = validateConfigDocument(doc, { envOptional: true })
+    expect(report.ok).toBe(false)
+    expect(report.entries[0]?.errors.join('\n')).toMatch(/smartWalletVetoRetryHours/)
+  })
+
+  it('accepts a disabled block that still carries its full field set', () => {
+    const doc = {
+      ...base,
+      screening: {
+        ...base.screening,
+        market: { ...base.screening.market, enabled: true },
+        smartWallets: { ...base.screening.smartWallets, enabled: false },
+      },
+    }
+    expect(validateConfigDocument(doc, { envOptional: true }).ok).toBe(true)
+  })
+
+  it('rejects a config that is not schema version 7', () => {
+    const report = validateConfigDocument({ ...base, _version: 6 }, { envOptional: true })
+    expect(report.ok).toBe(false)
+  })
+
+  it('requires every common gate (no code default)', () => {
+    const commonWithout = { ...base.screening.common }
+    delete commonWithout.maxTvl
+    const doc = { ...base, screening: { ...base.screening, common: commonWithout } }
+    const report = validateConfigDocument(doc, { envOptional: true })
+    expect(report.ok).toBe(false)
+    expect(report.entries[0]?.errors.join('\n')).toMatch(/maxTvl/)
+  })
 })

@@ -34,8 +34,10 @@ import {
   getPendingLiquidation,
   getPendingLiquidations,
   markLiquidationAttempt,
+  markLiquidationDust,
   markLiquidationSuccess,
   pruneSettledLiquidations,
+  refreshPendingLiquidation,
 } from '../domain/liquidation-queue.js'
 import { addPoolNote, getPoolMemory } from '../domain/pool-memory.js'
 import {
@@ -359,31 +361,32 @@ const toolMap: Record<string, ToolFn> = {
     // Flat key → config section mapping (covers everything in config.js)
     const CONFIG_MAP: Record<string, any> = {
       // screening
-      minFeeActiveTvlRatio: ['screening', 'minFeeActiveTvlRatio'],
-      excludeHighSupplyConcentration: ['screening', 'excludeHighSupplyConcentration'],
-      minTvl: ['screening', 'minTvl'],
-      maxTvl: ['screening', 'maxTvl'],
-      minVolume: ['screening', 'minVolume'],
-      minOrganic: ['screening', 'minOrganic'],
-      minQuoteOrganic: ['screening', 'minQuoteOrganic'],
-      minHolders: ['screening', 'minHolders'],
-      minMcap: ['screening', 'minMcap'],
-      maxMcap: ['screening', 'maxMcap'],
-      minBinStep: ['screening', 'minBinStep'],
-      maxBinStep: ['screening', 'maxBinStep'],
-      timeframe: ['screening', 'timeframe'],
-      category: ['screening', 'category'],
-      minTokenFeesSol: ['screening', 'minTokenFeesSol'],
-      avoidPvpSymbols: ['screening', 'avoidPvpSymbols'],
-      blockPvpSymbols: ['screening', 'blockPvpSymbols'],
-      maxBotHoldersPct: ['screening', 'maxBotHoldersPct'],
-      maxTop10Pct: ['screening', 'maxTop10Pct'],
-      allowedLaunchpads: ['screening', 'allowedLaunchpads'],
-      blockedLaunchpads: ['screening', 'blockedLaunchpads'],
-      minTokenAgeHours: ['screening', 'minTokenAgeHours'],
-      maxTokenAgeHours: ['screening', 'maxTokenAgeHours'],
+      minFeeActiveTvlRatio: ['screening', 'common', 'minFeeActiveTvlRatio'],
+      excludeHighSupplyConcentration: ['screening', 'common', 'excludeHighSupplyConcentration'],
+      minTvl: ['screening', 'common', 'minTvl'],
+      maxTvl: ['screening', 'common', 'maxTvl'],
+      minVolume: ['screening', 'common', 'minVolume'],
+      minOrganic: ['screening', 'common', 'minOrganic'],
+      minQuoteOrganic: ['screening', 'common', 'minQuoteOrganic'],
+      minHolders: ['screening', 'common', 'minHolders'],
+      minMcap: ['screening', 'common', 'minMcap'],
+      maxMcap: ['screening', 'common', 'maxMcap'],
+      minBinStep: ['screening', 'common', 'minBinStep'],
+      maxBinStep: ['screening', 'common', 'maxBinStep'],
+      timeframe: ['screening', 'market', 'timeframe'],
+      category: ['screening', 'market', 'category'],
+      minTokenFeesSol: ['screening', 'market', 'minTokenFeesSol'],
+      avoidPvpSymbols: ['screening', 'market', 'avoidPvpSymbols'],
+      blockPvpSymbols: ['screening', 'market', 'blockPvpSymbols'],
+      maxBotHoldersPct: ['screening', 'market', 'maxBotHoldersPct'],
+      maxTop10Pct: ['screening', 'market', 'maxTop10Pct'],
+      allowedLaunchpads: ['screening', 'market', 'allowedLaunchpads'],
+      blockedLaunchpads: ['screening', 'common', 'blockedLaunchpads'],
+      minTokenAgeHours: ['screening', 'common', 'minTokenAgeHours'],
+      maxTokenAgeHours: ['screening', 'common', 'maxTokenAgeHours'],
+      smartWalletVetoRetryHours: ['screening', 'smartWallets', 'smartWalletVetoRetryHours'],
       minFeePerTvl24h: ['management', 'minFeePerTvl24h'],
-      loneCandidateMinDegen: ['screening', 'loneCandidateMinDegen'],
+      loneCandidateMinDegen: ['screening', 'market', 'loneCandidateMinDegen'],
       // management
       minClaimAmount: ['management', 'minClaimAmount'],
       autoSwapAfterClaim: ['management', 'autoSwapAfterClaim'],
@@ -520,6 +523,30 @@ const toolMap: Record<string, ToolFn> = {
 
     const agentConfig = loadJsonFile<Record<string, unknown>>(AGENT_CONFIG_PATH, {}, { critical: true })
 
+    // Source-specific screening keys may only be written into the enabled block.
+    const SCREENING_BLOCK_BY_KEY: Record<string, 'market' | 'smartWallets'> = {
+      timeframe: 'market',
+      category: 'market',
+      minTokenFeesSol: 'market',
+      avoidPvpSymbols: 'market',
+      blockPvpSymbols: 'market',
+      maxBotHoldersPct: 'market',
+      maxTop10Pct: 'market',
+      allowedLaunchpads: 'market',
+      loneCandidateMinDegen: 'market',
+      smartWalletVetoRetryHours: 'smartWallets',
+    }
+    const screenRaw = (agentConfig.screening ?? {}) as Record<string, any>
+    for (const key of Object.keys(applied)) {
+      const block = SCREENING_BLOCK_BY_KEY[key]
+      if (block === 'market' && screenRaw.market?.enabled !== true) {
+        return { success: false, error: `${key} requires screening.market.enabled=true`, reason }
+      }
+      if (block === 'smartWallets' && screenRaw.smartWallets?.enabled !== true) {
+        return { success: false, error: `${key} requires screening.smartWallets.enabled=true`, reason }
+      }
+    }
+
     // Auto-scale fee/volume when timeframe changes (unless user set them explicitly in same call).
     if (applied.timeframe != null && applied.minFeeActiveTvlRatio == null && applied.minVolume == null) {
       const tf = normalizeTimeframe(applied.timeframe as string)
@@ -539,7 +566,7 @@ const toolMap: Record<string, ToolFn> = {
       if (key.startsWith('_')) continue
       const mapping = CONFIG_MAP[key]
       if (!mapping) continue
-      const livePath = mapping.slice(1).filter((part: unknown) => typeof part === 'string')
+      const livePath = mapping.filter((part: unknown) => typeof part === 'string')
       let target = getToolConfig() as any
       for (const part of livePath.slice(0, -1)) target = target[part]
       const field = livePath.at(-1)!
@@ -573,16 +600,20 @@ const toolMap: Record<string, ToolFn> = {
     for (const [key, val] of Object.entries(applied)) {
       if (key.startsWith('_')) continue
       const mapping = CONFIG_MAP[key]
-      const persistPath = mapping?.find((part: unknown) => Array.isArray(part))
-      if (Array.isArray(persistPath) && persistPath.length > 0) {
+      const explicitPersist = mapping?.find((part: unknown) => Array.isArray(part))
+      const persistPath: unknown[] =
+        Array.isArray(explicitPersist) && explicitPersist.length > 0
+          ? explicitPersist
+          : (mapping ?? []).filter((part: unknown) => typeof part === 'string')
+      if (persistPath.length > 0) {
         let target = agentConfig
-        for (const part of persistPath.slice(0, -1)) {
+        for (const part of persistPath.slice(0, -1) as string[]) {
           if (!target[part] || typeof target[part] !== 'object' || Array.isArray(target[part])) {
             target[part] = {}
           }
           target = target[part] as Record<string, unknown>
         }
-        target[persistPath.at(-1)!] = val
+        target[persistPath.at(-1)! as string] = val
       } else {
         agentConfig[key] = val
       }
@@ -652,6 +683,29 @@ export async function withWriteToolsLock<T>(operation: () => Promise<T>): Promis
   return writeToolsMutex.runExclusive(operation)
 }
 
+/** An amount of at most this many atomic units cannot be routed and cannot be split further. */
+export const UNPRICEABLE_RAW_UNIT_DUST_FLOOR = 1
+
+/**
+ * A token with no USD price and a raw balance at or below `UNPRICEABLE_RAW_UNIT_DUST_FLOOR`
+ * atomic units is unsellable dust. Treating `usd: null` as "maybe valuable" sent
+ * 0.000001-unit remnants (1 raw unit at 6 decimals) to Jupiter, which answered
+ * `liquidity.unavailable`, abandoned them, and alerted every retention window.
+ */
+export function isUnpriceableRawUnitDust(token: {
+  mint: string
+  balance?: number | null
+  usd?: number | null
+}): boolean {
+  if (typeof token.usd === 'number') return false
+  const balance = Number(token.balance)
+  if (!Number.isFinite(balance) || balance <= 0) return false
+  const decimals = getToolPorts().wallet.getMintDecimals?.(token.mint)
+  if (typeof decimals !== 'number' || decimals < 0) return false
+  const rawUnits = balance * 10 ** decimals
+  return Number.isFinite(rawUnits) && rawUnits <= UNPRICEABLE_RAW_UNIT_DUST_FLOOR
+}
+
 /**
  * Swap a base token back to SOL with retry. Jupiter can transiently fail (no route,
  * quote error) and a single attempt silently leaves the token unsold — this retries
@@ -685,12 +739,14 @@ export async function swapBaseToSolWithRetry(
   let amountMultiplier = 1.0
   let currentSlippageBps: number | undefined
   let abandonImmediately = false
+  let attemptsMade = 0
   // Best-effort cleanup swaps (sweeper, batch cleanup) must not trip the deploy
   // circuit breaker: dead/dust tokens legitimately have no route and would
   // otherwise block new deploys.
   const affectsCircuit = opts.affectsCircuit !== false
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    attemptsMade = attempt
     try {
       const balances = await getToolPorts().wallet.getWalletBalances()
       const token = balances.tokens?.find((t: any) => t.mint === baseMint)
@@ -808,7 +864,7 @@ export async function swapBaseToSolWithRetry(
   }
   log(
     'executor_warn',
-    `Auto-swap ${label} failed after ${attempts} attempts — base token left unsold (${baseMint.slice(0, 8)})`,
+    `Auto-swap ${label} failed after ${attemptsMade} attempt(s) — base token left unsold (${baseMint.slice(0, 8)})`,
   )
   if (affectsCircuit) recordSwapFailure({ maxFailedSwapsBeforeHalt, haltOnSwapFailure })
   const symbol = lastToken?.symbol || baseMint.slice(0, 8)
@@ -823,7 +879,7 @@ export async function swapBaseToSolWithRetry(
     usd: tokenUsd,
     pool_address: poolAddress || null,
     position: position || null,
-    error: lastErr || `Failed after ${attempts} attempts`,
+    error: lastErr || `Failed after ${attemptsMade} attempt(s)`,
     errorCode: lastErrorCode || lastErrorCategory || null,
     status: abandonImmediately ? 'abandoned' : 'pending',
   }).catch((err: any) => {
@@ -838,8 +894,8 @@ export async function swapBaseToSolWithRetry(
         mint: baseMint,
         amount: lastToken?.balance ?? 0,
         usd: tokenUsd,
-        reason: lastErr || `Failed after ${attempts} attempts`,
-        attempts,
+        reason: lastErr || `Failed after ${attemptsMade} attempt(s)`,
+        attempts: attemptsMade,
       })
       .catch((err: any) => {
         log('telegram_warn', `Failed to send liquidation alert notification: ${err?.message || err}`)
@@ -849,7 +905,11 @@ export async function swapBaseToSolWithRetry(
       .notifySwapError({
         inputSymbol: symbol,
         outputSymbol: 'SOL',
-        reason: lastErr || `Failed after ${attempts} attempts`,
+        reason: lastErr || `Failed after ${attemptsMade} attempt(s)`,
+        source: label,
+        amount: lastToken?.balance ?? 0,
+        attempts: attemptsMade,
+        abandoned: abandonImmediately,
       })
       .catch((err: any) => {
         log('telegram_warn', `Failed to send swap error notification: ${err?.message || err}`)
@@ -931,7 +991,7 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
   if (Object.keys(priceMap).length > 0) {
     try {
       const { updatePendingTradesMarkToMarket } = await import('../domain/lessons.js')
-      updatePendingTradesMarkToMarket(priceMap)
+      updatePendingTradesMarkToMarket(priceMap, balances.tokens)
     } catch {
       // ignore
     }
@@ -960,20 +1020,41 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
     total++
     const currentToken = (balances.tokens as any[])?.find((t: any) => t.mint === item.mint)
     if (!currentToken || (currentToken.balance ?? 0) <= 0) {
-      await markLiquidationSuccess(item.mint).catch(() => {})
+      await markLiquidationSuccess(item.mint, { reason: 'wallet_empty' }).catch(() => {})
       skipped++
       continue
     }
 
+    // Refresh the frozen enqueue-time snapshot with the live balance (Part1-3). A null
+    // live price leaves the previously known value intact (Part1-6).
+    await refreshPendingLiquidation(item.mint, {
+      amount: currentToken.balance,
+      usd: currentToken.usd != null ? currentToken.usd : undefined,
+    }).catch(() => {})
+
     const isDust = typeof currentToken.usd === 'number' && currentToken.usd >= 0 && currentToken.usd < minUsd
-    if (isDust) {
+    const isRawDust = !isDust && isUnpriceableRawUnitDust(currentToken)
+    if (isDust || isRawDust) {
+      await markLiquidationDust(item.mint, {
+        reason: isRawDust
+          ? `skipped unpriceable raw-unit dust (<= ${UNPRICEABLE_RAW_UNIT_DUST_FLOOR} atomic unit)`
+          : `skipped dust (< $${minUsd.toFixed(2)})`,
+      }).catch(() => {})
       skipped++
       results.push({
         mint: item.mint,
         symbol: item.symbol,
         success: false,
-        reason: `skipped dust (< $${minUsd.toFixed(2)})`,
+        reason: isRawDust
+          ? `skipped unpriceable raw-unit dust (<= ${UNPRICEABLE_RAW_UNIT_DUST_FLOOR} atomic unit)`
+          : `skipped dust (< $${minUsd.toFixed(2)})`,
       })
+      if (isRawDust) {
+        log(
+          'executor',
+          `Skipping unpriceable raw-unit dust ${item.symbol || item.mint.slice(0, 8)} (${currentToken.balance} units, usd unknown) — unsellable remnant, not attempting swap`,
+        )
+      }
       continue
     }
 
@@ -1025,8 +1106,32 @@ export async function sweepUnsoldTokensUnlocked(opts: { skipMints?: string[]; dr
     }
   }
 
-  // Prune older settled entries (settled > 24h ago)
-  await pruneSettledLiquidations(24).catch(() => {})
+  // Prune older settled entries, but keep abandoned tombstones for tokens still
+  // held in the wallet so reconciliation cannot re-enqueue and re-alert them.
+  const scanIncomplete = balances.scan_incomplete === true
+  if (scanIncomplete) {
+    log('executor_warn', 'Wallet scan incomplete (Token-2022) — preserving tombstones, skipping prune')
+  } else {
+    const heldMints = new Set(
+      (balances.tokens as any[]).filter((t) => (t.balance ?? 0) > 0).map((t) => t.mint as string),
+    )
+    await pruneSettledLiquidations(24, { preserveAbandonedMints: heldMints }).catch(() => {})
+  }
+
+  // Reconcile any closed_pending_swap performance records whose mint is no longer
+  // actively pending in the liquidation queue. Catches swaps that completed inline
+  // at position-close time but left sibling records stuck in closed_pending_swap.
+  if (scanIncomplete) {
+    log('executor_warn', 'Wallet scan incomplete (Token-2022) — skipping orphaned swap reconciliation')
+  } else {
+    try {
+      const { reconcileOrphanedPendingSwaps } = await import('../domain/lessons.js')
+      const activePendingMints = new Set(getPendingLiquidations('pending').map((item) => item.mint))
+      await reconcileOrphanedPendingSwaps(activePendingMints)
+    } catch (err: any) {
+      log('state_warn', `reconcileOrphanedPendingSwaps failed: ${err?.message || err}`)
+    }
+  }
 
   logAction({
     tool: 'sweepUnsoldTokens',
@@ -1278,29 +1383,40 @@ async function executeToolUnlocked(name: string, args: Record<string, unknown> =
             log('telegram_warn', `Failed to send swap notification: ${err?.message || err}`)
           })
       } else if (name === 'deploy_position') {
-        const isSuccess = (result as any)?.success !== false && !(result as any)?.error && !(result as any)?.blocked
-        if (!isSuccess) {
-          getNotificationPort()
-            .notifyTransactionError({
-              type: 'deploy',
-              pair:
-                (result as any)?.pool_name || (args as any)?.pool_name || (args.pool_address as string)?.slice(0, 8),
-              reason: (result as any)?.error || (result as any)?.reason || 'Deployment execution failed',
+        const r = result as any
+        const isSuccess = r?.success !== false && !r?.error && !r?.blocked
+        const position = typeof r?.position === 'string' && r.position ? r.position : ''
+        const tx = typeof r?.txs?.[0] === 'string' ? r.txs[0] : typeof r?.tx === 'string' ? r.tx : ''
+        const pair = r?.pool_name || (args as any)?.pool_name || (args.pool_address as string)?.slice(0, 8)
+        if (!isSuccess || !position || !tx) {
+          // A "success" that carries no position or no tx is unproven, not a deploy:
+          // never emit a Deployed notification for it. Surface it as an incident.
+          if (isSuccess && (!position || !tx)) {
+            logStructured({
+              category: 'tx_error',
+              message: `deploy_position reported success without proof-of-execution (position=${position ? 'set' : 'missing'}, tx=${tx ? 'set' : 'missing'})`,
+              metadata: { pair },
             })
+          }
+          const reason = isSuccess
+            ? 'Deploy reported success without proof-of-execution (missing position or tx)'
+            : r?.error || r?.reason || 'Deployment execution failed'
+          getNotificationPort()
+            .notifyTransactionError({ type: 'deploy', pair, reason })
             .catch((err: any) => {
               log('telegram_warn', `Failed to send deploy error notification: ${err?.message || err}`)
             })
         } else {
           getNotificationPort()
             .notifyDeploy({
-              pair: (result as any).pool_name || (args as any).pool_name || (args.pool_address as string)?.slice(0, 8),
+              pair,
               amountSol: (args.amount_y as number) ?? (args.amount_sol as number) ?? 0,
-              position: (result as any).position,
-              tx: (result as any).txs?.[0] ?? (result as any).tx,
-              priceRange: (result as any).price_range,
-              rangeCoverage: (result as any).range_coverage,
-              binStep: (result as any).bin_step,
-              baseFee: (result as any).base_fee,
+              position,
+              tx,
+              priceRange: r.price_range,
+              rangeCoverage: r.range_coverage,
+              binStep: r.bin_step,
+              baseFee: r.base_fee,
             })
             .catch((err: any) => {
               log('telegram_warn', `Failed to send deploy notification: ${err?.message || err}`)

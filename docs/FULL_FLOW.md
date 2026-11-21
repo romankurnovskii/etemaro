@@ -257,7 +257,7 @@ graph TD
 | Section      | Purpose                                                                                                       |
 | ------------ | ------------------------------------------------------------------------------------------------------------- |
 | `risk`       | Max positions, max deploy amount                                                                              |
-| `screening`  | Entry source (market vs smart_wallets), fee/TVL ratio, organic score, holder count, mcap, bin step thresholds |
+| `screening`  | Shared gates (`common`) + per-source blocks (`market` / `smartWallets`, exactly one enabled); fee/TVL, organic, holders, mcap, bin-step thresholds, smart-wallet veto retry TTL |
 | `management` | Deploy amount, stop loss, take profit, trailing TP, OOR wait time                                             |
 | `strategy`   | LP strategy (bid_ask/spot), bin range                                                                         |
 | `schedule`   | Management and screening interval (minutes)                                                                   |
@@ -575,9 +575,9 @@ stateDiagram-v2
 
 ### Strategy Management
 
-The Strategy Library (`strategy-library.ts`) provides persistent storage for LP pool strategies. Users can add, modify, and remove strategies via Telegram commands or the REPL.
+The Strategy Library (`strategy-library.ts`) provides persistent storage for LP pool strategies. Users add, modify, and remove strategies through the agent (LLM tools `add_strategy`, `list_strategies`, `get_strategy`, `set_active_strategy`, `remove_strategy`) or by editing the library JSON. There are no CLI or Telegram strategy CRUD commands; the only CLI entry point is `etemaro strategy validate <file...>`.
 
-**Default Strategies:**
+**Bundled shared presets** (compiled into `packages/core/src/domain/strategy-library-shared.ts`; replaced when `config/shared/strategy-library.shared.json` exists):
 
 - `custom_ratio_spot`: Directional bias with configurable ratios
 - `single_sided_reseed`: Token-only bid-ask with re-seed on OOR
@@ -585,19 +585,23 @@ The Strategy Library (`strategy-library.ts`) provides persistent storage for LP 
 - `multi_layer`: Multi-layer composite positions
 - `partial_harvest`: Incremental profit-taking
 
+Private strategies live in `config/shared/strategy-library.json` and win on id collision; `list_strategies` returns the merged view.
+
 **Adding a Custom Strategy:**
 
-1. Via Telegram:
+1. Ask the agent in the `attach` chat prompt or the Web GUI chat — it calls `add_strategy`:
 
    ```
-   /add_strategy my_strategy "My Custom Strategy" --lpStrategy bid_ask
+   add a strategy: id my_strategy, name "My Custom Strategy", lpStrategy bid_ask
    ```
 
-2. Via CLI:
+2. Or edit the library JSON directly (`config/shared/strategy-library.json`), then validate:
 
    ```bash
-   npm run cli add-strategy -- --id my_strategy --name "My Custom Strategy" --lpStrategy bid_ask
+   npm run cli strategy validate config/shared/strategy-library.json --json
    ```
+
+Activate it with the `set_active_strategy` tool, or by setting `strategy.activeStrategyId` in the active agent config (`config/instances/agent-default.json` or `$AGENT_CONFIG_PATH`). Boot fails fast if the configured id is missing from the library.
 
 **Strategy Structure:**
 

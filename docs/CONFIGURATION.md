@@ -1,6 +1,6 @@
 # Etemaro — Configuration Guide
 
-Etemaro uses a strict schema-validated configuration system (Version 5): every required field MUST be present in the active JSON configuration file. By default the application reads `config/instances/agent-default.json`; a custom path can be set via the `AGENT_CONFIG_PATH` environment variable.
+Etemaro uses a strict schema-validated configuration system (Version 7): every required field MUST be present in the active JSON configuration file. By default the application reads `config/instances/agent-default.json`; a custom path can be set via the `AGENT_CONFIG_PATH` environment variable.
 
 ```
               ┌────────────────────────┐
@@ -73,7 +73,7 @@ This keeps secrets out of the JSON file — ideal for API keys (`jupiter.apiKey`
 
 Conventional environment variables the daemon reads:
 
-- `RPC_URL`: Optional override for `connection.rpcUrl`.
+- `RPC_URL`: Optional override for `connection.rpcUrl`. The generated config already carries a working public default, so this is only needed to point at your own endpoint (e.g. Helius).
 - `RPC_URL_2`: Optional override for `connection.rpcUrl2` (fallback RPC URL on errors / rate limits).
 - `HELIUS_API_KEY`: Helius API key used for wallet balances and token valuations. Required for normal wallet operation.
 - `LLM_API_KEY`: API key for LLM provider.
@@ -88,7 +88,7 @@ Conventional environment variables the daemon reads:
 Required for normal operation:
 
 - `HELIUS_API_KEY`: wallet balance and USD valuation requests.
-- `JUPITER_API_KEY`: Jupiter swap operations.
+- `JUPITER_API_KEY`: **Required for live swaps** (liquidating unsold tokens after a close); not needed in dry-run. Keyless Jupiter access exists at 0.5 RPS for prototyping only — a free key gives 1 RPS.
 
 Required only when the related integration is enabled:
 
@@ -105,17 +105,17 @@ Optional:
 
 ## 3. Agent Configuration (`agent-config.json`)
 
-### Schema Version 5
+### Schema Version 7
 
 Configuration is a **nested JSON object**. The root contains `_version`, `preset`, `agentId`, and the `connection` block. All other settings are in named category objects.
 
 ```json
 {
-  "_version": 5,
+  "_version": 7,
   "preset": "custom",
   "agentId": "",
   "connection": {
-    "rpcUrl": "https://pump.helius-rpc.com",
+    "rpcUrl": "https://api.mainnet-beta.solana.com",
     "dryRun": true,
     "telegramEnabled": true,
     "telegramPolling": true,
@@ -123,7 +123,11 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
   },
 
   "risk": { "maxPositions": 1, "maxDeployAmount": 50 },
-  "screening": { "entrySource": "market", "timeframe": "5m", ... },
+  "screening": {
+    "common": { "minTvl": 1000, "maxTvl": 300000, "minBinStep": 50, "maxBinStep": 200, ... },
+    "market": { "enabled": true, "timeframe": "5m", "category": "trending", ... },
+    "smartWallets": { "enabled": false }
+  },
   "management": { "stopLossPct": -50, "takeProfitPct": 5, ... },
   "strategy": { "activeStrategyId": "single_sided_reseed", ... },
   "schedule": { "managementIntervalMin": 10, ... },
@@ -148,7 +152,7 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 
 | Field          | Purpose                                                         | Example                    |
 | -------------- | --------------------------------------------------------------- | -------------------------- |
-| `_version`   | Schema version. Must be `5`.                                   | `5`                      |
+| `_version`   | Schema version. Must be `7`.                                   | `7`                      |
 | `preset`     | Informational label for the config profile.                     | `"custom"`               |
 | `agentId`    | Stable HiveMind instance ID.`""` = auto-assign.               | `""` or `"agt_abc123"` |
 | `connection` | Network, provider, wallet, runtime mode, and Telegram settings. | `{ ... }`                |
@@ -157,7 +161,7 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 
 | Field                      | Purpose                                                                                      | Example                             |
 | -------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------- |
-| `rpcUrl`                 | Primary Solana RPC endpoint for chain reads and transactions.                                | `"https://pump.helius-rpc.com"`   |
+| `rpcUrl`                 | Primary Solana RPC endpoint for chain reads and transactions. Defaults to the free public endpoint; a non-empty `RPC_URL` in `.env` overrides it. | `"https://api.mainnet-beta.solana.com"` |
 | `rpcUrl2`                | Fallback Solana RPC endpoint on errors/rate-limits (optional).                               | `"env.RPC_URL_2"`                 |
 | `wallet`                 | Alias of a wallet in the keystore (`~/.config/etemaro/.credentials/wallets/<alias>.json`). | `"main-scalp"`                    |
 | `heliusApiKey`           | Helius Wallet API key.                                                                       | `"env.HELIUS_API_KEY"`            |
@@ -177,26 +181,52 @@ Configuration is a **nested JSON object**. The root contains `_version`, `preset
 
 #### Screening
 
-| Field                                         | Purpose                                           | Example / what to expect                                                                            |
-| --------------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `entrySource`                               | Entry universe source.                            | `"market"` → trending pool discovery. `"smart_wallets"` → copy-entry from tracked LP wallets. |
-| `timeframe`                                 | Candle timeframe for indicator scans.             | `"5m"` → 5-minute candles.                                                                       |
-| `category`                                  | Pool category filter from the discovery API.      | `"trending"` → trending pools. `"new"` → recently launched.                                   |
-| `excludeHighSupplyConcentration`            | Skip tokens with concentrated supply.             | `true` → filters out likely dumps.                                                               |
-| `minTvl` / `maxTvl`                       | Allowed total-value-locked window (USD).          | `10000`–`150000`                                                                               |
-| `minVolume`                                 | Minimum 24h volume (USD).                         | `500`                                                                                             |
-| `minOrganic` / `minQuoteOrganic`          | Minimum organic (non-bot) score 0–100.           | `60`                                                                                              |
-| `minHolders`                                | Minimum holder count.                             | `500`                                                                                             |
-| `minMcap` / `maxMcap`                     | Allowed market-cap window (USD).                  | `150000`–`10000000`                                                                            |
-| `minBinStep` / `maxBinStep`               | Allowed Meteora bin-step range.                   | `80`–`125`                                                                                     |
-| `minFeeActiveTvlRatio`                      | Yield-quality gate: fees ÷ active TVL.           | `0.05` → keep pools paying ≥5%.                                                                 |
-| `minTokenFeesSol`                           | Minimum lifetime fees the token has earned (SOL). | `30`                                                                                              |
-| `avoidPvpSymbols` / `blockPvpSymbols`     | Handle PvP tokens.                                | `avoidPvpSymbols: true` de-prioritizes; `blockPvpSymbols: true` hard-blocks.                    |
-| `maxBotHoldersPct`                          | Max % of holders that are bots.                   | `30`                                                                                              |
-| `maxTop10Pct`                               | Max % of supply held by top 10 wallets.           | `60`                                                                                              |
-| `loneCandidateMinDegen`                     | Min degen score for a lone (single) candidate.    | `50`                                                                                              |
-| `allowedLaunchpads` / `blockedLaunchpads` | Launchpad allow/deny lists.                       | `[]` → no restriction.                                                                           |
-| `minTokenAgeHours` / `maxTokenAgeHours`   | Token age window.`null` = no limit.             | `null`/`null` → any age.                                                                       |
+Screening is split into a **shared `common` block** and **two source blocks**. Both source blocks always carry their full field set (even when disabled) — enabling a source never requires new fields and the runtime never invents values. Exactly one of `screening.market.enabled` / `screening.smartWallets.enabled` must be `true`. Every field is required; a missing field fails startup validation.
+
+```json
+"screening": {
+  "common": { ... },
+  "market": { "enabled": true, "timeframe": "5m", "category": "trending", ... },
+  "smartWallets": { "enabled": false, "smartWalletVetoRetryHours": 6 }
+}
+```
+
+**`screening.common` — applied by every entry source** (`getRawPoolScreeningRejectReason`)
+
+| Field | Purpose | Example |
+| --- | --- | --- |
+| `excludeHighSupplyConcentration` | Skip tokens with concentrated supply. | `true` → filters likely dumps. |
+| `minTvl` / `maxTvl` | Allowed total-value-locked window (USD). | `1000`–`300000` |
+| `minVolume` | Minimum 24h volume (USD). | `100` |
+| `minMcap` / `maxMcap` | Allowed market-cap window (USD). | `5000`–`50000000` |
+| `minHolders` | Minimum holder count. | `10` |
+| `minBinStep` / `maxBinStep` | Allowed Meteora bin-step range. | `50`–`200` |
+| `minFeeActiveTvlRatio` | Yield-quality gate: fees ÷ active TVL. | `0.01` |
+| `minOrganic` / `minQuoteOrganic` | Minimum organic (non-bot) score 0–100. | `10` |
+| `blockedLaunchpads` | Launchpad deny list. | `[]` → no restriction. |
+| `minTokenAgeHours` / `maxTokenAgeHours` | Token age window. `null` = no limit. | `5` / `null` |
+
+**`screening.market` — only when `market.enabled` is `true`** (discovery query + market candidate selection)
+
+| Field | Purpose | Example |
+| --- | --- | --- |
+| `timeframe` | Candle timeframe for discovery/indicators. | `"5m"` |
+| `category` | Pool category from the discovery API. | `"trending"` |
+| `minTokenFeesSol` | Minimum lifetime fees the token earned (SOL). | `30` |
+| `avoidPvpSymbols` / `blockPvpSymbols` | PvP token handling. | `true` / `false` |
+| `maxBotHoldersPct` | Max % of holders that are bots. | `30` |
+| `maxTop10Pct` | Max % of supply held by top 10 wallets. | `60` |
+| `loneCandidateMinDegen` | Min degen score for a lone candidate. | `50` |
+| `allowedLaunchpads` | Launchpad allow list. | `[]` |
+| `useDiscordSignals` / `discordSignalMode` | Discord signal ingestion (reserved). | `false` / `"merge"` |
+
+**`screening.smartWallets` — only when `smartWallets.enabled` is `true`** (copy-entry; the strategy's `smartWalletListId` lives in `config/shared/strategy-library.json`)
+
+| Field | Purpose | Example |
+| --- | --- | --- |
+| `smartWalletVetoRetryHours` | Hours a vetoed position stays suppressed before it is retried. | `6` |
+
+> The disabled block is simply unused — its values are declared but not read. Because it is always complete, flipping `enabled` is the only change needed to switch sources.
 
 #### Management & Exits
 
@@ -309,7 +339,7 @@ The `api` block contains two independent services.
 | Field                  | Purpose                      | Example                                                                                                         |
 | ---------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `source`             | PnL data source.             | `"meteora_api"` (Recommended default: free Meteora Datapi, 0 RPC credits) or `"rpc"` (On-chain DLMM reads). |
-| `rpcUrl`             | RPC used for PnL reads.      | `"https://pump.helius-rpc.com"` or `"env.PNL_RPC_URL"`                                                      |
+| `rpcUrl`             | RPC used for PnL reads (only when `source` is `"rpc"`). Falls back to `RPC_URL`. | `"env.PNL_RPC_URL"`                                                                                          |
 | `pollIntervalSec`    | Poll interval (seconds).     | `15`                                                                                                          |
 | `depositCacheTtlSec` | Deposit cache TTL (seconds). | `300`                                                                                                         |
 | `confirmTicks`       | Confirm ticks for PnL calc.  | `2`                                                                                                           |
@@ -345,7 +375,7 @@ The `api` block contains two independent services.
 
 | Field               | Purpose                       | Example                                      |
 | ------------------- | ----------------------------- | -------------------------------------------- |
-| `apiKey`          | Jupiter API key.              | `"env.JUPITER_API_KEY"`                    |
+| `apiKey`          | Jupiter API key. Required for live swaps (not needed in dry-run). | `"env.JUPITER_API_KEY"`                    |
 | `referralAccount` | Referral wallet address.      | `""` or `"env.JUPITER_REFERRAL_ACCOUNT"` |
 | `referralFeeBps`  | Referral fee in basis points. | `50` → 0.5%                               |
 
@@ -370,10 +400,11 @@ The `api` block contains two independent services.
 - **Startup validation**: `loadAndValidateConfig()` reads the config JSON and passes it through the Zod schema (`schema.ts`). Any missing or wrong-type field causes an immediate failure listing every offending path:
   ```
   Error: agent-config.json has invalid or missing fields:
-    - screening.minTvl: Required
+    - screening.common.minTvl: Required
+    - screening.market.enabled: Exactly one of screening.market.enabled / screening.smartWallets.enabled must be true
     - hiveMind.pullMode: Required
   ```
-- **No backward compatibility**: Version 5 is strict. Old V1/V2 keys (`darwinEnabled`, `hiveMindUrl`, `pnlSource`, `connection.*`, etc.) are not accepted — update your config to V5.
+- **No backward compatibility**: Version 7 is strict. Old V1–V6 keys (flat `screening.*`, `darwinEnabled`, `hiveMindUrl`, `pnlSource`, `connection.*`, etc.) are not accepted — update your config to V7.
 - **Dynamic Reloading**: `reloadScreeningThresholds()` re-reads the config file at the start of every screening cycle and applies changes to the running singleton without restart.
 
 ---
@@ -384,7 +415,8 @@ Use the `update_config` tool (Telegram `/setcfg` or agent self-tuning) to change
 
 ```json
 {
-  "screening.minOrganic": 70,
+  "screening.common.minOrganic": 70,
+  "screening.market.timeframe": "15m",
   "management.stopLossPct": -20
 }
 ```

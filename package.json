@@ -1,6 +1,6 @@
 {
   "name": "etemaro",
-  "version": "3.9.1",
+  "version": "4.4.0",
   "type": "module",
   "packageManager": "pnpm@9.15.4",
   "description": "Autonomous DLMM LP agent for Meteora on Solana",
@@ -43,24 +43,24 @@
     "@solana/web3.js": "^1.99.0",
     "bn.js": "^5.2.5",
     "bs58": "^6.0.0",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.10",
     "jsonrepair": "^3.15.0",
     "node-cron": "^3.0.3",
-    "openai": "^7.20.0",
-    "pm2": "^7.0.4",
-    "zod": "^4.6.5"
+    "openai": "^7.55.0",
+    "pm2": "^7.1.2",
+    "zod": "^4.6.7"
   },
   "engines": {
     "node": ">=22.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.14",
+    "@biomejs/biome": "^2.6.6",
     "@types/bn.js": "^5.2.0",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.6",
     "@types/node-cron": "^3.0.11",
     "husky": "^9.1.7",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.1"
+    "vitest": "^5.1.0"
   }
 }

@@ -5,6 +5,11 @@ updates:
     schedule:
       interval: 'weekly'
     versioning-strategy: increase
+    ignore:
+      # @meteora-ag/dlmm (latest 1.9.14) pins @solana/web3.js ^1.91.6; v3 breaks DLMM at runtime.
+      # Runtime evidence: task #261108.24 / PR #482. Revisit once dlmm supports web3.js v3.
+      - dependency-name: '@solana/web3.js'
+        versions: ['>=2.0.0']
 
   - package-ecosystem: 'npm'
     directory: 'packages/cli'
@@ -17,6 +22,10 @@ updates:
     schedule:
       interval: 'weekly'
     versioning-strategy: increase
+    ignore:
+      # See root entry: web3.js v3 is incompatible with @meteora-ag/dlmm 1.9.14 at runtime.
+      - dependency-name: '@solana/web3.js'
+        versions: ['>=2.0.0']
 
   - package-ecosystem: 'npm'
     directory: 'packages/daemon'

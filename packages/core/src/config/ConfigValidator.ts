@@ -1,6 +1,6 @@
 /**
  * @file ConfigValidator.ts
- * @description Zod schema based validator for runtime application configuration files (Version 5).
+ * @description Zod schema based validator for runtime application configuration files (Version 7).
  *
  * @features
  * - Uses nested Zod schema mapping directly to config shape
@@ -12,7 +12,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import dotenv from 'dotenv'
-import { AGENT_CONFIG_PATH, getEtemaroDir, REPO_ROOT } from '../shared/constants.js'
+import {
+  AGENT_CONFIG_PATH,
+  getEtemaroDir,
+  LEGACY_HARDCODED_RPC_URL,
+  PUBLIC_SOLANA_RPC_URL,
+  REPO_ROOT,
+} from '../shared/constants.js'
 import { defaultAgentConfigStr } from './defaultAgentConfig.js'
 import { AgentConfigSchema, type ValidatedAgentConfig } from './schema.js'
 
@@ -101,16 +107,20 @@ export function loadAndValidateConfig(): ValidatedAgentConfig {
     })
   }
 
-  // Migrate legacy hardcoded RPC defaults to .env values when an override is present
-  const legacyPrimaryRpc = 'https://pump.helius-rpc.com'
+  // Honour an explicit RPC_URL over a shipped placeholder. Covers both the retired
+  // hardcoded default and the literal public endpoint that now ships in the generated
+  // config, so operators can still override the endpoint without editing the JSON.
+  const overridableRpcDefaults = new Set([LEGACY_HARDCODED_RPC_URL, PUBLIC_SOLANA_RPC_URL])
   const rawConnection = raw.connection as { rpcUrl?: string } | undefined
+  const envRpcUrl = process.env.RPC_URL?.trim()
   if (
     typeof raw?.connection === 'object' &&
-    rawConnection?.rpcUrl === legacyPrimaryRpc &&
-    process.env.RPC_URL &&
-    process.env.RPC_URL !== legacyPrimaryRpc
+    rawConnection?.rpcUrl !== undefined &&
+    overridableRpcDefaults.has(rawConnection.rpcUrl) &&
+    envRpcUrl &&
+    envRpcUrl !== rawConnection.rpcUrl
   ) {
-    rawConnection.rpcUrl = process.env.RPC_URL
+    rawConnection.rpcUrl = envRpcUrl
   }
 
   // If running info commands, we can bypass strict parsing
@@ -126,7 +136,7 @@ export function loadAndValidateConfig(): ValidatedAgentConfig {
     const errorMessages = issues.map((err: any) => `  - ${err.path.join('.')}: ${err.message}`).join('\n')
     const err: any = new Error(
       `${getConfigFileName()} has invalid or missing fields:\n${errorMessages}\n\n` +
-        'Please ensure you are using the Version 5 schema structure.',
+        'Please ensure you are using the Version 7 schema structure.',
       { cause: result.error },
     )
     err.issues = issues

@@ -20,17 +20,43 @@ export interface EnqueueLiquidationOpts {
   symbol?: string
   amount: number
   usd?: number | null
+  priced?: boolean
   pool_address?: string | null
   position?: string | null
   error?: string
   errorCode?: string | null
-  status?: 'pending' | 'liquidated' | 'abandoned'
+  status?: 'pending' | 'liquidated' | 'abandoned' | 'dust'
+}
+
+/**
+ * Refresh live `amount`/`usd`/`priced` on a still-pending entry without touching
+ * status or attempts (Part1-3). A null/undefined `usd` leaves a known price intact.
+ */
+export async function refreshPendingLiquidation(
+  mint: string,
+  opts: { amount?: number; usd?: number | null; priced?: boolean },
+): Promise<boolean> {
+  return withStateLock(() => {
+    const state = loadState()
+    const item = state.pendingLiquidations?.[mint]
+    if (item?.status !== 'pending') return false
+
+    if (opts.amount != null && opts.amount > 0) item.amount = opts.amount
+    if (opts.usd !== undefined) {
+      item.usd = opts.usd
+      item.priced = opts.priced ?? opts.usd != null
+    } else if (opts.priced !== undefined) {
+      item.priced = opts.priced
+    }
+    saveState(state)
+    return true
+  })
 }
 
 /**
  * Retrieve all tracked liquidations, optionally filtered by status.
  */
-export function getPendingLiquidations(filter?: 'pending' | 'liquidated' | 'abandoned'): PendingLiquidation[] {
+export function getPendingLiquidations(filter?: 'pending' | 'liquidated' | 'abandoned' | 'dust'): PendingLiquidation[] {
   const state = loadState()
   const list = Object.values(state.pendingLiquidations || {})
   if (!filter) return list
@@ -64,7 +90,9 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
         ...existing,
         symbol: opts.symbol || existing.symbol,
         amount: opts.amount > 0 ? opts.amount : existing.amount,
-        usd: opts.usd !== undefined ? opts.usd : existing.usd,
+        // Keep a previously known price when a failed attempt reports null (unknown) (Part1-6).
+        usd: opts.usd != null ? opts.usd : existing.usd,
+        priced: opts.usd != null ? true : (opts.priced ?? existing.priced),
         pool_address: opts.pool_address || existing.pool_address,
         position: opts.position || existing.position || null,
         last_attempt_at: now,
@@ -78,6 +106,7 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
         symbol: opts.symbol,
         amount: opts.amount,
         usd: opts.usd ?? null,
+        priced: opts.priced ?? opts.usd != null,
         pool_address: opts.pool_address || null,
         position: opts.position || null,
         added_at: now,
@@ -107,7 +136,7 @@ export async function enqueuePendingLiquidation(opts: EnqueueLiquidationOpts): P
 export async function markLiquidationSuccess(
   mint: string,
   /** @param opts.amountOutSol — Amount received in SOL (human-readable, NOT lamports). */
-  opts: { tx?: string; amountOutSol?: number } = {},
+  opts: { tx?: string; amountOutSol?: number; reason?: 'swapped' | 'wallet_empty' } = {},
 ): Promise<boolean> {
   let position: string | null = null
   const success = await withStateLock(() => {
@@ -119,6 +148,11 @@ export async function markLiquidationSuccess(
     item.status = 'liquidated'
     item.last_attempt_at = new Date().toISOString()
     item.last_error = null
+    // Persist settlement details + why the token left the wallet (Part1-1/2).
+    item.liquidated_at = item.last_attempt_at
+    item.tx = opts.tx ?? null
+    item.amount_out_sol = opts.amountOutSol ?? null
+    item.reason = opts.reason ?? 'swapped'
     saveState(state)
 
     log(
@@ -212,18 +246,52 @@ export async function markLiquidationAttempt(
 }
 
 /**
- * Prune old settled (liquidated or abandoned) entries from the liquidation queue.
+ * Mark a dust-skipped entry with a terminal `dust` status so it no longer sits
+ * in `pending` forever (Part1-5).
  */
-export async function pruneSettledLiquidations(retentionHours = 24): Promise<number> {
+export async function markLiquidationDust(mint: string, opts: { reason?: string } = {}): Promise<boolean> {
+  return withStateLock(() => {
+    const state = loadState()
+    const item = state.pendingLiquidations?.[mint]
+    if (!item) return false
+
+    item.status = 'dust'
+    item.last_attempt_at = new Date().toISOString()
+    item.last_error = opts.reason || 'skipped as dust'
+    saveState(state)
+
+    log('state', `Marked dust: ${item.symbol || mint.slice(0, 8)} (${item.last_error})`)
+    return true
+  })
+}
+
+/**
+ * Prune old settled (liquidated or abandoned) entries from the liquidation queue.
+ *
+ * `preserveAbandonedMints` keeps `abandoned` tombstones alive for mints that are
+ * still present in the wallet. Without it, the retention window deletes the only
+ * record that a token was already abandoned, reconciliation re-enqueues it as
+ * `pending`, and the sweeper re-attempts + re-alerts every retention period.
+ */
+export async function pruneSettledLiquidations(
+  retentionHours = 24,
+  opts: { preserveAbandonedMints?: Iterable<string> } = {},
+): Promise<number> {
+  const preserve = new Set(opts.preserveAbandonedMints ?? [])
   return withStateLock(() => {
     const state = loadState()
     if (!state.pendingLiquidations) return 0
 
     const cutoff = Date.now() - retentionHours * 60 * 60 * 1000
     let pruned = 0
+    let preserved = 0
 
     for (const [mint, item] of Object.entries(state.pendingLiquidations)) {
       if (item.status === 'pending') continue
+      if ((item.status === 'abandoned' || item.status === 'dust') && preserve.has(mint)) {
+        preserved++
+        continue
+      }
       const lastAction = item.last_attempt_at ? new Date(item.last_attempt_at).getTime() : 0
       if (lastAction > 0 && lastAction <= cutoff) {
         delete state.pendingLiquidations[mint]
@@ -231,9 +299,13 @@ export async function pruneSettledLiquidations(retentionHours = 24): Promise<num
       }
     }
 
-    if (pruned > 0) {
-      saveState(state)
-      log('state', `Pruned ${pruned} settled liquidation entries older than ${retentionHours}h`)
+    if (pruned > 0 || preserved > 0) {
+      if (pruned > 0) saveState(state)
+      log(
+        'state',
+        `Pruned ${pruned} settled liquidation entries older than ${retentionHours}h` +
+          (preserved > 0 ? ` (preserved ${preserved} abandoned tombstone(s) for tokens still held)` : ''),
+      )
     }
     return pruned
   })

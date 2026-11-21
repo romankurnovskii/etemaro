@@ -13,6 +13,7 @@
 
 import fs from 'node:fs'
 import { config } from '../../config/Config.js'
+import type { DeployNotification } from '../../ports/notifications.js'
 import { AGENT_CONFIG_PATH, dataPath } from '../../shared/constants.js'
 import { log } from '../../shared/logger.js'
 import { loadJsonFile, saveJsonFile } from '../../shared/utils.js'
@@ -91,6 +92,11 @@ interface IncomingTelegramMessage {
   callbackQueryId?: string
   callbackData?: string
   messageId?: number
+  replyToMessage?: {
+    text?: string
+    from?: { id: number; first_name?: string; username?: string }
+    messageId?: number
+  }
 }
 
 function isAuthorizedIncomingMessage(msg: IncomingTelegramMessage): boolean {
@@ -504,6 +510,19 @@ export async function createLiveMessage(title: string, intro: string = 'Starting
 }
 
 // ─── Long polling ────────────────────────────────────────────────
+
+/**
+ * Normalize a Telegram `reply_to_message` payload (text or caption) into the
+ * inbound message shape used by the daemon. Returns undefined when there is
+ * nothing to quote.
+ */
+function normalizeReplyToMessage(reply: any): IncomingTelegramMessage['replyToMessage'] {
+  if (!reply) return undefined
+  const raw = typeof reply.text === 'string' ? reply.text : reply.caption
+  const text = typeof raw === 'string' && raw.trim() ? raw : undefined
+  return { text, from: reply.from, messageId: reply.message_id }
+}
+
 async function poll(onMessage: (msg: IncomingTelegramMessage) => Promise<void>): Promise<void> {
   while (_polling) {
     const base = getBase()
@@ -547,7 +566,10 @@ async function poll(onMessage: (msg: IncomingTelegramMessage) => Promise<void>):
         const msg = update.message
         if (!msg?.text) continue
         if (!isAuthorizedIncomingMessage(msg)) continue
-        await onMessage(msg)
+        await onMessage({
+          ...msg,
+          replyToMessage: normalizeReplyToMessage(msg.reply_to_message),
+        })
       }
       if (data.result?.length) saveOffsetState()
     } catch (e: any) {
@@ -665,15 +687,18 @@ export function stopPolling(): void {
 }
 
 // ─── Notification helpers ────────────────────────────────────────
-interface NotifyDeployArgs {
-  pair: string
-  amountSol: number
-  position: string
-  tx: string
-  priceRange?: { min: number; max: number }
-  rangeCoverage?: { downside_pct: number; upside_pct: number; width_pct: number }
-  binStep?: number
-  baseFee?: number
+/**
+ * Proof-of-execution guard. A deploy notification asserts that an on-chain
+ * position exists; the position address and the tx signature are the proof.
+ * Both are always present on a genuine success, so a missing one means there
+ * was no transaction — never render it as a "Deployed" message.
+ */
+function assertDeployProof(position: string, tx: string): void {
+  if (!position || !tx) {
+    throw new Error(
+      'notifyDeploy called without proof-of-execution: position and tx are both required (an unconfirmed deploy must not be reported as Deployed)',
+    )
+  }
 }
 
 export async function notifyDeploy({
@@ -685,7 +710,8 @@ export async function notifyDeploy({
   rangeCoverage,
   binStep,
   baseFee,
-}: NotifyDeployArgs): Promise<void> {
+}: DeployNotification): Promise<void> {
+  assertDeployProof(position, tx)
   const priceStr = priceRange
     ? `Price range: ${priceRange.min < 0.0001 ? priceRange.min.toExponential(3) : priceRange.min.toFixed(6)} – ${priceRange.max < 0.0001 ? priceRange.max.toExponential(3) : priceRange.max.toFixed(6)}\n`
     : ''
@@ -694,7 +720,9 @@ export async function notifyDeploy({
     : ''
   const poolStr =
     binStep || baseFee ? `Bin step: ${binStep ?? '?'}  |  Base fee: ${baseFee != null ? `${baseFee}%` : '?'}\n` : ''
-  const body = `Amount: ${amountSol} SOL\n${priceStr}${coverageStr}${poolStr}Position: ${position?.slice(0, 8)}... | Tx: ${tx?.slice(0, 16)}...`
+  const posFormatted = `${position.slice(0, 8)}...`
+  const txFormatted = `${tx.slice(0, 16)}...`
+  const body = `Amount: ${amountSol} SOL\n${priceStr}${coverageStr}${poolStr}Position: ${posFormatted} | Tx: ${txFormatted}`
   notify('deploy', '✅', `Deployed ${pair}`, body)
   await sendPlain(
     `✅ Deployed ${pair}\n` +
@@ -702,8 +730,8 @@ export async function notifyDeploy({
       priceStr +
       coverageStr +
       poolStr +
-      `Position: ${position?.slice(0, 8)}...\n` +
-      `Tx: ${tx?.slice(0, 16)}...`,
+      `Position: ${posFormatted}\n` +
+      `Tx: ${txFormatted}`,
   )
 }
 
@@ -759,12 +787,25 @@ export async function notifySwapError({
   inputSymbol,
   outputSymbol,
   reason,
+  source,
+  amount,
+  attempts,
+  abandoned,
 }: {
   inputSymbol: string
   outputSymbol: string
   reason?: string
+  source?: string
+  amount?: number
+  attempts?: number
+  abandoned?: boolean
 }): Promise<void> {
-  const body = `Reason: ${reason || 'Unknown error'}`
+  const lines = [`Reason: ${reason || 'Unknown error'}`]
+  if (source) lines.push(`Source: ${source}`)
+  if (typeof amount === 'number') lines.push(`Amount: ${amount}`)
+  if (typeof attempts === 'number') lines.push(`Attempts: ${attempts}`)
+  if (abandoned) lines.push('Status: abandoned — no further retries')
+  const body = lines.join('\n')
   notify('swap_error', '⚠️', `Auto-swap failed: ${inputSymbol} → ${outputSymbol}`, body)
   await sendPlain(`⚠️ Auto-swap failed: ${inputSymbol} → ${outputSymbol}\n${body}`)
 }

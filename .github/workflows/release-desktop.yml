@@ -23,7 +23,7 @@ jobs:
       - name: Create or Get Existing Release
         id: create_release
         env:
-          GH_TOKEN: ${{ secrets.TOKEN_PR || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           TAG: ${{ github.event.inputs.test_tag || github.ref_name }}
         run: |
           RELEASE_JSON=$(gh api repos/${{ github.repository }}/releases/tags/${TAG} 2>/dev/null || true)
@@ -53,7 +53,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: 'recursive'
-          token: ${{ secrets.TOKEN_PR }}
+          token: ${{ secrets.GH_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -77,7 +77,7 @@ jobs:
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -99,7 +99,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: 'recursive'
-          token: ${{ secrets.TOKEN_PR }}
+          token: ${{ secrets.GH_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -121,7 +121,7 @@ jobs:
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         with:
           releaseId: ${{ needs.create_release.outputs.release_id }}
           projectPath: './apps/desktop'
@@ -137,7 +137,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: 'recursive'
-          token: ${{ secrets.TOKEN_PR }}
+          token: ${{ secrets.GH_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -164,7 +164,7 @@ jobs:
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN_PR }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         with:
           releaseId: ${{ needs.create_release.outputs.release_id }}
           projectPath: './apps/desktop'
