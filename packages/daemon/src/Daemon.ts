@@ -24,6 +24,7 @@ import {
   type AgentMessage,
   addLogListener,
   agentLoop,
+  buildPositionSummary,
   computeAgentPnlMetrics,
   computeDeployAmount,
   config,
@@ -32,6 +33,7 @@ import {
   DEFAULT_ENTRY_SOURCE,
   DEV_BLOCKLIST_FILENAME,
   dataPath,
+  derivePhase,
   domain,
   getConsecutiveSwapFailures,
   getDataDir,
@@ -47,6 +49,7 @@ import {
   loadJsonFile,
   loadJsonFileWithInfo,
   log,
+  matchLivePositions,
   meteora,
   REPO_ROOT,
   registerExitSignal,
@@ -372,10 +375,14 @@ export class Daemon {
       case 'management':
         if (this.managementBusy || this.pnlPollBusy) return false
         this.managementBusy = true
+        // Announce the phase transition immediately — without this, `busy: true`
+        // is only ever observed if a PnL poll tick happens to land mid-cycle.
+        this.broadcastIpcState()
         return true
       case 'screening':
         if (this.screeningBusy) return false
         this.screeningBusy = true
+        this.broadcastIpcState()
         return true
       case 'pnlPoll':
         if (this.managementBusy || this.screeningBusy || this.pnlPollBusy) return false
@@ -3280,25 +3287,11 @@ IMPORTANT:
       this.latestLivePositions = (this.latestLivePositions || []).filter((lp: any) =>
         trackedSet.has(lp.position || lp.position_address),
       )
-      const positions: IpcPositionSummary[] = tracked.map((p: any) => {
-        const live = this.latestLivePositions.find((lp: any) => lp.position === p.position || lp.pool === p.pool)
-        const pnl = Number(live?.pnl_usd ?? p.pnl_usd ?? 0)
-        const pnlPct = Number(live?.pnl_pct ?? p.pnl_pct ?? p.peak_pnl_pct ?? 0)
-        const tokenSymbol =
-          live?.pair ?? p.pool_name ?? p.pair ?? p.tokenSymbol ?? (p.position ? p.position.slice(0, 8) : '')
-        const valueUsd = Number(live?.total_value_usd ?? live?.value_usd ?? p.initial_value_usd ?? 0)
-        const unclaimedFeesUsd = Number(live?.unclaimed_fees_usd ?? p.unclaimed_fees_usd ?? 0)
-        return {
-          positionAddress: p.position ?? p.position_address ?? '',
-          poolAddress: p.pool ?? p.pool_address ?? '',
-          tokenSymbol,
-          pnlUsd: Math.round(pnl * 100) / 100,
-          pnlPct: Math.round(pnlPct * 100) / 100,
-          valueUsd: Math.round(valueUsd * 100) / 100,
-          unclaimedFeesUsd: Math.round(unclaimedFeesUsd * 100) / 100,
-          deployedAt: p.deployed_at ? new Date(p.deployed_at).toISOString() : undefined,
-        }
-      })
+      // matchLivePositions only falls back to a pool-only match when both the
+      // tracked and live sides are unambiguous for that pool — otherwise two
+      // positions sharing a pool could swap each other's bins/PnL.
+      const matched = matchLivePositions(tracked, this.latestLivePositions)
+      const positions: IpcPositionSummary[] = tracked.map((p: any) => buildPositionSummary(p, matched.get(p)))
 
       const perfRecords = getPerformanceRecords()
       const pnlMetrics = computeAgentPnlMetrics({
@@ -3327,6 +3320,15 @@ IMPORTANT:
         activeStrategyId: this.adapters.domain.getActiveStrategy()?.id ?? null,
         configPath: AGENT_CONFIG_PATH,
         dryRun: Boolean(config.connection?.dryRun),
+        agentId: getInstanceId(),
+        // Derived from the same busy flags above — an authoritative phase instead
+        // of a client-side guess from log text.
+        phase: derivePhase({
+          screeningBusy: this.screeningBusy,
+          managementBusy: this.managementBusy,
+          busy: this.busy,
+        }),
+        startedAt: new Date(this.sessionStartTime).toISOString(),
       })
     } catch (e: any) {
       log('ipc_warn', `Failed to broadcast IPC state: ${e.message}`)

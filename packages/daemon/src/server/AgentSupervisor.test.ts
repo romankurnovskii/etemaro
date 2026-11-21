@@ -83,14 +83,23 @@ describe('AgentSupervisor', () => {
     expect(args).toContain('--data-dir')
     expect(agent.running).toBe(true)
     expect(agent.pid).toBe(4242)
+    expect(agent.startedAt).not.toBeNull()
+    expect(Number.isNaN(Date.parse(agent.startedAt as string))).toBe(false)
   })
 
-  it('stops a running agent with SIGTERM', () => {
+  it('exposes the agent own ipcPort from its instance config', () => {
+    const created = sup.create('Ported')
+    expect(created.ipcPort).toBeGreaterThan(8765)
+  })
+
+  it('stops a running agent with SIGTERM and reports it as not running', () => {
     sup.create('Stopper')
     sup.start('stopper')
-    sup.stop('stopper')
+    const stopped = sup.stop('stopper')
     const child = spawnFn.mock.results[0]?.value
     expect(child.kill).toHaveBeenCalledWith('SIGTERM')
+    expect(stopped.running).toBe(false)
+    expect(stopped.startedAt).toBeNull()
   })
 
   it('setStrategy updates the instance config', () => {

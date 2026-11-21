@@ -28,13 +28,30 @@ function normalizeArgs(tool: ToolDescriptor, raw: Record<string, unknown>): Reco
   return out
 }
 
+function fallbackCopy(text: string): void {
+  const el = document.createElement('textarea')
+  el.value = text
+  el.style.position = 'fixed'
+  el.style.opacity = '0'
+  document.body.appendChild(el)
+  el.select()
+  try {
+    document.execCommand('copy')
+  } catch {
+    /* ignore */
+  }
+  document.body.removeChild(el)
+}
+
 export function ToolsView({ catalog, token, initialToolName }: Props) {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<string | null>(initialToolName ?? null)
   const [args, setArgs] = useState<Record<string, unknown>>({})
   const [confirm, setConfirm] = useState(false)
   const [result, setResult] = useState<string | null>(null)
+  const [isError, setIsError] = useState(false)
   const [pending, setPending] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (initialToolName) setActive(initialToolName)
@@ -44,6 +61,7 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
     setArgs({})
     setConfirm(false)
     setResult(null)
+    setIsError(false)
   }, [])
 
   const tool = useMemo(() => catalog.find((t) => t.name === active) ?? null, [catalog, active])
@@ -64,8 +82,17 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      setResult(JSON.stringify(res, null, 2))
+      // Surface domain errors (HTTP 200 with error/blocked field)
+      const resObj = res as Record<string, unknown> | null
+      if (resObj && (resObj.error || resObj.blocked)) {
+        setIsError(true)
+        setResult(typeof resObj.error === 'string' ? resObj.error : JSON.stringify(res, null, 2))
+      } else {
+        setIsError(false)
+        setResult(JSON.stringify(res, null, 2))
+      }
     } catch (e) {
+      setIsError(true)
       setResult(e instanceof Error ? e.message : String(e))
     } finally {
       setPending(false)
@@ -87,9 +114,10 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
             >
               <div className="name">
                 {t.name}{' '}
-                <span className={`badge ${t.isProtected ? 'badge-write' : 'badge-read'}`}>
-                  {t.isProtected ? 'write' : 'read'}
+                <span className={`badge ${t.isWrite ? 'badge-write' : 'badge-read'}`}>
+                  {t.isWrite ? 'write' : 'read'}
                 </span>
+                {t.isProtected && <span className="badge badge-protected">protected</span>}
               </div>
               <div className="desc">{t.description}</div>
             </button>
@@ -120,18 +148,46 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
                 />
               ))}
               {tool.isProtected ? (
-                <label className="field">
-                  <span className="warn">
-                    <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} /> I
-                    understand and want to run it
-                  </span>
-                </label>
+                <div className="confirm-required">
+                  <p className="warn small">⚠ This tool requires confirmation (CONFIRM_REQUIRED). Check the box to proceed.</p>
+                  <label className="field">
+                    <span className="warn">
+                      <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} /> I
+                      understand and want to run it
+                    </span>
+                  </label>
+                </div>
               ) : null}
               <button type="submit" className="primary" disabled={pending}>
                 {pending ? 'Running…' : 'Run tool'}
               </button>
             </form>
-            {result ? <pre className="result mt">{result}</pre> : null}
+            {result ? (
+              <div style={{ position: 'relative', marginTop: 12 }}>
+                <pre className={`result${isError ? ' is-error' : ''}`}>{result}</pre>
+                <button
+                  type="button"
+                  className="copy-btn"
+                  aria-label="Copy output"
+                  onClick={() => {
+                    const text = result
+                    if (navigator.clipboard) {
+                      navigator.clipboard
+                        .writeText(text)
+                        .then(() => {
+                          setCopied(true)
+                          setTimeout(() => setCopied(false), 1500)
+                        })
+                        .catch(() => fallbackCopy(text))
+                    } else {
+                      fallbackCopy(text)
+                    }
+                  }}
+                >
+                  {copied ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+            ) : null}
           </>
         )}
       </section>
