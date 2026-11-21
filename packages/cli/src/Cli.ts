@@ -234,7 +234,11 @@ export class Cli {
     this.writeSkillMd()
 
     // Parse args
-    const isHelp = argv.includes('--help') || argv.includes('-h') || argv.includes('help')
+    // `help` is only a help request in the leading position (`help`, `help wallet`,
+    // `wallet help`) — not when it is a flag value (`config set generalModel help`).
+    const positionals = argv.filter((a) => !a.startsWith('-'))
+    const helpIndex = positionals.indexOf('help')
+    const isHelp = argv.includes('--help') || argv.includes('-h') || helpIndex === 0 || helpIndex === 1
     const subcommand = argv.find((a) => !a.startsWith('-') && a !== 'help')
     const sub2 = argv.filter((a) => !a.startsWith('-') && a !== 'help')[1]
 

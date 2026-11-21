@@ -19,6 +19,7 @@ export default defineConfig({
   async onSuccess() {
     // Generate Cli.cjs compatibility wrapper for Homebrew formula and CJS consumers
     const wrapper = '#!/usr/bin/env node\nimport("./Cli.js");\n'
-    fs.writeFileSync(path.join(__dirname, 'dist', 'Cli.cjs'), wrapper)
+    // mode 0o755: the wrapper is the Homebrew `bin.install_symlink` target and must be executable
+    fs.writeFileSync(path.join(__dirname, 'dist', 'Cli.cjs'), wrapper, { mode: 0o755 })
   },
 })
