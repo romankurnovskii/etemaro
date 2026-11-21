@@ -24,7 +24,7 @@ export function AgentsView(props: Props) {
   return (
     <>
       <section className="card">
-        <h2>New agent</h2>
+        <h2>New agent / Fleet Management</h2>
         <div className="row">
           <input
             value={name}
@@ -38,7 +38,7 @@ export function AgentsView(props: Props) {
             Create agent
           </button>
         </div>
-        <p className="muted small">Creates an agent configured for dry-run. Start it with one click below.</p>
+        <p className="muted small">Creates an agent configured for dry-run. Monitor state transitions below.</p>
       </section>
 
       {props.agents.length === 0 ? (
@@ -53,9 +53,9 @@ export function AgentsView(props: Props) {
               <div className="grow">
                 <div>
                   <strong>{agent.name}</strong>{' '}
-                  <span className="muted small">{agent.running ? 'running' : 'stopped'}</span>
+                  <span className="muted small">({agent.running ? 'running' : 'stopped'})</span>
                 </div>
-                {agent.strategyId ? <div className="muted small">{agent.strategyId}</div> : null}
+                {agent.strategyId ? <div className="muted small">Strategy ID: {agent.strategyId}</div> : null}
               </div>
               {agent.running ? (
                 <button
@@ -77,6 +77,22 @@ export function AgentsView(props: Props) {
                 </button>
               )}
             </div>
+
+            {/* Agent Visualizer & State Inspection Module */}
+            <div className="mt" style={{ background: 'var(--panel-2)', padding: '10px', borderRadius: '8px' }}>
+              <div className="small muted" style={{ marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Agent Loop Topology & State
+              </div>
+              <div className="row small" style={{ gap: '8px' }}>
+                <span style={{ fontWeight: agent.running ? 'bold' : 'normal', color: agent.running ? 'var(--accent)' : 'inherit' }}>
+                  1. Idle
+                </span> → 
+                <span>2. Evaluating</span> → 
+                <span>3. Rebalancing</span> → 
+                <span>4. Settled</span>
+              </div>
+            </div>
+
             <div className="row mt">
               <span className="muted small">Strategy</span>
               <select
