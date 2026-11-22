@@ -34,7 +34,9 @@ function errorMessage(e: unknown): string {
 export function StrategySwitch({ agent, strategies, onApply }: Props) {
   const token = useUiStore((s) => s.token)
   const current = agent.strategyId
-  const [target, setTarget] = useState('')
+  // Show the agent's actual strategy, not an empty placeholder: the select is a
+  // config editor, and an empty box reads as "nothing configured".
+  const [target, setTarget] = useState(current ?? '')
   const [preview, setPreview] = useState<Preview | null>(null)
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -57,7 +59,7 @@ export function StrategySwitch({ agent, strategies, onApply }: Props) {
 
   const reset = () => {
     requestRef.current += 1
-    setTarget('')
+    setTarget(current ?? '')
     setPreview(null)
     setLoading(false)
     setError(null)
@@ -122,6 +124,9 @@ export function StrategySwitch({ agent, strategies, onApply }: Props) {
           onChange={(e) => void requestPreview(e.target.value)}
         >
           <option value="">{strategies.length === 0 ? 'No strategies in library' : 'Choose a strategy…'}</option>
+          {current && !strategies.some((s) => s.id === current) ? (
+            <option value={current}>{current} — current (not in library)</option>
+          ) : null}
           {strategies.map((s) => (
             <option key={s.id} value={s.id} disabled={s.id === current}>
               {s.name && s.name !== s.id ? `${s.name} (${s.id})` : s.id}

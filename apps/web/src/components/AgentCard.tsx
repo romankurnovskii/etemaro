@@ -4,6 +4,7 @@ import { isLiveAgent } from '../lib/agentSafety'
 import { DASH, fmtAgo, fmtClock, shortAddr } from '../lib/format'
 import type { ManagedAgent, StrategySummary } from '../lib/ipc'
 import { type LogRecord, logKey, severityOf } from '../lib/logs'
+import { useClockStore } from '../stores/clockStore'
 import type { AgentTelemetry } from '../stores/telemetryStore'
 import { PhasePipeline } from './PhasePipeline'
 import { StrategySwitch } from './StrategySwitch'
@@ -65,6 +66,7 @@ export function AgentCard(props: Props) {
   const { agent, telemetry, logs, writeTools, now } = props
   const [confirming, setConfirming] = useState(false)
   const live = isLiveAgent(agent)
+  const timeZone = useClockStore((s) => s.timeZone)
   const connected = telemetry?.link === 'connected'
   const snapshot = telemetry?.snapshot ?? null
   const status = deriveStatus({ running: agent.running, hasTelemetry: connected, snapshot, logs, writeTools })
@@ -79,7 +81,7 @@ export function AgentCard(props: Props) {
   ) : phase?.basis ? (
     <>
       <span className="tag tag-inferred">inferred</span> from <span className="mono">{phase.basis.category}</span> at{' '}
-      {fmtClock(phase.basis.ts)}
+      {fmtClock(phase.basis.ts, timeZone)}
     </>
   ) : (
     <>
@@ -162,7 +164,7 @@ export function AgentCard(props: Props) {
         <Metric label="Last message">
           {telemetry?.lastMessageAt ? (
             <>
-              {fmtClock(telemetry.lastMessageAt)}{' '}
+              {fmtClock(telemetry.lastMessageAt, timeZone)}{' '}
               <span className="muted">({fmtAgo(telemetry.lastMessageAt, now)})</span>
             </>
           ) : (
@@ -187,7 +189,7 @@ export function AgentCard(props: Props) {
         <Metric label="Last tool">
           {tool ? (
             <>
-              <span className="mono">{tool.name}</span> <span className="muted">{fmtClock(tool.ts)}</span>
+              <span className="mono">{tool.name}</span> <span className="muted">{fmtClock(tool.ts, timeZone)}</span>
             </>
           ) : (
             DASH
@@ -221,8 +223,8 @@ export function AgentCard(props: Props) {
           <ul className="log-list compact">
             {recent.map((r) => (
               <li key={logKey(r)} className={`log-line sev-${severityOf(r.entry.category)}`}>
-                <span className="ts">{fmtClock(r.entry.ts)}</span> <span className="cat">{r.entry.category}</span>{' '}
-                <span className="msg-text">{r.entry.message}</span>
+                <span className="ts">{fmtClock(r.entry.ts, timeZone)}</span>{' '}
+                <span className="cat">{r.entry.category}</span> <span className="msg-text">{r.entry.message}</span>
               </li>
             ))}
           </ul>

@@ -1,4 +1,18 @@
+import { useEffect, useState } from 'react'
+import { fmtClock, fmtCountdown } from '../lib/format'
 import type { StateSnapshot } from '../lib/ipc'
+import { useClockStore, zoneLabel } from '../stores/clockStore'
+
+const TICK_MS = 1000
+
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs)
+    return () => window.clearInterval(id)
+  }, [intervalMs])
+  return now
+}
 
 function fmtUsd(value: number | undefined): string {
   const v = Number(value ?? 0)
@@ -10,13 +24,11 @@ function fmtOptUsd(value: number | undefined): string {
   return value === undefined || value === null ? '—' : fmtUsd(value)
 }
 
-function fmtTime(iso: string | undefined): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString()
-}
-
 export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) {
+  const now = useNow(TICK_MS)
+  const timeZone = useClockStore((s) => s.timeZone)
+  const utcOffsetMinutes = useClockStore((s) => s.utcOffsetMinutes)
+
   if (!snapshot) {
     return (
       <section className="card">
@@ -29,6 +41,8 @@ export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) 
   const shortWallet = snapshot.walletAddress
     ? `${snapshot.walletAddress.slice(0, 4)}…${snapshot.walletAddress.slice(-4)}`
     : '—'
+  const zone = zoneLabel(timeZone, utcOffsetMinutes)
+
   return (
     <>
       <div className="section-head">
@@ -38,12 +52,17 @@ export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) 
             State of the daemon serving this console. Managed agents report their own state on the Agents tab.
           </p>
         </div>
-        {snapshot.dryRun === undefined ? null : (
-          <span className={`status-pill ${snapshot.dryRun ? 'pill-idle' : 'pill-running'}`}>
-            <span className="dot" aria-hidden="true" />
-            {snapshot.dryRun ? 'Dry-run' : 'Live'}
+        <div className="row">
+          <span className="muted small" title="Timestamps are rendered in the daemon's timezone">
+            Times in {zone}
           </span>
-        )}
+          {snapshot.dryRun === undefined ? null : (
+            <span className={`status-pill ${snapshot.dryRun ? 'pill-idle' : 'pill-running'}`}>
+              <span className="dot" aria-hidden="true" />
+              {snapshot.dryRun ? 'Dry-run' : 'Live'}
+            </span>
+          )}
+        </div>
       </div>
       <div className="metrics">
         <div className="metric">
@@ -88,11 +107,15 @@ export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) 
         </div>
         <div className="metric">
           <div className="label">Next screening</div>
-          <div className="value small">{fmtTime(snapshot.nextScreenAt)}</div>
+          <div className="value small" title={fmtClock(snapshot.nextScreenAt, timeZone)}>
+            {fmtCountdown(snapshot.nextScreenAt, now)}
+          </div>
         </div>
         <div className="metric">
           <div className="label">Next management</div>
-          <div className="value small">{fmtTime(snapshot.nextManageAt)}</div>
+          <div className="value small" title={fmtClock(snapshot.nextManageAt, timeZone)}>
+            {fmtCountdown(snapshot.nextManageAt, now)}
+          </div>
         </div>
       </div>
       <section className="card mt">

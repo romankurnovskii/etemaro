@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react'
 import { Button } from '../components/ui'
 import { fmtClock } from '../lib/format'
 import { logKey, mergedLogs, SEVERITIES, type Severity, severityOf } from '../lib/logs'
+import { useClockStore } from '../stores/clockStore'
 import { useLogsStore } from '../stores/logsStore'
 
 const MAX_RENDERED = 500
 
 export function LogsView() {
   const store = useLogsStore((s) => s.store)
+  const timeZone = useClockStore((s) => s.timeZone)
   const clear = useLogsStore((s) => s.clear)
   const [enabled, setEnabled] = useState<Record<Severity, boolean>>({ info: true, warn: true, error: true })
   const [category, setCategory] = useState('')
@@ -103,7 +105,7 @@ export function LogsView() {
             const sev = severityOf(r.entry.category)
             return (
               <li key={logKey(r)} className={`log-line sev-${sev}`}>
-                <span className="ts">{fmtClock(r.entry.ts)}</span>
+                <span className="ts">{fmtClock(r.entry.ts, timeZone)}</span>
                 <span className={`tag tag-sev-${sev}`}>{sev}</span>
                 <span className="agent">{r.entry.agentId}</span>
                 <span className="cat">{r.entry.category}</span>
