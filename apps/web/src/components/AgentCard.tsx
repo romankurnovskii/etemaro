@@ -23,8 +23,8 @@ interface Props {
   busy: boolean
   error: string | undefined
   now: number
-  onStart: (id: string) => Promise<void>
-  onStop: (id: string) => Promise<void>
+  onStart: (id: string) => void
+  onStop: (id: string) => void
   onSetStrategy: (id: string, strategyId: string) => Promise<void>
 }
 
@@ -98,11 +98,11 @@ export function AgentCard(props: Props) {
           {STATUS_LABEL[status]}
         </Pill>
         {agent.running ? (
-          <Button size="sm" variant="danger" disabled={props.busy} onClick={() => void props.onStop(agent.id)}>
+          <Button size="sm" variant="danger" disabled={props.busy} onClick={() => props.onStop(agent.id)}>
             {props.busy ? 'Stopping…' : 'Stop'}
           </Button>
         ) : (
-          <Button size="sm" variant="primary" disabled={props.busy} onClick={() => void props.onStart(agent.id)}>
+          <Button size="sm" variant="primary" disabled={props.busy} onClick={() => props.onStart(agent.id)}>
             {props.busy ? 'Starting…' : 'Start'}
           </Button>
         )}

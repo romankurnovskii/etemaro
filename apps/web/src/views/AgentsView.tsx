@@ -119,8 +119,8 @@ export function AgentsView({ writeTools, strategies, onCreateStrategy }: Props) 
                 busy={Boolean(busy)}
                 error={actionError}
                 now={now}
-                onStart={(id) => setRunning.mutateAsync({ id, running: true })}
-                onStop={(id) => setRunning.mutateAsync({ id, running: false })}
+                onStart={(id) => setRunning.mutate({ id, running: true })}
+                onStop={(id) => setRunning.mutate({ id, running: false })}
                 onSetStrategy={(id, strategyId) => setStrategy.mutateAsync({ id, strategyId })}
               />
             )
