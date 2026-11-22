@@ -1,33 +1,55 @@
-/* Etemaro brand tokens (issue #342). Components use these variables only. */
-:root {
-  --canvas: #ffffff;
-  --surface: #faf8f5;
-  --accent: #556b2f;
-  --accent-strong: #435524;
-  --text: #1a120d;
-  --muted: #6e665e;
-  --border: #e5ddd4;
+/* Etemaro brand tokens (issue #342, #536). Components use these variables only.
+   Palette mirrors the brand mark (assets/favicon.svg): olive #556B2F on a warm
+   off-white canvas, with sage as the secondary accent. Dark values come from
+   the brand dashboard palette (#0F0C0A / #1A1512 / #FAF8F5).
 
-  --success: #556b2f;
-  --warning: #c27803;
-  --danger: #b83232;
+   `light-dark()` picks the value from `color-scheme`, so one declaration covers
+   both themes. `[data-theme]` on <html> pins the scheme; without it the OS
+   preference wins. */
+:root {
+  color-scheme: light dark;
+
+  --canvas: light-dark(#ffffff, #0f0c0a);
+  --surface: light-dark(#faf8f5, #1a1512);
+  --surface-2: light-dark(#f4f0ea, #1f1916);
+  --accent: light-dark(#556b2f, #8a9a5b);
+  --accent-strong: light-dark(#435524, #a3b36e);
+  --accent-sage: light-dark(#8a9a5b, #a3b36e);
+  --text: light-dark(#1a120d, #faf8f5);
+  --muted: light-dark(#6e665e, #a89f94);
+  --border: light-dark(#e5ddd4, #2a2320);
+  --border-strong: light-dark(#d3c8bb, #3a312c);
+
+  --success: light-dark(#556b2f, #8a9a5b);
+  --warning: light-dark(#c27803, #e0a33a);
+  --danger: light-dark(#b83232, #e05c5c);
 
   --accent-tint: color-mix(in srgb, var(--accent) 9%, var(--canvas));
   --warning-tint: color-mix(in srgb, var(--warning) 12%, var(--canvas));
   --danger-tint: color-mix(in srgb, var(--danger) 9%, var(--canvas));
 
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-ui: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 
-  --radius: 6px;
-  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-sm: 5px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
+  --shadow-sm: 0 1px 2px light-dark(rgba(26, 18, 13, 0.06), rgba(0, 0, 0, 0.4));
+  --shadow-md: 0 8px 24px light-dark(rgba(26, 18, 13, 0.12), rgba(0, 0, 0, 0.6));
   --focus: 0 0 0 2px var(--canvas), 0 0 0 4px var(--accent);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 * {
@@ -182,10 +204,7 @@ summary:focus-visible {
   min-width: 140px;
 }
 
-.btn,
-button.primary,
-button.ghost,
-button.danger {
+.btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -204,35 +223,34 @@ button.danger {
 .btn:hover:not(:disabled) {
   border-color: var(--muted);
 }
-.btn-primary,
-button.primary {
+.btn-secondary {
+  background: var(--canvas);
+  border-color: var(--border);
+  color: var(--text);
+}
+.btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: light-dark(#fff, #0f0c0a);
 }
-.btn-primary:hover:not(:disabled),
-button.primary:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled) {
   background: var(--accent-strong);
   border-color: var(--accent-strong);
 }
-.btn-danger,
-button.danger {
+.btn-danger {
   background: var(--canvas);
   border-color: var(--danger);
   color: var(--danger);
 }
-.btn-danger:hover:not(:disabled),
-button.danger:hover:not(:disabled) {
+.btn-danger:hover:not(:disabled) {
   background: var(--danger-tint);
 }
-.btn-quiet,
-button.ghost {
+.btn-quiet {
   background: transparent;
   border-color: transparent;
   color: var(--accent);
 }
-.btn-quiet:hover:not(:disabled),
-button.ghost:hover:not(:disabled) {
+.btn-quiet:hover:not(:disabled) {
   background: var(--accent-tint);
 }
 .btn-sm {
@@ -263,12 +281,11 @@ button:disabled {
 .brand h1 {
   font-size: 18px;
   font-weight: 700;
+  letter-spacing: -0.02em;
 }
-.brand-mark {
-  width: 14px;
-  height: 28px;
-  background: var(--accent);
-  border-radius: 2px;
+.brand-logo {
+  color: var(--accent);
+  flex: none;
 }
 .topbar-status {
   display: flex;
@@ -276,9 +293,50 @@ button:disabled {
   gap: 2px;
   align-items: flex-start;
 }
-.token-form input {
-  width: 200px;
+
+/* ─── Connection popover ────────────────────────────────── */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.conn-menu {
+  position: relative;
+}
+.conn-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-2));
+  z-index: 20;
+  width: min(380px, calc(100vw - 32px));
+  padding: var(--space-4);
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+}
+.conn-panel h2 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
+.conn-panel p {
+  margin-bottom: var(--space-3);
+}
+.conn-panel input {
+  width: 100%;
   font-family: var(--font-mono);
+}
+.conn-panel .hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: var(--space-1);
+}
+.conn-panel .dialog-actions {
+  margin-top: var(--space-3);
 }
 
 .dot {
@@ -302,25 +360,35 @@ button:disabled {
   white-space: nowrap;
 }
 .conn-connected .dot,
-.pill-running .dot {
+.pill-running .dot,
+.pill-success .dot {
   color: var(--success);
 }
-.conn-connecting .dot {
+.conn-connecting .dot,
+.pill-warning .dot {
   color: var(--warning);
 }
-.pill-idle .dot {
+.pill-idle .dot,
+.pill-neutral .dot {
   color: var(--muted);
 }
 .conn-disconnected .dot,
 .pill-stopped .dot,
-.pill-error .dot {
+.pill-error .dot,
+.pill-danger .dot {
   color: var(--danger);
 }
-.pill-running {
+.pill-running,
+.pill-success {
   border-color: color-mix(in srgb, var(--success) 40%, var(--border));
   background: var(--accent-tint);
 }
-.pill-error {
+.pill-warning {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+  background: var(--warning-tint);
+}
+.pill-error,
+.pill-danger {
   border-color: var(--danger);
   background: var(--danger-tint);
   color: var(--danger);
@@ -573,6 +641,9 @@ button:disabled {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.not-exposed {
+  margin-top: calc(-1 * var(--space-2));
+}
 .strategy-switch select {
   flex: 1;
   min-width: 0;
@@ -753,7 +824,7 @@ th.num {
   display: block;
   margin-bottom: var(--space-3);
 }
-.field > span {
+.field > label {
   display: block;
   font-size: 13px;
   font-weight: 600;
@@ -920,8 +991,20 @@ pre.result {
   .brand {
     width: 100%;
   }
-  .token-form,
-  .token-form input,
+  .conn-menu {
+    flex: 1;
+  }
+  .conn-menu > .btn {
+    width: 100%;
+  }
+  .topbar-actions {
+    width: 100%;
+  }
+  .conn-panel {
+    left: 0;
+    right: auto;
+    width: 100%;
+  }
   .create-agent,
   .create-agent .row input {
     width: 100%;

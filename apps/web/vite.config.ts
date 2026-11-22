@@ -6,5 +6,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   build: { outDir: 'dist', emptyOutDir: true },
-  server: { port: 5173 },
+  // Bind IPv4 loopback explicitly: the default resolves to `[::1]` only, so
+  // `http://127.0.0.1:5173` is refused and browsers that prefer IPv4 fail.
+  server: { host: '127.0.0.1', port: 5173 },
 })

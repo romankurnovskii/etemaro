@@ -1,19 +1,18 @@
 import { useEffect, useState } from 'react'
 import { AgentCard } from '../components/AgentCard'
-import type { AgentsController } from '../hooks/useAgents'
-import type { AgentTelemetry } from '../hooks/useAgentTelemetry'
+import { Button, Field } from '../components/ui'
+import { useAgentMutations, useAgentsQuery } from '../hooks/useAgentsQuery'
 import type { StrategySummary } from '../lib/ipc'
-import { type LogStore, logsForAgent } from '../lib/logs'
+import { logsForAgent } from '../lib/logs'
+import { useLogsStore } from '../stores/logsStore'
+import { useTelemetryStore } from '../stores/telemetryStore'
+import { useUiStore } from '../stores/uiStore'
 
 const CLOCK_TICK_MS = 5000
 
 interface Props {
-  controller: AgentsController
-  telemetry: Readonly<Record<string, AgentTelemetry>>
-  logs: LogStore
   writeTools: ReadonlySet<string>
   strategies: StrategySummary[]
-  token: string
   onCreateStrategy: () => void
 }
 
@@ -26,21 +25,24 @@ function useNow(intervalMs: number): number {
   return now
 }
 
-export function AgentsView({ controller, telemetry, logs, writeTools, strategies, token, onCreateStrategy }: Props) {
+export function AgentsView({ writeTools, strategies, onCreateStrategy }: Props) {
   const [name, setName] = useState('')
-  const [createError, setCreateError] = useState<string | null>(null)
   const now = useNow(CLOCK_TICK_MS)
-  const { agents } = controller
+
+  const token = useUiStore((s) => s.token)
+  const agentsQuery = useAgentsQuery(token)
+  const { create, setRunning, setStrategy } = useAgentMutations(token)
+
+  const telemetry = useTelemetryStore((s) => s.byAgent)
+  const logs = useLogsStore((s) => s.store)
+
+  const agents = agentsQuery.data ?? []
   const running = agents.filter((a) => a.running).length
 
   const submit = () => {
     const value = name.trim()
     if (!value) return
-    setCreateError(null)
-    controller
-      .create(value)
-      .then(() => setName(''))
-      .catch((e: unknown) => setCreateError(e instanceof Error ? e.message : String(e)))
+    create.mutate(value, { onSuccess: () => setName('') })
   }
 
   return (
@@ -60,66 +62,69 @@ export function AgentsView({ controller, telemetry, logs, writeTools, strategies
             submit()
           }}
         >
-          <label htmlFor="new-agent-name" className="field-label">
-            New agent (dry-run)
-          </label>
-          <div className="row nowrap">
-            <input
-              id="new-agent-name"
-              value={name}
-              placeholder="Agent name"
-              onChange={(e) => setName(e.target.value)}
-            />
-            <button type="submit" className="btn btn-primary" disabled={!name.trim()}>
-              Create
-            </button>
-            <button type="button" className="btn btn-quiet" onClick={onCreateStrategy}>
-              New strategy
-            </button>
-          </div>
-          {createError ? (
+          <Field label="New agent (dry-run)" htmlFor="new-agent-name">
+            <div className="row nowrap">
+              <input
+                id="new-agent-name"
+                value={name}
+                placeholder="Agent name"
+                onChange={(e) => setName(e.target.value)}
+              />
+              <Button type="submit" variant="primary" disabled={!name.trim() || create.isPending}>
+                {create.isPending ? 'Creating…' : 'Create'}
+              </Button>
+              <Button variant="quiet" onClick={onCreateStrategy}>
+                New strategy
+              </Button>
+            </div>
+          </Field>
+          {create.error ? (
             <p className="msg msg-error" role="alert">
-              {createError}
+              {create.error.message}
             </p>
           ) : null}
         </form>
       </section>
 
-      {controller.loadError ? (
+      {agentsQuery.error ? (
         <div className="msg msg-error" role="alert">
-          Could not load agents: {controller.loadError}{' '}
-          <button type="button" className="btn btn-sm" onClick={controller.reload}>
+          Could not load agents: {agentsQuery.error.message}{' '}
+          <Button size="sm" onClick={() => void agentsQuery.refetch()}>
             Retry
-          </button>
+          </Button>
         </div>
       ) : null}
 
-      {!controller.loaded ? (
+      {agentsQuery.isPending ? (
         <p className="muted">Loading agents…</p>
-      ) : agents.length === 0 && !controller.loadError ? (
+      ) : agents.length === 0 && !agentsQuery.error ? (
         <div className="empty">
           <p>No agents configured yet.</p>
           <p className="muted small">Create one above — it starts in dry-run mode.</p>
         </div>
       ) : (
         <div className="agent-grid">
-          {agents.map((agent) => (
-            <AgentCard
-              key={agent.id}
-              agent={agent}
-              telemetry={telemetry[agent.id]}
-              logs={logsForAgent(logs, agent.id)}
-              writeTools={writeTools}
-              strategies={strategies}
-              token={token}
-              busy={Boolean(controller.busy[agent.id])}
-              error={controller.errors[agent.id]}
-              now={now}
-              onStart={controller.start}
-              onStop={controller.stop}
-              onSetStrategy={controller.setStrategy}
-            />
-          ))}
+          {agents.map((agent) => {
+            const busy = setRunning.isPending && setRunning.variables?.id === agent.id
+            const actionError =
+              setRunning.error && setRunning.variables?.id === agent.id ? setRunning.error.message : undefined
+            return (
+              <AgentCard
+                key={agent.id}
+                agent={agent}
+                telemetry={telemetry[agent.id]}
+                logs={logsForAgent(logs, agent.id)}
+                writeTools={writeTools}
+                strategies={strategies}
+                busy={Boolean(busy)}
+                error={actionError}
+                now={now}
+                onStart={(id) => setRunning.mutate({ id, running: true })}
+                onStop={(id) => setRunning.mutate({ id, running: false })}
+                onSetStrategy={(id, strategyId) => setStrategy.mutateAsync({ id, strategyId })}
+              />
+            )
+          })}
         </div>
       )}
     </div>

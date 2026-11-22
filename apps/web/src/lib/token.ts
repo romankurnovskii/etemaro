@@ -3,10 +3,12 @@ export const TOKEN_STORAGE_KEY = 'etemaro.token'
 
 /** Token from `?token=` (persisted) or localStorage. */
 export function readInitialToken(): string {
-  const fromUrl = new URLSearchParams(location.search).get('token')
-  if (fromUrl) {
-    storeToken(fromUrl)
-    return fromUrl
+  if (typeof location !== 'undefined') {
+    const fromUrl = new URLSearchParams(location.search).get('token')
+    if (fromUrl) {
+      storeToken(fromUrl)
+      return fromUrl
+    }
   }
   try {
     return localStorage.getItem(TOKEN_STORAGE_KEY) ?? ''

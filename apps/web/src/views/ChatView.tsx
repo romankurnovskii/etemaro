@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
+import { Button } from '../components/ui'
 import type { ChatMessage } from '../lib/ipc'
 
 export function ChatView({ chat, onSend }: { chat: ChatMessage[]; onSend: (text: string) => boolean }) {
   const [text, setText] = useState('')
   const logRef = useRef<HTMLDivElement | null>(null)
 
+  // Follow the conversation: scroll on every new message, not just on mount.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: chat.length is the trigger; the effect only touches the ref
   useEffect(() => {
     const el = logRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [])
+  }, [chat.length])
 
   const submit = () => {
     const value = text.trim()
@@ -19,7 +22,7 @@ export function ChatView({ chat, onSend }: { chat: ChatMessage[]; onSend: (text:
   return (
     <section className="card">
       <h2>Chat with the agent</h2>
-      <div className="chat-log" ref={logRef}>
+      <div className="chat-log" ref={logRef} aria-live="polite">
         {chat.length === 0 ? (
           <p className="muted small">No messages yet. Ask e.g. "what is the current status?".</p>
         ) : (
@@ -34,14 +37,15 @@ export function ChatView({ chat, onSend }: { chat: ChatMessage[]; onSend: (text:
         <input
           value={text}
           placeholder="Ask the agent…"
+          aria-label="Message to the agent"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') submit()
           }}
         />
-        <button type="button" className="primary" onClick={submit}>
+        <Button variant="primary" onClick={submit} disabled={!text.trim()}>
           Send
-        </button>
+        </Button>
       </div>
     </section>
   )

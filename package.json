@@ -9,7 +9,7 @@
     "etemaro": "packages/cli/dist/Cli.js"
   },
   "scripts": {
-    "build": "pnpm -r run build",
+    "build": "pnpm --filter @etemaro/web build && pnpm -r --filter '!@etemaro/web' run build",
     "typecheck": "pnpm -r run typecheck",
     "start": "node --import tsx packages/cli/src/Cli.ts start",
     "dev": "DRY_RUN=true node --import tsx packages/cli/src/Cli.ts start",

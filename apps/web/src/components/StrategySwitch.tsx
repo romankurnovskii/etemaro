@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { callTool } from '../lib/api'
 import type { ManagedAgent, StrategySummary } from '../lib/ipc'
 import { type DiffRow, diffStrategies, formatDiffValue } from '../lib/strategyDiff'
+import { useUiStore } from '../stores/uiStore'
+import { Button } from './ui'
 
 interface Props {
   agent: ManagedAgent
   strategies: StrategySummary[]
-  token: string
   onApply: (agentId: string, strategyId: string) => Promise<void>
 }
 
@@ -30,7 +31,8 @@ function errorMessage(e: unknown): string {
  * `key={agent.id + agent.strategyId}` so any change of the agent's strategy
  * (from a poll or another tab) remounts it and drops a stale preview.
  */
-export function StrategySwitch({ agent, strategies, token, onApply }: Props) {
+export function StrategySwitch({ agent, strategies, onApply }: Props) {
+  const token = useUiStore((s) => s.token)
   const current = agent.strategyId
   const [target, setTarget] = useState('')
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -170,12 +172,12 @@ export function StrategySwitch({ agent, strategies, token, onApply }: Props) {
               </p>
             ) : null}
             <div className="row dialog-actions">
-              <button type="button" className="btn" onClick={() => dialogRef.current?.close()} disabled={applying}>
+              <Button onClick={() => dialogRef.current?.close()} disabled={applying}>
                 Cancel
-              </button>
-              <button type="submit" className="btn btn-primary" disabled={applying}>
+              </Button>
+              <Button type="submit" variant="primary" disabled={applying}>
                 {applying ? 'Switching…' : 'Confirm switch'}
-              </button>
+              </Button>
             </div>
           </form>
         ) : null}

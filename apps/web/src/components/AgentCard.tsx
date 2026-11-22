@@ -1,15 +1,17 @@
 import type { ReactNode } from 'react'
-import type { AgentTelemetry } from '../hooks/useAgentTelemetry'
 import { type AgentStatus, deriveStatus, inferPhase, lastDecision, lastTool } from '../lib/agentActivity'
 import { DASH, fmtAgo, fmtClock, shortAddr } from '../lib/format'
 import type { ManagedAgent, StrategySummary } from '../lib/ipc'
 import { type LogRecord, logKey, severityOf } from '../lib/logs'
+import type { AgentTelemetry } from '../stores/telemetryStore'
 import { PhasePipeline } from './PhasePipeline'
 import { StrategySwitch } from './StrategySwitch'
+import { Button, Pill, type PillTone } from './ui'
 
 const RECENT_LOGS = 8
 
-const NOT_EXPOSED = 'Not exposed by the daemon IPC protocol'
+/** Fields the daemon does not publish over IPC — shown once, not as four dashes. */
+const NOT_EXPOSED = ['Range bins', 'In range', 'Asset split', 'Uptime']
 
 interface Props {
   agent: ManagedAgent
@@ -18,12 +20,11 @@ interface Props {
   logs: readonly LogRecord[]
   writeTools: ReadonlySet<string>
   strategies: StrategySummary[]
-  token: string
   busy: boolean
   error: string | undefined
   now: number
-  onStart: (id: string) => Promise<void>
-  onStop: (id: string) => Promise<void>
+  onStart: (id: string) => void
+  onStop: (id: string) => void
   onSetStrategy: (id: string, strategyId: string) => Promise<void>
 }
 
@@ -32,6 +33,13 @@ const STATUS_LABEL: Record<AgentStatus, string> = {
   idle: 'Idle',
   stopped: 'Stopped',
   error: 'Error',
+}
+
+const STATUS_TONE: Record<AgentStatus, PillTone> = {
+  running: 'success',
+  idle: 'neutral',
+  stopped: 'danger',
+  error: 'danger',
 }
 
 function linkText(agent: ManagedAgent, t: AgentTelemetry | undefined): string {
@@ -86,28 +94,17 @@ export function AgentCard(props: Props) {
             {agent.pid ? ` · pid ${agent.pid}` : ''}
           </p>
         </div>
-        <span className={`status-pill pill-${status}`}>
-          <span className="dot" aria-hidden="true" />
+        <Pill tone={STATUS_TONE[status]} dot>
           {STATUS_LABEL[status]}
-        </span>
+        </Pill>
         {agent.running ? (
-          <button
-            type="button"
-            className="btn btn-danger"
-            disabled={props.busy}
-            onClick={() => void props.onStop(agent.id)}
-          >
+          <Button size="sm" variant="danger" disabled={props.busy} onClick={() => props.onStop(agent.id)}>
             {props.busy ? 'Stopping…' : 'Stop'}
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={props.busy}
-            onClick={() => void props.onStart(agent.id)}
-          >
+          <Button size="sm" variant="primary" disabled={props.busy} onClick={() => props.onStart(agent.id)}>
             {props.busy ? 'Starting…' : 'Start'}
-          </button>
+          </Button>
         )}
       </header>
 
@@ -137,9 +134,6 @@ export function AgentCard(props: Props) {
             DASH
           )}
         </Metric>
-        <Metric label="Uptime" title={NOT_EXPOSED}>
-          {DASH}
-        </Metric>
         <Metric label="Active pool">
           {positions === null ? (
             DASH
@@ -154,15 +148,6 @@ export function AgentCard(props: Props) {
               {positions.length > 3 ? ` +${positions.length - 3}` : ''}
             </span>
           )}
-        </Metric>
-        <Metric label="Range bins" title={NOT_EXPOSED}>
-          {DASH}
-        </Metric>
-        <Metric label="In range" title={NOT_EXPOSED}>
-          {DASH}
-        </Metric>
-        <Metric label="Asset split" title={NOT_EXPOSED}>
-          {DASH}
         </Metric>
         <Metric label="Last tool">
           {tool ? (
@@ -184,11 +169,12 @@ export function AgentCard(props: Props) {
         </Metric>
       </dl>
 
+      <p className="not-exposed small muted">Not exposed over IPC: {NOT_EXPOSED.join(' · ')}</p>
+
       <StrategySwitch
         key={`${agent.id}:${agent.strategyId ?? ''}`}
         agent={agent}
         strategies={props.strategies}
-        token={props.token}
         onApply={props.onSetStrategy}
       />
 

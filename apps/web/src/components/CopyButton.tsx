@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Button } from './ui'
 
 const RESET_MS = 1500
 
@@ -44,8 +45,8 @@ export function CopyButton({ text, label = 'Copy' }: { text: string; label?: str
   }
 
   return (
-    <button type="button" className="btn btn-quiet btn-sm" onClick={() => void copy()}>
+    <Button size="sm" variant="quiet" onClick={() => void copy()}>
       <span aria-live="polite">{state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed' : label}</span>
-    </button>
+    </Button>
   )
 }

@@ -50,9 +50,9 @@ import {
   meteora,
   REPO_ROOT,
   registerExitSignal,
-  repoPath,
   resetConsecutiveSwapFailures,
   resolveLiveUsd,
+  resolveWebDir,
   SHARED_STRATEGY_LIB_FILENAME,
   SHARED_STRATEGY_LIBRARY,
   SMART_WALLETS_FILENAME,
@@ -580,7 +580,7 @@ export class Daemon {
       ipcToken: config.connection?.ipcToken ?? process.env.ETEMARO_IPC_TOKEN,
       ipcSocketPath: config.connection?.ipcSocketPath,
       ipcHost: config.connection?.ipcHost,
-      webDir: repoPath('apps', 'web', 'dist'),
+      webDir: resolveWebDir(),
       agentId: getInstanceId(),
     }
     this.ipcServer = new IpcServer(ipcConfig)

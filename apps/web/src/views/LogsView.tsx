@@ -1,10 +1,14 @@
 import { useMemo, useState } from 'react'
+import { Button } from '../components/ui'
 import { fmtClock } from '../lib/format'
-import { type LogStore, logKey, mergedLogs, SEVERITIES, type Severity, severityOf } from '../lib/logs'
+import { logKey, mergedLogs, SEVERITIES, type Severity, severityOf } from '../lib/logs'
+import { useLogsStore } from '../stores/logsStore'
 
 const MAX_RENDERED = 500
 
-export function LogsView({ store }: { store: LogStore }) {
+export function LogsView() {
+  const store = useLogsStore((s) => s.store)
+  const clear = useLogsStore((s) => s.clear)
   const [enabled, setEnabled] = useState<Record<Severity, boolean>>({ info: true, warn: true, error: true })
   const [category, setCategory] = useState('')
   const [agent, setAgent] = useState('')
@@ -42,6 +46,9 @@ export function LogsView({ store }: { store: LogStore }) {
             Live stream from the console daemon and every running agent · {all.length} received, newest first.
           </p>
         </div>
+        <Button size="sm" onClick={clear} disabled={all.length === 0}>
+          Clear
+        </Button>
       </div>
 
       <fieldset className="filters">
