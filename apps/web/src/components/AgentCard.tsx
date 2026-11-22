@@ -6,6 +6,7 @@ import { type LogRecord, logKey, severityOf } from '../lib/logs'
 import type { AgentTelemetry } from '../stores/telemetryStore'
 import { PhasePipeline } from './PhasePipeline'
 import { StrategySwitch } from './StrategySwitch'
+import { Button, Pill, type PillTone } from './ui'
 
 const RECENT_LOGS = 8
 
@@ -32,6 +33,13 @@ const STATUS_LABEL: Record<AgentStatus, string> = {
   idle: 'Idle',
   stopped: 'Stopped',
   error: 'Error',
+}
+
+const STATUS_TONE: Record<AgentStatus, PillTone> = {
+  running: 'success',
+  idle: 'neutral',
+  stopped: 'danger',
+  error: 'danger',
 }
 
 function linkText(agent: ManagedAgent, t: AgentTelemetry | undefined): string {
@@ -86,28 +94,17 @@ export function AgentCard(props: Props) {
             {agent.pid ? ` · pid ${agent.pid}` : ''}
           </p>
         </div>
-        <span className={`status-pill pill-${status}`}>
-          <span className="dot" aria-hidden="true" />
+        <Pill tone={STATUS_TONE[status]} dot>
           {STATUS_LABEL[status]}
-        </span>
+        </Pill>
         {agent.running ? (
-          <button
-            type="button"
-            className="btn btn-danger btn-sm"
-            disabled={props.busy}
-            onClick={() => void props.onStop(agent.id)}
-          >
+          <Button size="sm" variant="danger" disabled={props.busy} onClick={() => void props.onStop(agent.id)}>
             {props.busy ? 'Stopping…' : 'Stop'}
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            disabled={props.busy}
-            onClick={() => void props.onStart(agent.id)}
-          >
+          <Button size="sm" variant="primary" disabled={props.busy} onClick={() => void props.onStart(agent.id)}>
             {props.busy ? 'Starting…' : 'Start'}
-          </button>
+          </Button>
         )}
       </header>
 

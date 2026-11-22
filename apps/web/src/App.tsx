@@ -1,9 +1,9 @@
 import { useEffect, useMemo } from 'react'
 import { Header } from './components/Header'
+import { useAgentsQuery } from './hooks/useAgentsQuery'
+import { useStrategiesQuery } from './hooks/useStrategiesQuery'
 import { DAEMON_URL, WS_URL } from './lib/api'
-import { useAgentsStore } from './stores/agentsStore'
 import { useConnectionStore } from './stores/connectionStore'
-import { useStrategiesStore } from './stores/strategiesStore'
 import { useTelemetryStore } from './stores/telemetryStore'
 import { TAB_LABEL, TABS, type Tab, useUiStore } from './stores/uiStore'
 import { AgentsView } from './views/AgentsView'
@@ -29,25 +29,18 @@ export default function App() {
   const connect = useConnectionStore((s) => s.connect)
   const sendChat = useConnectionStore((s) => s.sendChat)
 
-  const agents = useAgentsStore((s) => s.agents)
-  const startPolling = useAgentsStore((s) => s.startPolling)
-  const strategies = useStrategiesStore((s) => s.strategies)
-  const loadStrategies = useStrategiesStore((s) => s.load)
+  const agentsQuery = useAgentsQuery(token)
+  const agents = agentsQuery.data ?? []
+  const strategiesQuery = useStrategiesQuery(token)
   const syncTelemetry = useTelemetryStore((s) => s.sync)
 
   useEffect(() => {
     connect(WS_URL, token)
   }, [connect, token])
 
-  useEffect(() => startPolling(token), [startPolling, token])
-
   useEffect(() => {
     syncTelemetry(agents, token)
   }, [syncTelemetry, agents, token])
-
-  useEffect(() => {
-    void loadStrategies(token)
-  }, [loadStrategies, token])
 
   // Back/forward and hand-edited hashes keep the tab in sync.
   useEffect(() => {
@@ -89,7 +82,7 @@ export default function App() {
         {tab === 'agents' ? (
           <AgentsView
             writeTools={writeTools}
-            strategies={strategies}
+            strategies={strategiesQuery.data ?? []}
             onCreateStrategy={() => {
               setOpenTool('add_strategy')
               setTab('tools')

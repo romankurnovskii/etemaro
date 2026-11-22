@@ -3,6 +3,7 @@ import { callTool } from '../lib/api'
 import type { ManagedAgent, StrategySummary } from '../lib/ipc'
 import { type DiffRow, diffStrategies, formatDiffValue } from '../lib/strategyDiff'
 import { useUiStore } from '../stores/uiStore'
+import { Button } from './ui'
 
 interface Props {
   agent: ManagedAgent
@@ -171,12 +172,12 @@ export function StrategySwitch({ agent, strategies, onApply }: Props) {
               </p>
             ) : null}
             <div className="row dialog-actions">
-              <button type="button" className="btn" onClick={() => dialogRef.current?.close()} disabled={applying}>
+              <Button onClick={() => dialogRef.current?.close()} disabled={applying}>
                 Cancel
-              </button>
-              <button type="submit" className="btn btn-primary" disabled={applying}>
+              </Button>
+              <Button type="submit" variant="primary" disabled={applying}>
                 {applying ? 'Switching…' : 'Confirm switch'}
-              </button>
+              </Button>
             </div>
           </form>
         ) : null}

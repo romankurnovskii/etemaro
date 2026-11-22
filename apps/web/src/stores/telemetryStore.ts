@@ -1,8 +1,10 @@
 import { create } from 'zustand'
+import { configQueryKey } from '../hooks/useConfigQuery'
 import { resolveAgentEndpoint } from '../lib/agentLink'
-import { DAEMON_URL, fetchJson } from '../lib/api'
+import { DAEMON_URL, fetchConfig } from '../lib/api'
 import { backoffDelay } from '../lib/backoff'
 import { type IpcMessage, IpcMessageType, type LogEntry, type ManagedAgent, type StateSnapshot } from '../lib/ipc'
+import { queryClient } from '../lib/queryClient'
 import { type IpcSocket, openIpcSocket, type SocketStatus } from '../lib/socket'
 import { useLogsStore } from './logsStore'
 
@@ -48,11 +50,18 @@ function openAgentLink(id: string, configPath: string, consoleToken: string, pat
   patch(id, { link: 'resolving', reason: null })
 
   // A failed config read (e.g. console daemon restarting) is retried with backoff.
+  // The read goes through the query cache, so agents sharing a config path and
+  // reconnects reuse one request instead of hitting the daemon each time.
   const resolve = () =>
-    fetchJson<{ config?: unknown }>(`/api/config?path=${encodeURIComponent(configPath)}`, consoleToken)
-      .then((res) => {
+    queryClient
+      .fetchQuery({
+        queryKey: configQueryKey(configPath, consoleToken),
+        queryFn: () => fetchConfig(configPath, consoleToken),
+        staleTime: 30_000,
+      })
+      .then((config) => {
         if (cancelled) return
-        const endpoint = resolveAgentEndpoint(res?.config, DAEMON_URL, consoleToken)
+        const endpoint = resolveAgentEndpoint(config, DAEMON_URL, consoleToken)
         if (!endpoint.ok) {
           patch(id, { link: 'unavailable', reason: endpoint.reason })
           return

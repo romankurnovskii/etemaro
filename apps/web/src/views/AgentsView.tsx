@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { AgentCard } from '../components/AgentCard'
+import { Button, Field } from '../components/ui'
+import { useAgentMutations, useAgentsQuery } from '../hooks/useAgentsQuery'
 import type { StrategySummary } from '../lib/ipc'
 import { logsForAgent } from '../lib/logs'
-import { useAgentsStore } from '../stores/agentsStore'
 import { useLogsStore } from '../stores/logsStore'
 import { useTelemetryStore } from '../stores/telemetryStore'
 import { useUiStore } from '../stores/uiStore'
@@ -26,33 +27,22 @@ function useNow(intervalMs: number): number {
 
 export function AgentsView({ writeTools, strategies, onCreateStrategy }: Props) {
   const [name, setName] = useState('')
-  const [createError, setCreateError] = useState<string | null>(null)
   const now = useNow(CLOCK_TICK_MS)
 
   const token = useUiStore((s) => s.token)
-  const agents = useAgentsStore((s) => s.agents)
-  const loaded = useAgentsStore((s) => s.loaded)
-  const loadError = useAgentsStore((s) => s.loadError)
-  const busy = useAgentsStore((s) => s.busy)
-  const errors = useAgentsStore((s) => s.errors)
-  const create = useAgentsStore((s) => s.create)
-  const start = useAgentsStore((s) => s.start)
-  const stop = useAgentsStore((s) => s.stop)
-  const setStrategy = useAgentsStore((s) => s.setStrategy)
-  const load = useAgentsStore((s) => s.load)
+  const agentsQuery = useAgentsQuery(token)
+  const { create, setRunning, setStrategy } = useAgentMutations(token)
 
   const telemetry = useTelemetryStore((s) => s.byAgent)
   const logs = useLogsStore((s) => s.store)
 
+  const agents = agentsQuery.data ?? []
   const running = agents.filter((a) => a.running).length
 
   const submit = () => {
     const value = name.trim()
     if (!value) return
-    setCreateError(null)
-    create(token, value)
-      .then(() => setName(''))
-      .catch((e: unknown) => setCreateError(e instanceof Error ? e.message : String(e)))
+    create.mutate(value, { onSuccess: () => setName('') })
   }
 
   return (
@@ -72,65 +62,69 @@ export function AgentsView({ writeTools, strategies, onCreateStrategy }: Props) 
             submit()
           }}
         >
-          <label htmlFor="new-agent-name" className="field-label">
-            New agent (dry-run)
-          </label>
-          <div className="row nowrap">
-            <input
-              id="new-agent-name"
-              value={name}
-              placeholder="Agent name"
-              onChange={(e) => setName(e.target.value)}
-            />
-            <button type="submit" className="btn btn-primary" disabled={!name.trim()}>
-              Create
-            </button>
-            <button type="button" className="btn btn-quiet" onClick={onCreateStrategy}>
-              New strategy
-            </button>
-          </div>
-          {createError ? (
+          <Field label="New agent (dry-run)" htmlFor="new-agent-name">
+            <div className="row nowrap">
+              <input
+                id="new-agent-name"
+                value={name}
+                placeholder="Agent name"
+                onChange={(e) => setName(e.target.value)}
+              />
+              <Button type="submit" variant="primary" disabled={!name.trim() || create.isPending}>
+                {create.isPending ? 'Creating…' : 'Create'}
+              </Button>
+              <Button variant="quiet" onClick={onCreateStrategy}>
+                New strategy
+              </Button>
+            </div>
+          </Field>
+          {create.error ? (
             <p className="msg msg-error" role="alert">
-              {createError}
+              {create.error.message}
             </p>
           ) : null}
         </form>
       </section>
 
-      {loadError ? (
+      {agentsQuery.error ? (
         <div className="msg msg-error" role="alert">
-          Could not load agents: {loadError}{' '}
-          <button type="button" className="btn btn-sm" onClick={() => void load(token)}>
+          Could not load agents: {agentsQuery.error.message}{' '}
+          <Button size="sm" onClick={() => void agentsQuery.refetch()}>
             Retry
-          </button>
+          </Button>
         </div>
       ) : null}
 
-      {!loaded ? (
+      {agentsQuery.isPending ? (
         <p className="muted">Loading agents…</p>
-      ) : agents.length === 0 && !loadError ? (
+      ) : agents.length === 0 && !agentsQuery.error ? (
         <div className="empty">
           <p>No agents configured yet.</p>
           <p className="muted small">Create one above — it starts in dry-run mode.</p>
         </div>
       ) : (
         <div className="agent-grid">
-          {agents.map((agent) => (
-            <AgentCard
-              key={agent.id}
-              agent={agent}
-              telemetry={telemetry[agent.id]}
-              logs={logsForAgent(logs, agent.id)}
-              writeTools={writeTools}
-              strategies={strategies}
-              busy={Boolean(busy[agent.id])}
-              error={errors[agent.id]}
-              now={now}
-              onStart={(id) => start(token, id)}
-              onStop={(id) => stop(token, id)}
-              onSetStrategy={(id, strategyId) => setStrategy(token, id, strategyId)}
-            />
-          ))}
+          {agents.map((agent) => {
+            const busy = setRunning.isPending && setRunning.variables?.id === agent.id
+            const actionError =
+              setRunning.error && setRunning.variables?.id === agent.id ? setRunning.error.message : undefined
+            return (
+              <AgentCard
+                key={agent.id}
+                agent={agent}
+                telemetry={telemetry[agent.id]}
+                logs={logsForAgent(logs, agent.id)}
+                writeTools={writeTools}
+                strategies={strategies}
+                busy={Boolean(busy)}
+                error={actionError}
+                now={now}
+                onStart={(id) => setRunning.mutateAsync({ id, running: true })}
+                onStop={(id) => setRunning.mutateAsync({ id, running: false })}
+                onSetStrategy={(id, strategyId) => setStrategy.mutateAsync({ id, strategyId })}
+              />
+            )
+          })}
         </div>
       )}
     </div>

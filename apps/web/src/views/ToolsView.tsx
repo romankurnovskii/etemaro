@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { CopyButton } from '../components/CopyButton'
+import { Button, Field } from '../components/ui'
 import { fetchJson } from '../lib/api'
 import type { JsonSchema, ToolDescriptor } from '../lib/ipc'
 import { useUiStore } from '../stores/uiStore'
@@ -144,9 +145,9 @@ export function ToolsView({ catalog, initialToolName }: Props) {
                   </span>
                 </label>
               ) : null}
-              <button type="submit" className="btn btn-primary" disabled={pending}>
+              <Button type="submit" variant="primary" disabled={pending}>
                 {pending ? 'Running…' : 'Run tool'}
-              </button>
+              </Button>
             </form>
             {result ? (
               <div className="result-wrap mt">
@@ -224,13 +225,8 @@ function ToolField({
   }
 
   return (
-    <label className="field" htmlFor={inputId}>
-      <span>
-        {name}
-        {required ? <span className="error"> *</span> : null}
-      </span>
+    <Field label={name} htmlFor={inputId} required={required} hint={schema.description}>
       {input}
-      {schema.description ? <div className="hint">{schema.description}</div> : null}
-    </label>
+    </Field>
   )
 }

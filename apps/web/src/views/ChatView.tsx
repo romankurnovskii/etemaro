@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Button } from '../components/ui'
 import type { ChatMessage } from '../lib/ipc'
 
 export function ChatView({ chat, onSend }: { chat: ChatMessage[]; onSend: (text: string) => boolean }) {
@@ -42,9 +43,9 @@ export function ChatView({ chat, onSend }: { chat: ChatMessage[]; onSend: (text:
             if (e.key === 'Enter') submit()
           }}
         />
-        <button type="button" className="btn btn-primary" onClick={submit} disabled={!text.trim()}>
+        <Button variant="primary" onClick={submit} disabled={!text.trim()}>
           Send
-        </button>
+        </Button>
       </div>
     </section>
   )

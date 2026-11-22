@@ -28,25 +28,65 @@ The CLI build copies `apps/web/dist` into `packages/cli/dist/web`, so a global
 
 ## State management
 
-All shared state lives in zustand stores under `src/stores/`. Components read
-narrow selectors and never own cross-cutting state.
+Two layers, split by ownership:
+
+**Server state — TanStack Query** (`src/hooks/`). Anything that comes from the
+daemon's HTTP API is cached, deduped and refetched by the query client
+(`src/lib/queryClient.ts`).
+
+| Hook | Endpoint | Behaviour |
+| --- | --- | --- |
+| `useAgentsQuery` | `GET /api/agents` | 15 s `refetchInterval`, paused while the tab is hidden |
+| `useAgentMutations` | `POST /api/agents*` | create / start / stop / strategy; invalidates the list on settle |
+| `useConfigQuery` | `GET /api/config?path=` | one cache entry per path, 30 s stale time |
+| `useSaveConfig` | `PUT /api/config?path=` | invalidates that path on success |
+| `useStrategiesQuery` | `POST /api/tool` (`list_strategies`) | 60 s stale time |
+
+Agent links read their config through `queryClient.fetchQuery`, so N agents
+sharing a config path and every reconnect reuse one request.
+
+**Client state — zustand** (`src/stores/`). UI and socket state only.
 
 | Store | Owns |
 | --- | --- |
 | `uiStore` | active tab (synced to `#/tab`), bearer token, tool preselection, connection popover |
 | `connectionStore` | console daemon WebSocket: status, snapshot, tool catalog, chat, auth errors |
-| `agentsStore` | `/api/agents` list, 15 s polling (paused while the tab is hidden), start/stop/create/strategy |
 | `telemetryStore` | one IPC link per *running* agent, keyed by agent id |
 | `logsStore` | every log entry, bucketed by the entry's own `agentId` (bounded per agent) |
-| `strategiesStore` | strategy library for the switch dialog |
+| `themeStore` | `system` / `light` / `dark`, persisted to `localStorage` |
+
+## Theming
+
+`styles.css` declares every colour with `light-dark()`, so one token block covers
+both themes. `color-scheme` decides which value applies:
+
+- no `data-theme` on `<html>` → the OS `prefers-color-scheme` wins
+- `data-theme="light"` / `"dark"` → pinned by the header toggle
+
+`themeStore` applies the attribute before the first paint (`main.tsx`), so there
+is no flash. Dark values come from the brand dashboard palette
+(`#0F0C0A` / `#1A1512` / `#FAF8F5`).
+
+## Components
+
+`src/components/ui/` holds the primitives. Views compose them instead of
+hand-writing class names.
+
+| Component | Replaces |
+| --- | --- |
+| `Button` | `.btn` + `button.primary` / `button.ghost` / `button.danger` |
+| `Pill` | `.status-pill` / `.conn-badge` with ad-hoc tone classes |
+| `Field` | `<label class="field"><span>…` blocks |
 
 ## Brand
 
 The console follows the Etemaro brand mark (`assets/favicon.svg`): olive
 `#556B2F` on a warm off-white canvas, sage `#8A9A5B` as the secondary accent.
 `components/Logo.tsx` renders the same geometry inline with `currentColor`, and
-`public/favicon.svg` is the shared icon. All colours come from the CSS variables
-at the top of `src/styles.css` — no ad-hoc hex values in components.
+`public/favicon.svg` is the shared icon. UI text uses self-hosted
+`@fontsource-variable/inter` (bundled woff2, no CDN); data uses the system mono
+stack. All colours come from the CSS variables at the top of `src/styles.css` —
+no ad-hoc hex values in components.
 
 ## Bearer token
 

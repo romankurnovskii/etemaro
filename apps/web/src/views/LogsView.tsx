@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Button } from '../components/ui'
 import { fmtClock } from '../lib/format'
 import { logKey, mergedLogs, SEVERITIES, type Severity, severityOf } from '../lib/logs'
 import { useLogsStore } from '../stores/logsStore'
@@ -45,9 +46,9 @@ export function LogsView() {
             Live stream from the console daemon and every running agent · {all.length} received, newest first.
           </p>
         </div>
-        <button type="button" className="btn btn-sm" onClick={clear} disabled={all.length === 0}>
+        <Button size="sm" onClick={clear} disabled={all.length === 0}>
           Clear
-        </button>
+        </Button>
       </div>
 
       <fieldset className="filters">
