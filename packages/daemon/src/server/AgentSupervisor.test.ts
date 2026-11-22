@@ -12,14 +12,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentSupervisor } from './AgentSupervisor.js'
 
 function fakeChild() {
+  const listeners: Record<string, Array<() => void>> = {}
   const child: any = {
     pid: 4242,
     killed: false,
     exitCode: null,
     kill: vi.fn(() => {
       child.killed = true
+      child.exitCode = 0
+      for (const cb of listeners.exit ?? []) cb()
     }),
-    on: vi.fn(() => child),
+    on: vi.fn((event: string, cb: () => void) => {
+      const list = listeners[event] ?? []
+      list.push(cb)
+      listeners[event] = list
+      return child
+    }),
+    once: vi.fn((event: string, cb: () => void) => {
+      const list = listeners[event] ?? []
+      list.push(cb)
+      listeners[event] = list
+      return child
+    }),
   }
   return child
 }
@@ -113,12 +127,14 @@ describe('AgentSupervisor', () => {
     expect(agent.pid).toBe(4242)
   })
 
-  it('stops a running agent with SIGTERM', async () => {
+  it('stops a running agent with SIGTERM and waits for exit', async () => {
     await sup.create('Stopper')
     await sup.start('stopper')
-    sup.stop('stopper')
+    const stopped = await sup.stop('stopper')
     const child = spawnFn.mock.results[0]?.value
     expect(child.kill).toHaveBeenCalledWith('SIGTERM')
+    expect(stopped.running).toBe(false)
+    expect(stopped.pid).toBeNull()
   })
 
   it('setStrategy updates the instance config', async () => {
@@ -259,5 +275,20 @@ describe('AgentSupervisor IPC port allocation', () => {
     const byId = Object.fromEntries(sup.list().map((a) => [a.id, a.dryRun]))
     expect(byId.dry).toBe(true)
     expect(byId.live).toBe(false)
+  })
+
+  it('resolves an env.X dryRun indirection', async () => {
+    process.env.ETEMARO_TEST_DRY_RUN = 'true'
+    try {
+      writeInstance('envdry', { dryRun: 'env.ETEMARO_TEST_DRY_RUN' })
+      expect(sup.list().find((a) => a.id === 'envdry')?.dryRun).toBe(true)
+    } finally {
+      delete process.env.ETEMARO_TEST_DRY_RUN
+    }
+  })
+
+  it('treats an unset env.X dryRun as live', async () => {
+    writeInstance('envmissing', { dryRun: 'env.ETEMARO_TEST_UNSET' })
+    expect(sup.list().find((a) => a.id === 'envmissing')?.dryRun).toBe(false)
   })
 })

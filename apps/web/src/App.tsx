@@ -3,6 +3,7 @@ import { Header } from './components/Header'
 import { useAgentsQuery } from './hooks/useAgentsQuery'
 import { useStrategiesQuery } from './hooks/useStrategiesQuery'
 import { DAEMON_URL, WS_URL } from './lib/api'
+import type { ManagedAgent } from './lib/ipc'
 import { useConnectionStore } from './stores/connectionStore'
 import { useTelemetryStore } from './stores/telemetryStore'
 import { TAB_LABEL, TABS, type Tab, useUiStore } from './stores/uiStore'
@@ -12,6 +13,10 @@ import { ConfigView } from './views/ConfigView'
 import { DashboardView } from './views/DashboardView'
 import { LogsView } from './views/LogsView'
 import { ToolsView } from './views/ToolsView'
+
+/** Stable empty list: `?? []` would create a new array every render and re-run
+ *  the telemetry sync effect on each pass while the first fetch is in flight. */
+const NO_AGENTS: ManagedAgent[] = []
 
 export default function App() {
   const token = useUiStore((s) => s.token)
@@ -30,7 +35,7 @@ export default function App() {
   const sendChat = useConnectionStore((s) => s.sendChat)
 
   const agentsQuery = useAgentsQuery(token)
-  const agents = agentsQuery.data ?? []
+  const agents = agentsQuery.data ?? NO_AGENTS
   const strategiesQuery = useStrategiesQuery(token)
   const syncTelemetry = useTelemetryStore((s) => s.sync)
 
