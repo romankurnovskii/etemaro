@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { type AgentStatus, deriveStatus, inferPhase, lastDecision, lastTool } from '../lib/agentActivity'
+import { isLiveAgent } from '../lib/agentSafety'
 import { DASH, fmtAgo, fmtClock, shortAddr } from '../lib/format'
 import type { ManagedAgent, StrategySummary } from '../lib/ipc'
 import { type LogRecord, logKey, severityOf } from '../lib/logs'
@@ -62,6 +63,8 @@ function Metric({ label, children, title }: { label: string; children: ReactNode
 
 export function AgentCard(props: Props) {
   const { agent, telemetry, logs, writeTools, now } = props
+  const [confirming, setConfirming] = useState(false)
+  const live = isLiveAgent(agent)
   const connected = telemetry?.link === 'connected'
   const snapshot = telemetry?.snapshot ?? null
   const status = deriveStatus({ running: agent.running, hasTelemetry: connected, snapshot, logs, writeTools })
@@ -94,6 +97,11 @@ export function AgentCard(props: Props) {
             {agent.pid ? ` · pid ${agent.pid}` : ''}
           </p>
         </div>
+        {live ? (
+          <Pill tone="warning" title="Not in dry-run: this agent trades real funds">
+            Live
+          </Pill>
+        ) : null}
         <Pill tone={STATUS_TONE[status]} dot>
           {STATUS_LABEL[status]}
         </Pill>
@@ -101,12 +109,39 @@ export function AgentCard(props: Props) {
           <Button size="sm" variant="danger" disabled={props.busy} onClick={() => props.onStop(agent.id)}>
             {props.busy ? 'Stopping…' : 'Stop'}
           </Button>
+        ) : confirming ? (
+          <>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => {
+                setConfirming(false)
+                props.onStart(agent.id)
+              }}
+            >
+              Start live
+            </Button>
+            <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+          </>
         ) : (
-          <Button size="sm" variant="primary" disabled={props.busy} onClick={() => props.onStart(agent.id)}>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={props.busy}
+            onClick={() => (live ? setConfirming(true) : props.onStart(agent.id))}
+          >
             {props.busy ? 'Starting…' : 'Start'}
           </Button>
         )}
       </header>
+
+      {confirming ? (
+        <p className="msg msg-warn" role="alert">
+          <strong>This agent is not in dry-run.</strong> Starting it will trade real funds. Confirm to launch it.
+        </p>
+      ) : null}
 
       {props.error ? (
         <p className="msg msg-error" role="alert">

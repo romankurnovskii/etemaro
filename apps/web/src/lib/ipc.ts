@@ -85,6 +85,8 @@ export interface ManagedAgent {
   pid: number | null
   configPath: string
   dataDir: string
+  /** False when the instance config does not set `connection.dryRun: true`. */
+  dryRun: boolean
 }
 
 export interface StrategySummary {

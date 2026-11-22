@@ -59,8 +59,8 @@ export interface IpcServerConfig {
 /** Control-plane operations for managing agent instances from clients. */
 export interface AgentControl {
   list(): unknown[]
-  create(name: string): unknown
-  start(id: string): unknown
+  create(name: string): unknown | Promise<unknown>
+  start(id: string): unknown | Promise<unknown>
   stop(id: string): unknown
   setStrategy(id: string, strategyId: string): unknown
   readConfig(configPath: string): unknown
@@ -372,7 +372,7 @@ export class IpcServer {
       }
       if (pathname === '/api/agents' && req.method === 'POST') {
         const body = await this._readJsonBody(req)
-        const agent = this.agentControl.create(String(body?.name ?? ''))
+        const agent = await this.agentControl.create(String(body?.name ?? ''))
         this._sendJson(res, 200, { ok: true, agent })
         return
       }
@@ -381,7 +381,7 @@ export class IpcServer {
         const id = decodeURIComponent(match[1] as string)
         const action = match[2]
         if (action === 'start') {
-          this._sendJson(res, 200, { ok: true, agent: this.agentControl.start(id) })
+          this._sendJson(res, 200, { ok: true, agent: await this.agentControl.start(id) })
           return
         }
         if (action === 'stop') {

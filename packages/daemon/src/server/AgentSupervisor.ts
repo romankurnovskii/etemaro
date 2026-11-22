@@ -11,6 +11,7 @@
 
 import { type ChildProcess, execSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
+import net from 'node:net'
 import path from 'node:path'
 import { defaultAgentConfigStr, REPO_ROOT } from '@etemaro/core'
 
@@ -23,6 +24,8 @@ export interface ManagedAgent {
   pid: number | null
   configPath: string
   dataDir: string
+  /** False when the instance config does not set `connection.dryRun: true`. */
+  dryRun: boolean
 }
 
 export interface AgentSupervisorOptions {
@@ -43,6 +46,21 @@ interface InstanceConfig {
 }
 
 const ID_PATTERN = /^[a-zA-Z0-9._-]+$/
+
+/** Port the console daemon binds itself. Agents must never take it. */
+const CONSOLE_IPC_PORT = 8765
+const AGENT_PORT_RANGE_START = 8766
+const AGENT_PORT_RANGE_END = 8865
+
+/** True when nothing is listening on `port` on loopback. */
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    server.once('error', () => resolve(false))
+    server.once('listening', () => server.close(() => resolve(true)))
+    server.listen(port, '127.0.0.1')
+  })
+}
 
 /** Best-effort check that a PID is an Etemaro agent process (guards against PID reuse). */
 function defaultIsAgentProcess(pid: number): boolean {
@@ -91,14 +109,14 @@ export class AgentSupervisor {
   }
 
   /** Create a new agent instance config (dry-run by default) and its data dir. */
-  create(rawName: string): ManagedAgent {
+  async create(rawName: string): Promise<ManagedAgent> {
     const name = String(rawName ?? '').trim()
     if (!name) throw new Error('Agent name is required')
     const id = this.uniqueId(this.slug(name))
     const config = this.loadTemplate()
     config.agentId = id
     config.description = name
-    config.connection = { ...(config.connection ?? {}), dryRun: true, ipcPort: this.nextPort() }
+    config.connection = { ...(config.connection ?? {}), dryRun: true, ipcPort: await this.allocatePort() }
     fs.mkdirSync(this.instancesDir(), { recursive: true })
     fs.writeFileSync(this.configPathFor(id), `${JSON.stringify(config, null, 2)}\n`)
     fs.mkdirSync(this.dataDirFor(id), { recursive: true })
@@ -106,11 +124,16 @@ export class AgentSupervisor {
   }
 
   /** Spawn the agent as a child process. No-op when already running. */
-  start(id: string): ManagedAgent {
+  async start(id: string): Promise<ManagedAgent> {
     const agentId = this.safeId(id)
     const configPath = this.configPathFor(agentId)
     if (!fs.existsSync(configPath)) throw new Error(`Agent "${agentId}" not found`)
     if (this.isRunning(agentId)) return this.toManaged(agentId)
+
+    // The child's IPC server must bind a port of its own: without one it falls
+    // back to the console daemon's port and dies with EADDRINUSE, leaving the
+    // agent running headless with no telemetry.
+    await this.ensureIpcPort(agentId)
 
     const dataDir = this.dataDirFor(agentId)
     const baseDataDir = path.join(this.repoRoot, 'data')
@@ -300,6 +323,7 @@ export class AgentSupervisor {
       pid: running ? (child?.pid ?? null) : null,
       configPath: this.configPathFor(id),
       dataDir: this.dataDirFor(id),
+      dryRun: config.connection?.dryRun === true,
     }
   }
 
@@ -339,9 +363,49 @@ export class AgentSupervisor {
       .replace(/^-|-$/g, '')
   }
 
-  /** Next free-ish IPC port above the console default (8765). */
-  private nextPort(): number {
-    return 8765 + this.list().length + 1
+  /** Ports already claimed by other instance configs (running or not). */
+  private claimedPorts(exceptId: string): Set<number> {
+    const claimed = new Set<number>()
+    for (const agent of this.list()) {
+      if (agent.id === exceptId) continue
+      const port = Number(this.readConfig(agent.id, true).connection?.ipcPort)
+      if (Number.isInteger(port) && port > 0) claimed.add(port)
+    }
+    return claimed
+  }
+
+  /** First port in the agent range that is unclaimed and actually bindable. */
+  private async allocatePort(exceptId = ''): Promise<number> {
+    const claimed = this.claimedPorts(exceptId)
+    for (let port = AGENT_PORT_RANGE_START; port <= AGENT_PORT_RANGE_END; port++) {
+      if (port === CONSOLE_IPC_PORT || claimed.has(port)) continue
+      if (await isPortFree(port)) return port
+    }
+    throw new Error(`No free IPC port in ${AGENT_PORT_RANGE_START}-${AGENT_PORT_RANGE_END}`)
+  }
+
+  /**
+   * Guarantee the instance config has a usable `connection.ipcPort` before the
+   * child spawns, and persist it. A missing port, the console port, a port
+   * claimed by another instance, or a port already bound all trigger a
+   * reallocation.
+   */
+  private async ensureIpcPort(agentId: string): Promise<number> {
+    const config = this.readConfig(agentId)
+    const configured = Number(config.connection?.ipcPort)
+    const usable =
+      Number.isInteger(configured) &&
+      configured > 0 &&
+      configured !== CONSOLE_IPC_PORT &&
+      !this.claimedPorts(agentId).has(configured) &&
+      (await isPortFree(configured))
+
+    if (usable) return configured
+
+    const port = await this.allocatePort(agentId)
+    config.connection = { ...(config.connection ?? {}), ipcPort: port }
+    fs.writeFileSync(this.configPathFor(agentId), `${JSON.stringify(config, null, 2)}\n`)
+    return port
   }
 
   private uniqueId(base: string): string {
