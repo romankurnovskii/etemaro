@@ -12,7 +12,7 @@
     "build": "pnpm --filter @etemaro/web build && pnpm -r --filter '!@etemaro/web' run build",
     "typecheck": "pnpm -r run typecheck",
     "start": "node --import tsx packages/cli/src/Cli.ts start",
-    "dev": "DRY_RUN=true node --import tsx packages/cli/src/Cli.ts start",
+    "dev": "node --import tsx packages/cli/src/Cli.ts start",
     "cli": "node --import tsx packages/cli/src/Cli.ts",
     "attach": "node --import tsx packages/cli/src/Cli.ts attach",
     "validate:config": "node --import tsx packages/cli/src/Cli.ts config validate",

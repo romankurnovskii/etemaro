@@ -72,12 +72,15 @@ export function formatInitMessage(opts: { directory: string; firstRun: boolean; 
     lines.push(firstRun ? 'Setup complete.' : 'Setup complete')
     lines.push('')
     lines.push('Next:')
-    lines.push('  etemaro start --dry-run')
+    lines.push('  etemaro start')
   } else {
     lines.push(`Add the missing keys in ${path.join(directory, '.env')}`)
     lines.push('then run:')
-    lines.push('  etemaro start --dry-run')
+    lines.push('  etemaro start')
   }
+  lines.push('')
+  lines.push('The generated config is dry-run. To trade live, set "connection.dryRun": false')
+  lines.push('in config/instances/agent-default.json.')
   return lines.join('\n')
 }
 

@@ -3,7 +3,6 @@ import path from 'node:path'
 import { wallet } from '@etemaro/core'
 import { describe, expect, it, vi } from 'vitest'
 import {
-  applyCliRuntimeFlags,
   Cli,
   expandHome,
   formatConfigLoadError,
@@ -35,20 +34,6 @@ describe('resolveGlobalFlagValue', () => {
 
   it('extends forward to find the value past the subcommand', () => {
     expect(resolveGlobalFlagValue(['balance', '--data-dir', '/tmp/d'], '--data-dir', '-d')).toBe('/tmp/d')
-  })
-})
-
-describe('applyCliRuntimeFlags', () => {
-  it('sets DRY_RUN when --dry-run is present', () => {
-    const env: Record<string, string | undefined> = {}
-    applyCliRuntimeFlags({ 'dry-run': true }, env)
-    expect(env.DRY_RUN).toBe('true')
-  })
-
-  it('does not set DRY_RUN when the flag is absent', () => {
-    const env: Record<string, string | undefined> = { DRY_RUN: 'false' }
-    applyCliRuntimeFlags({}, env)
-    expect(env.DRY_RUN).toBe('false')
   })
 })
 

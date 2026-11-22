@@ -61,7 +61,8 @@ describe('formatInitMessage', () => {
     expect(text).toContain('first-time setup')
     expect(text).toContain('/tmp/etemaro')
     expect(text).toContain('LLM')
-    expect(text).toContain('etemaro start --dry-run')
+    expect(text).toContain('etemaro start')
+    expect(text).toContain('connection.dryRun')
   })
 
   it('says setup is complete when dry-run creds are present', () => {
@@ -73,7 +74,7 @@ describe('formatInitMessage', () => {
       }),
     })
     expect(text).toContain('Setup complete')
-    expect(text).toContain('etemaro start --dry-run')
+    expect(text).toContain('etemaro start')
     expect(text).not.toContain('first-time setup')
   })
 })

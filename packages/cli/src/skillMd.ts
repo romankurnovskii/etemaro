@@ -14,7 +14,7 @@ Returns PnL for a specific position.
 Output: { pnl_pct, pnl_usd, unclaimed_fee_usd, all_time_fees_usd, current_value_usd, lower_bin, upper_bin, active_bin }
 \`\`\`
 
-### etemaro deploy --pool <addr> --amount <sol> [--bins-below 69] [--bins-above 0] [--strategy bid_ask|spot] [--dry-run]
+### etemaro deploy --pool <addr> --amount <sol> [--bins-below 69] [--bins-above 0] [--strategy bid_ask|spot]
 Deploys a new LP position. All safety checks apply.
 \`\`\`
 Output: { success, position, pool_name, txs, price_range, bin_step }
@@ -26,13 +26,13 @@ Claims accumulated swap fees for a position.
 Output: { success, position, txs, base_mint }
 \`\`\`
 
-### etemaro close --position <addr> [--skip-swap] [--dry-run]
+### etemaro close --position <addr> [--skip-swap]
 Closes a position. Auto-swaps base token to SOL unless --skip-swap.
 \`\`\`
 Output: { success, pnl_pct, pnl_usd, txs, base_mint }
 \`\`\`
 
-### etemaro swap --from <mint> --to <mint> --amount <n> [--dry-run]
+### etemaro swap --from <mint> --to <mint> --amount <n>
 Swaps tokens via Jupiter. Use "SOL" as mint shorthand.
 \`\`\`
 Output: { success, tx, input_amount, output_amount }
@@ -169,7 +169,7 @@ First-time setup (~1 minute). Creates runtime files and checks wallet + LLM keys
 Creates a new agent configuration under config/instances/<agentId>.json and initializes data/instances/<agentId>/.
 In interactive mode, prompts for Name, optional Description, and Agent ID (auto-suggested from Name).
 
-### etemaro start [--dry-run]
+### etemaro start
 Starts the autonomous agent with cron jobs (management + screening).
 
 ### etemaro serve [--port <port>] [--open]
@@ -180,7 +180,6 @@ Open the printed http://127.0.0.1:<port>/ URL to view positions, logs, chat, and
 Opens the interactive terminal dashboard (Ink TUI) that attaches to a running agent.
 
 ## Flags
---dry-run     Skip all on-chain transactions
 --silent      Suppress Telegram notifications for this run
 --port <port> IPC port for serve/attach (default 8765)
 --open        Open the browser after 'etemaro serve' starts

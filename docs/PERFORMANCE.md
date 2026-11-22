@@ -70,7 +70,7 @@ Etemaro is a single long-lived Node.js process per agent (CLI, daemon, or deskto
 
 ```bash
 # 1. Start the daemon
-pnpm run dev          # or: etemaro start --dry-run
+pnpm run dev          # or: etemaro start
 
 # 2. In another shell, sample RSS + heap over 60s
 node -e '

@@ -99,7 +99,8 @@ Required only when the related integration is enabled:
 Optional:
 
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, and `TELEGRAM_ALLOWED_USER_IDS`: Telegram notifications and control.
-- `DRY_RUN` and `LOG_LEVEL`: runtime behavior overrides; defaults are `false` and `info`.
+- `LOG_LEVEL`: log verbosity; defaults to `info`.
+- Dry-run is **not** an environment override: it is `connection.dryRun` in the instance config (`true` = simulate, `false` = live).
 
 ---
 
