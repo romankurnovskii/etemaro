@@ -31,7 +31,16 @@ export function resolveGlobalFlagValue(argv: string[], flag: string, alias?: str
   return value
 }
 
-/** Apply CLI flags that must be visible to core before any tool runs. */
-export function applyCliRuntimeFlags(flags: Record<string, unknown>, env: NodeJS.Dict<string> = process.env): void {
-  if (flags['dry-run'] === true) env.DRY_RUN = 'true'
+/**
+ * `--dry-run` used to set `DRY_RUN` in the environment, which nothing read, so
+ * it silently did nothing. Dry-run is controlled only by `connection.dryRun` in
+ * the instance config; the flag is rejected so nobody relies on a no-op.
+ */
+export const DRY_RUN_REMOVED_MESSAGE =
+  '--dry-run was removed: dry-run is controlled only by "connection.dryRun" in the instance config ' +
+  '(config/instances/<id>.json). Set it to true to simulate, false to trade live.'
+
+/** Returns the rejection message when the removed flag is present, else null. */
+export function rejectRemovedDryRunFlag(flags: Record<string, unknown>): string | null {
+  return flags['dry-run'] !== undefined ? DRY_RUN_REMOVED_MESSAGE : null
 }

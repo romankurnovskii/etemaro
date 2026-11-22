@@ -45,7 +45,6 @@ Flags:
   --strategy <type>     Distribution strategy: spot, curve, bid_ask
   --bins-below <n>      Number of bins below active bin
   --bins-above <n>      Number of bins above active bin
-  --dry-run             Simulate deploy without sending on-chain transactions
 `,
   close: `etemaro close [--position <addr> | --all] [flags]
 
@@ -55,7 +54,6 @@ Flags:
   --position <addr>     Close a specific position by address
   --all                 Close all open positions
   --skip-swap           Keep tokens instead of auto-swapping to SOL
-  --dry-run             Simulate close without sending on-chain transactions
 `,
   swap: `etemaro swap --from <mint> --to <mint> --amount <n> [flags]
 
@@ -65,7 +63,6 @@ Flags:
   --from <mint>         Input token mint address (or "SOL")
   --to <mint>           Output token mint address (or "SOL")
   --amount <n>          Amount of input tokens to swap
-  --dry-run             Simulate swap quote without sending on-chain transaction
 `,
   sweep: `etemaro sweep [--skip <mints>]
 
@@ -86,7 +83,6 @@ Flags:
 Start the autonomous DLMM trading daemon.
 
 Flags:
-  --dry-run             Run in simulation mode (no real gas or funds spent)
   --silent              Suppress external notifications (Telegram)
   --config <path>       Custom agent configuration file path
   --data-dir <path>     Custom data directory path

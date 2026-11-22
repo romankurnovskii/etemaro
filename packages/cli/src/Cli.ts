@@ -21,7 +21,7 @@ import { parseArgs } from 'node:util'
 import type { GeneratedWallet } from '@etemaro/core'
 import { Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
-import { applyCliRuntimeFlags, isCliTarget, resolveGlobalFlagValue } from './cliFlags.js'
+import { isCliTarget, rejectRemovedDryRunFlag, resolveGlobalFlagValue } from './cliFlags.js'
 import {
   askTty,
   defaultEtemaroHome,
@@ -215,7 +215,7 @@ export interface CliAdapters {
 
 // ─── CLI Class ──────────────────────────────────────────────────
 
-export { applyCliRuntimeFlags, resolveGlobalFlagValue } from './cliFlags.js'
+export { resolveGlobalFlagValue } from './cliFlags.js'
 export { expandHome, resolveWalletImportSource } from './cliUtils.js'
 
 export class Cli {
@@ -287,7 +287,6 @@ export class Cli {
         bps: { type: 'string' },
         'no-claim': { type: 'boolean' },
         'skip-swap': { type: 'boolean' },
-        'dry-run': { type: 'boolean' },
         silent: { type: 'boolean' },
         json: { type: 'boolean' },
         strict: { type: 'boolean' },
@@ -320,7 +319,8 @@ export class Cli {
       strict: false,
     })
 
-    applyCliRuntimeFlags(flags as Record<string, unknown>, process.env)
+    const removedFlag = rejectRemovedDryRunFlag(flags as Record<string, unknown>)
+    if (removedFlag) die(removedFlag)
 
     switch (subcommand) {
       case 'new-agent':

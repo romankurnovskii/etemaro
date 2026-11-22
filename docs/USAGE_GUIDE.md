@@ -18,8 +18,8 @@
 The full startup sequence diagram is in [FULL_FLOW.md §3](FULL_FLOW.md#3-startup--initialization).
 
 ```bash
-npm run dev        # DRY_RUN=true — safe testing, no real transactions
-npm start          # LIVE mode — real SOL deployed
+npm run dev        # starts the agent; dry-run comes from connection.dryRun
+npm start          # same, with the default agent strategy config
 npm run pm2:start  # Headless daemon for VPS (24/7)
 
 # Run with another strategy / instance config:
@@ -57,8 +57,11 @@ The agent loop, role-based tool access, and tool-execution safety checks are doc
 ```bash
 curl -fsSL https://etemaro.com/install.sh | sh
 etemaro init
-etemaro start --dry-run
+etemaro start
 ```
+
+Dry-run is controlled by `"connection.dryRun"` in `config/instances/<id>.json`
+(`true` = simulate, `false` = live).
 
 From a source clone: `pnpm install` then `pnpm cli init` and `pnpm run dev`.
 
@@ -89,9 +92,9 @@ pnpm run attach     # or: etemaro attach
 
 ```bash
 npm run cli pnl -- <position_address>        # PnL for a position
-npm run cli deploy -- --pool <addr> --amount 0.5 --dry-run
-npm run cli close -- --position <addr> --dry-run
-npm run cli swap -- --from <mint> --to SOL --amount 100 --dry-run
+npm run cli deploy -- --pool <addr> --amount 0.5
+npm run cli close -- --position <addr>
+npm run cli swap -- --from <mint> --to SOL --amount 100
 ```
 
 **Strategy management** (agent chat + library files):
@@ -194,14 +197,14 @@ Cron fires management cycle
 
 | What you want          | How to do it                                                 |
 | ---------------------- | ------------------------------------------------------------ |
-| Safe testing           | `npm run dev` (DRY_RUN)                                      |
-| Live trading           | `npm start` or `npm run pm2:start`                           |
-| One-shot screening     | `npm run screen -- --dry-run`                                |
-| One-shot management    | `npm run manage -- --dry-run`                                |
+| Safe testing           | set `"connection.dryRun": true` in the instance config       |
+| Live trading           | set `"connection.dryRun": false`, then `npm start`           |
+| One-shot screening     | `npm run screen`                                             |
+| One-shot management    | `npm run manage`                                             |
 | Check balance          | `npm run balance`                                            |
 | List positions         | `npm run positions`                                          |
-| Deploy manually        | `npm run cli deploy -- --pool <addr> --amount 0.5 --dry-run` |
-| Close manually         | `npm run cli close -- --position <addr> --dry-run`           |
+| Deploy manually        | `npm run cli deploy -- --pool <addr> --amount 0.5`           |
+| Close manually         | `npm run cli close -- --position <addr>`                     |
 | Remote control         | Telegram `/positions`, `/close`, `/screen`                   |
 | Track a smart wallet   | Telegram: `add smart wallet <addr> name=<label>`             |
 | List tracked wallets   | Telegram: `list smart wallets`                               |

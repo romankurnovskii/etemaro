@@ -47,12 +47,13 @@ Desktop users: paste keys in **Settings → Environment Variables** instead of t
 ## 3. Start
 
 ```bash
-etemaro start --dry-run
+etemaro start
 ```
 
-Default strategy is `bid_ask` with `dryRun: true`. Screening every 30 minutes, management every 10.
+Default strategy is `bid_ask` with `"connection.dryRun": true`. Screening every 30 minutes, management every 10.
 
-When you are ready for live trades: set `JUPITER_API_KEY`, then `etemaro start`.
+When you are ready for live trades: set `JUPITER_API_KEY`, then set
+`"connection.dryRun": false` in `config/instances/agent-default.json`.
 
 ```
 [manage: 8m 12s | screen: 24m 3s]
@@ -65,7 +66,7 @@ To see real-time streaming logs, monitor active positions, and converse with the
 
 1. Start the agent (in the background or in a separate terminal):
    ```bash
-   etemaro start --dry-run
+   etemaro start
    # or with PM2:
    pnpm run pm2:start
    ```

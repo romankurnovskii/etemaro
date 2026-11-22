@@ -39,7 +39,7 @@
    # Production / VPS (recommended):
    npm run pm2:start
    # Or in background directly:
-   etemaro start --dry-run &
+   etemaro start &
    ```
 2. **Attach the interactive CLI**:
    ```bash

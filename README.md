@@ -103,10 +103,12 @@ Without `--`, npm consumes `--name`/`--prompt` as its own flags and errors with 
 When the checklist is green:
 
 ```bash
-etemaro start --dry-run
+etemaro start
 ```
 
-Live mode (real trades): add `JUPITER_API_KEY`, then `etemaro start`.
+The generated config is dry-run (`"connection.dryRun": true`). Live mode (real
+trades): add `JUPITER_API_KEY`, then set `"connection.dryRun": false` in
+`config/instances/agent-default.json`.
 
 _Or install via `npm install -g @etemaro/cli` / `brew install romankurnovskii/awesome-brew/etemaro`._
 
@@ -116,7 +118,7 @@ To monitor the agent with a real-time terminal UI, stream live logs, and chat wi
 
 1. **Start the agent** (in background or via PM2):
    ```bash
-   etemaro start --dry-run
+   etemaro start
    # or with PM2 (24/7 background):
    pnpm run pm2:start
    ```
@@ -177,10 +179,10 @@ pnpm install
 # 2. Initialize configuration (.env and agent-config.json)
 pnpm cli init
 
-# 3. Start in dry-run mode
+# 3. Start (dry-run or live is set by connection.dryRun in the instance config)
 pnpm run dev
 
-# or in live mode with default agent strategy config
+# or with the default agent strategy config
 pnpm run start
 
 # run with custom strategy config
@@ -194,7 +196,7 @@ npm run start -- --config config/instances/your-config.json
 Same two commands on a VPS. Keep the process running with tmux, systemd, or:
 
 ```bash
-nohup etemaro start --dry-run >> ~/.config/etemaro/data/agent.out 2>&1 &
+nohup etemaro start >> ~/.config/etemaro/data/agent.out 2>&1 &
 ```
 
 Clone + PM2 / Docker is **[source setup](#developer--source-setup)** above.
