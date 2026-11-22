@@ -1,19 +1,17 @@
 import { useEffect, useState } from 'react'
 import { AgentCard } from '../components/AgentCard'
-import type { AgentsController } from '../hooks/useAgents'
-import type { AgentTelemetry } from '../hooks/useAgentTelemetry'
 import type { StrategySummary } from '../lib/ipc'
-import { type LogStore, logsForAgent } from '../lib/logs'
+import { logsForAgent } from '../lib/logs'
+import { useAgentsStore } from '../stores/agentsStore'
+import { useLogsStore } from '../stores/logsStore'
+import { useTelemetryStore } from '../stores/telemetryStore'
+import { useUiStore } from '../stores/uiStore'
 
 const CLOCK_TICK_MS = 5000
 
 interface Props {
-  controller: AgentsController
-  telemetry: Readonly<Record<string, AgentTelemetry>>
-  logs: LogStore
   writeTools: ReadonlySet<string>
   strategies: StrategySummary[]
-  token: string
   onCreateStrategy: () => void
 }
 
@@ -26,19 +24,33 @@ function useNow(intervalMs: number): number {
   return now
 }
 
-export function AgentsView({ controller, telemetry, logs, writeTools, strategies, token, onCreateStrategy }: Props) {
+export function AgentsView({ writeTools, strategies, onCreateStrategy }: Props) {
   const [name, setName] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
   const now = useNow(CLOCK_TICK_MS)
-  const { agents } = controller
+
+  const token = useUiStore((s) => s.token)
+  const agents = useAgentsStore((s) => s.agents)
+  const loaded = useAgentsStore((s) => s.loaded)
+  const loadError = useAgentsStore((s) => s.loadError)
+  const busy = useAgentsStore((s) => s.busy)
+  const errors = useAgentsStore((s) => s.errors)
+  const create = useAgentsStore((s) => s.create)
+  const start = useAgentsStore((s) => s.start)
+  const stop = useAgentsStore((s) => s.stop)
+  const setStrategy = useAgentsStore((s) => s.setStrategy)
+  const load = useAgentsStore((s) => s.load)
+
+  const telemetry = useTelemetryStore((s) => s.byAgent)
+  const logs = useLogsStore((s) => s.store)
+
   const running = agents.filter((a) => a.running).length
 
   const submit = () => {
     const value = name.trim()
     if (!value) return
     setCreateError(null)
-    controller
-      .create(value)
+    create(token, value)
       .then(() => setName(''))
       .catch((e: unknown) => setCreateError(e instanceof Error ? e.message : String(e)))
   }
@@ -85,18 +97,18 @@ export function AgentsView({ controller, telemetry, logs, writeTools, strategies
         </form>
       </section>
 
-      {controller.loadError ? (
+      {loadError ? (
         <div className="msg msg-error" role="alert">
-          Could not load agents: {controller.loadError}{' '}
-          <button type="button" className="btn btn-sm" onClick={controller.reload}>
+          Could not load agents: {loadError}{' '}
+          <button type="button" className="btn btn-sm" onClick={() => void load(token)}>
             Retry
           </button>
         </div>
       ) : null}
 
-      {!controller.loaded ? (
+      {!loaded ? (
         <p className="muted">Loading agents…</p>
-      ) : agents.length === 0 && !controller.loadError ? (
+      ) : agents.length === 0 && !loadError ? (
         <div className="empty">
           <p>No agents configured yet.</p>
           <p className="muted small">Create one above — it starts in dry-run mode.</p>
@@ -111,13 +123,12 @@ export function AgentsView({ controller, telemetry, logs, writeTools, strategies
               logs={logsForAgent(logs, agent.id)}
               writeTools={writeTools}
               strategies={strategies}
-              token={token}
-              busy={Boolean(controller.busy[agent.id])}
-              error={controller.errors[agent.id]}
+              busy={Boolean(busy[agent.id])}
+              error={errors[agent.id]}
               now={now}
-              onStart={controller.start}
-              onStop={controller.stop}
-              onSetStrategy={controller.setStrategy}
+              onStart={(id) => start(token, id)}
+              onStop={(id) => stop(token, id)}
+              onSetStrategy={(id, strategyId) => setStrategy(token, id, strategyId)}
             />
           ))}
         </div>

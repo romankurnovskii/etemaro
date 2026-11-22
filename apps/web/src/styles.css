@@ -1,12 +1,17 @@
-/* Etemaro brand tokens (issue #342). Components use these variables only. */
+/* Etemaro brand tokens (issue #342). Components use these variables only.
+   Palette mirrors the brand mark (assets/favicon.svg): olive #556B2F on a warm
+   off-white canvas, with sage as the secondary accent. */
 :root {
   --canvas: #ffffff;
   --surface: #faf8f5;
+  --surface-2: #f4f0ea;
   --accent: #556b2f;
   --accent-strong: #435524;
+  --accent-sage: #8a9a5b;
   --text: #1a120d;
   --muted: #6e665e;
   --border: #e5ddd4;
+  --border-strong: #d3c8bb;
 
   --success: #556b2f;
   --warning: #c27803;
@@ -19,14 +24,16 @@
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 
-  --radius: 6px;
-  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-sm: 5px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
+  --shadow-sm: 0 1px 2px rgba(26, 18, 13, 0.06);
+  --shadow-md: 0 8px 24px rgba(26, 18, 13, 0.12);
   --focus: 0 0 0 2px var(--canvas), 0 0 0 4px var(--accent);
 }
 
@@ -263,12 +270,11 @@ button:disabled {
 .brand h1 {
   font-size: 18px;
   font-weight: 700;
+  letter-spacing: -0.02em;
 }
-.brand-mark {
-  width: 14px;
-  height: 28px;
-  background: var(--accent);
-  border-radius: 2px;
+.brand-logo {
+  color: var(--accent);
+  flex: none;
 }
 .topbar-status {
   display: flex;
@@ -276,9 +282,45 @@ button:disabled {
   gap: 2px;
   align-items: flex-start;
 }
-.token-form input {
-  width: 200px;
+
+/* ─── Connection popover ────────────────────────────────── */
+.conn-menu {
+  position: relative;
+}
+.conn-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-2));
+  z-index: 20;
+  width: min(380px, calc(100vw - 32px));
+  padding: var(--space-4);
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+}
+.conn-panel h2 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
+.conn-panel p {
+  margin-bottom: var(--space-3);
+}
+.conn-panel input {
+  width: 100%;
   font-family: var(--font-mono);
+}
+.conn-panel .hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: var(--space-1);
+}
+.conn-panel .dialog-actions {
+  margin-top: var(--space-3);
 }
 
 .dot {
@@ -572,6 +614,9 @@ button:disabled {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.not-exposed {
+  margin-top: calc(-1 * var(--space-2));
 }
 .strategy-switch select {
   flex: 1;
@@ -920,8 +965,17 @@ pre.result {
   .brand {
     width: 100%;
   }
-  .token-form,
-  .token-form input,
+  .conn-menu {
+    width: 100%;
+  }
+  .conn-menu > .btn {
+    width: 100%;
+  }
+  .conn-panel {
+    left: 0;
+    right: auto;
+    width: 100%;
+  }
   .create-agent,
   .create-agent .row input {
     width: 100%;

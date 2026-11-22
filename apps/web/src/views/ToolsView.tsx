@@ -2,12 +2,15 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { CopyButton } from '../components/CopyButton'
 import { fetchJson } from '../lib/api'
 import type { JsonSchema, ToolDescriptor } from '../lib/ipc'
+import { useUiStore } from '../stores/uiStore'
 
 interface Props {
   catalog: ToolDescriptor[]
-  token: string
   initialToolName?: string | null
 }
+
+/** Thrown when a JSON-typed field cannot be parsed; surfaced next to the field. */
+class FieldError extends Error {}
 
 function normalizeArgs(tool: ToolDescriptor, raw: Record<string, unknown>): Record<string, unknown> {
   const props = tool.parameters?.properties ?? {}
@@ -23,13 +26,19 @@ function normalizeArgs(tool: ToolDescriptor, raw: Record<string, unknown>): Reco
         .map((p) => p.trim())
         .filter((p) => p.length > 0)
       out[name] = schema?.items?.type === 'number' || schema?.items?.type === 'integer' ? parts.map(Number) : parts
-    } else if (type === 'object' && typeof value === 'string') out[name] = JSON.parse(value)
-    else out[name] = value
+    } else if (type === 'object' && typeof value === 'string') {
+      try {
+        out[name] = JSON.parse(value)
+      } catch {
+        throw new FieldError(`${name}: not valid JSON`)
+      }
+    } else out[name] = value
   }
   return out
 }
 
-export function ToolsView({ catalog, token, initialToolName }: Props) {
+export function ToolsView({ catalog, initialToolName }: Props) {
+  const token = useUiStore((s) => s.token)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<string | null>(initialToolName ?? null)
   const [args, setArgs] = useState<Record<string, unknown>>({})
@@ -135,7 +144,7 @@ export function ToolsView({ catalog, token, initialToolName }: Props) {
                   </span>
                 </label>
               ) : null}
-              <button type="submit" className="primary" disabled={pending}>
+              <button type="submit" className="btn btn-primary" disabled={pending}>
                 {pending ? 'Running…' : 'Run tool'}
               </button>
             </form>

@@ -1,6 +1,7 @@
-import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { fetchJson } from '../lib/api'
 import type { ManagedAgent } from '../lib/ipc'
+import { useUiStore } from '../stores/uiStore'
 
 function ConfigField({ name, value, onChange }: { name: string; value: unknown; onChange: (v: unknown) => void }) {
   const type = typeof value
@@ -25,7 +26,9 @@ function ConfigField({ name, value, onChange }: { name: string; value: unknown; 
         onChange={(e) => {
           try {
             onChange(JSON.parse(e.target.value))
-          } catch {}
+          } catch {
+            // Keep the last valid value while the user is mid-edit.
+          }
         }}
       />
     )
@@ -40,21 +43,21 @@ function ConfigField({ name, value, onChange }: { name: string; value: unknown; 
   )
 }
 
-interface ConfigViewProps {
-  agents: ManagedAgent[]
-  token: string
-}
-
 interface ConfigFile {
   path: string
   content: Record<string, unknown>
 }
 
-export function ConfigView({ agents, token }: ConfigViewProps) {
+export function ConfigView({ agents }: { agents: ManagedAgent[] }) {
+  const token = useUiStore((s) => s.token)
   const [selectedAgent, setSelectedAgent] = useState<ManagedAgent | null>(null)
   const [config, setConfig] = useState<ConfigFile | null>(null)
+  const [dirty, setDirty] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
+  const savedTimer = useRef<number | undefined>(undefined)
+
+  useEffect(() => () => window.clearTimeout(savedTimer.current), [])
 
   const loadConfig = useCallback(
     async (path: string) => {
@@ -64,6 +67,7 @@ export function ConfigView({ agents, token }: ConfigViewProps) {
           token,
         )
         setConfig({ path, content: data?.config ?? {} })
+        setDirty(false)
         setError(null)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load config')
@@ -80,6 +84,7 @@ export function ConfigView({ agents, token }: ConfigViewProps) {
   const handleChange = (key: string, value: unknown) => {
     if (!config) return
     setConfig({ ...config, content: { ...config.content, [key]: value } })
+    setDirty(true)
   }
 
   const handleSave = async () => {
@@ -92,7 +97,9 @@ export function ConfigView({ agents, token }: ConfigViewProps) {
         body: JSON.stringify({ config: config.content }),
       })
       setSaveStatus('saved')
-      setTimeout(() => setSaveStatus('idle'), 2000)
+      setDirty(false)
+      window.clearTimeout(savedTimer.current)
+      savedTimer.current = window.setTimeout(() => setSaveStatus('idle'), 2000)
     } catch (e) {
       setSaveStatus('error')
       setError(e instanceof Error ? e.message : 'Failed to save config')
@@ -125,28 +132,43 @@ export function ConfigView({ agents, token }: ConfigViewProps) {
           <h2>{selectedAgent.name}</h2>
           <p className="muted small">{selectedAgent.configPath}</p>
         </div>
-        <button type="button" className="ghost" onClick={() => setSelectedAgent(null)}>
+        <button type="button" className="btn btn-quiet" onClick={() => setSelectedAgent(null)}>
           Back to list
         </button>
       </div>
 
-      {error && <div className="error mt">{error}</div>}
+      {error ? (
+        <div className="msg msg-error mt" role="alert">
+          {error}
+        </div>
+      ) : null}
 
-      {config && (
+      {config ? (
         <div className="mt">
           {Object.entries(config.content).map(([k, v]) => (
             <ConfigField key={k} name={k} value={v} onChange={(val) => handleChange(k, val)} />
           ))}
           <div className="row mt">
-            <button type="button" className="primary" onClick={handleSave} disabled={saveStatus === 'saving'}>
-              {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved ✓' : 'Save Changes'}
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleSave}
+              disabled={saveStatus === 'saving' || !dirty}
+            >
+              {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved ✓' : 'Save changes'}
             </button>
-            <button type="button" className="ghost" onClick={() => loadConfig(selectedAgent.configPath)}>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => void loadConfig(selectedAgent.configPath)}
+              disabled={!dirty}
+            >
               Reset
             </button>
+            {dirty ? <span className="muted small">Unsaved changes</span> : null}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

@@ -22,6 +22,41 @@ pnpm --filter @etemaro/web build   # emits apps/web/dist
 `IpcServer` serves `apps/web/dist` statically, and `pnpm -r build` builds it as
 part of the workspace. The root `pre-commit` hook builds before running tests.
 
+The CLI build copies `apps/web/dist` into `packages/cli/dist/web`, so a global
+`npm i -g @etemaro/cli` can serve the console without a repo checkout
+(`resolveWebDir()` in `packages/core/src/shared/constants.ts`).
+
+## State management
+
+All shared state lives in zustand stores under `src/stores/`. Components read
+narrow selectors and never own cross-cutting state.
+
+| Store | Owns |
+| --- | --- |
+| `uiStore` | active tab (synced to `#/tab`), bearer token, tool preselection, connection popover |
+| `connectionStore` | console daemon WebSocket: status, snapshot, tool catalog, chat, auth errors |
+| `agentsStore` | `/api/agents` list, 15 s polling (paused while the tab is hidden), start/stop/create/strategy |
+| `telemetryStore` | one IPC link per *running* agent, keyed by agent id |
+| `logsStore` | every log entry, bucketed by the entry's own `agentId` (bounded per agent) |
+| `strategiesStore` | strategy library for the switch dialog |
+
+## Brand
+
+The console follows the Etemaro brand mark (`assets/favicon.svg`): olive
+`#556B2F` on a warm off-white canvas, sage `#8A9A5B` as the secondary accent.
+`components/Logo.tsx` renders the same geometry inline with `currentColor`, and
+`public/favicon.svg` is the shared icon. All colours come from the CSS variables
+at the top of `src/styles.css` — no ad-hoc hex values in components.
+
+## Bearer token
+
+The token field is **not** needed for the default localhost setup. It exists
+because the daemon can require auth when `connection.ipcToken` is set: HTTP then
+needs `Authorization: Bearer` and WebSocket clients must `auth` first. The field
+lives in the header's **Connection** popover, is stored in `localStorage`
+(`etemaro.token`), and opens automatically when the daemon rejects the
+credentials. Per-agent tokens are never stored.
+
 ## Views
 
 - **Agents** — Agent Visualizer: one card per managed agent with status, inferred loop phase

@@ -1,15 +1,16 @@
 import type { ReactNode } from 'react'
-import type { AgentTelemetry } from '../hooks/useAgentTelemetry'
 import { type AgentStatus, deriveStatus, inferPhase, lastDecision, lastTool } from '../lib/agentActivity'
 import { DASH, fmtAgo, fmtClock, shortAddr } from '../lib/format'
 import type { ManagedAgent, StrategySummary } from '../lib/ipc'
 import { type LogRecord, logKey, severityOf } from '../lib/logs'
+import type { AgentTelemetry } from '../stores/telemetryStore'
 import { PhasePipeline } from './PhasePipeline'
 import { StrategySwitch } from './StrategySwitch'
 
 const RECENT_LOGS = 8
 
-const NOT_EXPOSED = 'Not exposed by the daemon IPC protocol'
+/** Fields the daemon does not publish over IPC — shown once, not as four dashes. */
+const NOT_EXPOSED = ['Range bins', 'In range', 'Asset split', 'Uptime']
 
 interface Props {
   agent: ManagedAgent
@@ -18,7 +19,6 @@ interface Props {
   logs: readonly LogRecord[]
   writeTools: ReadonlySet<string>
   strategies: StrategySummary[]
-  token: string
   busy: boolean
   error: string | undefined
   now: number
@@ -93,7 +93,7 @@ export function AgentCard(props: Props) {
         {agent.running ? (
           <button
             type="button"
-            className="btn btn-danger"
+            className="btn btn-danger btn-sm"
             disabled={props.busy}
             onClick={() => void props.onStop(agent.id)}
           >
@@ -102,7 +102,7 @@ export function AgentCard(props: Props) {
         ) : (
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary btn-sm"
             disabled={props.busy}
             onClick={() => void props.onStart(agent.id)}
           >
@@ -137,9 +137,6 @@ export function AgentCard(props: Props) {
             DASH
           )}
         </Metric>
-        <Metric label="Uptime" title={NOT_EXPOSED}>
-          {DASH}
-        </Metric>
         <Metric label="Active pool">
           {positions === null ? (
             DASH
@@ -154,15 +151,6 @@ export function AgentCard(props: Props) {
               {positions.length > 3 ? ` +${positions.length - 3}` : ''}
             </span>
           )}
-        </Metric>
-        <Metric label="Range bins" title={NOT_EXPOSED}>
-          {DASH}
-        </Metric>
-        <Metric label="In range" title={NOT_EXPOSED}>
-          {DASH}
-        </Metric>
-        <Metric label="Asset split" title={NOT_EXPOSED}>
-          {DASH}
         </Metric>
         <Metric label="Last tool">
           {tool ? (
@@ -184,11 +172,12 @@ export function AgentCard(props: Props) {
         </Metric>
       </dl>
 
+      <p className="not-exposed small muted">Not exposed over IPC: {NOT_EXPOSED.join(' · ')}</p>
+
       <StrategySwitch
         key={`${agent.id}:${agent.strategyId ?? ''}`}
         agent={agent}
         strategies={props.strategies}
-        token={props.token}
         onApply={props.onSetStrategy}
       />
 

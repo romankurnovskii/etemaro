@@ -1,12 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Header } from './components/Header'
-import { useAgentConnection } from './hooks/useAgentConnection'
-import { useAgents } from './hooks/useAgents'
-import { useAgentTelemetry } from './hooks/useAgentTelemetry'
-import { useLogStore } from './hooks/useLogStore'
-import { useStrategies } from './hooks/useStrategies'
 import { DAEMON_URL, WS_URL } from './lib/api'
-import { readInitialToken, storeToken } from './lib/token'
+import { useAgentsStore } from './stores/agentsStore'
+import { useConnectionStore } from './stores/connectionStore'
+import { useStrategiesStore } from './stores/strategiesStore'
+import { useTelemetryStore } from './stores/telemetryStore'
+import { TAB_LABEL, TABS, type Tab, useUiStore } from './stores/uiStore'
 import { AgentsView } from './views/AgentsView'
 import { ChatView } from './views/ChatView'
 import { ConfigView } from './views/ConfigView'
@@ -14,44 +13,61 @@ import { DashboardView } from './views/DashboardView'
 import { LogsView } from './views/LogsView'
 import { ToolsView } from './views/ToolsView'
 
-const TABS = ['agents', 'dashboard', 'tools', 'config', 'logs', 'chat'] as const
-type Tab = (typeof TABS)[number]
-
-const TAB_LABEL: Record<Tab, string> = {
-  agents: 'Agents',
-  dashboard: 'Dashboard',
-  tools: 'Tools',
-  config: 'Config',
-  logs: 'Logs',
-  chat: 'Chat',
-}
-
 export default function App() {
-  const [token, setToken] = useState(readInitialToken)
-  const [tab, setTab] = useState<Tab>('agents')
-  const [openTool, setOpenTool] = useState<string | null>(null)
-  const logs = useLogStore()
-  const conn = useAgentConnection(WS_URL, token, logs.ingest)
-  const agents = useAgents(token)
-  const strategies = useStrategies(token)
-  const telemetry = useAgentTelemetry(agents.agents, token, logs.ingest)
-  const writeTools = useMemo(() => new Set(conn.catalog.filter((t) => t.isWrite).map((t) => t.name)), [conn.catalog])
+  const token = useUiStore((s) => s.token)
+  const tab = useUiStore((s) => s.tab)
+  const setTab = useUiStore((s) => s.setTab)
+  const openTool = useUiStore((s) => s.openTool)
+  const setOpenTool = useUiStore((s) => s.setOpenTool)
 
-  const changeToken = (next: string) => {
-    storeToken(next)
-    setToken(next)
-  }
+  const status = useConnectionStore((s) => s.status)
+  const lastError = useConnectionStore((s) => s.lastError)
+  const authFailed = useConnectionStore((s) => s.authFailed)
+  const snapshot = useConnectionStore((s) => s.snapshot)
+  const catalog = useConnectionStore((s) => s.catalog)
+  const chat = useConnectionStore((s) => s.chat)
+  const connect = useConnectionStore((s) => s.connect)
+  const sendChat = useConnectionStore((s) => s.sendChat)
+
+  const agents = useAgentsStore((s) => s.agents)
+  const startPolling = useAgentsStore((s) => s.startPolling)
+  const strategies = useStrategiesStore((s) => s.strategies)
+  const loadStrategies = useStrategiesStore((s) => s.load)
+  const syncTelemetry = useTelemetryStore((s) => s.sync)
+
+  useEffect(() => {
+    connect(WS_URL, token)
+  }, [connect, token])
+
+  useEffect(() => startPolling(token), [startPolling, token])
+
+  useEffect(() => {
+    syncTelemetry(agents, token)
+  }, [syncTelemetry, agents, token])
+
+  useEffect(() => {
+    void loadStrategies(token)
+  }, [loadStrategies, token])
+
+  // Back/forward and hand-edited hashes keep the tab in sync.
+  useEffect(() => {
+    const onHash = () => setTab(readHashTab())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [setTab])
+
+  const writeTools = useMemo(() => new Set(catalog.filter((t) => t.isWrite).map((t) => t.name)), [catalog])
+  const runningAgents = agents.filter((a) => a.running).length
 
   return (
     <div className="app">
       <Header
         daemonUrl={DAEMON_URL}
-        status={conn.status}
-        lastError={conn.lastError}
-        runningAgents={agents.agents.filter((a) => a.running).length}
-        totalAgents={agents.agents.length}
-        token={token}
-        onTokenChange={changeToken}
+        status={status}
+        lastError={lastError}
+        authFailed={authFailed}
+        runningAgents={runningAgents}
+        totalAgents={agents.length}
       />
       <div className="tabs" role="tablist" aria-label="Console sections">
         {TABS.map((t) => (
@@ -72,24 +88,25 @@ export default function App() {
       <main id="tab-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
         {tab === 'agents' ? (
           <AgentsView
-            controller={agents}
-            telemetry={telemetry}
-            logs={logs.store}
             writeTools={writeTools}
-            strategies={strategies.strategies}
-            token={token}
+            strategies={strategies}
             onCreateStrategy={() => {
               setOpenTool('add_strategy')
               setTab('tools')
             }}
           />
         ) : null}
-        {tab === 'dashboard' ? <DashboardView snapshot={conn.snapshot} /> : null}
-        {tab === 'tools' ? <ToolsView catalog={conn.catalog} token={token} initialToolName={openTool} /> : null}
-        {tab === 'config' ? <ConfigView agents={agents.agents} token={token} /> : null}
-        {tab === 'logs' ? <LogsView store={logs.store} /> : null}
-        {tab === 'chat' ? <ChatView chat={conn.chat} onSend={conn.sendChat} /> : null}
+        {tab === 'dashboard' ? <DashboardView snapshot={snapshot} /> : null}
+        {tab === 'tools' ? <ToolsView catalog={catalog} initialToolName={openTool} /> : null}
+        {tab === 'config' ? <ConfigView agents={agents} /> : null}
+        {tab === 'logs' ? <LogsView /> : null}
+        {tab === 'chat' ? <ChatView chat={chat} onSend={sendChat} /> : null}
       </main>
     </div>
   )
+}
+
+function readHashTab(): Tab {
+  const raw = location.hash.replace(/^#\/?/, '').trim()
+  return (TABS as readonly string[]).includes(raw) ? (raw as Tab) : 'agents'
 }

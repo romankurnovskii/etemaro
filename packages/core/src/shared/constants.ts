@@ -50,6 +50,34 @@ export function repoPath(...segments: string[]): string {
 }
 
 /**
+ * Locate the built browser console (`apps/web/dist`).
+ *
+ * Resolution order:
+ * 1. `ETEMARO_WEB_DIR` — explicit override.
+ * 2. `<repo>/apps/web/dist` — running from a checkout.
+ * 3. `<bundle dir>/web` — the copy shipped inside the published CLI package
+ *    (see `packages/cli/tsup.config.ts`), so `npm i -g @etemaro/cli` can serve
+ *    the UI without a repo checkout.
+ *
+ * Returns `undefined` when no build with an `index.html` is found; the IPC
+ * server then reports `NO_WEB_UI` instead of serving a broken root.
+ */
+export function resolveWebDir(): string | undefined {
+  const candidates = [
+    process.env.ETEMARO_WEB_DIR,
+    repoPath('apps', 'web', 'dist'),
+    path.join(currentFileDir, 'web'),
+    path.join(currentFileDir, '..', 'web'),
+  ]
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    const dir = path.resolve(candidate)
+    if (fs.existsSync(path.join(dir, 'index.html'))) return dir
+  }
+  return undefined
+}
+
+/**
  * Expand a leading `~/` (or bare `~`) to the user home directory.
  * Absolute and relative paths are returned resolved.
  */

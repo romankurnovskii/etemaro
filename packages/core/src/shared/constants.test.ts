@@ -11,6 +11,7 @@
  */
 
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -22,6 +23,7 @@ import {
   getInstanceId,
   instanceDataPath,
   REPO_ROOT,
+  resolveWebDir,
   sharedConfigPath,
   strategyLibraryPath,
 } from './constants.js'
@@ -240,5 +242,32 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
   it('configPath finds configs in config/instances/ if present', () => {
     delete process.env.AGENT_CONFIG_PATH
     expect(configPath('agent-default.json')).toBe(path.join(REPO_ROOT, 'config', 'instances', 'agent-default.json'))
+  })
+
+  describe('resolveWebDir', () => {
+    afterEach(() => {
+      delete process.env.ETEMARO_WEB_DIR
+    })
+
+    it('honors ETEMARO_WEB_DIR when it contains index.html', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'etemaro-web-'))
+      fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html>')
+      process.env.ETEMARO_WEB_DIR = dir
+      expect(resolveWebDir()).toBe(path.resolve(dir))
+      fs.rmSync(dir, { recursive: true, force: true })
+    })
+
+    it('ignores ETEMARO_WEB_DIR without index.html and falls through', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'etemaro-web-empty-'))
+      process.env.ETEMARO_WEB_DIR = dir
+      const resolved = resolveWebDir()
+      expect(resolved === undefined || resolved !== path.resolve(dir)).toBe(true)
+      fs.rmSync(dir, { recursive: true, force: true })
+    })
+
+    it('returns a directory containing index.html when a build exists', () => {
+      const resolved = resolveWebDir()
+      if (resolved) expect(fs.existsSync(path.join(resolved, 'index.html'))).toBe(true)
+    })
   })
 })
