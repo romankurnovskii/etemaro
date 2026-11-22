@@ -314,6 +314,10 @@ export class IpcServer {
         agentId: this.agentId,
         webUi: Boolean(this.config.webDir),
         tools: this.toolCatalog.length,
+        // The console renders timestamps in the daemon's zone, not the
+        // browser's, so a remote browser shows the same clock as the host.
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        utcOffsetMinutes: -new Date().getTimezoneOffset(),
       })
       return
     }

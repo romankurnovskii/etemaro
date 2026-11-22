@@ -1,9 +1,11 @@
 import { useEffect, useMemo } from 'react'
 import { Header } from './components/Header'
 import { useAgentsQuery } from './hooks/useAgentsQuery'
+import { useHealthQuery } from './hooks/useHealthQuery'
 import { useStrategiesQuery } from './hooks/useStrategiesQuery'
 import { DAEMON_URL, WS_URL } from './lib/api'
 import type { ManagedAgent } from './lib/ipc'
+import { useClockStore } from './stores/clockStore'
 import { useConnectionStore } from './stores/connectionStore'
 import { useTelemetryStore } from './stores/telemetryStore'
 import { TAB_LABEL, TABS, type Tab, useUiStore } from './stores/uiStore'
@@ -34,6 +36,8 @@ export default function App() {
   const connect = useConnectionStore((s) => s.connect)
   const sendChat = useConnectionStore((s) => s.sendChat)
 
+  const healthQuery = useHealthQuery()
+  const setZone = useClockStore((s) => s.setZone)
   const agentsQuery = useAgentsQuery(token)
   const agents = agentsQuery.data ?? NO_AGENTS
   const strategiesQuery = useStrategiesQuery(token)
@@ -42,6 +46,12 @@ export default function App() {
   useEffect(() => {
     connect(WS_URL, token)
   }, [connect, token])
+
+  // Render timestamps in the daemon's zone, not the browser's.
+  useEffect(() => {
+    if (!healthQuery.data) return
+    setZone(healthQuery.data.timezone ?? null, healthQuery.data.utcOffsetMinutes ?? null)
+  }, [healthQuery.data, setZone])
 
   useEffect(() => {
     syncTelemetry(agents, token)
