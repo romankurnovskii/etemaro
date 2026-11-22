@@ -61,7 +61,7 @@ export interface AgentControl {
   list(): unknown[]
   create(name: string): unknown | Promise<unknown>
   start(id: string): unknown | Promise<unknown>
-  stop(id: string): unknown
+  stop(id: string): unknown | Promise<unknown>
   setStrategy(id: string, strategyId: string): unknown
   readConfig(configPath: string): unknown
   writeConfig(configPath: string, content: unknown): unknown
@@ -385,7 +385,7 @@ export class IpcServer {
           return
         }
         if (action === 'stop') {
-          this._sendJson(res, 200, { ok: true, agent: this.agentControl.stop(id) })
+          this._sendJson(res, 200, { ok: true, agent: await this.agentControl.stop(id) })
           return
         }
         const body = await this._readJsonBody(req)

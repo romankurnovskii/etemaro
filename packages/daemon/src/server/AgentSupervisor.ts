@@ -51,6 +51,21 @@ const ID_PATTERN = /^[a-zA-Z0-9._-]+$/
 const CONSOLE_IPC_PORT = 8765
 const AGENT_PORT_RANGE_START = 8766
 const AGENT_PORT_RANGE_END = 8865
+/** How long to wait for SIGTERM before escalating to SIGKILL. */
+const STOP_TIMEOUT_MS = 5_000
+
+/**
+ * Resolve `connection.dryRun`, which the schema allows to be a literal boolean
+ * or an `env.NAME` indirection. Anything other than an explicit true is live.
+ */
+function resolveDryRun(value: unknown): boolean {
+  if (value === true) return true
+  if (typeof value === 'string' && value.startsWith('env.')) {
+    const resolved = process.env[value.slice(4)]
+    return resolved === 'true' || resolved === '1'
+  }
+  return false
+}
 
 /** True when nothing is listening on `port` on loopback. */
 function isPortFree(port: number): Promise<boolean> {
@@ -141,18 +156,29 @@ export class AgentSupervisor {
     const out = fs.openSync(path.join(dataDir, 'agent.out'), 'a')
     // --data-dir is the base dir; core isolates to instances/<id> via dataPath().
     const args = [...this.cli.argsPrefix, 'start', '--config', configPath, '--data-dir', baseDataDir]
-    const child = this.spawnFn(this.cli.program, args, {
-      cwd: this.repoRoot,
-      env: {
-        ...process.env,
-        AGENT_CONFIG_PATH: configPath,
-        // Base data dir only — core appends instances/<id> via dataPath().
-        ETEMARO_DATA_DIR: path.join(this.repoRoot, 'data'),
-        ETEMARO_INSTANCE_ID: agentId,
-      },
-      stdio: ['ignore', out, out],
-      detached: false,
-    })
+    let child: ChildProcess
+    try {
+      child = this.spawnFn(this.cli.program, args, {
+        cwd: this.repoRoot,
+        env: {
+          ...process.env,
+          AGENT_CONFIG_PATH: configPath,
+          // Base data dir only — core appends instances/<id> via dataPath().
+          ETEMARO_DATA_DIR: path.join(this.repoRoot, 'data'),
+          ETEMARO_INSTANCE_ID: agentId,
+        },
+        stdio: ['ignore', out, out],
+        detached: false,
+      })
+    } catch (err) {
+      // Do not leak the log fd when the spawn itself fails.
+      try {
+        fs.closeSync(out)
+      } catch {
+        /* ignore */
+      }
+      throw err
+    }
     this.children.set(agentId, child)
     this.writeRegistry()
     child.on('exit', () => {
@@ -167,11 +193,31 @@ export class AgentSupervisor {
     return this.toManaged(agentId)
   }
 
-  /** Terminate the agent child process (SIGTERM). No-op when not running. */
-  stop(id: string): ManagedAgent {
+  /**
+   * Terminate the agent child process and wait for it to exit, so the caller
+   * never reports a stale `running: true`. Escalates to SIGKILL after
+   * `STOP_TIMEOUT_MS` when the child ignores SIGTERM.
+   */
+  async stop(id: string): Promise<ManagedAgent> {
     const agentId = this.safeId(id)
     const child = this.children.get(agentId)
-    if (child && child.exitCode === null && !child.killed) child.kill('SIGTERM')
+    if (child && child.exitCode === null && !child.killed) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+          try {
+            child.kill('SIGKILL')
+          } catch {
+            /* already gone */
+          }
+          resolve()
+        }, STOP_TIMEOUT_MS)
+        child.once('exit', () => {
+          clearTimeout(timer)
+          resolve()
+        })
+        child.kill('SIGTERM')
+      })
+    }
     return this.toManaged(agentId)
   }
 
@@ -323,7 +369,7 @@ export class AgentSupervisor {
       pid: running ? (child?.pid ?? null) : null,
       configPath: this.configPathFor(id),
       dataDir: this.dataDirFor(id),
-      dryRun: config.connection?.dryRun === true,
+      dryRun: resolveDryRun(config.connection?.dryRun),
     }
   }
 
