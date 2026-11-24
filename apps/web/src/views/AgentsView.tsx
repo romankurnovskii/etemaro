@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { AgentCard } from '../components/AgentCard'
-import { Button, Field } from '../components/ui'
+import { Button, Field, Pill } from '../components/ui'
 import { useAgentMutations, useAgentsQuery } from '../hooks/useAgentsQuery'
+import { useHealthQuery } from '../hooks/useHealthQuery'
 import type { StrategySummary } from '../lib/ipc'
 import { logsForAgent } from '../lib/logs'
+import { useConnectionStore } from '../stores/connectionStore'
 import { useLogsStore } from '../stores/logsStore'
 import { useTelemetryStore } from '../stores/telemetryStore'
 import { useUiStore } from '../stores/uiStore'
@@ -35,6 +37,8 @@ export function AgentsView({ writeTools, strategies, onCreateStrategy }: Props) 
 
   const telemetry = useTelemetryStore((s) => s.byAgent)
   const logs = useLogsStore((s) => s.store)
+  const daemonId = useHealthQuery().data?.agentId
+  const daemonDryRun = useConnectionStore((s) => s.snapshot?.dryRun)
 
   const agents = agentsQuery.data ?? []
   const running = agents.filter((a) => a.running).length
@@ -53,6 +57,18 @@ export function AgentsView({ writeTools, strategies, onCreateStrategy }: Props) 
           <p className="muted">
             {agents.length} configured · {running} running. Live data is read from each running agent's own IPC port;
             loop phase is inferred from that agent's logs.
+          </p>
+          {/* The daemon serving this console is an agent too, but it is not a
+              managed instance — without this line "all stopped" looks like
+              nothing is running while it keeps trading and notifying. */}
+          <p className="muted small daemon-line">
+            <Pill tone="success" dot>
+              Console daemon
+            </Pill>{' '}
+            <span className="mono">{daemonId ?? '—'}</span>
+            {' · '}
+            {daemonDryRun === false ? 'LIVE' : 'dry-run'} — runs its own cycles and sends notifications. Managed agents
+            are listed below.
           </p>
         </div>
         <form

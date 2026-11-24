@@ -644,6 +644,13 @@ button:disabled {
 .not-exposed {
   margin-top: calc(-1 * var(--space-2));
 }
+.daemon-line {
+  margin-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
 .strategy-switch select {
   flex: 1;
   min-width: 0;
