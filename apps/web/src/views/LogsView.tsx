@@ -107,6 +107,11 @@ export function LogsView() {
               <li key={logKey(r)} className={`log-line sev-${sev}`}>
                 <span className="ts">{fmtClock(r.entry.ts, timeZone)}</span>
                 <span className={`tag tag-sev-${sev}`}>{sev}</span>
+                {r.entry.dryRun ? (
+                  <span className="tag tag-dry" title="Emitted in dry-run">
+                    dry
+                  </span>
+                ) : null}
                 <span className="agent">{r.entry.agentId}</span>
                 <span className="cat">{r.entry.category}</span>
                 <span className="msg-text">{r.entry.message}</span>

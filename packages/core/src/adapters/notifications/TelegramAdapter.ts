@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import { config } from '../../config/Config.js'
 import type { DeployNotification } from '../../ports/notifications.js'
 import { AGENT_CONFIG_PATH, dataPath } from '../../shared/constants.js'
+import { getDryRun } from '../../shared/flags.js'
 import { log } from '../../shared/logger.js'
 import { loadJsonFile, saveJsonFile } from '../../shared/utils.js'
 import { sleep } from '../../utils/time.js'
@@ -152,16 +153,32 @@ interface TelegramApiResponse {
   description?: string
 }
 
+/** Prefix applied to every outgoing message while the agent is in dry-run. */
+export const DRY_RUN_PREFIX = '🧪 DRY RUN'
+
+/**
+ * Tag a message as simulated. Applied at the transport layer so no notify* helper
+ * can forget it — a dry-run message must never read as a live one.
+ */
+export function withDryRunTag(text: string): string {
+  if (!getDryRun()) return text
+  if (text.startsWith(DRY_RUN_PREFIX)) return text
+  return `${DRY_RUN_PREFIX}\n${text}`
+}
+
 async function postTelegram(method: string, body: Record<string, unknown>): Promise<TelegramApiResponse | null> {
   const token = getEffectiveToken()
   const currentChatId = getEffectiveChatId()
   const base = getBase()
   if (!token || !currentChatId || !base) return null
+  // Tag text payloads once, here, so every send/edit path is covered and the
+  // 4096-char limit still applies to the final string.
+  const taggedBody = typeof body.text === 'string' ? { ...body, text: withDryRunTag(body.text).slice(0, 4096) } : body
   try {
     const res = await fetch(`${base}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: currentChatId, ...body }),
+      body: JSON.stringify({ chat_id: currentChatId, ...taggedBody }),
     })
     if (!res.ok) {
       const err = await res.text()

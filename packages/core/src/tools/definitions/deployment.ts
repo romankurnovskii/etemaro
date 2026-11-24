@@ -16,13 +16,13 @@ HARD RULES:
 - Never use 'curve'.
 - Bin Step: Only deploy in pools with bin_step between 80 and 125.
 - Volatility must be positive. If volatility is 0, null, or missing, do not deploy.
-- Range must cover at least 35 total bins. Never deploy 1-bin/tiny ranges.
+- Range must cover at least the configured minBinsBelow bins. Never deploy 1-bin/tiny ranges.
 - For single-side SOL deploys (amount_y only, amount_x=0), do not request upside exposure:
   use bins_below only, keep bins_above=0, and the upper bin will be pinned to the current active bin.
 
 Guidelines (only when user hasn't specified):
 - Strategy: omit the strategy field — the system will use the configured default from config.strategy.strategyMeteora
-- Bins: choose from configured minBinsBelow/maxBinsBelow by positive volatility. The hard lower floor is 35 bins.
+- Bins: derive bins_below from the configured minBinsBelow/maxBinsBelow (the screening prompt states the exact values); the deploy validator rejects anything below minBinsBelow.
 - Deposit: single-sided SOL only: set amount_y/amount_sol, keep amount_x=0.
 
 WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,

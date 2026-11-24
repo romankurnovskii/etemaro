@@ -38,6 +38,29 @@ export class ConfigLoadError extends Error {
   }
 }
 
+/**
+ * Keep the strategy bin bounds coherent regardless of how the JSON was edited.
+ *
+ * `defaultBinsBelow` can drift outside `[minBinsBelow, maxBinsBelow]` after a
+ * config override (the shipped default is 35..69, an agent may override to
+ * 10..30 while keeping defaultBinsBelow: 35). Every consumer — the system
+ * prompt, the tool description and the deploy validator — must see the same
+ * clamped numbers.
+ */
+export function normalizeBinBounds(input: {
+  minBinsBelow?: number | null
+  maxBinsBelow?: number | null
+  defaultBinsBelow?: number | null
+}): { minBinsBelow: number; maxBinsBelow: number; defaultBinsBelow: number } {
+  const minBinsBelow = Math.max(MIN_SAFE_BINS_BELOW, Math.round(Number(input.minBinsBelow ?? MIN_SAFE_BINS_BELOW)))
+  const maxBinsBelow = Math.max(minBinsBelow, Math.round(Number(input.maxBinsBelow ?? minBinsBelow)))
+  const defaultBinsBelow = Math.min(
+    maxBinsBelow,
+    Math.max(minBinsBelow, Math.round(Number(input.defaultBinsBelow ?? maxBinsBelow))),
+  )
+  return { minBinsBelow, maxBinsBelow, defaultBinsBelow }
+}
+
 function buildConfig(): AppConfig {
   let loaded: Partial<ValidatedAgentConfig> = {}
   try {
@@ -175,9 +198,7 @@ function buildConfig(): AppConfig {
     strategy: {
       activeStrategyId: u.strategy.activeStrategyId,
       strategyMeteora: u.strategy.strategyMeteora,
-      minBinsBelow: u.strategy.minBinsBelow,
-      maxBinsBelow: u.strategy.maxBinsBelow,
-      defaultBinsBelow: u.strategy.defaultBinsBelow,
+      ...normalizeBinBounds(u.strategy),
       minSafeBinsBelow: u.strategy.minSafeBinsBelow,
     },
     schedule: {
@@ -367,20 +388,13 @@ export function reloadScreeningThresholds(): void {
       const minBinsBelow = numericConfig(u.minBinsBelow) ?? config.strategy.minBinsBelow
       const maxBinsBelow = numericConfig(u.maxBinsBelow) ?? config.strategy.maxBinsBelow
       const defaultBinsBelow = numericConfig(u.defaultBinsBelow) ?? config.strategy.defaultBinsBelow ?? maxBinsBelow
-      config.strategy.minBinsBelow = Math.max(
-        MIN_SAFE_BINS_BELOW,
-        Math.round(resolveField('minBinsBelow', minBinsBelow) as number),
-      )
-      config.strategy.maxBinsBelow = Math.max(
-        config.strategy.minBinsBelow,
-        Math.round(resolveField('maxBinsBelow', maxBinsBelow) as number),
-      )
-      config.strategy.defaultBinsBelow = Math.max(
-        config.strategy.minBinsBelow,
-        Math.min(
-          config.strategy.maxBinsBelow,
-          Math.round(resolveField('defaultBinsBelow', defaultBinsBelow) as number),
-        ),
+      Object.assign(
+        config.strategy,
+        normalizeBinBounds({
+          minBinsBelow: resolveField('minBinsBelow', minBinsBelow) as number,
+          maxBinsBelow: resolveField('maxBinsBelow', maxBinsBelow) as number,
+          defaultBinsBelow: resolveField('defaultBinsBelow', defaultBinsBelow) as number,
+        }),
       )
     }
   } catch {

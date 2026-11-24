@@ -29,6 +29,8 @@ export interface LogEntry {
   message: string
   agentId: string
   ts: string
+  /** True when the emitting process was in dry-run. */
+  dryRun?: boolean
   correlationId?: string
   metadata?: Record<string, unknown>
 }

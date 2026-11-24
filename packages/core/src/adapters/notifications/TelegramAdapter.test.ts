@@ -22,6 +22,7 @@ import {
   startPolling,
   stopPolling,
   summarizeToolResult,
+  withDryRunTag,
 } from './TelegramAdapter.js'
 
 vi.mock('./NotificationSink.js', () => ({
@@ -200,7 +201,7 @@ describe('TelegramAdapter notifications', () => {
       expect(fetchSpy).toHaveBeenCalledWith(
         'https://api.telegram.org/botenv_bot_token_123/sendMessage',
         expect.objectContaining({
-          body: JSON.stringify({ chat_id: '987654', text: 'Test config values' }),
+          body: JSON.stringify({ chat_id: '987654', text: withDryRunTag('Test config values') }),
         }),
       )
     } finally {
