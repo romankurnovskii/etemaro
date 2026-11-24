@@ -8,7 +8,7 @@ import { __setStateFilePath, getConsecutiveSwapFailures, resetConsecutiveSwapFai
 import { log } from '../shared/logger.js'
 import * as MeteoraAdapter from './blockchain/MeteoraAdapter.js'
 import * as WalletAdapter from './blockchain/WalletAdapter.js'
-import { notifyDeploy, notifyTransactionError } from './notifications/TelegramAdapter.js'
+import { notifyClose, notifyDeploy, notifyTransactionError } from './notifications/TelegramAdapter.js'
 import { tools } from './ToolDefinitions.js'
 import {
   closeAllPositions,
@@ -672,6 +672,39 @@ describe('ToolExecutor - deploy_position serialization', () => {
     expect(result).toMatchObject({ success: true })
     expect(notifyDeploy).not.toHaveBeenCalled()
     expect(notifyTransactionError).toHaveBeenCalledWith(expect.objectContaining({ type: 'deploy' }))
+  })
+
+  it('does not report a dry-run deploy as a failed transaction', async () => {
+    vi.mocked(MeteoraAdapter.deployPosition).mockResolvedValue({
+      dry_run: true,
+      would_deploy: { pool_address: 'pool-one', bins_below: 35, bins_above: 0 },
+      message: 'DRY RUN — no transaction sent',
+    } as any)
+
+    const result = await executeTool('deploy_position', {
+      pool_address: 'pool-one',
+      amount_y: 0.5,
+      bins_below: 35,
+      bins_above: 0,
+    })
+
+    expect(result).toMatchObject({ dry_run: true })
+    expect(notifyDeploy).not.toHaveBeenCalled()
+    // A simulated deploy has no position/tx by design — it is not an incident.
+    expect(notifyTransactionError).not.toHaveBeenCalled()
+  })
+
+  it('does not report a dry-run close as a realized close', async () => {
+    vi.mocked(MeteoraAdapter.closePosition).mockResolvedValue({
+      dry_run: true,
+      would_close: 'position-one',
+      message: 'DRY RUN — no transaction sent',
+    } as any)
+
+    await executeTool('close_position', { position_address: 'position-one' })
+
+    expect(notifyClose).not.toHaveBeenCalled()
+    expect(notifyTransactionError).not.toHaveBeenCalled()
   })
 
   it('defines WRITE_TOOLS containing all mutating tools and locks writeToolsMutex during execution', async () => {
