@@ -130,6 +130,8 @@ export interface IpcLogEntry {
   agentId: string
   /** ISO timestamp string. */
   ts: string
+  /** True when the emitting process was in dry-run (no on-chain transactions). */
+  dryRun?: boolean
   /** Optional correlation ID for tracing operations across events. */
   correlationId?: string
   /** Optional structured metadata. */

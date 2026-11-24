@@ -227,6 +227,9 @@ export function log(level: string, message: string): void {
       message: redacted,
       agentId,
       ts,
+      // Carried over IPC so the console can mark simulated lines; the file/stdout
+      // line already embeds it as text.
+      dryRun: getDryRun() && level !== 'wallet',
     }
     for (const listener of _logListeners) {
       try {
@@ -291,6 +294,7 @@ export function logStructured({ category, message, metadata }: StructuredLogEntr
       message: record.message as string,
       agentId: record.agentId as string,
       ts: record.ts as string,
+      dryRun: record.dryRun as boolean | undefined,
       correlationId: record.correlationId as string | undefined,
       metadata: record.metadata as Record<string, unknown> | undefined,
     }

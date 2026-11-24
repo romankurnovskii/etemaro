@@ -498,6 +498,11 @@ button:disabled {
 .tag-inferred {
   border-style: dashed;
 }
+.tag-dry {
+  border-style: dashed;
+  border-color: var(--warning);
+  color: var(--warning);
+}
 .tag-added {
   color: var(--success);
   border-color: currentColor;

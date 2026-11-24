@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ConnectionStatus } from '../stores/connectionStore'
+import { useConnectionStore } from '../stores/connectionStore'
 import { useThemeStore } from '../stores/themeStore'
 import { useUiStore } from '../stores/uiStore'
 import { Logo } from './Logo'
@@ -33,6 +34,7 @@ export function Header({ daemonUrl, status, lastError, authFailed, runningAgents
   const setToken = useUiStore((s) => s.setToken)
   const open = useUiStore((s) => s.connectionOpen)
   const setOpen = useUiStore((s) => s.setConnectionOpen)
+  const daemonDryRun = useConnectionStore((s) => s.snapshot?.dryRun)
   const themeMode = useThemeStore((s) => s.mode)
   const cycleTheme = useThemeStore((s) => s.cycle)
   const [draft, setDraft] = useState(token)
@@ -81,6 +83,11 @@ export function Header({ daemonUrl, status, lastError, authFailed, runningAgents
         <span className="muted small">
           {runningAgents}/{totalAgents} agents running
         </span>
+        {daemonDryRun === true ? (
+          <Pill tone="warning" title="The daemon is simulated: no on-chain transactions are sent">
+            Dry run
+          </Pill>
+        ) : null}
         {lastError && !authFailed ? <span className="small text-danger">{lastError}</span> : null}
       </div>
 

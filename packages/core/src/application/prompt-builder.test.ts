@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { ConfigPort } from '../ports/config.js'
 import { buildSystemPrompt } from './prompt-builder.js'
 
-function stubConfig(overrides: { timeframe?: string; minTokenFeesSol?: number } = {}): ConfigPort {
+function stubConfig(
+  overrides: { timeframe?: string; minTokenFeesSol?: number; minBinsBelow?: number; maxBinsBelow?: number } = {},
+): ConfigPort {
   return {
     screening: {
       timeframe: overrides.timeframe ?? '24h',
@@ -10,7 +12,12 @@ function stubConfig(overrides: { timeframe?: string; minTokenFeesSol?: number } 
       maxBotHoldersPct: 30,
     },
     management: { minFeePerTvl24h: 7 },
-    strategy: { minBinsBelow: 0, maxBinsBelow: 0 },
+    strategy: {
+      activeStrategyId: 'single_sided_reseed',
+      strategyMeteora: 'bid_ask',
+      minBinsBelow: overrides.minBinsBelow ?? 10,
+      maxBinsBelow: overrides.maxBinsBelow ?? 30,
+    },
   } as unknown as ConfigPort
 }
 
@@ -46,6 +53,24 @@ describe('buildSystemPrompt config injection', () => {
       null,
     )
     expect(prompt).toContain('fees_sol < 12345')
+  })
+
+  it('interpolates the configured bin bounds into the SCREENER deploy rule', () => {
+    const prompt = buildSystemPrompt(
+      stubConfig({ minBinsBelow: 12, maxBinsBelow: 42 }),
+      'SCREENER',
+      portfolio,
+      positions,
+      null,
+      null,
+      null,
+      null,
+      null,
+    )
+    // The model must see numbers, never the unresolved config path.
+    expect(prompt).not.toContain('cfg.strategy.')
+    expect(prompt).toContain('bins_below = round(12 + (candidate volatility/5)*(30))')
+    expect(prompt).toContain('clamped to [12,42]')
   })
 
   it('renders injected management config for MANAGER', () => {
