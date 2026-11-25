@@ -112,6 +112,43 @@ export class AgentSupervisor {
     return { program: 'etemaro', argsPrefix: [] }
   }
 
+  /**
+   * `config.agentId` values that appear on more than one instance file.
+   *
+   * Logs and outbound requests are stamped with `config.agentId`, while the
+   * console keys agents by instance id (the file name), so duplicates merge
+   * log streams and point at the wrong card.
+   */
+  duplicateAgentIds(): Array<{ agentId: string; agents: string[] }> {
+    const groups = new Map<string, string[]>()
+    for (const agent of this.list()) {
+      const configAgentId = this.readConfig(agent.id, true).agentId?.trim()
+      if (!configAgentId) continue
+      const ids = groups.get(configAgentId) ?? []
+      ids.push(agent.id)
+      groups.set(configAgentId, ids)
+    }
+    return [...groups.entries()]
+      .filter(([, agents]) => agents.length > 1)
+      .map(([agentId, agents]) => ({ agentId, agents: agents.sort() }))
+      .sort((a, b) => a.agentId.localeCompare(b.agentId))
+  }
+
+  /** Refuse to run two agents that share `config.agentId`. */
+  private assertUniqueAgentId(agentId: string): void {
+    const wanted = this.readConfig(agentId, true).agentId?.trim()
+    if (!wanted) return
+    for (const other of this.children.keys()) {
+      if (other === agentId || !this.isRunning(other)) continue
+      const otherAgentId = this.readConfig(other, true).agentId?.trim()
+      if (otherAgentId !== wanted) continue
+      throw new Error(
+        `agentId "${wanted}" is already used by running agent "${other}". ` +
+          'Give each instance config a unique agentId (or start them one at a time) — logs and API identity are keyed by it.',
+      )
+    }
+  }
+
   /** All configured agents with live running state. */
   list(): ManagedAgent[] {
     const dir = this.instancesDir()
@@ -144,6 +181,7 @@ export class AgentSupervisor {
     const configPath = this.configPathFor(agentId)
     if (!fs.existsSync(configPath)) throw new Error(`Agent "${agentId}" not found`)
     if (this.isRunning(agentId)) return this.toManaged(agentId)
+    this.assertUniqueAgentId(agentId)
 
     // The child's IPC server must bind a port of its own: without one it falls
     // back to the console daemon's port and dies with EADDRINUSE, leaving the

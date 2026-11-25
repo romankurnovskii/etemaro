@@ -269,6 +269,52 @@ describe('AgentSupervisor IPC port allocation', () => {
     expect(a).not.toBe(b)
   })
 
+  it('refuses to start a second agent that shares config.agentId', async () => {
+    writeInstance('first', { dryRun: true, ipcPort: 8804 })
+    writeInstance('second', { dryRun: true, ipcPort: 8805 })
+    for (const f of ['first', 'second']) {
+      const p = path.join(repo, 'config', 'instances', `${f}.json`)
+      const cfg = JSON.parse(fs.readFileSync(p, 'utf8'))
+      fs.writeFileSync(p, JSON.stringify({ ...cfg, agentId: 'shared-id' }))
+    }
+
+    await sup.start('first')
+    await expect(sup.start('second')).rejects.toThrow(/already used by running agent "first"/)
+  })
+
+  it('allows agents with distinct agentIds to run together', async () => {
+    writeInstance('one', { dryRun: true, ipcPort: 8806 })
+    writeInstance('two', { dryRun: true, ipcPort: 8807 })
+    for (const [f, id] of [
+      ['one', 'id-one'],
+      ['two', 'id-two'],
+    ]) {
+      const p = path.join(repo, 'config', 'instances', `${f}.json`)
+      const cfg = JSON.parse(fs.readFileSync(p, 'utf8'))
+      fs.writeFileSync(p, JSON.stringify({ ...cfg, agentId: id }))
+    }
+
+    await expect(sup.start('one')).resolves.toMatchObject({ running: true })
+    await expect(sup.start('two')).resolves.toMatchObject({ running: true })
+  })
+
+  it('reports duplicate config.agentId groups', async () => {
+    writeInstance('a', { dryRun: true })
+    writeInstance('b', { dryRun: true })
+    writeInstance('c', { dryRun: true })
+    for (const [f, id] of [
+      ['a', 'dup'],
+      ['b', 'dup'],
+      ['c', 'solo'],
+    ]) {
+      const p = path.join(repo, 'config', 'instances', `${f}.json`)
+      const cfg = JSON.parse(fs.readFileSync(p, 'utf8'))
+      fs.writeFileSync(p, JSON.stringify({ ...cfg, agentId: id }))
+    }
+
+    expect(sup.duplicateAgentIds()).toEqual([{ agentId: 'dup', agents: ['a', 'b'] }])
+  })
+
   it('reports dryRun per agent', async () => {
     await sup.create('Dry')
     writeInstance('live', { dryRun: false })

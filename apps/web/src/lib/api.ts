@@ -47,9 +47,20 @@ export async function callTool<T = Record<string, unknown>>(
 
 /* ─── Typed daemon endpoints (used as TanStack Query fetchers) ─────────── */
 
-export async function fetchAgents(token: string): Promise<ManagedAgent[]> {
-  const res = await fetchJson<{ agents?: ManagedAgent[] }>('/api/agents', token)
-  return res?.agents ?? []
+/** `config.agentId` shared by more than one instance file. */
+export interface DuplicateAgentId {
+  agentId: string
+  agents: string[]
+}
+
+export interface AgentsResponse {
+  agents: ManagedAgent[]
+  duplicateAgentIds: DuplicateAgentId[]
+}
+
+export async function fetchAgents(token: string): Promise<AgentsResponse> {
+  const res = await fetchJson<{ agents?: ManagedAgent[]; duplicateAgentIds?: DuplicateAgentId[] }>('/api/agents', token)
+  return { agents: res?.agents ?? [], duplicateAgentIds: res?.duplicateAgentIds ?? [] }
 }
 
 export async function fetchConfig(path: string, token: string): Promise<Record<string, unknown>> {

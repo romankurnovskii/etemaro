@@ -598,6 +598,7 @@ export class Daemon {
     )
     this.ipcServer.setAgentControl({
       list: () => this.agentSupervisor.list(),
+      duplicateAgentIds: () => this.agentSupervisor.duplicateAgentIds(),
       create: (name: string) => this.agentSupervisor.create(name),
       start: (id: string) => this.agentSupervisor.start(id),
       stop: (id: string) => this.agentSupervisor.stop(id),

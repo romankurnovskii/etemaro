@@ -32,20 +32,23 @@ describe('daemon API fetchers', () => {
     vi.restoreAllMocks()
   })
 
-  it('fetchAgents returns the agents array', async () => {
+  it('fetchAgents returns agents plus duplicate agentId groups', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => jsonResponse({ agents: [AGENT] })),
+      vi.fn(async () => jsonResponse({ agents: [AGENT], duplicateAgentIds: [{ agentId: 'dup', agents: ['a', 'b'] }] })),
     )
-    await expect(fetchAgents('tok')).resolves.toEqual([AGENT])
+    await expect(fetchAgents('tok')).resolves.toEqual({
+      agents: [AGENT],
+      duplicateAgentIds: [{ agentId: 'dup', agents: ['a', 'b'] }],
+    })
   })
 
-  it('fetchAgents tolerates a missing agents field', async () => {
+  it('fetchAgents tolerates missing fields', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => jsonResponse({})),
     )
-    await expect(fetchAgents('tok')).resolves.toEqual([])
+    await expect(fetchAgents('tok')).resolves.toEqual({ agents: [], duplicateAgentIds: [] })
   })
 
   it('fetchConfig encodes the path and returns the config', async () => {
