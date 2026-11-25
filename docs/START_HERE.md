@@ -14,7 +14,6 @@ Welcome to the Etemaro project documentation. This index lists all architectural
 
 ## Apps
 
-- [apps/desktop/docs/START_HERE.md](../apps/desktop/docs/START_HERE.md) — Tauri v2 desktop notification viewer: setup, data flow, and architecture.
 
 ## Rules & Standards
 

@@ -1,12 +1,14 @@
 /**
  * @file NotificationSink.ts
- * @description Append-only sink that writes structured desktop notifications to
+ * @description Append-only sink that writes structured notifications to
  * `data/notifications.jsonl`. Each call appends exactly one JSON line.
  *
  * This module is intentionally side-effect-only: it never throws, never affects
  * the Telegram notification path, and requires zero config.
  *
- * The file is consumed by the Tauri v2 desktop app via a file-watch mechanism.
+ * Kept as a standalone, machine-readable notification log. The Tauri desktop
+ * app that used to tail it was removed in #548; the browser console gets live
+ * notifications over the IPC WebSocket instead.
  *
  * @schema  DesktopNotification — see exported interface below
  * @output  data/notifications.jsonl  (one JSON object per line, UTF-8, LF)
@@ -47,7 +49,7 @@ export interface DesktopNotification {
 // ─── Config ───────────────────────────────────────────────────────
 
 const SINK_FILE: string = dataPath('notifications.jsonl')
-/** Maximum file size before rotation (10 MB). Keeps the file manageable for the desktop app. */
+/** Maximum file size before rotation (10 MB). Keeps the log manageable. */
 const MAX_BYTES = 10 * 1024 * 1024
 /** Rotated file path */
 const SINK_FILE_OLD: string = dataPath('notifications.jsonl.old')
@@ -92,7 +94,7 @@ export function appendNotification(n: DesktopNotification): void {
     const line = `${JSON.stringify(n)}\n`
     fs.appendFileSync(SINK_FILE, line, { encoding: 'utf8' })
   } catch (e: any) {
-    // Intentionally swallowed — desktop sink must never break Telegram path
+    // Intentionally swallowed — the sink must never break the notification path
     log('notifications_warn', `Failed to write desktop notification: ${e.message}`)
   }
 }

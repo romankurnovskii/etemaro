@@ -152,7 +152,7 @@ export const AgentConfigSchema = z
         telegramPolling: z.boolean().optional().default(true),
         dryRun: envBoolean,
         allowSelfUpdate: envBoolean.optional().default(false),
-        // IPC WebSocket server (daemon) / client (CLI / Desktop) configuration
+        // IPC WebSocket server (daemon) / client (CLI / browser console) configuration
         ipcPort: z.number().int().min(1024).max(65535).optional(),
         ipcToken: z.string().min(1).optional(),
         ipcSocketPath: z.string().optional(),

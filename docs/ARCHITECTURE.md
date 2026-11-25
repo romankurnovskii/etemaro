@@ -227,7 +227,7 @@ Etemaro separates state-read workflows from transaction-write workflows to preve
 - They use non-blocking mutex guards: if a cron cycle fires while another cycle is already in progress, the cycle simply skips that tick (single-flight execution).
 
 ### 3. Multi-Agent Topologies
-- In multi-agent setups (e.g. via PM2 or Desktop), each agent process runs an independent `Daemon` instance with its own isolated `DATA_DIR`.
+- In multi-agent setups (e.g. via PM2 or the web console), each agent process runs an independent `Daemon` instance with its own isolated `DATA_DIR`.
 - Each agent maintains exactly **one isolated queue file** in its respective data folder.
 
 

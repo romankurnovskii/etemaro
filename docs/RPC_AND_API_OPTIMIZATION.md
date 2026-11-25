@@ -28,7 +28,7 @@ https://api.helius.xyz/v1/wallet/${walletAddress}/balances?api-key=${HELIUS_API_
 - **Screening Cycle** (`Daemon.ts:1047`): Runs every **5m** -> **~288 calls/day**.
 - **Agent ReAct Loop** (`agent-loop.ts`): Builds system prompt with live balances on each screening/management turn.
 - **Telegram Commands** (`/status`, `/balance`, `/briefing`): On-demand invocations.
-- **Multi-Agent Setup**: Running 3–5 agents in PM2 or Desktop multiplies this by 3x–5x.
+- **Multi-Agent Setup**: Running 3–5 agents in PM2 or the web console multiplies this by 3x–5x.
 
 #### Total API Requests:
 A standard 3-agent setup makes **~10,000 to 25,000 calls per day**. Over 30 days, that is **300,000 to 750,000 HTTP requests**.

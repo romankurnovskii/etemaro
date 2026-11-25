@@ -13,18 +13,18 @@
 
 - Precedence order: Specific Model in `agent-config.json` > `LLM_MODEL` in `.env` > system fallback defaults (`openrouter/healer-alpha`).
 
-## Desktop App & Setup
+## Web Console & Setup
 
-### Q: How do I get started with the Desktop App (GUI) on first run?
+### Q: How do I get started with the web console on first run?
 
-**A:** Getting started with the Desktop App requires only a couple of clicks:
+**A:** Run `etemaro serve` and open `http://127.0.0.1:8765/`. Setup requires only a couple of clicks:
 
-1. **Launch App**: Open the Etemaro Desktop App. The first-run wizard automatically sets up local directories (`~/.config/etemaro/config` and `~/.config/etemaro/data`) and prepares the agent engine.
+1. **Launch**: Run `etemaro init` if you have not, then `etemaro serve`. Directories (`~/.config/etemaro/config` and `~/.config/etemaro/data`) are prepared automatically.
 2. **Configure Environment & Strategy**:
    - The app automatically verifies your configuration on launch (`validate_agent_config`). If `connection.wallet` is set to an alias but no keystore entry exists, the GUI displays a warning notice.
    - **Environment Manager (Settings Tab)**: Go to **Settings** $\rightarrow$ **Environment Variables (.env)**. You can view, add, edit, or remove process environment variables (`LLM_API_KEY`, etc.) directly in the app. If `.env` does not exist yet, the app automatically copies default entries from `.env.example`.
    - **Wallet Management**: Use `etemaro wallet generate --name <alias>` or `etemaro wallet import` (prefer `--prompt`/`--file`) to set up a keystore wallet, then set `"wallet": "<alias>"` in the agent config. Inspect with `etemaro wallet list`; delete with `etemaro wallet remove --name <alias> --yes`. Set `ETEMARO_KEYSTORE_PASSPHRASE` to encrypt keys at rest (optional — plaintext `0600` with a warning when unset).
-3. **Start Agent**: Click **"Start Agent"**. The daemon runs in the background and streams live logs, open positions, PnL metrics, and notifications directly to the desktop dashboard.
+3. **Start Agent**: Click **Start** on an agent card. The daemon runs it as a child process and streams live logs, positions, PnL and notifications into the console.
 
 ---
 
@@ -61,11 +61,11 @@
 
 **A:** To run multiple strategies and wallets simultaneously on one machine:
 
-#### Option A: Desktop App (GUI)
+#### Option A: Web Console (GUI)
 
-1. **Add Agent**: Click **"Add Agent"** in the Desktop App UI. A new agent instance is created automatically.
+1. **Add Agent**: Click **Create** in the Agents tab. A new agent instance is created automatically.
 2. **Configure Settings**: Set the agent's strategy parameters (risk, sizing, stop-loss, filters). Create a wallet in the keystore: `etemaro wallet generate --name agent-1` (or import via `--file` / `--prompt`). Then set `"wallet": "agent-1"` in the agent's config.
-3. **Run**: Click **"Start"** on each agent. Desktop injects `AGENT_CONFIG_PATH` and `ETEMARO_DATA_DIR` (from the agent's `dataDir`, default `~/.config/etemaro/data`). State and logs land under that data dir with an agent suffix (e.g. `state-agt_my-agent-1.json`, `logs/agent-agt_…-YYYY-MM-DD.log`).
+3. **Run**: Click **Start** on each agent. The console injects `AGENT_CONFIG_PATH` and `ETEMARO_DATA_DIR` (from the agent's `dataDir`, default `~/.config/etemaro/data`). State and logs land under that data dir with an agent suffix (e.g. `state-agt_my-agent-1.json`, `logs/agent-agt_…-YYYY-MM-DD.log`).
 
 ---
 
@@ -174,7 +174,7 @@ The keystore keeps the **private key out of `process.env`** — crucial because 
 
 ### Q: How do I create, list, export, and remove a wallet?
 
-**A:** Use the CLI (or the Desktop **Settings** tab). Every wallet is referenced by an alias; the private key never goes into `agent-config.json`.
+**A:** Use the CLI (or the console's Config tab). Every wallet is referenced by an alias; the private key never goes into `agent-config.json`.
 
 | Command | What it does |
 |---------|--------------|
@@ -253,7 +253,7 @@ Then set `"wallet": "<alias>"` under `connection` in the agent config.
 
 **A: No.** Etemaro does not currently provide copy-trading functionality. The app never automatically mirrors or follows another trader's/wallet's positions with your capital. It is an autonomous LP manager: it makes its own deploy/close decisions based on its screening, scoring, and management rules.
 
-There is no `copytrade` / `copy trade` / `mirror` / `follow` feature anywhere in the codebase, docs, config, CLI/Telegram/REPL commands, or Desktop UI.
+There is no `copytrade` / `copy trade` / `mirror` / `follow` feature anywhere in the codebase, docs, config, CLI/Telegram/REPL commands, or the web console.
 
 ### Q: What about smart wallet tracking — isn't that copytrade?
 
