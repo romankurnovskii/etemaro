@@ -7,4 +7,3 @@ allowBuilds:
 packages:
   - 'packages/*'
   - 'apps/*'
-  - '!apps/desktop'

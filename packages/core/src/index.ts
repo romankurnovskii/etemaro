@@ -4,7 +4,6 @@ import * as screening from './adapters/blockchain/ScreeningAdapter.js'
 import * as study from './adapters/blockchain/StudyAdapter.js'
 import * as token from './adapters/blockchain/TokenDataAdapter.js'
 import * as wallet from './adapters/blockchain/WalletAdapter.js'
-import * as desktop from './adapters/chat/DesktopAdapter.js'
 import * as hivemind from './adapters/external/HivemindAdapter.js'
 import * as price from './adapters/external/PriceProvider.js'
 import * as telegram from './adapters/notifications/TelegramAdapter.js'
@@ -68,4 +67,4 @@ export * from './shared/utils.js'
 export * from './shared/validation.js'
 export * from './tools/index.js'
 export * from './utils/time.js'
-export { briefing, desktop, domain, hivemind, meteora, price, screening, study, telegram, token, toolExecutor, wallet }
+export { briefing, domain, hivemind, meteora, price, screening, study, telegram, token, toolExecutor, wallet }
