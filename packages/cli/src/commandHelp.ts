@@ -89,11 +89,13 @@ Flags:
 `,
   serve: `etemaro serve [flags]
 
-Run agent headlessly and serve the browser web dashboard.
+Serve the browser web dashboard. By default this process also runs a trading agent;
+pass --no-agent to serve the console only and start agents from the UI.
 
 Flags:
   --port <port>         IPC and web server port (default: 8765)
   --open                Automatically open default web browser to the dashboard
+  --no-agent            Host only: no cron cycles, no LLM, no Telegram, no trading
 `,
   attach: `etemaro attach [flags]
 

@@ -1143,3 +1143,28 @@ describe('Telegram reply_to_message context injection (#338)', () => {
     expect(loopSpy.mock.calls[0]?.[0]).toBe('[Replying to Telegram message: "Line one Line two"]\n\nExplain')
   })
 })
+
+describe('Daemon — host-only mode', () => {
+  it('serves the console without starting any agent runtime', async () => {
+    const adapters = createMockAdapters()
+    const daemon = new Daemon(adapters)
+
+    await daemon.start({ tty: false, hostOnly: true })
+
+    // No cycles, no Telegram, no hivemind, no cron restart hook.
+    expect(adapters.telegram.startPolling).not.toHaveBeenCalled()
+    expect(adapters.toolExecutor.registerCronRestarter).not.toHaveBeenCalled()
+    expect(adapters.hivemind.bootstrapHiveMind).not.toHaveBeenCalled()
+    expect(adapters.hivemind.startHiveMindBackgroundSync).not.toHaveBeenCalled()
+    expect(adapters.briefing.generateBriefing).not.toHaveBeenCalled()
+    expect((daemon as any).cronStarted).toBeFalsy()
+
+    // shutdown() ends with process.exit; keep the test process alive.
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+    try {
+      await daemon.stop()
+    } finally {
+      exitSpy.mockRestore()
+    }
+  })
+})

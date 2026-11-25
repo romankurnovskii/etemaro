@@ -307,6 +307,20 @@ describe('IpcServer HTTP + web UI', () => {
     expect(body.status).toBe('ok')
     expect(body.agentId).toBe('agent-test')
     expect(body.tools).toBe(2)
+    // A normal daemon runs its own agent runtime.
+    expect(body.hostOnly).toBe(false)
+  })
+
+  it('GET /api/health reports hostOnly for a console-only process', async () => {
+    const host = new IpcServer({ ipcPort: 0, webDir, agentId: 'host', hostOnly: true })
+    await host.start()
+    try {
+      const res = await fetch(`http://127.0.0.1:${host.boundPort}/api/health`)
+      const body: any = await res.json()
+      expect(body.hostOnly).toBe(true)
+    } finally {
+      await host.stop()
+    }
   })
 
   it('GET /api/tools returns the catalog', async () => {

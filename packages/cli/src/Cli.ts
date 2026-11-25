@@ -196,7 +196,7 @@ export interface CliAdapters {
     getPerformanceSummary: () => any
   }
   daemon?: {
-    start?: (options?: { tty?: boolean }) => Promise<void>
+    start?: (options?: { tty?: boolean; hostOnly?: boolean }) => Promise<void>
     stop?: () => Promise<void>
     runScreeningCycle: (opts?: { silent?: boolean }) => Promise<string | null>
     runManagementCycle: (opts?: { silent?: boolean }) => Promise<string | null>
@@ -287,6 +287,7 @@ export class Cli {
         bps: { type: 'string' },
         'no-claim': { type: 'boolean' },
         'skip-swap': { type: 'boolean' },
+        'no-agent': { type: 'boolean' },
         silent: { type: 'boolean' },
         json: { type: 'boolean' },
         strict: { type: 'boolean' },
@@ -1327,18 +1328,29 @@ export class Cli {
     const browserHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host
     const boundPort = config.connection?.ipcPort ?? 8765
     const url = `http://${browserHost}:${boundPort}/`
+    // Host-only: serve the console and supervise agents, but never trade from
+    // this process. Keeps "what is running" answerable in one place.
+    const hostOnly = flags['no-agent'] === true
 
     if (!config.connection?.wallet) {
       process.stderr.write(
         '[etemaro] No Solana wallet configured — the web UI will show read-only state. Run `etemaro init`.\n',
       )
     }
-    process.stderr.write(`[etemaro] Starting agent + web UI at ${url}\n`)
+    process.stderr.write(
+      hostOnly
+        ? `[etemaro] Starting console host (no agent runtime) at ${url}\n`
+        : `[etemaro] Starting agent + web UI at ${url}\n`,
+    )
 
-    await this.adapters.daemon.start({ tty: false })
+    await this.adapters.daemon.start({ tty: false, hostOnly })
 
     process.stderr.write(`[etemaro] Web UI ready: ${url}\n`)
-    process.stderr.write('[etemaro] Press Ctrl+C to stop.\n')
+    process.stderr.write(
+      hostOnly
+        ? '[etemaro] Host only — start agents from the console. Press Ctrl+C to stop.\n'
+        : '[etemaro] Press Ctrl+C to stop.\n',
+    )
 
     if (flags.open) this.openBrowser(url)
   }

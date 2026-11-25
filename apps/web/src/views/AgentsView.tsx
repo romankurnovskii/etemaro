@@ -37,7 +37,9 @@ export function AgentsView({ writeTools, strategies, onCreateStrategy }: Props) 
 
   const telemetry = useTelemetryStore((s) => s.byAgent)
   const logs = useLogsStore((s) => s.store)
-  const daemonId = useHealthQuery().data?.agentId
+  const health = useHealthQuery().data
+  const daemonId = health?.agentId
+  const hostOnly = health?.hostOnly === true
   const daemonDryRun = useConnectionStore((s) => s.snapshot?.dryRun)
 
   const agents = agentsQuery.data ?? []
@@ -58,17 +60,18 @@ export function AgentsView({ writeTools, strategies, onCreateStrategy }: Props) 
             {agents.length} configured · {running} running. Live data is read from each running agent's own IPC port;
             loop phase is inferred from that agent's logs.
           </p>
-          {/* The daemon serving this console is an agent too, but it is not a
-              managed instance — without this line "all stopped" looks like
-              nothing is running while it keeps trading and notifying. */}
+          {/* The process serving this console is either an agent itself (default)
+              or a host-only control plane. Say which, so "0 running" is never
+              mistaken for a stopped fleet. */}
           <p className="muted small daemon-line">
             <Pill tone="success" dot>
-              Console daemon
+              {hostOnly ? 'Console host' : 'Console daemon'}
             </Pill>{' '}
             <span className="mono">{daemonId ?? '—'}</span>
             {' · '}
-            {daemonDryRun === false ? 'LIVE' : 'dry-run'} — runs its own cycles and sends notifications. Managed agents
-            are listed below.
+            {hostOnly
+              ? 'host only — does not trade. Every agent below runs its own cycles.'
+              : `${daemonDryRun === false ? 'LIVE' : 'dry-run'} — runs its own cycles and sends notifications. Managed agents are listed below.`}
           </p>
         </div>
         <form

@@ -428,8 +428,10 @@ export class Daemon {
 
   // ─── Lifecycle ─────────────────────────────────────────────────
 
-  async start(options: { tty?: boolean } = {}): Promise<void> {
-    log('startup', 'DLMM LP Agent starting...')
+  async start(options: { tty?: boolean; hostOnly?: boolean } = {}): Promise<void> {
+    const hostOnly = options.hostOnly === true
+    log('startup', hostOnly ? 'Console host starting (no agent runtime)...' : 'DLMM LP Agent starting...')
+    if (hostOnly) log('startup', 'Mode: HOST ONLY — serving the console, running no cycles')
     log('startup', `Repo: ${process.cwd()}`)
     log('startup', `Build: ${resolveBuildId(REPO_ROOT)}`)
 
@@ -552,26 +554,28 @@ export class Daemon {
       }
     }
 
-    this.adapters.hivemind.ensureAgentId()
+    if (!hostOnly) {
+      this.adapters.hivemind.ensureAgentId()
 
-    this.adapters.domain.validateActiveStrategy()
+      this.adapters.domain.validateActiveStrategy()
 
-    this.adapters.hivemind
-      .bootstrapHiveMind()
-      .catch((error: any) => log('hivemind_warn', `Bootstrap failed: ${error.message}`))
-    this.adapters.hivemind.startHiveMindBackgroundSync()
+      this.adapters.hivemind
+        .bootstrapHiveMind()
+        .catch((error: any) => log('hivemind_warn', `Bootstrap failed: ${error.message}`))
+      this.adapters.hivemind.startHiveMindBackgroundSync()
 
-    // Load any persisted Telegram messages from previous session
-    this.loadTelegramQueue()
-    this.startTelegramDrainTimer()
+      // Load any persisted Telegram messages from previous session
+      this.loadTelegramQueue()
+      this.startTelegramDrainTimer()
 
-    // Register cron restarter
-    this.adapters.toolExecutor.registerCronRestarter(() => {
-      if (this.cronStarted) this.startCronJobs()
-    })
+      // Register cron restarter
+      this.adapters.toolExecutor.registerCronRestarter(() => {
+        if (this.cronStarted) this.startCronJobs()
+      })
 
-    if (this.adapters.desktop) {
-      this.adapters.desktop.startServer((msg: any) => this.desktopHandler(msg))
+      if (this.adapters.desktop) {
+        this.adapters.desktop.startServer((msg: any) => this.desktopHandler(msg))
+      }
     }
 
     // Start IPC server (Ink CLI / browser web UI / Desktop clients)
@@ -582,6 +586,7 @@ export class Daemon {
       ipcHost: config.connection?.ipcHost,
       webDir: resolveWebDir(),
       agentId: getInstanceId(),
+      hostOnly,
     }
     this.ipcServer = new IpcServer(ipcConfig)
     this.ipcServer.setToolCatalog(
@@ -631,7 +636,7 @@ export class Daemon {
         })
       })
 
-      this.broadcastIpcState()
+      if (!hostOnly) this.broadcastIpcState()
       this.ipcServer.onTool(async (name, args) => {
         const result = await this.adapters.toolExecutor.executeTool(name, args)
         return (result ?? {}) as Record<string, unknown>
@@ -640,7 +645,11 @@ export class Daemon {
       log('startup_warn', `Failed to start IPC server: ${err?.message || err}`)
     }
 
-    if (options.tty) {
+    if (hostOnly) {
+      process.on('SIGINT', () => void this.shutdown('SIGINT'))
+      process.on('SIGTERM', () => void this.shutdown('SIGTERM'))
+      log('startup', 'Host only — no cycles, no Telegram, no trading. Managed agents are started from the console.')
+    } else if (options.tty) {
       await this.startTTY()
     } else {
       process.on('SIGINT', () => void this.shutdown('SIGINT'))
