@@ -213,7 +213,7 @@ Clone + PM2 / Docker is **[source setup](#developer--source-setup)** above.
 - 🧠 **[HiveMind Guide](docs/HIVEMIND.md)** — Fleet learning, lesson sharing, and shared presets.
 - 🖥️ **[Web Console](apps/web)** — browser UI served by `etemaro serve`.
 
-> **Deprecated:** the Tauri desktop app (`apps/desktop`) was removed in favour of the web console. See [#548](https://github.com/romankurnovskii/etemaro/issues/548).
+> **Deprecated:** the Tauri desktop app (`apps/desktop`) was removed in favour of the web console. See [docs/DEPRECATIONS.md](docs/DEPRECATIONS.md).
 
 ---
 
