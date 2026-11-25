@@ -7,7 +7,6 @@
 import {
   type AgentLoopDeps,
   briefing,
-  desktop,
   domain,
   hivemind,
   meteora,
@@ -60,7 +59,6 @@ export function createDaemonAdapters(): DaemonAdapters {
     screening,
     toolExecutor,
     telegram,
-    desktop,
     briefing,
     hivemind,
     domain: {

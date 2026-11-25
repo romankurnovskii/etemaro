@@ -122,13 +122,6 @@ export interface DaemonAdapters {
     isEnabled: () => boolean
     createLiveMessage: (title: string, body: string) => Promise<any>
   }
-  desktop?: {
-    startServer: (handler: (msg: any) => Promise<any>, port?: number) => void
-    stopServer: () => void
-    isEnabled: () => boolean
-    sendMessage: (text: string) => Promise<any>
-    createLiveMessage: (title: string, body: string) => Promise<any>
-  }
   briefing: {
     generateBriefing: (opts?: { solPrice?: number }) => Promise<string>
   }
@@ -293,6 +286,13 @@ function parseConfigValue(raw: string): unknown {
 }
 
 // ─── Daemon Class ───────────────────────────────────────────────
+
+/**
+ * Where an inbound chat message came from. The Tauri desktop app (the only
+ * other producer) was removed with #548, so every message now arrives over the
+ * CLI/IPC channel.
+ */
+type ChatSource = 'cli'
 
 export class Daemon {
   private getActiveSmartWalletListId(): string {
@@ -572,13 +572,9 @@ export class Daemon {
       this.adapters.toolExecutor.registerCronRestarter(() => {
         if (this.cronStarted) this.startCronJobs()
       })
-
-      if (this.adapters.desktop) {
-        this.adapters.desktop.startServer((msg: any) => this.desktopHandler(msg))
-      }
     }
 
-    // Start IPC server (Ink CLI / browser web UI / Desktop clients)
+    // Start IPC server (Ink CLI / browser web UI)
     const ipcConfig = {
       ipcPort: config.connection?.ipcPort ?? 8765,
       ipcToken: config.connection?.ipcToken ?? process.env.ETEMARO_IPC_TOKEN,
@@ -692,9 +688,6 @@ export class Daemon {
     const stoppedChildren = this.agentSupervisor.stopAll()
     if (stoppedChildren > 0) {
       log('shutdown', `Stopped ${stoppedChildren} console-spawned agent process(es).`)
-    }
-    if (this.adapters.desktop) {
-      this.adapters.desktop.stopServer()
     }
     if (this.unsubscribeLog) {
       this.unsubscribeLog()
@@ -2897,7 +2890,7 @@ IMPORTANT:
 
   // ─── Desktop & CLI Command / Chat Handler ───────────────────────
 
-  private async processCommandOrChat(rawText: string, source: 'desktop' | 'cli'): Promise<string> {
+  private async processCommandOrChat(rawText: string, source: ChatSource = 'cli'): Promise<string> {
     const text = rawText?.trim()
     if (!text) return 'Empty message'
 
@@ -3159,15 +3152,10 @@ IMPORTANT:
     return this.executeChatPrompt(text, source)
   }
 
-  private async desktopHandler(msg: { text: string }): Promise<string> {
-    return this.processCommandOrChat(msg?.text, 'desktop')
-  }
-
-  private async executeChatPrompt(text: string, source: 'desktop' | 'cli' = 'desktop'): Promise<string> {
+  private async executeChatPrompt(text: string, source: ChatSource = 'cli'): Promise<string> {
     this.busy = true
-    let liveMessage: any = null
     try {
-      const logCategory = source === 'cli' ? 'chat' : 'desktop_chat'
+      const logCategory = 'chat'
       log(logCategory, `User prompt: ${text}`)
       const hasCloseIntent = /\bclose\b|\bsell\b|\bexit\b|\bwithdraw\b/i.test(text)
       const isDeployRequest =
@@ -3175,34 +3163,19 @@ IMPORTANT:
       const agentRole = isDeployRequest ? 'SCREENER' : 'GENERAL'
       const agentModel = agentRole === 'SCREENER' ? config.llm.screeningModel : config.llm.generalModel
 
-      if (source === 'desktop' && this.adapters.desktop) {
-        liveMessage = await this.adapters.desktop.createLiveMessage(
-          '🤖 Desktop Agent Update',
-          `Request: ${text.slice(0, 240)}`,
-        )
-      }
-
       const { content } = await agentLoop(text, config.llm.maxSteps, this.sessionHistory, agentRole, agentModel, null, {
         deps: this.adapters.agentLoopDeps,
         interactive: true,
-        onToolStart: async ({ name }: any) => {
-          if (liveMessage) await liveMessage.toolStart(name)
-        },
-        onToolFinish: async ({ name, result, success }: any) => {
-          if (liveMessage) await liveMessage.toolFinish(name, result, success)
-        },
       })
 
       this.appendHistory(text, content)
       const cleanContent = stripThink(content)
-      if (liveMessage) await liveMessage.finalize(cleanContent)
       log('agent_reply', `🤖 ${cleanContent}`)
       if (source === 'cli') {
         this.ipcServer?.broadcastChatReply(cleanContent)
       }
       return cleanContent
     } catch (e: any) {
-      if (liveMessage) await liveMessage.fail(e.message).catch(() => {})
       const errReply = `Error: ${e.message}`
       if (source === 'cli') {
         this.ipcServer?.broadcastChatReply(errReply)

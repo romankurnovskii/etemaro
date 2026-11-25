@@ -98,7 +98,7 @@ function expandUserPath(raw: string): string {
  * Runtime data directory for state, logs, lessons, notifications, etc.
  *
  * Resolution order (first non-empty wins):
- * 1. `ETEMARO_DATA_DIR` — preferred, namespaced override (Desktop sets this from agent.dataDir)
+ * 1. `ETEMARO_DATA_DIR` — preferred, namespaced override (the console sets this per agent)
  * 2. `DATA_DIR` — short alias for headless/PM2/docker
  * 3. `<REPO_ROOT>/data` — default for CLI / single-repo installs
  *
@@ -299,7 +299,7 @@ export const AGENT_CONFIG_PATH = (() => {
 /** Get the etemaro runtime/config home directory (e.g. ~/.config/etemaro).
  *  Resolution order:
  *   1. ETEMARO_HOME env var (explicit override)
- *   2. XDG_CONFIG_HOME/etemaro or ~/.config/etemaro (desktop standard)
+ *   2. XDG_CONFIG_HOME/etemaro or ~/.config/etemaro (XDG standard)
  *   3. Fallback to repo-relative path (useful for dev/test)
  */
 export function getEtemaroDir(): string {
@@ -384,9 +384,6 @@ export const PUBLIC_SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com'
 // Default preset names
 export const DEFAULT_ACTIVE_STRATEGY_ID = 'single_sided_reseed'
 export const DEFAULT_STRATEGY_TYPE = 'bid_ask'
-
-// Desktop chat defaults
-export const DEFAULT_DESKTOP_CHAT_ENDPOINT = '/chat'
 
 // Timing defaults (in seconds/minutes/hours)
 export const DEFAULT_HEALTH_CHECK_INTERVAL_MIN = 60

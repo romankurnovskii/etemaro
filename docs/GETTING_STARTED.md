@@ -12,7 +12,7 @@ curl -fsSL https://etemaro.com/install.sh | sh
 
 _Or:_ `npm install -g @etemaro/cli`
 
-**Desktop (macOS):** `brew tap romankurnovskii/awesome-brew && brew install --cask romankurnovskii/awesome-brew/etemaro`
+**Web console:** `etemaro serve --open` (bundled with the CLI; no separate install)
 
 **From source:** `git clone https://github.com/romankurnovskii/etemaro && cd etemaro && pnpm install`
 
@@ -42,7 +42,7 @@ From a source clone (no global `etemaro`), prefix with `npm run cli --`, keeping
 
 Jupiter, Telegram, and strategy JSON are **not** part of first setup. Add `JUPITER_API_KEY` only when you go live.
 
-Desktop users: paste keys in **Settings → Environment Variables** instead of the CLI.
+Web console users: edit keys in the **Config** tab instead of the CLI.
 
 ## 3. Start
 

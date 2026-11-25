@@ -6,7 +6,6 @@
 
 An LLM-powered agent that autonomously manages liquidity positions on Meteora DLMM for Solana.
 
-![Desktop](assets/desktop-1.png)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22284026.svg)](https://doi.org/10.5281/zenodo.22284026)
 [![SSRN](https://img.shields.io/badge/SSRN-7404538-brightgreen)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7404538)
@@ -20,7 +19,7 @@ Etemaro runs continuous screening and management cycles, deploying capital into 
 - **LLM-driven ReAct loop** — The agent inspects live pool and position data, reasons about risk and yield, then calls tools to deploy, manage, or close positions.
 - **HiveMind collective learning** — Agents share lessons and performance events across a fleet, so every instance benefits from what others have learned.
 - **Dry-run safe simulation** — Test strategies against real on-chain data without spending gas; mock positions are tracked locally.
-- **Multi-surface interface** — CLI for one-shot commands, a Telegram bot for remote control, and a cross-platform desktop app.
+- **Multi-surface interface** — CLI for one-shot commands, a Telegram bot for remote control, and a browser console.
 - **Strategy library + signal adaptation** — Preset LP strategies with configurable bin distribution; signal weights evolve based on closed-position performance.
 
 ---
@@ -155,16 +154,16 @@ The UI is served by the daemon itself on the IPC port (no extra process); `etema
 
 ---
 
-### Desktop App (GUI)
+### Web Console (recommended GUI)
 
-- **macOS (via Homebrew)**:
-  ```bash
-  brew tap romankurnovskii/awesome-brew
-  brew trust --cask romankurnovskii/awesome-brew/etemaro
-  brew install romankurnovskii/awesome-brew/etemaro --cask
-  ```
-- **Windows / Linux / macOS (Direct Download)**:
-  Download the latest installer or bundle from [GitHub Releases](https://github.com/romankurnovskii/etemaro/releases).
+No desktop install: the daemon serves the console itself.
+
+```bash
+etemaro serve              # console + agent in one process
+etemaro serve --no-agent   # console only; start agents from the UI
+```
+
+Then open `http://127.0.0.1:8765/`.
 
 ---
 
@@ -212,7 +211,9 @@ Clone + PM2 / Docker is **[source setup](#developer--source-setup)** above.
 - 📊 **[Performance & Reliability](docs/PERFORMANCE.md)** — Latency budget, RPC/cost footprint, memory, and fault-tolerance mechanisms.
 - ⚙️ **[Configuration Reference](docs/CONFIGURATION.md)** — Exhaustive configuration reference for `agent-config.json`.
 - 🧠 **[HiveMind Guide](docs/HIVEMIND.md)** — Fleet learning, lesson sharing, and shared presets.
-- 💻 **[Desktop App](apps/desktop)** — Tauri-based cross-platform desktop UI.
+- 🖥️ **[Web Console](apps/web)** — browser UI served by `etemaro serve`.
+
+> **Deprecated:** the Tauri desktop app (`apps/desktop`) was removed in favour of the web console. See [#548](https://github.com/romankurnovskii/etemaro/issues/548).
 
 ---
 

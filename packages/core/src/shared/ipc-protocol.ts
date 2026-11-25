@@ -1,7 +1,7 @@
 /**
  * @file ipc-protocol.ts
  * @description Shared WebSocket IPC protocol types used by the daemon (server)
- *   and by the Ink CLI / Desktop (clients). Pure type definitions — no runtime
+ *   and by the Ink CLI / browser console (clients). Pure type definitions — no runtime
  *   dependencies so this file can be imported safely in both browser and Node
  *   environments.
  *

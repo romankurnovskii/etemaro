@@ -56,7 +56,7 @@ Key design points:
 
 ## 3. Memory Characteristics
 
-Etemaro is a single long-lived Node.js process per agent (CLI, daemon, or desktop-spawned). Runtime state is held in memory and persisted to small JSON files under `data/`.
+Etemaro is a single long-lived Node.js process per agent (CLI, daemon, or console-spawned). Runtime state is held in memory and persisted to small JSON files under `data/`.
 
 | Area | Characteristic |
 | :--- | :--- |
