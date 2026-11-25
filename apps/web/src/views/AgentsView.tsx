@@ -42,7 +42,8 @@ export function AgentsView({ writeTools, strategies, onCreateStrategy }: Props) 
   const hostOnly = health?.hostOnly === true
   const daemonDryRun = useConnectionStore((s) => s.snapshot?.dryRun)
 
-  const agents = agentsQuery.data ?? []
+  const agents = agentsQuery.data?.agents ?? []
+  const duplicates = agentsQuery.data?.duplicateAgentIds ?? []
   const running = agents.filter((a) => a.running).length
 
   const submit = () => {
@@ -104,6 +105,15 @@ export function AgentsView({ writeTools, strategies, onCreateStrategy }: Props) 
           ) : null}
         </form>
       </section>
+
+      {duplicates.length > 0 ? (
+        <div className="msg msg-warn" role="status">
+          <strong>Duplicate agentId.</strong> These instance configs share a <code>config.agentId</code>, so their logs
+          merge and only one of each group can run at a time:{' '}
+          {duplicates.map((d) => `${d.agentId} (${d.agents.length})`).join(', ')}. Give each config a unique
+          <code>agentId</code> in the Config tab.
+        </div>
+      ) : null}
 
       {agentsQuery.error ? (
         <div className="msg msg-error" role="alert">

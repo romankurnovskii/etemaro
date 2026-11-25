@@ -64,6 +64,8 @@ export interface IpcServerConfig {
 /** Control-plane operations for managing agent instances from clients. */
 export interface AgentControl {
   list(): unknown[]
+  /** `config.agentId` values shared by more than one instance file. */
+  duplicateAgentIds?(): Array<{ agentId: string; agents: string[] }>
   create(name: string): unknown | Promise<unknown>
   start(id: string): unknown | Promise<unknown>
   stop(id: string): unknown | Promise<unknown>
@@ -377,7 +379,8 @@ export class IpcServer {
     }
     try {
       if (pathname === '/api/agents' && req.method === 'GET') {
-        this._sendJson(res, 200, { agents: this.agentControl.list() })
+        const duplicates = this.agentControl.duplicateAgentIds?.() ?? []
+        this._sendJson(res, 200, { agents: this.agentControl.list(), duplicateAgentIds: duplicates })
         return
       }
       if (pathname === '/api/agents' && req.method === 'POST') {

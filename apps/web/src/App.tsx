@@ -39,7 +39,7 @@ export default function App() {
   const healthQuery = useHealthQuery()
   const setZone = useClockStore((s) => s.setZone)
   const agentsQuery = useAgentsQuery(token)
-  const agents = agentsQuery.data ?? NO_AGENTS
+  const agents = agentsQuery.data?.agents ?? NO_AGENTS
   const strategiesQuery = useStrategiesQuery(token)
   const syncTelemetry = useTelemetryStore((s) => s.sync)
 
