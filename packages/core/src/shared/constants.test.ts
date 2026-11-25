@@ -22,6 +22,7 @@ import {
   getEtemaroDir,
   getInstanceId,
   instanceDataPath,
+  isManagedInstance,
   REPO_ROOT,
   resolveWebDir,
   sharedConfigPath,
@@ -237,6 +238,27 @@ describe('REPO_ROOT resolves to the pnpm workspace root', () => {
     expect(credentialsPath('main-scalp.json')).toBe(
       path.join(getEtemaroDir(), '.credentials', 'wallets', 'main-scalp.json'),
     )
+  })
+
+  describe('isManagedInstance', () => {
+    afterEach(() => {
+      delete process.env.ETEMARO_INSTANCE_ID
+    })
+
+    it('is false for the console host', () => {
+      delete process.env.ETEMARO_INSTANCE_ID
+      expect(isManagedInstance()).toBe(false)
+    })
+
+    it('is true for a spawned agent', () => {
+      process.env.ETEMARO_INSTANCE_ID = 'agent-1'
+      expect(isManagedInstance()).toBe(true)
+    })
+
+    it('treats a blank value as the host', () => {
+      process.env.ETEMARO_INSTANCE_ID = '   '
+      expect(isManagedInstance()).toBe(false)
+    })
   })
 
   it('configPath finds configs in config/instances/ if present', () => {

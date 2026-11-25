@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Daemon, type DaemonAdapters, getDeterministicCloseRule } from './Daemon.js'
+import { AgentSupervisor } from './server/AgentSupervisor.js'
 
 function createMockAdapters(): DaemonAdapters {
   return {
@@ -1141,6 +1142,43 @@ describe('Telegram reply_to_message context injection (#338)', () => {
     })
 
     expect(loopSpy.mock.calls[0]?.[0]).toBe('[Replying to Telegram message: "Line one Line two"]\n\nExplain')
+  })
+})
+
+describe('Daemon — orphan reaping is host-only', () => {
+  afterEach(() => {
+    delete process.env.ETEMARO_INSTANCE_ID
+    vi.restoreAllMocks()
+  })
+
+  it('does not reap when running as a spawned agent (would kill siblings)', async () => {
+    const reapSpy = vi.spyOn(AgentSupervisor.prototype, 'reapOrphans').mockReturnValue(0)
+    process.env.ETEMARO_INSTANCE_ID = 'agent-child'
+
+    const daemon = new Daemon(createMockAdapters())
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+    try {
+      await daemon.start({ tty: false, hostOnly: true })
+      expect(reapSpy).not.toHaveBeenCalled()
+    } finally {
+      await daemon.stop()
+      exitSpy.mockRestore()
+    }
+  })
+
+  it('reaps on the console host', async () => {
+    const reapSpy = vi.spyOn(AgentSupervisor.prototype, 'reapOrphans').mockReturnValue(0)
+    delete process.env.ETEMARO_INSTANCE_ID
+
+    const daemon = new Daemon(createMockAdapters())
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+    try {
+      await daemon.start({ tty: false, hostOnly: true })
+      expect(reapSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      await daemon.stop()
+      exitSpy.mockRestore()
+    }
   })
 })
 

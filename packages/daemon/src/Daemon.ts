@@ -43,6 +43,7 @@ import {
   getWalletAddress,
   type IpcPositionSummary,
   type IpcToolDescriptor,
+  isManagedInstance,
   isPnlSuspect,
   loadJsonFile,
   loadJsonFileWithInfo,
@@ -606,9 +607,14 @@ export class Daemon {
       readConfig: (configPath: string) => this.agentSupervisor.readConfigFile(configPath),
       writeConfig: (configPath: string, content: unknown) => this.agentSupervisor.writeConfigFile(configPath, content),
     })
-    const reaped = this.agentSupervisor.reapOrphans()
-    if (reaped > 0) {
-      log('startup', `Reaped ${reaped} orphaned agent process(es) left by a previous run.`)
+    // Only the console host owns `data/agents.runtime.json`. A managed agent is a
+    // full `etemaro start` process too, so reaping here would SIGTERM its own
+    // siblings — a second start would silently kill the first.
+    if (!isManagedInstance()) {
+      const reaped = this.agentSupervisor.reapOrphans()
+      if (reaped > 0) {
+        log('startup', `Reaped ${reaped} orphaned agent process(es) left by a previous run.`)
+      }
     }
     try {
       await this.ipcServer.start()
