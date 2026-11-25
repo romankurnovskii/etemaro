@@ -5,6 +5,8 @@ export interface HealthInfo {
   status: string
   agentId: string
   webUi: boolean
+  /** True when the process hosts the console only and runs no agent runtime. */
+  hostOnly?: boolean
   tools: number
   timezone?: string
   utcOffsetMinutes?: number

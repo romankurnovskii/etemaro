@@ -172,9 +172,11 @@ In interactive mode, prompts for Name, optional Description, and Agent ID (auto-
 ### etemaro start
 Starts the autonomous agent with cron jobs (management + screening).
 
-### etemaro serve [--port <port>] [--open]
-Starts the agent headlessly and serves the browser web UI on the IPC port (default 8765).
+### etemaro serve [--port <port>] [--open] [--no-agent]
+Serves the browser web UI on the IPC port (default 8765).
 Open the printed http://127.0.0.1:<port>/ URL to view positions, logs, chat, and run any tool.
+By default it also runs a trading agent in this process. Pass --no-agent to serve the console only:
+no cron cycles, no LLM, no Telegram, no trading. Agents are then started from the UI.
 
 ### etemaro attach [--agent <id>] [--port <port>]
 Opens the interactive terminal dashboard (Ink TUI) that attaches to a running agent.

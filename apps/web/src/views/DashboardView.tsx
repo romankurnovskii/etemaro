@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useHealthQuery } from '../hooks/useHealthQuery'
+import { DAEMON_URL } from '../lib/api'
 import { fmtClock, fmtCountdown } from '../lib/format'
 import type { StateSnapshot } from '../lib/ipc'
 import { useClockStore, zoneLabel } from '../stores/clockStore'
@@ -28,6 +30,46 @@ export function DashboardView({ snapshot }: { snapshot: StateSnapshot | null }) 
   const now = useNow(TICK_MS)
   const timeZone = useClockStore((s) => s.timeZone)
   const utcOffsetMinutes = useClockStore((s) => s.utcOffsetMinutes)
+  const health = useHealthQuery().data
+
+  // A host-only console runs no agent of its own, so there is no snapshot to wait for.
+  if (health?.hostOnly) {
+    return (
+      <section className="card">
+        <div className="section-head">
+          <div>
+            <h2>Console host</h2>
+            <p className="muted">
+              This process serves the console and supervises agents. It runs no cycles, no Telegram and no transactions
+              of its own — every trade happens in an agent you start from the Agents tab.
+            </p>
+          </div>
+          <span className="status-pill pill-success">
+            <span className="dot" aria-hidden="true" />
+            Host only
+          </span>
+        </div>
+        <div className="metrics">
+          <div className="metric">
+            <div className="label">Listening</div>
+            <div className="value small mono">{DAEMON_URL}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Agent id</div>
+            <div className="value small mono">{health.agentId}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Tools</div>
+            <div className="value">{health.tools}</div>
+          </div>
+          <div className="metric">
+            <div className="label">Timezone</div>
+            <div className="value small">{zoneLabel(timeZone, utcOffsetMinutes)}</div>
+          </div>
+        </div>
+      </section>
+    )
+  }
 
   if (!snapshot) {
     return (
