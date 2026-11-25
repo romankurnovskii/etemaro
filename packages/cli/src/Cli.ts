@@ -95,7 +95,6 @@ let domain: CoreExports['domain'] = null as any
 let token: CoreExports['token'] = null as any
 let study: CoreExports['study'] = null as any
 let _telegram: CoreExports['telegram'] = null as any
-let _desktop: CoreExports['desktop'] = null as any
 let _briefing: CoreExports['briefing'] = null as any
 let _hivemind: CoreExports['hivemind'] = null as any
 let _tools: CoreExports['tools'] = null as any
@@ -136,7 +135,6 @@ export async function loadCore(): Promise<void> {
   token = coreMod.token
   study = coreMod.study
   _telegram = coreMod.telegram
-  _desktop = coreMod.desktop
   _briefing = coreMod.briefing
   _hivemind = coreMod.hivemind
   _tools = coreMod.tools
