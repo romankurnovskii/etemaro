@@ -134,6 +134,17 @@ function resolveAgainstRepo(p: string): string {
  * 4. If AGENT_CONFIG_PATH env var points to config/agent-config.json (flat), return '' (no instance isolation)
  * 5. Default to DEFAULT_AGENT_ID ('agent-default') for zero-fallback instance isolation (Chapter 7)
  */
+/**
+ * True when this process was spawned as a managed agent instance.
+ *
+ * `AgentSupervisor` sets `ETEMARO_INSTANCE_ID` for every child, so a host-side
+ * helper can tell itself apart from the agents it owns — e.g. only the host may
+ * reap orphaned agents from the shared registry.
+ */
+export function isManagedInstance(): boolean {
+  return Boolean(process.env.ETEMARO_INSTANCE_ID?.trim())
+}
+
 export function getInstanceId(): string {
   const envInstance = process.env.ETEMARO_INSTANCE_ID
   if (envInstance?.trim()) {
