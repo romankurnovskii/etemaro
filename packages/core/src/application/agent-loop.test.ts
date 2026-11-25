@@ -1,22 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { OpenAiChatAdapter } from '../adapters/llm/OpenAiChatAdapter.js'
 import { agentLoop, INTENT_PATTERNS, INTENT_TOOLS, MANAGER_TOOLS, SCREENER_TOOLS } from '../application/agent-loop.js'
-
-const createLlm = (cfg: any) => new OpenAiChatAdapter(cfg)
-
-const mockOpenAICreate = vi.fn()
-
-vi.mock('openai', () => {
-  return {
-    default: class MockOpenAI {
-      chat = {
-        completions: {
-          create: mockOpenAICreate,
-        },
-      }
-    },
-  }
-})
 
 function makeToolCall(id: string, name: string, args: Record<string, unknown> = {}) {
   return {
@@ -29,6 +12,37 @@ function makeToolCall(id: string, name: string, args: Record<string, unknown> = 
   }
 }
 
+/** One assistant turn. */
+function reply(content: string | null, tool_calls: any[] | null = null) {
+  return { choices: [{ message: { role: 'assistant', content, tool_calls } }] }
+}
+
+/**
+ * Injected LlmPort stub. Tests must never rely on mocking the vendor SDK: a
+ * module-resolution change would silently fall back to a real client and hit
+ * the network (see #550).
+ */
+function stubLlm(...responses: unknown[]) {
+  const chat = vi.fn()
+  for (const response of responses) chat.mockResolvedValueOnce(response)
+  return { chat, llm: { name: 'stub', chat } as any }
+}
+
+/** Shared deps; each test overrides what it cares about. */
+function baseDeps(overrides: Record<string, unknown> = {}) {
+  return {
+    executeTool: vi.fn().mockResolvedValue({ success: true }),
+    getTools: vi.fn().mockReturnValue([]),
+    getWalletBalances: vi.fn().mockResolvedValue({ sol: 10, tokens: [] }),
+    getMyPositions: vi.fn().mockResolvedValue({ total_positions: 0, positions: [] }),
+    getStateSummary: vi.fn().mockReturnValue(null),
+    getLessonsForPrompt: vi.fn().mockReturnValue(null),
+    getPerformanceSummary: vi.fn().mockReturnValue(null),
+    getDecisionSummary: vi.fn().mockReturnValue(null),
+    ...overrides,
+  }
+}
+
 describe('agent-loop — deploy_position duplicate guard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -36,56 +50,18 @@ describe('agent-loop — deploy_position duplicate guard', () => {
 
   it('blocks duplicate deploy_position calls in the same assistant message', async () => {
     const executeTool = vi.fn().mockResolvedValue({ success: true, position: 'pos_123' })
-    const getTools = vi.fn().mockReturnValue([])
-    const getWalletBalances = vi.fn().mockResolvedValue({ sol: 10, tokens: [] })
-    const getMyPositions = vi.fn().mockResolvedValue({ total_positions: 0, positions: [] })
-    const getStateSummary = vi.fn().mockReturnValue(null)
-    const getLessonsForPrompt = vi.fn().mockReturnValue(null)
-    const getPerformanceSummary = vi.fn().mockReturnValue(null)
-    const getDecisionSummary = vi.fn().mockReturnValue(null)
-
-    // First LLM response: two deploy_position tool calls in one message
-    mockOpenAICreate.mockResolvedValueOnce({
-      choices: [
-        {
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [
-              makeToolCall('call_1', 'deploy_position', { pool_address: 'PoolA', amount_y: 0.1 }),
-              makeToolCall('call_2', 'deploy_position', { pool_address: 'PoolB', amount_y: 0.1 }),
-            ],
-          },
-        },
-      ],
-    })
-
-    // Second LLM response: final text answer (so the loop terminates)
-    mockOpenAICreate.mockResolvedValueOnce({
-      choices: [
-        {
-          message: {
-            role: 'assistant',
-            content: 'Done deploying.',
-            tool_calls: null,
-          },
-        },
-      ],
-    })
+    // Turn 1: two deploy_position tool calls in one message. Turn 2: final answer.
+    const { llm } = stubLlm(
+      reply(null, [
+        makeToolCall('call_1', 'deploy_position', { pool_address: 'PoolA', amount_y: 0.1 }),
+        makeToolCall('call_2', 'deploy_position', { pool_address: 'PoolB', amount_y: 0.1 }),
+      ]),
+      reply('Done deploying.'),
+    )
 
     const result = await agentLoop('deploy to two pools', 3, [], 'SCREENER', null, null, {
       interactive: false,
-      deps: {
-        executeTool,
-        getTools,
-        getWalletBalances,
-        getMyPositions,
-        getStateSummary,
-        getLessonsForPrompt,
-        getPerformanceSummary,
-        getDecisionSummary,
-        createLlm,
-      },
+      deps: baseDeps({ executeTool, llm }),
     })
 
     expect(result.content).toBe('Done deploying.')
@@ -111,45 +87,17 @@ describe('agent-loop — resilient concurrent tool execution (Issue #133)', () =
       return { success: true }
     })
 
-    const getTools = vi.fn().mockReturnValue([])
-    const getWalletBalances = vi.fn().mockResolvedValue({ sol: 10, tokens: [] })
-    const getMyPositions = vi.fn().mockResolvedValue({ total_positions: 1, positions: [] })
-    const getStateSummary = vi.fn().mockReturnValue(null)
-    const getLessonsForPrompt = vi.fn().mockReturnValue(null)
-    const getPerformanceSummary = vi.fn().mockReturnValue(null)
-    const getDecisionSummary = vi.fn().mockReturnValue(null)
-
-    // Turn 1: Assistant requests two tools concurrently
-    mockOpenAICreate.mockResolvedValueOnce({
-      choices: [
-        {
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [
-              makeToolCall('call_claim', 'claim_fees', { position_address: 'pos_1' }),
-              makeToolCall('call_check', 'check_pool', { pool_address: 'pool_error' }),
-            ],
-          },
-        },
-      ],
-    })
-
-    // Turn 2: Assistant receives tool responses (both claim and check) and replies
     let turn2Messages: any[] = []
-    mockOpenAICreate.mockImplementationOnce(async (payload: any) => {
+    const chat = vi.fn()
+    chat.mockResolvedValueOnce(
+      reply(null, [
+        makeToolCall('call_claim', 'claim_fees', { position_address: 'pos_1' }),
+        makeToolCall('call_check', 'check_pool', { pool_address: 'pool_error' }),
+      ]),
+    )
+    chat.mockImplementationOnce(async (payload: any) => {
       turn2Messages = payload.messages
-      return {
-        choices: [
-          {
-            message: {
-              role: 'assistant',
-              content: 'Processed fee claim despite check_pool failure.',
-              tool_calls: null,
-            },
-          },
-        ],
-      }
+      return reply('Processed fee claim despite check_pool failure.')
     })
 
     const onToolFinish = vi.fn()
@@ -157,22 +105,16 @@ describe('agent-loop — resilient concurrent tool execution (Issue #133)', () =
     const result = await agentLoop('manage position', 3, [], 'MANAGER', null, null, {
       interactive: false,
       onToolFinish,
-      deps: {
+      deps: baseDeps({
         executeTool,
-        getTools,
-        getWalletBalances,
-        getMyPositions,
-        getStateSummary,
-        getLessonsForPrompt,
-        getPerformanceSummary,
-        getDecisionSummary,
-        createLlm,
-      },
+        getMyPositions: vi.fn().mockResolvedValue({ total_positions: 1, positions: [] }),
+        llm: { name: 'stub', chat } as any,
+      }),
     })
 
     expect(result.content).toBe('Processed fee claim despite check_pool failure.')
 
-    // Verify both tools were recorded in messages sent to the LLM in Turn 2
+    // Both tools were recorded in the messages sent to the LLM in turn 2
     const toolMessages = turn2Messages.filter((m: any) => m.role === 'tool')
     expect(toolMessages).toHaveLength(2)
 
@@ -191,7 +133,6 @@ describe('agent-loop — resilient concurrent tool execution (Issue #133)', () =
       }),
     )
 
-    // Verify onToolFinish was called for both
     expect(onToolFinish).toHaveBeenCalledWith(expect.objectContaining({ name: 'claim_fees', success: true }))
     expect(onToolFinish).toHaveBeenCalledWith(expect.objectContaining({ name: 'check_pool', success: false }))
   })
@@ -203,28 +144,12 @@ describe('agent-loop — SCREENER tool enforcement & deploy_position lockout (Is
   })
 
   it('allows SCREENER role to return ⛔ NO DEPLOY without tool calls on first step', async () => {
+    const { chat, llm } = stubLlm(
+      reply(
+        '⛔ NO DEPLOY\n\nCycle finished with no valid entry.\n\nWHY SKIPPED\nAll candidate pools had low organic volume.',
+      ),
+    )
     const executeTool = vi.fn()
-    const getTools = vi.fn().mockReturnValue([])
-    const getWalletBalances = vi.fn().mockResolvedValue({ sol: 10, tokens: [] })
-    const getMyPositions = vi.fn().mockResolvedValue({ total_positions: 0, positions: [] })
-    const getStateSummary = vi.fn().mockReturnValue(null)
-    const getLessonsForPrompt = vi.fn().mockReturnValue(null)
-    const getPerformanceSummary = vi.fn().mockReturnValue(null)
-    const getDecisionSummary = vi.fn().mockReturnValue(null)
-
-    // LLM response: ⛔ NO DEPLOY text on first turn without any tool calls
-    mockOpenAICreate.mockResolvedValueOnce({
-      choices: [
-        {
-          message: {
-            role: 'assistant',
-            content:
-              '⛔ NO DEPLOY\n\nCycle finished with no valid entry.\n\nWHY SKIPPED\nAll candidate pools had low organic volume.',
-            tool_calls: null,
-          },
-        },
-      ],
-    })
 
     const screeningGoal = `
 SCREENING CYCLE
@@ -242,22 +167,12 @@ STEPS:
 
     const result = await agentLoop(screeningGoal, 3, [], 'SCREENER', null, null, {
       interactive: false,
-      deps: {
-        executeTool,
-        getTools,
-        getWalletBalances,
-        getMyPositions,
-        getStateSummary,
-        getLessonsForPrompt,
-        getPerformanceSummary,
-        getDecisionSummary,
-        createLlm,
-      },
+      deps: baseDeps({ executeTool, llm }),
     })
 
     expect(result.content).toContain('⛔ NO DEPLOY')
     expect(result.content).not.toContain("couldn't complete that reliably because no tool call was made")
-    expect(mockOpenAICreate).toHaveBeenCalledTimes(1)
+    expect(chat).toHaveBeenCalledTimes(1)
     expect(executeTool).not.toHaveBeenCalled()
   })
 
@@ -279,68 +194,15 @@ STEPS:
       return { success: true }
     })
 
-    const getTools = vi.fn().mockReturnValue([])
-    const getWalletBalances = vi.fn().mockResolvedValue({ sol: 10, tokens: [] })
-    const getMyPositions = vi.fn().mockResolvedValue({ total_positions: 0, positions: [] })
-    const getStateSummary = vi.fn().mockReturnValue(null)
-    const getLessonsForPrompt = vi.fn().mockReturnValue(null)
-    const getPerformanceSummary = vi.fn().mockReturnValue(null)
-    const getDecisionSummary = vi.fn().mockReturnValue(null)
-
-    // Turn 1: LLM tries deploying into UnsafePool
-    mockOpenAICreate.mockResolvedValueOnce({
-      choices: [
-        {
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [makeToolCall('call_unsafe', 'deploy_position', { pool_address: 'UnsafePool', amount_y: 0.5 })],
-          },
-        },
-      ],
-    })
-
-    // Turn 2: LLM sees safety block, tries fallback SafeBackupPool
-    mockOpenAICreate.mockResolvedValueOnce({
-      choices: [
-        {
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [
-              makeToolCall('call_safe', 'deploy_position', { pool_address: 'SafeBackupPool', amount_y: 0.5 }),
-            ],
-          },
-        },
-      ],
-    })
-
-    // Turn 3: LLM outputs final report
-    mockOpenAICreate.mockResolvedValueOnce({
-      choices: [
-        {
-          message: {
-            role: 'assistant',
-            content: '🚀 DEPLOYED\n\nSafeBackupPool\n\n◎ 0.5 SOL',
-            tool_calls: null,
-          },
-        },
-      ],
-    })
+    const { llm } = stubLlm(
+      reply(null, [makeToolCall('call_unsafe', 'deploy_position', { pool_address: 'UnsafePool', amount_y: 0.5 })]),
+      reply(null, [makeToolCall('call_safe', 'deploy_position', { pool_address: 'SafeBackupPool', amount_y: 0.5 })]),
+      reply('🚀 DEPLOYED\n\nSafeBackupPool\n\n◎ 0.5 SOL'),
+    )
 
     const result = await agentLoop('SCREENING CYCLE: Deploy: 0.5 SOL', 5, [], 'SCREENER', null, null, {
       interactive: false,
-      deps: {
-        executeTool,
-        getTools,
-        getWalletBalances,
-        getMyPositions,
-        getStateSummary,
-        getLessonsForPrompt,
-        getPerformanceSummary,
-        getDecisionSummary,
-        createLlm,
-      },
+      deps: baseDeps({ executeTool, llm }),
     })
 
     expect(result.content).toContain('🚀 DEPLOYED')
@@ -358,86 +220,32 @@ STEPS:
   })
 
   it('locks deploy_position for subsequent steps if deploy_position was actually executed', async () => {
-    const executeTool = vi.fn().mockResolvedValue({
-      success: true,
-      position: 'pos_123',
-    })
+    const executeTool = vi.fn().mockResolvedValue({ success: true, position: 'pos_123' })
 
-    const getTools = vi.fn().mockReturnValue([])
-    const getWalletBalances = vi.fn().mockResolvedValue({ sol: 10, tokens: [] })
-    const getMyPositions = vi.fn().mockResolvedValue({ total_positions: 0, positions: [] })
-    const getStateSummary = vi.fn().mockReturnValue(null)
-    const getLessonsForPrompt = vi.fn().mockReturnValue(null)
-    const getPerformanceSummary = vi.fn().mockReturnValue(null)
-    const getDecisionSummary = vi.fn().mockReturnValue(null)
-
-    // Turn 1: LLM executes deploy_position
-    mockOpenAICreate.mockResolvedValueOnce({
-      choices: [
-        {
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: [makeToolCall('call_1', 'deploy_position', { pool_address: 'PoolA', amount_y: 0.5 })],
-          },
-        },
-      ],
-    })
-
-    // Turn 2: LLM erroneously attempts a second deploy_position in turn 2
-    let _turn2ToolResponse: any = null
-    mockOpenAICreate.mockImplementationOnce(async (payload: any) => {
-      _turn2ToolResponse = payload.messages
-      return {
-        choices: [
-          {
-            message: {
-              role: 'assistant',
-              content: null,
-              tool_calls: [makeToolCall('call_2', 'deploy_position', { pool_address: 'PoolB', amount_y: 0.5 })],
-            },
-          },
-        ],
-      }
-    })
-
-    // Turn 3: LLM acknowledges block and concludes
     let turn3Messages: any[] = []
-    mockOpenAICreate.mockImplementationOnce(async (payload: any) => {
+    const chat = vi.fn()
+    // Turn 1: deploy. Turn 2: a second deploy attempt that must be blocked. Turn 3: conclusion.
+    chat.mockResolvedValueOnce(
+      reply(null, [makeToolCall('call_1', 'deploy_position', { pool_address: 'PoolA', amount_y: 0.5 })]),
+    )
+    chat.mockResolvedValueOnce(
+      reply(null, [makeToolCall('call_2', 'deploy_position', { pool_address: 'PoolB', amount_y: 0.5 })]),
+    )
+    chat.mockImplementationOnce(async (payload: any) => {
       turn3Messages = payload.messages
-      return {
-        choices: [
-          {
-            message: {
-              role: 'assistant',
-              content: 'Deployment finished.',
-              tool_calls: null,
-            },
-          },
-        ],
-      }
+      return reply('Deployment finished.')
     })
 
     const result = await agentLoop('SCREENING CYCLE: Deploy: 0.5 SOL', 5, [], 'SCREENER', null, null, {
       interactive: false,
-      deps: {
-        executeTool,
-        getTools,
-        getWalletBalances,
-        getMyPositions,
-        getStateSummary,
-        getLessonsForPrompt,
-        getPerformanceSummary,
-        getDecisionSummary,
-        createLlm,
-      },
+      deps: baseDeps({ executeTool, llm: { name: 'stub', chat } as any }),
     })
 
     expect(result.content).toBe('Deployment finished.')
     expect(executeTool).toHaveBeenCalledTimes(1)
     expect(executeTool).toHaveBeenCalledWith('deploy_position', expect.objectContaining({ pool_address: 'PoolA' }))
 
-    // Verify turn 3 received the once-per-session block message for the second deploy_position attempt
+    // Turn 3 received the once-per-session block message for the second attempt
     const turn3ToolMessages = turn3Messages.filter((m: any) => m.role === 'tool')
     const secondDeployToolMessage = turn3ToolMessages.find((m: any) => m.tool_call_id === 'call_2')
     expect(secondDeployToolMessage).toBeDefined()
@@ -508,25 +316,13 @@ describe('agent-loop — portfolio intent routing & tools', () => {
   })
 
   it('uses an injected LlmPort instead of constructing an OpenAI client', async () => {
-    const chat = vi.fn().mockResolvedValue({
-      choices: [{ message: { role: 'assistant', content: 'Injected answer', tool_calls: null } }],
-    })
-    const deps = {
-      executeTool: vi.fn(),
-      getTools: vi.fn().mockReturnValue([]),
-      getWalletBalances: vi.fn().mockResolvedValue({ sol: 1, tokens: [] }),
-      getMyPositions: vi.fn().mockResolvedValue({ total_positions: 0, positions: [] }),
-      getStateSummary: vi.fn().mockReturnValue(null),
-      getLessonsForPrompt: vi.fn().mockReturnValue(null),
-      getPerformanceSummary: vi.fn().mockReturnValue(null),
-      getDecisionSummary: vi.fn().mockReturnValue(null),
-      llm: { name: 'fake', chat },
-    }
+    const { chat, llm } = stubLlm(reply('Injected answer'))
 
-    const result = await agentLoop('say hi', 5, [], 'GENERAL', null, null, { deps })
+    const result = await agentLoop('say hi', 5, [], 'GENERAL', null, null, {
+      deps: baseDeps({ llm, getWalletBalances: vi.fn().mockResolvedValue({ sol: 1, tokens: [] }) }),
+    })
 
     expect(chat).toHaveBeenCalledTimes(1)
-    expect(mockOpenAICreate).not.toHaveBeenCalled()
     expect(result.content).toBe('Injected answer')
   })
 })
