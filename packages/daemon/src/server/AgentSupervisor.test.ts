@@ -330,6 +330,41 @@ describe('AgentSupervisor IPC port allocation', () => {
     expect(sup.duplicateAgentIds()).toEqual([{ agentId: 'dup', agents: ['a', 'b'] }])
   })
 
+  it('groups a blank config.agentId under the default identity', () => {
+    writeInstance('agent-default', { dryRun: true })
+    writeInstance('blank', { dryRun: true })
+    for (const [f, id] of [
+      ['agent-default', 'agent-default'],
+      ['blank', ''],
+    ]) {
+      const p = path.join(repo, 'config', 'instances', `${f}.json`)
+      const cfg = JSON.parse(fs.readFileSync(p, 'utf8'))
+      fs.writeFileSync(p, JSON.stringify({ ...cfg, agentId: id }))
+    }
+
+    expect(sup.duplicateAgentIds()).toEqual([{ agentId: 'agent-default', agents: ['agent-default', 'blank'] }])
+  })
+
+  it('refuses to start a blank-id agent next to one running as the default', async () => {
+    writeInstance('agent-default', { dryRun: true, ipcPort: 8811 })
+    writeInstance('blank', { dryRun: true, ipcPort: 8812 })
+    const p = path.join(repo, 'config', 'instances', 'blank.json')
+    fs.writeFileSync(p, JSON.stringify({ ...JSON.parse(fs.readFileSync(p, 'utf8')), agentId: '' }))
+
+    await sup.start('agent-default')
+    await expect(sup.start('blank')).rejects.toThrow(
+      /agentId "agent-default" is already used by running agent "agent-default"/,
+    )
+  })
+
+  it('treats a single blank id as unique', () => {
+    writeInstance('lonely', { dryRun: true })
+    const p = path.join(repo, 'config', 'instances', 'lonely.json')
+    fs.writeFileSync(p, JSON.stringify({ ...JSON.parse(fs.readFileSync(p, 'utf8')), agentId: '' }))
+
+    expect(sup.duplicateAgentIds()).toEqual([])
+  })
+
   it('reports dryRun per agent', async () => {
     await sup.create('Dry')
     writeInstance('live', { dryRun: false })
