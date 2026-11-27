@@ -67,7 +67,7 @@ export interface AgentControl {
   /** `config.agentId` values shared by more than one instance file. */
   duplicateAgentIds?(): Array<{ agentId: string; agents: string[] }>
   create(name: string): unknown | Promise<unknown>
-  start(id: string): unknown | Promise<unknown>
+  start(id: string, options?: { confirmLive?: boolean }): unknown | Promise<unknown>
   stop(id: string): unknown | Promise<unknown>
   setStrategy(id: string, strategyId: string): unknown
   readConfig(configPath: string): unknown
@@ -337,7 +337,7 @@ export class IpcServer {
       }
 
       if (pathname === '/api/agents' || pathname.startsWith('/api/agents/')) {
-        await this._handleAgentControl(req, res, pathname)
+        await this._handleAgentControl(req, res, pathname, url)
         return
       }
 
@@ -372,7 +372,12 @@ export class IpcServer {
     this._serveStatic(pathname, res)
   }
 
-  private async _handleAgentControl(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<void> {
+  private async _handleAgentControl(
+    req: IncomingMessage,
+    res: ServerResponse,
+    pathname: string,
+    url: URL,
+  ): Promise<void> {
     if (!this.agentControl) {
       this._sendJson(res, 503, { error: { code: 'NO_AGENT_CONTROL', message: 'Agent control is not available' } })
       return
@@ -394,7 +399,9 @@ export class IpcServer {
         const id = decodeURIComponent(match[1] as string)
         const action = match[2]
         if (action === 'start') {
-          this._sendJson(res, 200, { ok: true, agent: await this.agentControl.start(id) })
+          const body = await this._readJsonBody(req).catch(() => ({}) as Record<string, unknown>)
+          const confirmLive = String((body as any)?.confirmLive ?? url.searchParams.get('confirmLive') ?? '') === 'true'
+          this._sendJson(res, 200, { ok: true, agent: await this.agentControl.start(id, { confirmLive }) })
           return
         }
         if (action === 'stop') {
@@ -408,7 +415,11 @@ export class IpcServer {
       }
       this._sendJson(res, 404, { error: { code: 'NOT_FOUND', message: `No agent route: ${pathname}` } })
     } catch (e: any) {
-      this._sendJson(res, 400, { error: { code: 'AGENT_OPERATION_FAILED', message: e?.message || String(e) } })
+      const message = e?.message || String(e)
+      const liveRefusal = /is LIVE — starting it would trade real funds/i.test(message)
+      this._sendJson(res, liveRefusal ? 409 : 400, {
+        error: { code: liveRefusal ? 'LIVE_CONFIRM_REQUIRED' : 'AGENT_OPERATION_FAILED', message },
+      })
     }
   }
 

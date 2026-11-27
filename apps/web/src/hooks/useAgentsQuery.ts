@@ -24,7 +24,8 @@ export function useAgentMutations(token: string) {
     onSettled: invalidate,
   })
   const setRunning = useMutation({
-    mutationFn: ({ id, running }: { id: string; running: boolean }) => setAgentRunning(id, running, token),
+    mutationFn: ({ id, running, confirmLive }: { id: string; running: boolean; confirmLive?: boolean }) =>
+      setAgentRunning(id, running, token, { confirmLive }),
     onSettled: invalidate,
   })
   const setStrategy = useMutation({

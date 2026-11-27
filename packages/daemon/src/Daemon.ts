@@ -601,7 +601,7 @@ export class Daemon {
       list: () => this.agentSupervisor.list(),
       duplicateAgentIds: () => this.agentSupervisor.duplicateAgentIds(),
       create: (name: string) => this.agentSupervisor.create(name),
-      start: (id: string) => this.agentSupervisor.start(id),
+      start: (id: string, options?: { confirmLive?: boolean }) => this.agentSupervisor.start(id, options),
       stop: (id: string) => this.agentSupervisor.stop(id),
       setStrategy: (id: string, strategyId: string) => this.agentSupervisor.setStrategy(id, strategyId),
       readConfig: (configPath: string) => this.agentSupervisor.readConfigFile(configPath),

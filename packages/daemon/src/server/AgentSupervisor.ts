@@ -175,13 +175,26 @@ export class AgentSupervisor {
     return this.toManaged(id)
   }
 
-  /** Spawn the agent as a child process. No-op when already running. */
-  async start(id: string): Promise<ManagedAgent> {
+  /**
+   * Spawn the agent as a child process. No-op when already running.
+   *
+   * A live config (no `connection.dryRun: true`) trades real funds, so it needs
+   * an explicit `confirmLive` — the console asks its user, and the API must not
+   * be easier to drive than the UI.
+   */
+  async start(id: string, options: { confirmLive?: boolean } = {}): Promise<ManagedAgent> {
     const agentId = this.safeId(id)
     const configPath = this.configPathFor(agentId)
     if (!fs.existsSync(configPath)) throw new Error(`Agent "${agentId}" not found`)
     if (this.isRunning(agentId)) return this.toManaged(agentId)
     this.assertUniqueAgentId(agentId)
+
+    const live = resolveDryRun(this.readConfig(agentId, true).connection?.dryRun) === false
+    if (live && options.confirmLive !== true) {
+      throw new Error(
+        `Agent "${agentId}" is LIVE — starting it would trade real funds. Pass confirmLive: true to start it.`,
+      )
+    }
 
     // The child's IPC server must bind a port of its own: without one it falls
     // back to the console daemon's port and dies with EADDRINUSE, leaving the
