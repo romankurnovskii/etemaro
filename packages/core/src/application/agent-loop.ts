@@ -309,6 +309,79 @@ function isThinkingModeToolChoiceError(error: unknown): boolean {
   return /thinking mode does not support/i.test(message) && /tool_choice/i.test(message)
 }
 
+/** HTTP statuses worth retrying: rate limits, timeouts and provider-side 5xx. */
+const TRANSIENT_STATUS_CODES = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529])
+
+/** Network-level failures surfaced by the SDK / undici. */
+const TRANSIENT_ERROR_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+  'ENOTFOUND',
+  'EPIPE',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+])
+
+/** How many transient provider retries a single step may spend. */
+export const MAX_PROVIDER_RETRIES = 3
+
+export interface ProviderFailure {
+  /** Worth retrying (rate limit, timeout, provider-side 5xx). */
+  transient: boolean
+  /** HTTP status when the error carried one. */
+  status: number | null
+  /** Delay requested by the provider via `Retry-After`, in ms. */
+  retryAfterMs: number | null
+}
+
+/** Parse `Retry-After` (delta-seconds or HTTP-date) into milliseconds. */
+export function parseRetryAfter(value: unknown, now: number = Date.now()): number | null {
+  if (value === null || value === undefined) return null
+  const raw = String(value).trim()
+  if (!raw) return null
+  const seconds = Number(raw)
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000)
+  const at = Date.parse(raw)
+  if (Number.isNaN(at)) return null
+  return Math.max(0, at - now)
+}
+
+/**
+ * Decide whether a thrown LLM error is worth retrying.
+ *
+ * Only transient provider/network failures qualify: a 400/401/403/404/422 needs a
+ * different fix, so retrying it just burns time and quota.
+ */
+export function classifyProviderError(error: unknown): ProviderFailure {
+  const e = error as any
+  const status = Number(e?.status ?? e?.response?.status ?? e?.statusCode)
+  const headers = e?.headers ?? e?.response?.headers
+  const retryAfterMs = parseRetryAfter(headers?.['retry-after']) ?? parseRetryAfter(headers?.get?.('retry-after'))
+
+  if (Number.isInteger(status) && TRANSIENT_STATUS_CODES.has(status)) {
+    return { transient: true, status, retryAfterMs }
+  }
+
+  const code = String(e?.code ?? e?.cause?.code ?? '')
+  if (TRANSIENT_ERROR_CODES.has(code)) return { transient: true, status: null, retryAfterMs }
+
+  const message = String(e?.message ?? e?.error?.message ?? '')
+  if (/fetch failed|socket hang up|temporarily unavailable|rate limit|network error/i.test(message)) {
+    return { transient: true, status: Number.isInteger(status) ? status : null, retryAfterMs }
+  }
+
+  return { transient: false, status: Number.isInteger(status) ? status : null, retryAfterMs }
+}
+
+/** Exponential backoff with equal jitter, capped at 15 s. */
+export function providerRetryDelay(attempt: number, random: () => number = Math.random): number {
+  const ceiling = Math.min(15_000, 1_000 * 2 ** Math.max(0, Math.floor(attempt)))
+  const half = ceiling / 2
+  return Math.round(half + random() * half)
+}
+
 /**
  * Summarize tool args for structured logging — truncates long values,
  * strips sensitive fields, and keeps only first-level keys.
@@ -383,6 +456,8 @@ export interface AgentLoopDeps {
   llm?: LlmPort
   /** Lazy LLM provider factory, resolved by the composition root. */
   createLlm?: LlmFactory
+  /** Injectable delay for provider retries (tests pass a no-op). */
+  sleep?: (ms: number) => Promise<void>
 }
 
 // ─── Core ReAct Agent Loop ──────────────────────────────────────
@@ -469,7 +544,13 @@ export async function agentLoop(
       let toolChoice: 'required' | 'auto' =
         step === 0 && (ACTION_INTENTS.test(goal) || mustUseRealTool) ? 'required' : 'auto'
 
-      for (let attempt = 0; attempt < 3; attempt++) {
+      // Protocol retries re-run the same attempt (`attempt -= 1`), so give the
+      // loop headroom for provider retries on top of the three protocol fixes.
+      const loopBudget = 3 + MAX_PROVIDER_RETRIES
+      let providerRetries = 0
+      const sleepFor = deps.sleep ?? sleep
+
+      for (let attempt = 0; attempt < loopBudget; attempt++) {
         try {
           response = await llm.chat({
             model: usedModel,
@@ -499,12 +580,26 @@ export async function agentLoop(
             attempt -= 1
             continue
           }
+
+          // Transient provider failure (5xx, 429, network): retry with backoff
+          // instead of aborting the whole cycle.
+          const failure = classifyProviderError(error)
+          if (failure.transient && providerRetries < MAX_PROVIDER_RETRIES) {
+            const wait = failure.retryAfterMs ?? providerRetryDelay(providerRetries)
+            providerRetries += 1
+            log(
+              'llm_warn',
+              `Provider ${failure.status ? `HTTP ${failure.status}` : 'network error'} — retrying in ${Math.round(wait / 1000)}s (attempt ${providerRetries}/${MAX_PROVIDER_RETRIES})`,
+            )
+            await sleepFor(wait)
+            continue
+          }
           throw error
         }
         if (response.choices?.length) break
         const errCode = response.error?.code
         if (errCode === 502 || errCode === 503 || errCode === 529) {
-          const wait = (attempt + 1) * 5000
+          const wait = providerRetryDelay(providerRetries)
           if (attempt === 1 && FALLBACK_MODEL && usedModel !== FALLBACK_MODEL) {
             usedModel = FALLBACK_MODEL
             log('agent', `Switching to fallback model ${FALLBACK_MODEL}`)
@@ -517,9 +612,9 @@ export async function agentLoop(
         }
       }
 
-      if (!response.choices?.length) {
-        log('error', `Bad API response: ${JSON.stringify(response).slice(0, 200)}`)
-        throw new Error(`API returned no choices: ${response.error?.message || JSON.stringify(response)}`)
+      if (!response?.choices?.length) {
+        log('error', `Bad API response: ${JSON.stringify(response ?? null).slice(0, 200)}`)
+        throw new Error(`API returned no choices: ${response?.error?.message || JSON.stringify(response ?? null)}`)
       }
       const msg = response.choices[0].message
       log('llm', `Model ${usedModel} response: ${JSON.stringify(msg).slice(0, 4000)}`)

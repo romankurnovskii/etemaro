@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { agentLoop, INTENT_PATTERNS, INTENT_TOOLS, MANAGER_TOOLS, SCREENER_TOOLS } from '../application/agent-loop.js'
+import {
+  agentLoop,
+  classifyProviderError,
+  INTENT_PATTERNS,
+  INTENT_TOOLS,
+  MANAGER_TOOLS,
+  MAX_PROVIDER_RETRIES,
+  parseRetryAfter,
+  providerRetryDelay,
+  SCREENER_TOOLS,
+} from '../application/agent-loop.js'
 
 function makeToolCall(id: string, name: string, args: Record<string, unknown> = {}) {
   return {
@@ -255,6 +265,97 @@ STEPS:
         reason: expect.stringContaining('already attempted this session'),
       }),
     )
+  })
+})
+
+describe('agent-loop — provider error classification', () => {
+  it('treats 5xx and 429 as transient', () => {
+    for (const status of [408, 429, 500, 502, 503, 504, 529]) {
+      expect(classifyProviderError({ status })).toMatchObject({ transient: true, status })
+    }
+  })
+
+  it('does not retry auth, validation or not-found errors', () => {
+    for (const status of [400, 401, 403, 404, 422]) {
+      expect(classifyProviderError({ status }).transient).toBe(false)
+    }
+  })
+
+  it('treats network failures as transient', () => {
+    expect(classifyProviderError({ code: 'ECONNRESET' }).transient).toBe(true)
+    expect(classifyProviderError({ cause: { code: 'ETIMEDOUT' } }).transient).toBe(true)
+    expect(classifyProviderError({ message: 'fetch failed' }).transient).toBe(true)
+  })
+
+  it('parses Retry-After as seconds or an HTTP date', () => {
+    expect(parseRetryAfter('2')).toBe(2000)
+    expect(parseRetryAfter('0')).toBe(0)
+    expect(parseRetryAfter(new Date(Date.now() + 5000).toUTCString())).toBeGreaterThan(3000)
+    expect(parseRetryAfter('nonsense')).toBeNull()
+  })
+
+  it('backs off exponentially within a cap', () => {
+    expect(providerRetryDelay(0, () => 0)).toBe(500)
+    expect(providerRetryDelay(1, () => 0)).toBe(1000)
+    expect(providerRetryDelay(10, () => 0)).toBe(7500)
+    expect(providerRetryDelay(10, () => 1)).toBe(15000)
+  })
+})
+
+describe('agent-loop — transient provider retries', () => {
+  const llmError = (status: number, headers?: Record<string, string>) =>
+    Object.assign(new Error(`HTTP ${status}`), { status, headers })
+
+  it('retries a thrown 503 and succeeds on a later attempt', async () => {
+    const chat = vi.fn()
+    chat
+      .mockRejectedValueOnce(llmError(503))
+      .mockRejectedValueOnce(llmError(503))
+      .mockResolvedValueOnce(reply('Recovered'))
+    const llm = { name: 'stub', chat } as any
+    const sleep = vi.fn(async () => {})
+
+    const result = await agentLoop('say hi', 5, [], 'GENERAL', null, null, {
+      deps: baseDeps({ llm, sleep }),
+    })
+
+    expect(result.content).toBe('Recovered')
+    expect(chat).toHaveBeenCalledTimes(3)
+    expect(sleep).toHaveBeenCalledTimes(2)
+  })
+
+  it('honours Retry-After when the provider supplies it', async () => {
+    const chat = vi.fn()
+    chat.mockRejectedValueOnce(llmError(429, { 'retry-after': '3' })).mockResolvedValueOnce(reply('ok'))
+    const llm = { name: 'stub', chat } as any
+    const sleep = vi.fn(async () => {})
+
+    await agentLoop('say hi', 5, [], 'GENERAL', null, null, { deps: baseDeps({ llm, sleep }) })
+
+    expect(sleep).toHaveBeenCalledWith(3000)
+  })
+
+  it('gives up after the retry budget and surfaces the provider error', async () => {
+    const { chat, llm } = stubLlm()
+    chat.mockRejectedValue(llmError(503))
+    const sleep = vi.fn(async () => {})
+
+    await expect(agentLoop('say hi', 5, [], 'GENERAL', null, null, { deps: baseDeps({ llm, sleep }) })).rejects.toThrow(
+      /HTTP 503/,
+    )
+    expect(chat).toHaveBeenCalledTimes(1 + MAX_PROVIDER_RETRIES)
+  })
+
+  it('does not retry a 401', async () => {
+    const { chat, llm } = stubLlm()
+    chat.mockRejectedValue(llmError(401))
+    const sleep = vi.fn(async () => {})
+
+    await expect(agentLoop('say hi', 5, [], 'GENERAL', null, null, { deps: baseDeps({ llm, sleep }) })).rejects.toThrow(
+      /HTTP 401/,
+    )
+    expect(chat).toHaveBeenCalledTimes(1)
+    expect(sleep).not.toHaveBeenCalled()
   })
 })
 
