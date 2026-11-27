@@ -13,7 +13,7 @@ import { type ChildProcess, execSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
-import { defaultAgentConfigStr, REPO_ROOT } from '@etemaro/core'
+import { DEFAULT_AGENT_ID, defaultAgentConfigStr, REPO_ROOT } from '@etemaro/core'
 
 export interface ManagedAgent {
   id: string
@@ -122,8 +122,7 @@ export class AgentSupervisor {
   duplicateAgentIds(): Array<{ agentId: string; agents: string[] }> {
     const groups = new Map<string, string[]>()
     for (const agent of this.list()) {
-      const configAgentId = this.readConfig(agent.id, true).agentId?.trim()
-      if (!configAgentId) continue
+      const configAgentId = this.effectiveAgentId(agent.id)
       const ids = groups.get(configAgentId) ?? []
       ids.push(agent.id)
       groups.set(configAgentId, ids)
@@ -134,13 +133,23 @@ export class AgentSupervisor {
       .sort((a, b) => a.agentId.localeCompare(b.agentId))
   }
 
+  /**
+   * Agent id an instance actually runs as.
+   *
+   * `Config` normalises a blank `agentId` to DEFAULT_AGENT_ID, so the guard has
+   * to compare the same value — otherwise blank configs look unique while
+   * silently sharing one identity (and one log prefix) at runtime.
+   */
+  private effectiveAgentId(id: string): string {
+    return this.readConfig(id, true).agentId?.trim() || DEFAULT_AGENT_ID
+  }
+
   /** Refuse to run two agents that share `config.agentId`. */
   private assertUniqueAgentId(agentId: string): void {
-    const wanted = this.readConfig(agentId, true).agentId?.trim()
-    if (!wanted) return
+    const wanted = this.effectiveAgentId(agentId)
     for (const other of this.children.keys()) {
       if (other === agentId || !this.isRunning(other)) continue
-      const otherAgentId = this.readConfig(other, true).agentId?.trim()
+      const otherAgentId = this.effectiveAgentId(other)
       if (otherAgentId !== wanted) continue
       throw new Error(
         `agentId "${wanted}" is already used by running agent "${other}". ` +
