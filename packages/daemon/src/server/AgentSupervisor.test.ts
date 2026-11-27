@@ -269,6 +269,21 @@ describe('AgentSupervisor IPC port allocation', () => {
     expect(a).not.toBe(b)
   })
 
+  it('refuses to start a live agent without confirmLive', async () => {
+    writeInstance('live-one', { dryRun: false, ipcPort: 8808 })
+    await expect(sup.start('live-one')).rejects.toThrow(/is LIVE — starting it would trade real funds/)
+  })
+
+  it('starts a live agent when confirmLive is passed', async () => {
+    writeInstance('live-two', { dryRun: false, ipcPort: 8809 })
+    await expect(sup.start('live-two', { confirmLive: true })).resolves.toMatchObject({ running: true })
+  })
+
+  it('starts a dry-run agent without confirmation', async () => {
+    writeInstance('dry-one', { dryRun: true, ipcPort: 8810 })
+    await expect(sup.start('dry-one')).resolves.toMatchObject({ running: true })
+  })
+
   it('refuses to start a second agent that shares config.agentId', async () => {
     writeInstance('first', { dryRun: true, ipcPort: 8804 })
     writeInstance('second', { dryRun: true, ipcPort: 8805 })

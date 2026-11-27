@@ -92,8 +92,18 @@ export async function createAgent(name: string, token: string): Promise<void> {
   })
 }
 
-export async function setAgentRunning(id: string, running: boolean, token: string): Promise<void> {
-  await fetchJson(`/api/agents/${encodeURIComponent(id)}/${running ? 'start' : 'stop'}`, token, { method: 'POST' })
+export async function setAgentRunning(
+  id: string,
+  running: boolean,
+  token: string,
+  options: { confirmLive?: boolean } = {},
+): Promise<void> {
+  const init: RequestInit = { method: 'POST' }
+  if (running && options.confirmLive) {
+    init.headers = { 'Content-Type': 'application/json' }
+    init.body = JSON.stringify({ confirmLive: true })
+  }
+  await fetchJson(`/api/agents/${encodeURIComponent(id)}/${running ? 'start' : 'stop'}`, token, init)
 }
 
 export async function setAgentStrategy(id: string, strategyId: string, token: string): Promise<void> {
