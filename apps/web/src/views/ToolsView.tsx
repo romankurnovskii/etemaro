@@ -183,9 +183,15 @@ function ToolField({
   let input: ReactNode
   if (Array.isArray(schema.enum)) {
     input = (
-      <select id={inputId} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
-        {schema.enum.map((v) => (
-          <option key={String(v)} value={String(v)}>
+      <select
+        id={inputId}
+        required={required}
+        value={value === undefined ? '' : String(schema.enum.findIndex((v) => Object.is(v, value)))}
+        onChange={(e) => onChange(e.target.value === '' ? undefined : schema.enum?.[Number(e.target.value)])}
+      >
+        <option value="">Choose a value…</option>
+        {schema.enum.map((v, index) => (
+          <option key={index} value={String(index)}>
             {String(v)}
           </option>
         ))}
