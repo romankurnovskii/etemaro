@@ -32,6 +32,19 @@ jobs:
       - name: Build packages and CLI
         run: pnpm run build
 
+      - name: Verify npm credentials
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is not set. See docs/RELEASING.md."
+            exit 1
+          fi
+          npm whoami || {
+            echo "::error::npm rejected NPM_TOKEN (expired or revoked). Mint a new granular token with publish rights on @etemaro and update the secret. See docs/RELEASING.md."
+            exit 1
+          }
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Publish to NPM
         run: pnpm --filter @etemaro/cli publish --access public --no-git-checks
         env:
