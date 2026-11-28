@@ -17,7 +17,7 @@
     "zustand": "^5.1.0"
   },
   "devDependencies": {
-    "@types/react": "^19.3.0",
+    "@types/react": "^19.3.2",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.3.0",
     "typescript": "^7.0.2",
