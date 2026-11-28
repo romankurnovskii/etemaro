@@ -154,3 +154,8 @@
     }
   ]
 }
+{
+  // Add your GitHub username here to acknowledge the CLA.
+  // Example:
+  // "your-github-username": true
+}
