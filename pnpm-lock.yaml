@@ -31,7 +31,7 @@ importers:
         version: 3.0.3
       openai:
         specifier: ^7.60.0
-        version: 7.60.0(ws@7.5.14(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7)
+        version: 7.60.0(ws@8.23.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7)
       pm2:
         specifier: ^7.1.2
         version: 7.1.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
@@ -71,7 +71,7 @@ importers:
         version: 5.3.0
       '@tanstack/react-query':
         specifier: ^5.108.2
-        version: 5.108.2(@types/react@19.3.0)(react@19.3.1)
+        version: 5.108.2(@types/react@19.3.2)(react@19.3.1)
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -80,14 +80,14 @@ importers:
         version: 19.3.1(react@19.3.1)
       zustand:
         specifier: ^5.1.0
-        version: 5.1.0(@types/react@19.3.0)(react@19.3.1)
+        version: 5.1.0(@types/react@19.3.2)(react@19.3.1)
     devDependencies:
       '@types/react':
-        specifier: ^19.3.0
-        version: 19.3.0
+        specifier: ^19.3.2
+        version: 19.3.2
       '@types/react-dom':
         specifier: ^19.2.7
-        version: 19.3.0(@types/react@19.3.0)
+        version: 19.3.0(@types/react@19.3.2)
       '@vitejs/plugin-react':
         specifier: ^6.3.0
         version: 6.3.0(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15))
@@ -102,10 +102,10 @@ importers:
     dependencies:
       ink:
         specifier: ^8.0.0
-        version: 8.0.0(@types/react@19.3.0)(react@19.3.1)
+        version: 8.0.0(@types/react@19.3.2)(react@19.3.1)
       ink-text-input:
         specifier: ^6.0.0
-        version: 6.0.0(ink@8.0.0(@types/react@19.3.0)(react@19.3.1))(react@19.3.1)
+        version: 6.0.0(ink@8.0.0(@types/react@19.3.2)(react@19.3.1))(react@19.3.1)
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -123,8 +123,8 @@ importers:
         specifier: ^26.6.6
         version: 26.6.6
       '@types/react':
-        specifier: ^19.3.0
-        version: 19.3.0
+        specifier: ^19.3.2
+        version: 19.3.2
       '@types/ws':
         specifier: ^8.18.2
         version: 8.18.2
@@ -169,7 +169,7 @@ importers:
         version: 4.6.0
       openai:
         specifier: ^7.60.0
-        version: 7.60.0(ws@8.23.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7)
+        version: 7.60.0(ws@7.5.14(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@4.6.7)
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -890,8 +890,8 @@ packages:
     peerDependencies:
       '@types/react': ^19.3.0
 
-  '@types/react@19.3.0':
-    resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
+  '@types/react@19.3.2':
+    resolution: {integrity: sha512-0QJbb58RxWJL3VAa5tvk7QhJamz0S+MpFL2xDuF/+THRR+kldyhPjRZ1iwvK45AEHZ1BVGS3otPsl7QlNVRizQ==}
 
   '@types/uuid@10.0.0':
     resolution: {integrity: sha512-7gqG38EyHgyP1S+7+xomFtL+ZNHcKv6DwNaCZmJmo1vgMugyF3TCnXVg4t1uk89mLNwnLtnY3TpOpCOyp1/xHQ==}
@@ -1299,8 +1299,8 @@ packages:
   cross-fetch@3.2.0:
     resolution: {integrity: sha512-Q+xVJLoGOeIMXZmbUK4HYk+69cQH6LudR0Vu/pRm2YlU/hDV9CiS0gKUMaWY5f2NeUH9C1nV3bsTlCo0FsTV1Q==}
 
-  csstype@3.2.3:
-    resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+  csstype@3.2.4:
+    resolution: {integrity: sha512-PoKaoPzQapnEoqUSnHx1u6W6ku8CVEgKsnpmmzU3m1nwkidpPBQ8V/Zq2+bWNrsOKoKLwTGdbx6xF7BXP1zLVQ==}
 
   dayjs@1.11.15:
     resolution: {integrity: sha512-MC+DfnSWiM9APs7fpiurHGCoeIx0Gdl6QZBy+5lu8MbYKN5FZEXqOgrundfibdfhGZ15o9hzmZ2xJjZnbvgKXQ==}
@@ -2891,12 +2891,12 @@ snapshots:
 
   '@tanstack/query-core@5.108.2': {}
 
-  '@tanstack/react-query@5.108.2(@types/react@19.3.0)(react@19.3.1)':
+  '@tanstack/react-query@5.108.2(@types/react@19.3.2)(react@19.3.1)':
     dependencies:
       '@tanstack/query-core': 5.108.2
       react: 19.3.1
     optionalDependencies:
-      '@types/react': 19.3.0
+      '@types/react': 19.3.2
 
   '@tybys/wasm-util@0.10.5':
     dependencies:
@@ -2928,13 +2928,13 @@ snapshots:
     dependencies:
       undici-types: 8.9.0
 
-  '@types/react-dom@19.3.0(@types/react@19.3.0)':
+  '@types/react-dom@19.3.0(@types/react@19.3.2)':
     dependencies:
-      '@types/react': 19.3.0
+      '@types/react': 19.3.2
 
-  '@types/react@19.3.0':
+  '@types/react@19.3.2':
     dependencies:
-      csstype: 3.2.3
+      csstype: 3.2.4
 
   '@types/uuid@10.0.0': {}
 
@@ -3238,7 +3238,7 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  csstype@3.2.3: {}
+  csstype@3.2.4: {}
 
   dayjs@1.11.15: {}
 
@@ -3490,14 +3490,14 @@ snapshots:
 
   inherits@2.0.4: {}
 
-  ink-text-input@6.0.0(ink@8.0.0(@types/react@19.3.0)(react@19.3.1))(react@19.3.1):
+  ink-text-input@6.0.0(ink@8.0.0(@types/react@19.3.2)(react@19.3.1))(react@19.3.1):
     dependencies:
       chalk: 5.6.2
-      ink: 8.0.0(@types/react@19.3.0)(react@19.3.1)
+      ink: 8.0.0(@types/react@19.3.2)(react@19.3.1)
       react: 19.3.1
       type-fest: 4.41.0
 
-  ink@8.0.0(@types/react@19.3.0)(react@19.3.1):
+  ink@8.0.0(@types/react@19.3.2)(react@19.3.1):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.3.1
       ansi-escapes: 7.3.0
@@ -3524,7 +3524,7 @@ snapshots:
       wrap-ansi: 10.0.2
       yoga-layout: 3.2.1
     optionalDependencies:
-      '@types/react': 19.3.0
+      '@types/react': 19.3.2
 
   ipaddr.js@1.9.1: {}
 
@@ -4226,7 +4226,7 @@ snapshots:
 
   zod@4.6.7: {}
 
-  zustand@5.1.0(@types/react@19.3.0)(react@19.3.1):
+  zustand@5.1.0(@types/react@19.3.2)(react@19.3.1):
     optionalDependencies:
-      '@types/react': 19.3.0
+      '@types/react': 19.3.2
       react: 19.3.1
